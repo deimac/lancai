@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
+import type { Auditoria, Cartao, Categoria, Conta, Movimento, Parcela, Pessoa } from "@lancai/banco";
 import type {
-  Auditoria,
-  Cartao,
-  Categoria,
-  Conta,
-  Movimento,
-  NovoMovimento,
-  Parcela,
-  Pessoa,
-} from "@lancai/banco";
-import type { OperacaoPersistencia, RepositorioFinanceiro, ResultadoOperacaoPersistencia } from "./repositorio";
+  OperacaoCorrecao,
+  OperacaoPersistencia,
+  RepositorioFinanceiro,
+  ResultadoOperacaoPersistencia,
+} from "./repositorio";
 
 /**
  * Implementação em memória do RepositorioFinanceiro, usada exclusivamente
@@ -128,28 +124,38 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     return { movimentos: movimentosCriados, parcelas: parcelasCriadas };
   }
 
-  async atualizarMovimento(id: string, campos: Partial<NovoMovimento>, auditoria: { estadoAnterior?: unknown; estadoAtual?: unknown; alteradoPor: string }) {
-    const existente = this.movimentos.get(id);
+  async corrigirMovimento(operacao: OperacaoCorrecao) {
+    const existente = this.movimentos.get(operacao.movimentoId);
     if (!existente) {
-      throw new Error(`Movimento não encontrado: ${id}`);
+      throw new Error(`Movimento não encontrado: ${operacao.movimentoId}`);
     }
+
     const atualizado: Movimento = {
       ...existente,
-      ...campos,
-      valor: campos.valor !== undefined ? String(campos.valor) : existente.valor,
+      ...operacao.campos,
+      valor: operacao.campos.valor !== undefined ? String(operacao.campos.valor) : existente.valor,
       dataAtualizacao: new Date(),
-      alteradoPor: auditoria.alteradoPor,
     } as Movimento;
-    this.movimentos.set(id, atualizado);
+    this.movimentos.set(operacao.movimentoId, atualizado);
+
+    for (const atualizacao of operacao.atualizacoesSaldoConta) {
+      const conta = this.contas.get(atualizacao.contaId);
+      if (!conta) continue;
+      this.contas.set(atualizacao.contaId, {
+        ...conta,
+        saldoAtual: String(atualizacao.saldoAtual),
+        dataAtualizacao: new Date(),
+      });
+    }
 
     this.auditorias.push({
       id: randomUUID(),
-      tabela: "movimento",
-      registroId: id,
-      acao: "ALTERACAO",
-      estadoAnterior: (auditoria.estadoAnterior as never) ?? null,
-      estadoAtual: (auditoria.estadoAtual as never) ?? null,
-      alteradoPor: auditoria.alteradoPor,
+      tabela: operacao.auditoria.tabela,
+      registroId: operacao.auditoria.registroId,
+      acao: operacao.auditoria.acao,
+      estadoAnterior: operacao.auditoria.estadoAnterior ?? null,
+      estadoAtual: operacao.auditoria.estadoAtual ?? null,
+      alteradoPor: operacao.auditoria.alteradoPor,
       dataCriacao: new Date(),
     });
 

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Cartao, Categoria, Conta, Pessoa } from "@lancai/banco";
 import { MotorFinanceiro } from "../motor-financeiro";
 import { RepositorioFinanceiroMemoria } from "../repositorio-memoria";
-import { ErroLimiteCartaoExcedido, ErroRecursoNaoEncontrado, ErroTipoMovimentoNaoImplementado } from "../erros";
+import { ErroLimiteCartaoExcedido, ErroRecursoNaoEncontrado } from "../erros";
 
 function criarConta(sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -168,24 +168,186 @@ describe("MotorFinanceiro", () => {
       ).rejects.toThrow(ErroRecursoNaoEncontrado);
     });
 
-    it("lança erro para tipos ainda não implementados na Fase 2", async () => {
+  });
+
+  describe("novos tipos de movimento (Fase 3)", () => {
+    it.each([
+      ["reembolso", 1],
+      ["estorno", 1],
+      ["aporte", 1],
+      ["retirada", -1],
+      ["emprestimo", -1],
+    ] as const)("'%s' altera o saldo na direção esperada (%i)", async (tipo, direcao) => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      await motor.criar_movimento({
+        descricao: `Movimento ${tipo}`,
+        valor: 100,
+        tipo,
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      expect(Number(contaAtualizada?.saldoAtual)).toBe(1000 + direcao * 100);
+    });
+  });
+
+  describe("fluxo cruzado PF/PJ", () => {
+    it("marca o movimento como fluxo cruzado quando o perfil do movimento difere do perfil da conta", async () => {
+      const contaEmpresa = criarConta({ usuarioId, perfil: "pj", saldoAtual: "1000.00" });
+      const pessoa = criarPessoa({ usuarioId });
+      repositorio.contas.set(contaEmpresa.id, contaEmpresa);
+      repositorio.pessoas.set(pessoa.id, pessoa);
+
+      await motor.criar_movimento({
+        descricao: "Churrasco do Marcio",
+        valor: 100,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: contaEmpresa.id,
+        categoriaId: categoria.id,
+        pessoaId: pessoa.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      const auditoria = repositorio.auditorias[0];
+      expect((auditoria?.estadoAtual as { fluxoCruzado?: boolean })?.fluxoCruzado).toBe(true);
+    });
+
+    it("não marca como fluxo cruzado quando os perfis coincidem", async () => {
+      const conta = criarConta({ usuarioId, perfil: "pf", saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      await motor.criar_movimento({
+        descricao: "Combustível",
+        valor: 100,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      const auditoria = repositorio.auditorias[0];
+      expect((auditoria?.estadoAtual as { fluxoCruzado?: boolean })?.fluxoCruzado).toBe(false);
+    });
+  });
+
+  describe("corrigir_movimento", () => {
+    it("atualiza o valor e ajusta o saldo da conta pela diferença", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Combustível",
+        valor: 185,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+      const movimentoId = resultado.movimentos[0]!.id;
+
+      const corrigido = await motor.corrigir_movimento({
+        movimentoId,
+        alteradoPor: usuarioId,
+        campos: { valor: 210 },
+      });
+
+      expect(corrigido.valor).toBe("210.00");
+
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      // saldo original 815 (1000 - 185) - diferença extra de 25 (210 - 185) = 790
+      expect(Number(contaAtualizada?.saldoAtual)).toBe(790);
+
+      expect(repositorio.auditorias).toHaveLength(2);
+      expect(repositorio.auditorias[1]?.acao).toBe("ALTERACAO");
+    });
+
+    it("permite corrigir apenas descrição/categoria sem mexer no saldo", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const outraCategoria = criarCategoria({ usuarioId, nome: "Alimentação" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.categorias.set(outraCategoria.id, outraCategoria);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Combustível",
+        valor: 185,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+      const movimentoId = resultado.movimentos[0]!.id;
+
+      const corrigido = await motor.corrigir_movimento({
+        movimentoId,
+        alteradoPor: usuarioId,
+        campos: { descricao: "Mercado", categoriaId: outraCategoria.id },
+      });
+
+      expect(corrigido.descricao).toBe("Mercado");
+      expect(corrigido.categoriaId).toBe(outraCategoria.id);
+
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      expect(contaAtualizada?.saldoAtual).toBe("815");
+    });
+
+    it("lança erro se o movimento não existe", async () => {
+      await expect(
+        motor.corrigir_movimento({
+          movimentoId: randomUUID(),
+          alteradoPor: usuarioId,
+          campos: { descricao: "Novo" },
+        }),
+      ).rejects.toThrow(ErroRecursoNaoEncontrado);
+    });
+
+    it("lança erro se a nova categoria não existe", async () => {
       const conta = criarConta({ usuarioId });
       repositorio.contas.set(conta.id, conta);
 
+      const resultado = await motor.criar_movimento({
+        descricao: "Combustível",
+        valor: 185,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
       await expect(
-        motor.criar_movimento({
-          descricao: "Reembolso da empresa",
-          valor: 100,
-          tipo: "reembolso",
-          status: "realizado",
-          perfil: "pf",
-          dataMovimento: "2026-07-31",
-          contaId: conta.id,
-          categoriaId: categoria.id,
-          usuarioId,
-          criadoPor: usuarioId,
+        motor.corrigir_movimento({
+          movimentoId: resultado.movimentos[0]!.id,
+          alteradoPor: usuarioId,
+          campos: { categoriaId: randomUUID() },
         }),
-      ).rejects.toThrow(ErroTipoMovimentoNaoImplementado);
+      ).rejects.toThrow(ErroRecursoNaoEncontrado);
     });
   });
 

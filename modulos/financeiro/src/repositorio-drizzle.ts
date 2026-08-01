@@ -10,11 +10,12 @@ import {
   pessoa as pessoaTabela,
 } from "@lancai/banco";
 import type {
+  OperacaoCorrecao,
   OperacaoPersistencia,
   RepositorioFinanceiro,
   ResultadoOperacaoPersistencia,
 } from "./repositorio";
-import type { Movimento, NovaAuditoria, NovoMovimento } from "@lancai/banco";
+import type { Movimento } from "@lancai/banco";
 
 /** Implementação real do RepositorioFinanceiro, sobre Supabase Postgres via Drizzle. */
 export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
@@ -91,24 +92,27 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     });
   }
 
-  async atualizarMovimento(
-    id: string,
-    campos: Partial<NovoMovimento>,
-    auditoria: NovaAuditoria,
-  ): Promise<Movimento> {
+  async corrigirMovimento(operacao: OperacaoCorrecao): Promise<Movimento> {
     return this.banco.transaction(async (tx) => {
       const linhasAtualizadas = await tx
         .update(movimentoTabela)
-        .set({ ...campos, dataAtualizacao: new Date() })
-        .where(eq(movimentoTabela.id, id))
+        .set({ ...operacao.campos, dataAtualizacao: new Date() })
+        .where(eq(movimentoTabela.id, operacao.movimentoId))
         .returning();
 
       const atualizado = linhasAtualizadas[0];
       if (!atualizado) {
-        throw new Error(`Movimento não encontrado para atualização: ${id}`);
+        throw new Error(`Movimento não encontrado para atualização: ${operacao.movimentoId}`);
       }
 
-      await tx.insert(auditoriaTabela).values(auditoria);
+      for (const atualizacaoSaldo of operacao.atualizacoesSaldoConta) {
+        await tx
+          .update(contaTabela)
+          .set({ saldoAtual: String(atualizacaoSaldo.saldoAtual), dataAtualizacao: new Date() })
+          .where(eq(contaTabela.id, atualizacaoSaldo.contaId));
+      }
+
+      await tx.insert(auditoriaTabela).values(operacao.auditoria);
 
       return atualizado;
     });

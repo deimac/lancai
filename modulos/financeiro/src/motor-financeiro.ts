@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { arredondar, deISOParaData, paraColuna, paraNumero, schemaCriarMovimento } from "@lancai/tipos";
-import type { EntradaCriarMovimento } from "@lancai/tipos";
-import type { NovaAuditoria, NovaParcela, NovoMovimento } from "@lancai/banco";
-import { calcular_saldo, tipo_movimento_implementado } from "./calcular-saldo";
+import {
+  arredondar,
+  deISOParaData,
+  paraColuna,
+  paraNumero,
+  schemaCorrigirMovimento,
+  schemaCriarMovimento,
+} from "@lancai/tipos";
+import type { EntradaCorrigirMovimento, EntradaCriarMovimento } from "@lancai/tipos";
+import type { Movimento, NovaAuditoria, NovaParcela, NovoMovimento } from "@lancai/banco";
+import { calcular_saldo, obter_direcao_padrao, tipo_movimento_implementado } from "./calcular-saldo";
+import { eh_fluxo_cruzado } from "./fluxo-cruzado";
 import { registrar_parcelamento } from "./registrar-parcelamento";
 import {
   ErroLimiteCartaoExcedido,
@@ -91,7 +99,7 @@ export class MotorFinanceiro {
       registroId: movimentoId,
       acao: "INSERCAO",
       estadoAnterior: null,
-      estadoAtual: novoMovimento,
+      estadoAtual: { ...novoMovimento, fluxoCruzado: eh_fluxo_cruzado(entrada.perfil, conta.perfil) },
       alteradoPor: entrada.criadoPor,
     };
 
@@ -259,7 +267,11 @@ export class MotorFinanceiro {
       registroId: movimentoId,
       acao: "INSERCAO",
       estadoAnterior: null,
-      estadoAtual: { ...novoMovimento, parcelas: novasParcelas },
+      estadoAtual: {
+        ...novoMovimento,
+        parcelas: novasParcelas,
+        fluxoCruzado: eh_fluxo_cruzado(entrada.perfil, cartao.perfil),
+      },
       alteradoPor: entrada.criadoPor,
     };
 
@@ -268,6 +280,96 @@ export class MotorFinanceiro {
       parcelas: novasParcelas,
       atualizacoesSaldoConta: [],
       auditorias: [auditoria],
+    });
+  }
+
+  /**
+   * Corrige um lançamento existente (ex.: "corrige o combustível de ontem para R$ 210").
+   * Nunca apaga o registro anterior — grava o estado anterior/atual em `auditoria`
+   * (ADR: sistema append-only) e, se o valor mudou e o movimento afeta uma conta
+   * (não cartão, não transferência), ajusta `saldo_atual` pela diferença.
+   */
+  async corrigir_movimento(entradaBruta: EntradaCorrigirMovimento): Promise<Movimento> {
+    const entrada = schemaCorrigirMovimento.parse(entradaBruta);
+
+    const movimentoAtual = await this.repositorio.obterMovimento(entrada.movimentoId);
+    if (!movimentoAtual) {
+      throw new ErroRecursoNaoEncontrado("movimento", entrada.movimentoId);
+    }
+
+    const campos = entrada.campos;
+    const camposParaAtualizar: Partial<NovoMovimento> = {};
+
+    if (campos.descricao !== undefined) camposParaAtualizar.descricao = campos.descricao;
+    if (campos.dataMovimento !== undefined) camposParaAtualizar.dataMovimento = campos.dataMovimento;
+    if (campos.status !== undefined) camposParaAtualizar.status = campos.status;
+    if (campos.valor !== undefined) camposParaAtualizar.valor = paraColuna(campos.valor);
+
+    if (campos.categoriaId !== undefined) {
+      const categoria = await this.repositorio.obterCategoria(campos.categoriaId);
+      if (!categoria) throw new ErroRecursoNaoEncontrado("categoria", campos.categoriaId);
+      camposParaAtualizar.categoriaId = campos.categoriaId;
+    }
+    if (campos.contaId !== undefined) {
+      const conta = await this.repositorio.obterConta(campos.contaId);
+      if (!conta) throw new ErroRecursoNaoEncontrado("conta", campos.contaId);
+      camposParaAtualizar.contaId = campos.contaId;
+    }
+    if (campos.cartaoId !== undefined) {
+      const cartao = await this.repositorio.obterCartao(campos.cartaoId);
+      if (!cartao) throw new ErroRecursoNaoEncontrado("cartao", campos.cartaoId);
+      camposParaAtualizar.cartaoId = campos.cartaoId;
+    }
+    if (campos.pessoaId !== undefined) {
+      const pessoa = await this.repositorio.obterPessoa(campos.pessoaId);
+      if (!pessoa) throw new ErroRecursoNaoEncontrado("pessoa", campos.pessoaId);
+      camposParaAtualizar.pessoaId = campos.pessoaId;
+    }
+
+    camposParaAtualizar.alteradoPor = entrada.alteradoPor;
+
+    const atualizacoesSaldoConta: Array<{ contaId: string; saldoAtual: number }> = [];
+
+    const contaDestinoDaCorrecao = campos.contaId ?? movimentoAtual.contaId;
+    const vaiMudarConta = campos.valor !== undefined && contaDestinoDaCorrecao;
+
+    if (vaiMudarConta && movimentoAtual.status === "realizado" && movimentoAtual.tipo !== "transferencia") {
+      if (campos.contaId && campos.contaId !== movimentoAtual.contaId) {
+        throw new ErroValidacaoFinanceira(
+          "Trocar a conta de um movimento realizado neste MVP ainda não é suportado — cancele e recrie o lançamento.",
+        );
+      }
+
+      const direcao = obter_direcao_padrao(movimentoAtual.tipo);
+      if (direcao === undefined) {
+        throw new ErroTipoMovimentoNaoImplementado(movimentoAtual.tipo);
+      }
+
+      const conta = await this.repositorio.obterConta(contaDestinoDaCorrecao as string);
+      if (!conta) {
+        throw new ErroRecursoNaoEncontrado("conta", contaDestinoDaCorrecao as string);
+      }
+
+      const valorAntigo = paraNumero(movimentoAtual.valor);
+      const valorNovo = campos.valor as number;
+      const saldoAjustado = arredondar(paraNumero(conta.saldoAtual) + direcao * (valorNovo - valorAntigo));
+      atualizacoesSaldoConta.push({ contaId: conta.id, saldoAtual: saldoAjustado });
+    }
+
+    const auditoria: NovaAuditoria = {
+      tabela: "movimento",
+      registroId: entrada.movimentoId,
+      acao: "ALTERACAO",
+      estadoAnterior: movimentoAtual,
+      estadoAtual: { ...movimentoAtual, ...camposParaAtualizar },
+      alteradoPor: entrada.alteradoPor,
+    };
+
+    return this.repositorio.corrigirMovimento({
+      movimentoId: entrada.movimentoId,
+      campos: camposParaAtualizar,
+      atualizacoesSaldoConta,
+      auditoria,
     });
   }
 }

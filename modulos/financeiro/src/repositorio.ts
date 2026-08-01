@@ -29,6 +29,14 @@ export interface ResultadoOperacaoPersistencia {
   parcelas: Parcela[];
 }
 
+/** Tudo que uma correção de lançamento precisa persistir atomicamente. */
+export interface OperacaoCorrecao {
+  movimentoId: string;
+  campos: Partial<NovoMovimento>;
+  atualizacoesSaldoConta: Array<{ contaId: string; saldoAtual: number }>;
+  auditoria: NovaAuditoria;
+}
+
 /**
  * Porta de persistência do MotorFinanceiro. A implementação real vive em
  * `repositorio-drizzle.ts` (Supabase/Postgres); a implementação em memória
@@ -44,11 +52,7 @@ export interface RepositorioFinanceiro {
   /** Soma de parcelas com status 'previsto' ou 'realizado' (não canceladas) de um cartão. */
   obterTotalComprometidoCartao(cartaoId: string): Promise<number>;
   persistirOperacao(operacao: OperacaoPersistencia): Promise<ResultadoOperacaoPersistencia>;
-  atualizarMovimento(
-    id: string,
-    campos: Partial<NovoMovimento>,
-    auditoria: NovaAuditoria,
-  ): Promise<Movimento>;
+  corrigirMovimento(operacao: OperacaoCorrecao): Promise<Movimento>;
 }
 
 export type { Auditoria, Cartao, Categoria, Conta, Movimento, NovoMovimento, Parcela, Pessoa };

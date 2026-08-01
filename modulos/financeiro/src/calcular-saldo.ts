@@ -9,12 +9,21 @@ export type DirecaoConta = "origem" | "destino" | "unica";
  * para lançamentos que afetam uma única conta (não é usado para 'transferencia',
  * que tem regra própria por ter duas pontas).
  *
- * Fase 2 implementa apenas receita/despesa. Reembolso, empréstimo, estorno,
- * retirada e aporte são adicionados na Fase 3 (ver modulos/financeiro/src/motor-financeiro.ts).
+ * Convenções assumidas pelo MotorFinanceiro (ajustáveis conforme feedback de uso real):
+ * - `reembolso` e `estorno`: dinheiro voltando para a conta (mesma direção de receita).
+ * - `aporte`: capital entrando na conta (ex.: sócio aportando na empresa).
+ * - `retirada`: dinheiro saindo da conta (ex.: pró-labore saindo da conta da empresa).
+ * - `emprestimo`: assume-se o caso mais comum em linguagem natural ("emprestei
+ *   R$200 pro Marcio") — dinheiro saindo da conta de quem empresta.
  */
 const DIRECAO_PADRAO_POR_TIPO: Partial<Record<TipoMovimento, 1 | -1>> = {
   receita: 1,
   despesa: -1,
+  reembolso: 1,
+  estorno: 1,
+  aporte: 1,
+  retirada: -1,
+  emprestimo: -1,
 };
 
 /**
@@ -42,4 +51,9 @@ export function calcular_saldo(
 /** Tipos de movimento cujo efeito em `calcular_saldo` já está implementado. */
 export function tipo_movimento_implementado(tipo: TipoMovimento): boolean {
   return tipo === "transferencia" || tipo in DIRECAO_PADRAO_POR_TIPO;
+}
+
+/** Direção (+1/-1) usada por `criar_movimento`/`corrigir_movimento` para tipos de conta única. */
+export function obter_direcao_padrao(tipo: TipoMovimento): 1 | -1 | undefined {
+  return DIRECAO_PADRAO_POR_TIPO[tipo];
 }

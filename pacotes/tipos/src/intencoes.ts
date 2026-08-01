@@ -1,0 +1,98 @@
+import { z } from "zod";
+import { perfilSchema } from "./cadastro";
+import { tipoMovimentoSchema } from "./movimento";
+
+const dataISOSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");
+
+/**
+ * Contrato de saída do `InterpretadorIntencoes` para lançamentos.
+ * Diferente de `EntradaCriarMovimento` (pacotes/tipos/movimento.ts), aqui as
+ * referências ainda são nomes em texto livre (`conta_nome`, `categoria_nome`...) —
+ * a resolução para IDs reais acontece no `ResolvedorIntencao` (modulos/ia),
+ * nunca dentro da própria IA (ADR-003).
+ */
+export const schemaIntencaoRegistrarMovimento = z.object({
+  intencao: z.literal("REGISTRAR_MOVIMENTO"),
+  tipo_movimento: tipoMovimentoSchema,
+  valor: z.number().positive(),
+  data_movimento: dataISOSchema,
+  descricao: z.string().min(1),
+  perfil: perfilSchema,
+  conta_nome: z.string().min(1).nullable().optional(),
+  cartao_nome: z.string().min(1).nullable().optional(),
+  conta_destino_nome: z.string().min(1).nullable().optional(),
+  categoria_nome: z.string().min(1).nullable().optional(),
+  pessoa_nome: z.string().min(1).nullable().optional(),
+  parcelas: z.number().int().min(2).max(360).nullable().optional(),
+});
+export type IntencaoRegistrarMovimento = z.infer<typeof schemaIntencaoRegistrarMovimento>;
+
+export const tipoVisaoSchema = z.enum([
+  "saldos",
+  "cartoes",
+  "parcelamentos",
+  "categoria",
+  "futuro",
+  "fluxo",
+  "evolucao",
+]);
+export type TipoVisao = z.infer<typeof tipoVisaoSchema>;
+
+export const schemaFiltrosVisao = z.object({
+  categoria_nome: z.string().min(1).nullable().optional(),
+  conta_nome: z.string().min(1).nullable().optional(),
+  cartao_nome: z.string().min(1).nullable().optional(),
+  pessoa_nome: z.string().min(1).nullable().optional(),
+  perfil: perfilSchema.nullable().optional(),
+  periodo: z
+    .object({ de: dataISOSchema, ate: dataISOSchema })
+    .nullable()
+    .optional(),
+});
+export type FiltrosVisao = z.infer<typeof schemaFiltrosVisao>;
+
+export const schemaIntencaoConsultarVisao = z.object({
+  intencao: z.literal("CONSULTAR_VISAO"),
+  tipo_visao: tipoVisaoSchema,
+  filtros: schemaFiltrosVisao,
+});
+export type IntencaoConsultarVisao = z.infer<typeof schemaIntencaoConsultarVisao>;
+
+export const schemaIntencaoCorrigirMovimento = z.object({
+  intencao: z.literal("CORRIGIR_MOVIMENTO"),
+  referencia: z.object({
+    descricao: z.string().min(1).nullable().optional(),
+    data_movimento: dataISOSchema.nullable().optional(),
+  }),
+  campos_alterados: z.object({
+    valor: z.number().positive().nullable().optional(),
+    descricao: z.string().min(1).nullable().optional(),
+    data_movimento: dataISOSchema.nullable().optional(),
+    categoria_nome: z.string().min(1).nullable().optional(),
+    conta_nome: z.string().min(1).nullable().optional(),
+    cartao_nome: z.string().min(1).nullable().optional(),
+  }),
+});
+export type IntencaoCorrigirMovimento = z.infer<typeof schemaIntencaoCorrigirMovimento>;
+
+/**
+ * Escape hatch para mensagens que não são um lançamento, consulta ou correção
+ * (ex.: saudações, perguntas fora do domínio financeiro). Não está no documento
+ * original, mas é necessário para o `InterpretadorIntencoes` nunca ser forçado
+ * a inventar uma das outras três intenções quando a mensagem não se encaixa.
+ */
+export const schemaIntencaoNaoReconhecida = z.object({
+  intencao: z.literal("NAO_RECONHECIDA"),
+  motivo: z.string(),
+});
+export type IntencaoNaoReconhecida = z.infer<typeof schemaIntencaoNaoReconhecida>;
+
+export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
+  schemaIntencaoRegistrarMovimento,
+  schemaIntencaoConsultarVisao,
+  schemaIntencaoCorrigirMovimento,
+  schemaIntencaoNaoReconhecida,
+]);
+export type IntencaoDetectada = z.infer<typeof schemaIntencaoDetectada>;
