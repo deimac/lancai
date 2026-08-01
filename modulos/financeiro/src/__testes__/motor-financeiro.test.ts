@@ -1,0 +1,387 @@
+import { randomUUID } from "node:crypto";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { Cartao, Categoria, Conta, Pessoa } from "@lancai/banco";
+import { MotorFinanceiro } from "../motor-financeiro";
+import { RepositorioFinanceiroMemoria } from "../repositorio-memoria";
+import { ErroLimiteCartaoExcedido, ErroRecursoNaoEncontrado, ErroTipoMovimentoNaoImplementado } from "../erros";
+
+function criarConta(sobrepor: Partial<Conta> = {}): Conta {
+  const agora = new Date();
+  return {
+    id: randomUUID(),
+    nome: "Nubank",
+    saldoInicial: "0.00",
+    saldoAtual: "1000.00",
+    perfil: "pf",
+    ativo: true,
+    usuarioId: randomUUID(),
+    dataCriacao: agora,
+    dataAtualizacao: agora,
+    ...sobrepor,
+  };
+}
+
+function criarCartao(contaId: string, sobrepor: Partial<Cartao> = {}): Cartao {
+  const agora = new Date();
+  return {
+    id: randomUUID(),
+    nome: "Inter Black",
+    limite: "5000.00",
+    fechamento: 20,
+    vencimento: 27,
+    melhorDiaCompra: 21,
+    perfil: "pf",
+    ativo: true,
+    contaId,
+    usuarioId: randomUUID(),
+    dataCriacao: agora,
+    dataAtualizacao: agora,
+    ...sobrepor,
+  };
+}
+
+function criarCategoria(sobrepor: Partial<Categoria> = {}): Categoria {
+  const agora = new Date();
+  return {
+    id: randomUUID(),
+    nome: "Combustível",
+    tipo: "despesa",
+    ativo: true,
+    usuarioId: randomUUID(),
+    dataCriacao: agora,
+    dataAtualizacao: agora,
+    ...sobrepor,
+  };
+}
+
+function criarPessoa(sobrepor: Partial<Pessoa> = {}): Pessoa {
+  const agora = new Date();
+  return {
+    id: randomUUID(),
+    nome: "João",
+    tipo: "cliente",
+    ativo: true,
+    usuarioId: randomUUID(),
+    dataCriacao: agora,
+    dataAtualizacao: agora,
+    ...sobrepor,
+  };
+}
+
+describe("MotorFinanceiro", () => {
+  let repositorio: RepositorioFinanceiroMemoria;
+  let motor: MotorFinanceiro;
+  let usuarioId: string;
+  let categoria: Categoria;
+
+  beforeEach(() => {
+    repositorio = new RepositorioFinanceiroMemoria();
+    motor = new MotorFinanceiro(repositorio);
+    usuarioId = randomUUID();
+    categoria = criarCategoria({ usuarioId });
+    repositorio.categorias.set(categoria.id, categoria);
+  });
+
+  describe("despesa em conta", () => {
+    it("diminui o saldo da conta quando o movimento é realizado", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Combustível",
+        valor: 185,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-31",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos).toHaveLength(1);
+      expect(resultado.movimentos[0]?.valor).toBe("185.00");
+
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      expect(contaAtualizada?.saldoAtual).toBe("815");
+
+      expect(repositorio.auditorias).toHaveLength(1);
+      expect(repositorio.auditorias[0]?.acao).toBe("INSERCAO");
+    });
+
+    it("não altera o saldo quando o status é 'previsto'", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      await motor.criar_movimento({
+        descricao: "Aluguel de dezembro",
+        valor: 1500,
+        tipo: "despesa",
+        status: "previsto",
+        perfil: "pf",
+        dataMovimento: "2026-12-05",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      expect(contaAtualizada?.saldoAtual).toBe("1000.00");
+    });
+
+    it("lança erro se a conta não existe", async () => {
+      await expect(
+        motor.criar_movimento({
+          descricao: "Combustível",
+          valor: 185,
+          tipo: "despesa",
+          status: "realizado",
+          perfil: "pf",
+          dataMovimento: "2026-07-31",
+          contaId: randomUUID(),
+          categoriaId: categoria.id,
+          usuarioId,
+          criadoPor: usuarioId,
+        }),
+      ).rejects.toThrow(ErroRecursoNaoEncontrado);
+    });
+
+    it("lança erro se a categoria não existe", async () => {
+      const conta = criarConta({ usuarioId });
+      repositorio.contas.set(conta.id, conta);
+
+      await expect(
+        motor.criar_movimento({
+          descricao: "Combustível",
+          valor: 185,
+          tipo: "despesa",
+          status: "realizado",
+          perfil: "pf",
+          dataMovimento: "2026-07-31",
+          contaId: conta.id,
+          categoriaId: randomUUID(),
+          usuarioId,
+          criadoPor: usuarioId,
+        }),
+      ).rejects.toThrow(ErroRecursoNaoEncontrado);
+    });
+
+    it("lança erro para tipos ainda não implementados na Fase 2", async () => {
+      const conta = criarConta({ usuarioId });
+      repositorio.contas.set(conta.id, conta);
+
+      await expect(
+        motor.criar_movimento({
+          descricao: "Reembolso da empresa",
+          valor: 100,
+          tipo: "reembolso",
+          status: "realizado",
+          perfil: "pf",
+          dataMovimento: "2026-07-31",
+          contaId: conta.id,
+          categoriaId: categoria.id,
+          usuarioId,
+          criadoPor: usuarioId,
+        }),
+      ).rejects.toThrow(ErroTipoMovimentoNaoImplementado);
+    });
+  });
+
+  describe("receita em conta", () => {
+    it("aumenta o saldo da conta associada à pessoa", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "500.00" });
+      const pessoa = criarPessoa({ usuarioId });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.pessoas.set(pessoa.id, pessoa);
+
+      await motor.criar_movimento({
+        descricao: "Recebimento de João",
+        valor: 2500,
+        tipo: "receita",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-08-01",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        pessoaId: pessoa.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      expect(contaAtualizada?.saldoAtual).toBe("3000");
+    });
+  });
+
+  describe("transferência", () => {
+    it("gera duas linhas de movimento e ajusta o saldo das duas contas", async () => {
+      const contaOrigem = criarConta({ usuarioId, nome: "Nubank", saldoAtual: "1000.00" });
+      const contaDestino = criarConta({ usuarioId, nome: "Inter", saldoAtual: "200.00" });
+      repositorio.contas.set(contaOrigem.id, contaOrigem);
+      repositorio.contas.set(contaDestino.id, contaDestino);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Reserva de emergência",
+        valor: 300,
+        tipo: "transferencia",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-08-01",
+        contaId: contaOrigem.id,
+        contaDestinoId: contaDestino.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos).toHaveLength(2);
+
+      const origemAtualizada = await repositorio.obterConta(contaOrigem.id);
+      const destinoAtualizada = await repositorio.obterConta(contaDestino.id);
+      expect(origemAtualizada?.saldoAtual).toBe("700");
+      expect(destinoAtualizada?.saldoAtual).toBe("500");
+    });
+  });
+
+  describe("compra parcelada no cartão", () => {
+    it("cria o movimento pai e as parcelas com datas respeitando o fechamento/vencimento", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 20, vencimento: 27, limite: "10000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Notebook",
+        valor: 8000,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-15",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+        parcelamento: { quantidadeParcelas: 10 },
+      });
+
+      expect(resultado.movimentos).toHaveLength(1);
+      expect(resultado.parcelas).toHaveLength(10);
+      expect(resultado.parcelas.every((parcela) => parcela.valor === "800.00")).toBe(true);
+      // Compra em 15/07, fechamento dia 20 -> entra na fatura corrente, vencimento 27/08.
+      expect(resultado.parcelas[0]?.dataMovimento).toBe("2026-08-27");
+      expect(resultado.parcelas[1]?.dataMovimento).toBe("2026-09-27");
+      expect(resultado.parcelas[9]?.dataMovimento).toBe("2027-05-27");
+
+      // Compra no cartão não afeta o saldo da conta vinculada.
+      const contaAtualizada = await repositorio.obterConta(conta.id);
+      expect(contaAtualizada?.saldoAtual).toBe(conta.saldoAtual);
+    });
+
+    it("ajusta a última parcela para absorver a diferença de arredondamento", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, limite: "10000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Passagem Iberia",
+        valor: 2300,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pj",
+        dataMovimento: "2026-07-10",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+        parcelamento: { quantidadeParcelas: 5 },
+      });
+
+      const valores = resultado.parcelas.map((parcela) => parcela.valor);
+      expect(valores).toEqual(["460.00", "460.00", "460.00", "460.00", "460.00"]);
+    });
+
+    it("compra em cartão gera uma única parcela quando não há parcelamento", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, limite: "10000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Almoço",
+        valor: 45,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-10",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.parcelas).toHaveLength(1);
+      expect(resultado.parcelas[0]?.numeroParcela).toBe(1);
+    });
+
+    it("lança erro quando o valor ultrapassa o limite disponível do cartão", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, limite: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      await expect(
+        motor.criar_movimento({
+          descricao: "TV",
+          valor: 3000,
+          tipo: "despesa",
+          status: "realizado",
+          perfil: "pf",
+          dataMovimento: "2026-07-10",
+          cartaoId: cartao.id,
+          categoriaId: categoria.id,
+          usuarioId,
+          criadoPor: usuarioId,
+          parcelamento: { quantidadeParcelas: 10 },
+        }),
+      ).rejects.toThrow(ErroLimiteCartaoExcedido);
+    });
+
+    it("considera parcelas já comprometidas de compras anteriores ao validar o limite", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, limite: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      await motor.criar_movimento({
+        descricao: "Mercado",
+        valor: 700,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-10",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      await expect(
+        motor.criar_movimento({
+          descricao: "Farmácia",
+          valor: 400,
+          tipo: "despesa",
+          status: "realizado",
+          perfil: "pf",
+          dataMovimento: "2026-07-11",
+          cartaoId: cartao.id,
+          categoriaId: categoria.id,
+          usuarioId,
+          criadoPor: usuarioId,
+        }),
+      ).rejects.toThrow(ErroLimiteCartaoExcedido);
+    });
+  });
+});
