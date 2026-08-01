@@ -6,6 +6,7 @@ import { registrar_rotas_cartao } from "./rotas/cartoes";
 import { registrar_rotas_categoria } from "./rotas/categorias";
 import { registrar_rotas_pessoa } from "./rotas/pessoas";
 import { registrar_rotas_movimento } from "./rotas/movimentos";
+import { registrar_rotas_chat } from "./rotas/chat";
 import { tratar_erro } from "./tratar-erro";
 
 export function criar_servidor() {
@@ -21,6 +22,7 @@ export function criar_servidor() {
   app.register(registrar_rotas_categoria, { prefix: "/categorias" });
   app.register(registrar_rotas_pessoa, { prefix: "/pessoas" });
   app.register(registrar_rotas_movimento, { prefix: "/movimentos" });
+  app.register(registrar_rotas_chat, { prefix: "/chat" });
 
   app.setErrorHandler(tratar_erro);
 

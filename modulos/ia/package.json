@@ -1,5 +1,5 @@
 {
-  "name": "@lancai/tipos",
+  "name": "@lancai/ia",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,6 +13,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@lancai/banco": "workspace:*",
+    "@lancai/tipos": "workspace:*",
+    "@ai-sdk/google": "^4.0.31",
+    "@ai-sdk/groq": "^4.0.19",
+    "@ai-sdk/openai": "^4.0.27",
+    "ai": "^7.0.47",
+    "drizzle-orm": "^0.38.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {

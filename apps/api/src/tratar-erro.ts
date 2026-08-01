@@ -6,6 +6,7 @@ import {
   ErroTipoMovimentoNaoImplementado,
   ErroValidacaoFinanceira,
 } from "@lancai/financeiro";
+import { ErroReferenciaNaoEncontrada, ErroTodosProvedoresFalharam } from "@lancai/ia";
 
 export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta: FastifyReply) {
   if (erro instanceof ZodError) {
@@ -19,9 +20,15 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
   if (
     erro instanceof ErroValidacaoFinanceira ||
     erro instanceof ErroLimiteCartaoExcedido ||
-    erro instanceof ErroTipoMovimentoNaoImplementado
+    erro instanceof ErroTipoMovimentoNaoImplementado ||
+    erro instanceof ErroReferenciaNaoEncontrada
   ) {
     return resposta.status(422).send({ erro: erro.message });
+  }
+
+  if (erro instanceof ErroTodosProvedoresFalharam) {
+    requisicao.log.error(erro.detalhes);
+    return resposta.status(503).send({ erro: "Nenhum provedor de IA respondeu. Tente novamente em instantes." });
   }
 
   requisicao.log.error(erro);

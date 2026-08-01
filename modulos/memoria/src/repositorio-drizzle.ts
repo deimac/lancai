@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
-import { memoria as memoriaTabela } from "@lancai/banco";
-import type { Banco } from "@lancai/banco";
+import { memoria as memoriaTabela, obter_banco } from "@lancai/banco";
 import type { HabitoMemoria, RepositorioMemoria } from "./repositorio";
 
 export class RepositorioMemoriaDrizzle implements RepositorioMemoria {
-  constructor(private readonly banco: Banco) {}
+  private get banco() {
+    return obter_banco();
+  }
 
   async listarHabitos(usuarioId: string): Promise<HabitoMemoria[]> {
     const linhas = await this.banco

@@ -198,6 +198,10 @@ A IA traduz qualquer frase exclusivamente em um JSON validado por schema Zod (`p
 }
 ```
 
+`conta_destino_nome` é preenchido apenas quando `tipo_movimento = "transferencia"`. Quando o usuário não cita conta/cartão/categoria/pessoa, o campo correspondente vem `null` — a resolução de contexto (Fase 3, `modulos/ia/resolvedor-intencao.ts`) decide o que fazer: categoria vazia vira "Outros"; conta/cartão vazios ficam a cargo do `MotorFinanceiro` (que exige pelo menos um dos dois).
+
+Existe uma 5ª intenção, `NAO_RECONHECIDA` (`{ "intencao": "NAO_RECONHECIDA", "motivo": "..." }`), não prevista nos documentos originais mas necessária como *escape hatch*: evita que o `InterpretadorIntencoes` seja forçado a forçar uma mensagem fora do domínio financeiro (saudações, perguntas genéricas) em uma das outras três intenções.
+
 ### `CONSULTAR_VISAO`
 ```json
 {
@@ -226,11 +230,13 @@ A IA traduz qualquer frase exclusivamente em um JSON validado por schema Zod (`p
 
 ## 9. Regras core do `MotorFinanceiro`
 
-- **Cálculo de saldo**: lançamentos em `conta` com `status = 'realizado'` alteram imediatamente `saldo_atual`. Lançamentos `'previsto'` não afetam saldo, apenas projeções futuras.
+- **Cálculo de saldo**: lançamentos em `conta` com `status = 'realizado'` alteram imediatamente `saldo_atual`. Lançamentos `'previsto'` não afetam saldo, apenas projeções futuras. Direção do impacto por tipo: `receita`/`reembolso`/`estorno`/`aporte` somam; `despesa`/`retirada`/`emprestimo` subtraem (convenção assumida para `emprestimo`: dinheiro saindo da conta de quem empresta — ajustável se o uso real mostrar o contrário).
 - **Geração de parcelas**: ao receber um movimento parcelado, o motor cria o movimento original (pai) e uma linha em `parcela` por parcela, dividindo o valor. Se for em `cartao`, a data de vencimento da 1ª parcela respeita o `fechamento`/`vencimento` do cartão (`melhor_dia_compra = fechamento + 1`).
-- **Classificação de fluxo cruzado**: computada em `modulos/relatorios`, comparando `movimento.perfil` com o `perfil` da `conta`/`cartao` usada (ver seção 4). Não gera registros extras.
+- **Classificação de fluxo cruzado**: calculada em `modulos/financeiro/fluxo-cruzado.ts` (`eh_fluxo_cruzado`) no momento da criação do movimento, comparando `movimento.perfil` com o `perfil` da `conta`/`cartao` usada (ver seção 4), e registrada como metadado (`fluxoCruzado`) dentro do `estado_atual` da linha de `auditoria` correspondente — não é uma coluna própria. `modulos/relatorios` (Fase 5) recalcula/consome essa mesma regra para agregações.
+- **Correção de lançamentos** (`MotorFinanceiro.corrigir_movimento`): nunca sobrescreve sem rastro — grava `estado_anterior`/`estado_atual` em `auditoria`. Se o valor de um movimento `'realizado'` associado a uma `conta` (não `cartao`, não `transferencia`) muda, o saldo é ajustado atomicamente pela diferença (`saldo_atual += direção × (valor_novo - valor_antigo)`).
 - **Auditoria**: toda inserção/alteração/cancelamento em `movimento` e `parcela` grava uma linha em `auditoria` com `estado_anterior`/`estado_atual`.
 - **Append-only**: nenhuma rotina do sistema executa `DELETE` em `movimento`/`parcela`. Cancelamento = mudança de `status` para `'cancelado'`.
+- **Resolução de referências da IA** (`modulos/ia/resolvedor-intencao.ts`): traduz os nomes em texto livre devolvidos pela IA para IDs reais. Categoria e pessoa são **criadas automaticamente** quando não existem (cadastro incremental); conta e cartão **nunca** são criados automaticamente — geram erro pedindo confirmação do nome, pois exigem dados que só o usuário pode fornecer (saldo inicial, limite, fechamento etc.).
 
 ---
 
