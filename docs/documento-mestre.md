@@ -268,6 +268,34 @@ Provedores de IA disponíveis: Gemini (padrão), Groq, OpenRouter, Ollama, OpenA
 
 ---
 
+## 11.1 Fase 4 — `apps/web` (Interface do Chat)
+
+Frontend em React + Vite + TypeScript + Tailwind CSS v4, com componentes de UI
+minimalistas escritos à mão seguindo as convenções do shadcn/ui (não foi usado
+o CLI interativo do shadcn/ui, mas os mesmos princípios: componentes pequenos,
+`class-variance-authority`/`clsx`/`tailwind-merge` para variantes).
+
+* **Autenticação (Supabase Auth):** decisão de arquitetura — **`usuario.id` é
+  literalmente o mesmo UUID do `auth.users.id` do Supabase**, sem tabela de
+  vínculo extra. Após qualquer login/cadastro bem-sucedido, o frontend chama
+  `POST /usuarios/sincronizar` (idempotente: cria o `usuario` se não existir,
+  ou apenas devolve o existente) passando `{ id, nome, email }` com o id da
+  sessão do Supabase. Isso mantém o `MotorFinanceiro` e toda a API agnósticos
+  de como a autenticação é feita.
+* **Chat conversacional:** o hook `useChat` do Vercel AI SDK foi
+  **descartado de propósito** — ele espera um protocolo de streaming
+  token-a-token, mas `POST /chat` devolve uma única resposta já processada
+  pelo `MotorFinanceiro` (a IA só é usada no backend para interpretar a
+  intenção). Por isso o estado da conversa é local ao componente
+  `JanelaChat`, com `sessaoId` mantido em memória para dar continuidade ao
+  histórico entre mensagens.
+* **Visualização de saldos:** painel lateral (`PainelSaldos`) consulta
+  `GET /contas?usuarioId=` e `GET /cartoes?usuarioId=` e é recarregado
+  automaticamente sempre que o chat processa uma intenção
+  `REGISTRAR_MOVIMENTO` ou `CORRIGIR_MOVIMENTO`.
+
+---
+
 ## 12. Estrutura do repositório
 
 ```text

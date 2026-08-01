@@ -1,12 +1,27 @@
 import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
 import { obter_banco, usuario } from "@lancai/banco";
-import { schemaCriarUsuario } from "@lancai/tipos";
+import { schemaCriarUsuario, schemaSincronizarUsuario } from "@lancai/tipos";
 
 export async function registrar_rotas_usuario(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaCriarUsuario.parse(requisicao.body);
     const banco = obter_banco();
+    const [criado] = await banco.insert(usuario).values(dados).returning();
+    return resposta.status(201).send(criado);
+  });
+
+  /**
+   * Idempotente: chamado pelo apps/web logo após o login/cadastro no Supabase
+   * Auth. Se já existe um `usuario` com esse id, apenas devolve; senão, cria.
+   */
+  app.post("/sincronizar", async (requisicao, resposta) => {
+    const dados = schemaSincronizarUsuario.parse(requisicao.body);
+    const banco = obter_banco();
+
+    const [existente] = await banco.select().from(usuario).where(eq(usuario.id, dados.id)).limit(1);
+    if (existente) return existente;
+
     const [criado] = await banco.insert(usuario).values(dados).returning();
     return resposta.status(201).send(criado);
   });

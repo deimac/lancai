@@ -9,6 +9,19 @@ export const schemaCriarUsuario = z.object({
 });
 export type EntradaCriarUsuario = z.infer<typeof schemaCriarUsuario>;
 
+/**
+ * Usado pelo apps/web para garantir que exista um `usuario` com o mesmo `id`
+ * do usuário autenticado no Supabase Auth — por decisão de arquitetura, o
+ * `usuario.id` do Lançai É o `auth.users.id` do Supabase (sem tabela de
+ * vínculo extra), simplificando o MVP de autenticação.
+ */
+export const schemaSincronizarUsuario = z.object({
+  id: z.string().uuid(),
+  nome: z.string().min(1),
+  email: z.string().email(),
+});
+export type EntradaSincronizarUsuario = z.infer<typeof schemaSincronizarUsuario>;
+
 export const schemaCriarConta = z.object({
   nome: z.string().min(1),
   saldoInicial: z.number().default(0),
