@@ -200,7 +200,7 @@ A IA traduz qualquer frase exclusivamente em um JSON validado por schema Zod (`p
 
 `conta_destino_nome` é preenchido apenas quando `tipo_movimento = "transferencia"`. Quando o usuário não cita conta/cartão/categoria/pessoa, o campo correspondente vem `null` — a resolução de contexto (Fase 3, `modulos/ia/resolvedor-intencao.ts`) decide o que fazer: categoria vazia vira "Outros"; conta/cartão vazios ficam a cargo do `MotorFinanceiro` (que exige pelo menos um dos dois).
 
-### `CONSULTAR_VISAO`
+### `CONSULTAR_VISAO` (Fase 5 — `modulos/relatorios`)
 ```json
 {
   "intencao": "CONSULTAR_VISAO",
@@ -213,7 +213,21 @@ A IA traduz qualquer frase exclusivamente em um JSON validado por schema Zod (`p
 }
 ```
 
-`tipo_visao` aceita: `saldos`, `cartoes`, `parcelamentos`, `categoria`, `futuro`, `fluxo`, `evolucao`.
+`filtros` (`conta_nome`, `cartao_nome`, `categoria_nome`, `pessoa_nome`, `perfil`, `periodo`) chega da IA em texto livre e é resolvido para IDs por `ResolvedorIntencao.resolver_consultar_visao` (`modulos/ia`) — mesmo papel de tradutor nome→ID que os outros resolvers, mas **sem criar nada automaticamente**: se o usuário citar uma conta/cartão/categoria/pessoa que não existe, o sistema lança `ErroReferenciaNaoEncontrada` (422) em vez de devolver um resultado vazio enganoso. O resultado (`FiltrosVisaoResolvidos`, em `@lancai/tipos`) é passado para `ModuloRelatorios.consultar_visao(tipoVisao, filtros, dataAtual)`, que devolve dados estruturados; a formatação do texto final fica em `apps/api/src/montar-resposta-visao.ts` — mesma separação "módulo devolve dados, API formata texto" usada pelo `MotorFinanceiro`.
+
+`tipo_visao` aceita 7 valores, cada um com sua regra de agregação e período padrão (usado quando `filtros.periodo` não é informado):
+
+| `tipo_visao` | Responde perguntas como | Período padrão | Regra principal |
+|---|---|---|---|
+| `saldos` | "quanto tenho no total?", "quanto tenho na conta da empresa?" | (não aplicável) | Soma `conta.saldo_atual` das contas ativas, filtradas por `perfil`/`conta_nome` quando informado. |
+| `cartoes` | "quanto ainda posso gastar no Nubank?" | (não aplicável) | Para cada cartão: `disponivel = limite - comprometido`, onde `comprometido` é a soma de `parcela.valor` não canceladas daquele cartão (mesma lógica de `RepositorioFinanceiro.obterTotalComprometidoCartao`). |
+| `parcelamentos` | "quanto falta pagar do notebook?" | (não aplicável) | Agrupa `parcela` por `movimento_id`; só entra na lista quem tem 2+ parcelas (compra à vista não é "parcelamento"). Convenção assumida (schema ainda não tem "parcela paga"): parcela com vencimento antes de hoje conta como paga, as demais como restantes. |
+| `categoria` | "quanto gastei com alimentação esse mês?", "onde eu mais gasto?" | mês atual | Com `categoria_nome`: soma `despesa`/`receita` daquela categoria no período. Sem `categoria_nome`: ranking das top 5 categorias por gasto no período. |
+| `futuro` | "quanto tenho comprometido até dezembro?" | hoje até 31/dez do ano atual | Soma `parcela` (não canceladas) + `movimento` avulsos com `status = 'previsto'` dentro do período — hoje, na prática, quase sempre só parcelas de cartão, já que o chat sempre grava `REGISTRAR_MOVIMENTO` como `'realizado'`. |
+| `fluxo` | "quanto a empresa me deve?", "quanto gastei de pessoal com dinheiro da empresa?" | mês atual | Recalcula `eh_fluxo_cruzado(movimento.perfil, perfil_da_conta_ou_cartao)` em tempo de consulta (não lê o metadado da auditoria) e separa em duas somas: pessoal pago com empresa vs. empresa paga com pessoal. |
+| `evolucao` | "como estão minhas finanças nos últimos meses?" | últimos 6 meses | Agrupa `receita`/`despesa` por mês (`YYYY-MM`), preenchendo com zero os meses sem lançamento, para nunca deixar buraco no gráfico/texto. |
+
+Regra de prompt importante: sempre que a própria pergunta citar "pessoal"/"da empresa"/"PF"/"PJ" (ex.: *"quanto tenho na conta **empresarial**?"*), a IA deve preencher `filtros.perfil` mesmo que o `tipo_visao` já pareça óbvio — foi exatamente a falta dessa instrução que fazia perguntas como essa caírem no fallback antigo de "consulta ainda não implementada".
 
 ### `CORRIGIR_MOVIMENTO`
 ```json

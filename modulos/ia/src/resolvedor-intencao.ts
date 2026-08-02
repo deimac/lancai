@@ -2,6 +2,8 @@ import type { Cartao, Conta } from "@lancai/banco";
 import type {
   EntradaCorrigirMovimento,
   EntradaCriarMovimento,
+  FiltrosVisaoResolvidos,
+  IntencaoConsultarVisao,
   IntencaoCorrigirMovimento,
   IntencaoCriarCartao,
   IntencaoCriarConta,
@@ -102,6 +104,41 @@ export class ResolvedorIntencao {
   }
 
   /**
+   * Traduz os filtros em texto livre de CONSULTAR_VISAO (Fase 5) para IDs.
+   * Diferente de REGISTRAR_MOVIMENTO, aqui nenhum filtro é criado automaticamente
+   * quando não existe — se o usuário citou um nome que não bate com nada, é sinal
+   * de erro de digitação/entendimento, e é melhor avisar do que devolver um
+   * resultado vazio e enganoso (ex.: uma categoria "criada na hora" sem nenhum
+   * lançamento nunca teria dados pra mostrar).
+   */
+  async resolver_consultar_visao(
+    intencao: IntencaoConsultarVisao,
+    contexto: ContextoResolucao,
+  ): Promise<FiltrosVisaoResolvidos> {
+    const { usuarioId } = contexto;
+    const { filtros } = intencao;
+
+    const contaId = filtros.conta_nome
+      ? await this.resolver_conta_obrigatoria(usuarioId, filtros.conta_nome, "conta do filtro")
+      : undefined;
+    const cartaoId = filtros.cartao_nome ? await this.resolver_cartao_obrigatorio(usuarioId, filtros.cartao_nome) : undefined;
+    const categoriaId = filtros.categoria_nome
+      ? await this.resolver_categoria_obrigatoria(usuarioId, filtros.categoria_nome)
+      : undefined;
+    const pessoaId = filtros.pessoa_nome ? await this.resolver_pessoa_obrigatoria(usuarioId, filtros.pessoa_nome) : undefined;
+
+    return {
+      usuarioId,
+      perfil: filtros.perfil ?? undefined,
+      contaId,
+      cartaoId,
+      categoriaId,
+      pessoaId,
+      periodo: filtros.periodo ?? undefined,
+    };
+  }
+
+  /**
    * Cria uma conta a partir do onboarding conversacional. No fluxo normal, a
    * IA só devolve CRIAR_CONTA "completa" (nome, saldo_inicial, perfil) depois
    * de já ter usado SOLICITAR_INFORMACAO para preencher o que faltava — os
@@ -167,6 +204,18 @@ export class ResolvedorIntencao {
     const cartao = await this.repositorio.buscarCartaoPorNome(usuarioId, nome);
     if (!cartao) throw new ErroReferenciaNaoEncontrada("cartão", nome);
     return cartao.id;
+  }
+
+  private async resolver_categoria_obrigatoria(usuarioId: string, nome: string): Promise<string> {
+    const categoria = await this.repositorio.buscarCategoriaPorNome(usuarioId, nome);
+    if (!categoria) throw new ErroReferenciaNaoEncontrada("categoria", nome);
+    return categoria.id;
+  }
+
+  private async resolver_pessoa_obrigatoria(usuarioId: string, nome: string): Promise<string> {
+    const pessoa = await this.repositorio.buscarPessoaPorNome(usuarioId, nome);
+    if (!pessoa) throw new ErroReferenciaNaoEncontrada("pessoa", nome);
+    return pessoa.id;
   }
 
   private async buscar_ou_criar_categoria(usuarioId: string, nome: string, tipoSugerido: "receita" | "despesa" | "ambos") {

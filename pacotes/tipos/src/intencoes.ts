@@ -7,6 +7,29 @@ const dataISOSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");
 
 /**
+ * Alguns modelos de IA (observado no gemini-3.6-flash em modo "thinking") ocasionalmente
+ * degeneram a geração de um número pequeno numa versão gigante do mesmo dígito seguida só
+ * de zeros (ex.: 27 vira 2.7e+17 ou 27000000000000000). O padrão é inconfundível — mesmos
+ * dígitos líderes, resto só zeros — então é seguro recuperar o valor original dividindo
+ * por 10 até caber no intervalo esperado, em vez de derrubar a intenção inteira por causa
+ * de um único campo corrompido.
+ */
+function normalizarNumeroDegenerado(valor: unknown, max: number): unknown {
+  if (typeof valor !== "number" || !Number.isFinite(valor) || valor <= max) return valor;
+  let normalizado = valor;
+  while (Number.isInteger(normalizado) && normalizado > max && normalizado % 10 === 0) {
+    normalizado /= 10;
+  }
+  return normalizado;
+}
+
+/** Dia do mês (1-31) com recuperação automática de números degenerados. */
+const diaDoMesSchema = z.preprocess(
+  (valor) => normalizarNumeroDegenerado(valor, 31),
+  z.number().int().min(1).max(31),
+);
+
+/**
  * Contrato de saída do `InterpretadorIntencoes` para lançamentos.
  * Diferente de `EntradaCriarMovimento` (pacotes/tipos/movimento.ts), aqui as
  * referências ainda são nomes em texto livre (`conta_nome`, `categoria_nome`...) —
@@ -108,8 +131,8 @@ export const schemaIntencaoCriarCartao = z.object({
   intencao: z.literal("CRIAR_CARTAO"),
   nome: z.string().min(1).nullable().optional(),
   limite: z.number().nullable().optional(),
-  fechamento: z.number().int().min(1).max(31).nullable().optional(),
-  vencimento: z.number().int().min(1).max(31).nullable().optional(),
+  fechamento: diaDoMesSchema.nullable().optional(),
+  vencimento: diaDoMesSchema.nullable().optional(),
   perfil: perfilSchema.nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),
 });

@@ -51,9 +51,33 @@ Existem 7 intenções possíveis:
    - "parcelas" só deve ser preenchido quando o usuário mencionar explicitamente parcelamento, e
      nesse caso é obrigatório haver um cartão.
 
-2. CONSULTAR_VISAO — o usuário fez uma pergunta sobre a própria situação financeira.
-   Ex.: "Quanto gastei este mês?", "Quanto tenho em cada conta?", "Quanto a empresa me deve?".
-   tipo_visao deve ser um entre: saldos, cartoes, parcelamentos, categoria, futuro, fluxo, evolucao.
+2. CONSULTAR_VISAO — o usuário fez uma pergunta sobre a própria situação financeira, nunca um
+   lançamento novo. "tipo_visao" deve ser exatamente um destes 7 valores:
+   - "saldos": quanto tem disponível em conta(s). Ex.: "quanto tenho no total?", "quanto tenho na
+     conta da empresa?", "qual o saldo do Nubank?". Se o usuário citar uma conta específica, preencha
+     filtros.conta_nome; se citar "pessoal" ou "da empresa" sem citar uma conta específica, preencha
+     filtros.perfil.
+   - "cartoes": limite, quanto já está comprometido e quanto ainda dá pra gastar num cartão.
+     Ex.: "quanto ainda posso gastar no Nubank?", "qual o limite disponível dos meus cartões?".
+   - "parcelamentos": compras parceladas que ainda não terminaram de ser pagas.
+     Ex.: "quanto falta pagar do notebook?", "quais parcelamentos eu tenho em aberto?".
+   - "categoria": quanto foi gasto/recebido numa categoria específica, ou um ranking das categorias
+     com mais gasto quando nenhuma for citada. Ex.: "quanto gastei com alimentação esse mês?",
+     "onde eu mais gasto?". Preencha filtros.categoria_nome só quando o usuário citar uma categoria.
+   - "futuro": soma de tudo que já está previsto/comprometido até uma data futura (parcelas de
+     cartão e lançamentos previstos). Ex.: "quanto tenho comprometido até dezembro?", "quanto ainda
+     vou gastar esse ano?". Se o usuário citar um mês/data-limite, preencha filtros.periodo.ate.
+   - "fluxo": cruzamento PF x PJ — gasto pessoal pago com dinheiro da empresa, ou gasto da empresa
+     pago com dinheiro pessoal. Ex.: "quanto a empresa me deve?", "quanto gastei de pessoal com
+     dinheiro da empresa?", "quanto a empresa gastou com meu cartão pessoal?".
+   - "evolucao": comparação de receitas x despesas mês a mês, ao longo do tempo.
+     Ex.: "como estão minhas finanças nos últimos meses?", "minhas despesas estão subindo?".
+   Regra de perfil em filtros: sempre que a própria pergunta mencionar "pessoal"/"da empresa"/
+   "PF"/"PJ" (ex.: "quanto A EMPRESA me deve", "quanto tenho na conta EMPRESARIAL"), preencha
+   filtros.perfil com 'pf' ou 'pj' usando o mesmo vocabulário descrito nas regras gerais — não deixe
+   de preencher esse filtro só porque o tipo_visao já parece óbvio. Se o usuário não mencionar
+   período, deixe filtros.periodo vazio — o sistema aplica um padrão sensato para cada tipo_visao
+   (ex.: mês atual para "categoria", últimos 6 meses para "evolucao").
 
 3. CORRIGIR_MOVIMENTO — o usuário quer alterar um lançamento já registrado.
    Ex.: "Corrige o combustível de ontem para R$ 210", "Muda a categoria do almoço de hoje para Lazer".
@@ -93,8 +117,18 @@ Regras gerais:
   "dataAtual" fornecida no contexto do usuário. Datas sempre no formato YYYY-MM-DD.
 - Nunca invente valores, nomes ou datas que não estejam na mensagem, no histórico recente ou no
   contexto.
+- Vocabulário de "perfil" (usado em REGISTRAR_MOVIMENTO, CRIAR_CONTA e CRIAR_CARTAO): palavras como
+  "empresarial", "da empresa", "comercial", "do negócio", "PJ", "CNPJ" indicam perfil 'pj'; palavras
+  como "pessoal", "particular", "minha", "PF", "CPF" indicam perfil 'pf'. Se a mensagem não trouxer
+  nenhuma pista de perfil e não houver como inferir do histórico recente, para CRIAR_CONTA/
+  CRIAR_CARTAO use SOLICITAR_INFORMACAO perguntando se é pessoal ou da empresa — nunca assuma um
+  perfil por padrão.
 - Se "totalContas" for 0, o usuário provavelmente está em onboarding — priorize interpretar
   mensagens ambíguas como CRIAR_CONTA quando fizer sentido.
+- Campos numéricos (valor, saldo_inicial, limite, fechamento, vencimento) devem ser sempre um
+  número simples, exatamente como está na mensagem (ex.: 27, 5000, 180.50) — nunca em notação
+  científica, nunca com mais dígitos do que o usuário disse. "fechamento" e "vencimento" são
+  sempre um dia do mês entre 1 e 31.
 - Responda SEMPRE no formato JSON definido pelo schema — nunca em texto livre.`;
 }
 

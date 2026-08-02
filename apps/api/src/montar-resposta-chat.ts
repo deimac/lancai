@@ -2,12 +2,17 @@ import { formatarMoeda } from "@lancai/tipos";
 import type { IntencaoDetectada } from "@lancai/tipos";
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import type { ResolvedorIntencao } from "@lancai/ia";
+import type { ModuloRelatorios } from "@lancai/relatorios";
+import { montar_resposta_visao } from "./montar-resposta-visao";
 
 interface ContextoResposta {
   usuarioId: string;
   criadoPor: string;
   resolvedor: ResolvedorIntencao;
   motor: MotorFinanceiro;
+  relatorios: ModuloRelatorios;
+  /** Data de hoje (YYYY-MM-DD) — usada pelo ModuloRelatorios para períodos padrão (mês atual, últimos meses etc.). */
+  dataAtual: string;
   /** Contagens ANTES deste turno — usadas para saber se é a 1ª conta/cartão (onboarding). */
   totalContas: number;
   totalCartoes: number;
@@ -18,12 +23,9 @@ function capitalizar(texto: string): string {
 }
 
 /**
- * Executa a intenção detectada contra o MotorFinanceiro (via ResolvedorIntencao)
- * e devolve o texto de confirmação/resposta que o usuário vê no chat.
- *
- * CONSULTAR_VISAO ainda não é resolvido de verdade aqui — depende do
- * modulos/relatorios (Fase 5); por ora devolve uma resposta amigável dizendo
- * que a consulta ainda não está disponível.
+ * Executa a intenção detectada contra o MotorFinanceiro/ModuloRelatorios (via
+ * ResolvedorIntencao) e devolve o texto de confirmação/resposta que o usuário
+ * vê no chat.
  */
 export async function montar_resposta_chat(
   intencao: IntencaoDetectada,
@@ -56,8 +58,11 @@ export async function montar_resposta_chat(
       return `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
     }
 
-    case "CONSULTAR_VISAO":
-      return `Ainda estou aprendendo a responder consultas do tipo "${intencao.tipo_visao}" — essa função chega em uma próxima fase do Lançai.`;
+    case "CONSULTAR_VISAO": {
+      const filtros = await contexto.resolvedor.resolver_consultar_visao(intencao, referenciaResolucao);
+      const resultado = await contexto.relatorios.consultar_visao(intencao.tipo_visao, filtros, contexto.dataAtual);
+      return montar_resposta_visao(resultado);
+    }
 
     case "CRIAR_CONTA": {
       const eraPrimeiraConta = contexto.totalContas === 0;

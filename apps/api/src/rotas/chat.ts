@@ -11,6 +11,7 @@ import {
 } from "@lancai/ia";
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
+import { ModuloRelatorios, RepositorioRelatoriosDrizzle } from "@lancai/relatorios";
 import { montar_resposta_chat } from "../montar-resposta-chat";
 import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
 
@@ -29,6 +30,7 @@ const repositorioContexto = new RepositorioContextoDrizzle();
 const resolvedor = new ResolvedorIntencao(repositorioContexto);
 const motor = new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
 const memoria = new Memoria(new RepositorioMemoriaDrizzle());
+const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
 
 async function obter_ou_criar_sessao(usuarioId: string, sessaoId?: string) {
   const banco = obter_banco();
@@ -139,6 +141,8 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
       criadoPor: dados.usuarioId,
       resolvedor,
       motor,
+      relatorios,
+      dataAtual: contexto.dataAtual,
       totalContas: contexto.contas.length,
       totalCartoes: contexto.cartoes.length,
     });

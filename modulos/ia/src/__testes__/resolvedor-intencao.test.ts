@@ -242,6 +242,61 @@ describe("ResolvedorIntencao", () => {
     });
   });
 
+  describe("resolver_consultar_visao", () => {
+    it("passa perfil e período direto, sem exigir nenhum filtro nomeado", async () => {
+      const filtros = await resolvedor.resolver_consultar_visao(
+        { intencao: "CONSULTAR_VISAO", tipo_visao: "saldos", filtros: { perfil: "pj" } },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(filtros).toEqual({ usuarioId, perfil: "pj", contaId: undefined, cartaoId: undefined, categoriaId: undefined, pessoaId: undefined, periodo: undefined });
+    });
+
+    it("resolve conta_nome, cartao_nome, categoria_nome e pessoa_nome para IDs", async () => {
+      const conta = criarConta({ usuarioId, nome: "Nubank" });
+      repositorio.contas.set(conta.id, conta);
+      const categoriaCriada = await repositorio.criarCategoria(usuarioId, "Alimentação", "despesa");
+      const pessoaCriada = await repositorio.criarPessoa(usuarioId, "João", "cliente");
+
+      const filtros = await resolvedor.resolver_consultar_visao(
+        {
+          intencao: "CONSULTAR_VISAO",
+          tipo_visao: "categoria",
+          filtros: {
+            conta_nome: "nubank",
+            categoria_nome: "alimentação",
+            pessoa_nome: "joão",
+            periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          },
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(filtros.contaId).toBe(conta.id);
+      expect(filtros.categoriaId).toBe(categoriaCriada.id);
+      expect(filtros.pessoaId).toBe(pessoaCriada.id);
+      expect(filtros.periodo).toEqual({ de: "2026-08-01", ate: "2026-08-31" });
+    });
+
+    it("lança ErroReferenciaNaoEncontrada quando a categoria citada no filtro não existe (não cria automaticamente)", async () => {
+      await expect(
+        resolvedor.resolver_consultar_visao(
+          { intencao: "CONSULTAR_VISAO", tipo_visao: "categoria", filtros: { categoria_nome: "Categoria Inexistente" } },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroReferenciaNaoEncontrada);
+    });
+
+    it("lança ErroReferenciaNaoEncontrada quando o cartao_nome citado no filtro não existe", async () => {
+      await expect(
+        resolvedor.resolver_consultar_visao(
+          { intencao: "CONSULTAR_VISAO", tipo_visao: "cartoes", filtros: { cartao_nome: "Cartão que não existe" } },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroReferenciaNaoEncontrada);
+    });
+  });
+
   describe("resolver_criar_conta", () => {
     it("cria a conta com os dados informados", async () => {
       const conta = await resolvedor.resolver_criar_conta(

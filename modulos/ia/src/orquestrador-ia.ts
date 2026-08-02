@@ -75,9 +75,27 @@ function obter_modelo(provedor: ProvedorIA) {
 }
 
 export interface EntradaGerarObjetoEstruturado<T> {
-  schema: z.ZodType<T>;
+  // Input relaxado para `any`: alguns campos do schema usam `z.preprocess` (ex.: recuperação
+  // de números degenerados em CRIAR_CARTAO), o que faz o tipo de entrada do Zod divergir do
+  // tipo de saída — pinar o Input em T quebraria a inferência para esses casos.
+  schema: z.ZodType<T, z.ZodTypeDef, any>;
   prompt: string;
   system?: string;
+}
+
+/** Número de tentativas no mesmo provedor antes de cair para o próximo (glitches de geração são transitórios). */
+const TENTATIVAS_POR_PROVEDOR = 2;
+
+/**
+ * Alguns modelos (ex.: gemini-3.6-flash em modo "thinking") ocasionalmente
+ * degeneram a decodificação de um número e devolvem algo como `2.7e+99` no
+ * lugar de `27`. Isso derruba a validação do Zod (`AI_TypeValidationError`)
+ * mesmo a resposta estando semanticamente correta em tudo mais — vale a pena
+ * tentar de novo no mesmo provedor antes de gastar o fallback.
+ */
+function eh_erro_transitorio_de_geracao(erro: unknown): boolean {
+  if (!(erro instanceof Error)) return false;
+  return erro.name === "AI_NoObjectGeneratedError" || erro.name === "AI_TypeValidationError";
 }
 
 /**
@@ -102,18 +120,28 @@ export class OrquestradorIA {
     }
 
     for (const provedor of provedoresDisponiveis) {
-      try {
-        const modelo = obter_modelo(provedor);
-        const resultado = await generateObject({
-          model: modelo,
-          schema: entrada.schema,
-          prompt: entrada.prompt,
-          system: entrada.system,
-        });
-        return resultado.object;
-      } catch (erro) {
-        detalhesFalha.push({ provedor, erro });
+      const modelo = obter_modelo(provedor);
+      let ultimoErro: unknown;
+
+      for (let tentativa = 1; tentativa <= TENTATIVAS_POR_PROVEDOR; tentativa++) {
+        try {
+          const resultado = await generateObject({
+            model: modelo,
+            schema: entrada.schema,
+            prompt: entrada.prompt,
+            system: entrada.system,
+          });
+          return resultado.object;
+        } catch (erro) {
+          ultimoErro = erro;
+          if (tentativa < TENTATIVAS_POR_PROVEDOR && eh_erro_transitorio_de_geracao(erro)) {
+            continue;
+          }
+          break;
+        }
       }
+
+      detalhesFalha.push({ provedor, erro: ultimoErro });
     }
 
     throw new ErroTodosProvedoresFalharam(detalhesFalha);

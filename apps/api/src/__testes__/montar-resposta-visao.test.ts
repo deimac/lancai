@@ -1,0 +1,140 @@
+import { formatarMoeda } from "@lancai/tipos";
+import { describe, expect, it } from "vitest";
+import { montar_resposta_visao } from "../montar-resposta-visao";
+
+describe("montar_resposta_visao", () => {
+  it("formata saldos de uma única conta de forma direta", () => {
+    const texto = montar_resposta_visao({
+      tipo: "saldos",
+      dados: { contas: [{ nome: "Nubank", perfil: "pf", saldoAtual: 1000 }], totalGeral: 1000 },
+    });
+    expect(texto).toBe(`Você tem ${formatarMoeda(1000)} na conta "Nubank".`);
+  });
+
+  it("formata saldos de várias contas com total geral", () => {
+    const texto = montar_resposta_visao({
+      tipo: "saldos",
+      dados: {
+        contas: [
+          { nome: "Nubank", perfil: "pf", saldoAtual: 1000 },
+          { nome: "Inter PJ", perfil: "pj", saldoAtual: 16750.59 },
+        ],
+        totalGeral: 17750.59,
+      },
+    });
+    expect(texto).toContain("Nubank (pessoal)");
+    expect(texto).toContain("Inter PJ (empresa)");
+    expect(texto).toContain(`Total: ${formatarMoeda(17750.59)}`);
+  });
+
+  it("avisa quando não há nenhuma conta cadastrada", () => {
+    const texto = montar_resposta_visao({ tipo: "saldos", dados: { contas: [], totalGeral: 0 } });
+    expect(texto).toBe("Você ainda não tem nenhuma conta cadastrada.");
+  });
+
+  it("formata cartões com limite, comprometido e disponível", () => {
+    const texto = montar_resposta_visao({
+      tipo: "cartoes",
+      dados: {
+        cartoes: [{ nome: "Inter Black", perfil: "pf", limite: 5000, comprometido: 1500, disponivel: 3500, fechamento: 20, vencimento: 27 }],
+      },
+    });
+    expect(texto).toContain("Inter Black");
+    expect(texto).toContain(formatarMoeda(5000));
+    expect(texto).toContain(formatarMoeda(3500));
+  });
+
+  it("avisa quando não há parcelamentos em aberto", () => {
+    const texto = montar_resposta_visao({ tipo: "parcelamentos", dados: { compras: [] } });
+    expect(texto).toBe("Você não tem nenhuma compra parcelada em aberto.");
+  });
+
+  it("formata parcelamentos em aberto com parcelas restantes", () => {
+    const texto = montar_resposta_visao({
+      tipo: "parcelamentos",
+      dados: {
+        compras: [
+          {
+            descricao: "Notebook",
+            cartaoNome: "Inter Black",
+            valorTotal: 8000,
+            parcelasTotais: 10,
+            parcelasPagas: 3,
+            parcelasRestantes: 7,
+            valorRestante: 5600,
+            proximaParcelaData: "2026-08-27",
+          },
+        ],
+      },
+    });
+    expect(texto).toContain("Notebook");
+    expect(texto).toContain("7/10");
+    expect(texto).toContain(formatarMoeda(5600));
+    expect(texto).toContain("27/08/2026");
+  });
+
+  it("formata gasto numa categoria específica", () => {
+    const texto = montar_resposta_visao({
+      tipo: "categoria",
+      dados: { categoriaNome: "Alimentação", periodo: { de: "2026-08-01", ate: "2026-08-31" }, totalDespesas: 450, totalReceitas: 0, ranking: [] },
+    });
+    expect(texto).toBe(`Em "Alimentação", você gastou ${formatarMoeda(450)}.`);
+  });
+
+  it("formata ranking de categorias quando nenhuma é citada", () => {
+    const texto = montar_resposta_visao({
+      tipo: "categoria",
+      dados: {
+        categoriaNome: null,
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        totalDespesas: 400,
+        totalReceitas: 0,
+        ranking: [
+          { categoriaNome: "Alimentação", total: 300 },
+          { categoriaNome: "Combustível", total: 100 },
+        ],
+      },
+    });
+    expect(texto).toContain(`1. Alimentação: ${formatarMoeda(300)}`);
+    expect(texto).toContain(`2. Combustível: ${formatarMoeda(100)}`);
+  });
+
+  it("formata compromissos futuros", () => {
+    const texto = montar_resposta_visao({
+      tipo: "futuro",
+      dados: {
+        periodo: { de: "2026-08-15", ate: "2026-12-31" },
+        totalComprometido: 900,
+        itens: [{ descricao: "Notebook (parcela 2)", valor: 300, data: "2026-09-27", origem: "parcela" }],
+      },
+    });
+    expect(texto).toContain(formatarMoeda(900));
+    expect(texto).toContain("31/12/2026");
+  });
+
+  it("formata fluxo cruzado pessoal pago com empresa", () => {
+    const texto = montar_resposta_visao({
+      tipo: "fluxo",
+      dados: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        totalPessoalComEmpresa: 100,
+        totalEmpresaComPessoal: 0,
+        itens: [{ descricao: "Churrasco do Marcio", valor: 100, data: "2026-08-10", direcao: "pessoal_com_empresa" }],
+      },
+    });
+    expect(texto).toContain(`${formatarMoeda(100)} de pessoal usando dinheiro da empresa`);
+  });
+
+  it("formata evolução mensal de receitas e despesas", () => {
+    const texto = montar_resposta_visao({
+      tipo: "evolucao",
+      dados: {
+        periodo: { de: "2026-07-01", ate: "2026-08-15" },
+        meses: [{ mes: "2026-08", receitas: 1000, despesas: 200, saldoLiquido: 800 }],
+      },
+    });
+    expect(texto).toContain("2026-08");
+    expect(texto).toContain(formatarMoeda(1000));
+    expect(texto).toContain(formatarMoeda(200));
+  });
+});
