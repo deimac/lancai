@@ -33,5 +33,6 @@ describe("montar_resposta_menu", () => {
     expect(texto).toContain("Registrar receita ou despesa");
     expect(texto).toContain("Corrigir um lançamento");
     expect(texto).toContain("Cadastrar conta ou cartão");
+    expect(texto).toContain("O que eu lancei hoje?");
   });
 });

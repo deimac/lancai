@@ -89,5 +89,46 @@ export function montar_resposta_visao(resultado: ResultadoVisao): string {
       const linhas = meses.map((mes) => `- ${mes.mes}: recebeu ${formatarMoeda(mes.receitas)}, gastou ${formatarMoeda(mes.despesas)} (saldo do mês: ${formatarMoeda(mes.saldoLiquido)})`);
       return linhas.join("\n");
     }
+
+    case "historico": {
+      const { periodo, totalReceitas, totalDespesas, saldoPeriodo, totalItens, itensOmitidos, dias } = resultado.dados;
+      if (totalItens === 0) return "Não encontrei lançamentos nesse período.";
+
+      const periodoTexto =
+        periodo.de === periodo.ate
+          ? formatarData(periodo.de)
+          : `${formatarData(periodo.de)} a ${formatarData(periodo.ate)}`;
+
+      const secoes = dias.map((dia) => {
+        const linhas = dia.itens.map((item) => {
+          const origem = item.cartaoNome
+            ? `cartão ${item.cartaoNome}`
+            : item.contaNome
+              ? item.contaNome
+              : null;
+          const partes = [
+            item.descricao,
+            item.tipo,
+            formatarMoeda(item.valor),
+            ...(origem ? [origem] : []),
+            rotuloPerfil(item.perfil),
+          ];
+          return `- ${partes.join(" · ")}`;
+        });
+        return `${formatarData(dia.data)}\n${linhas.join("\n")}`;
+      });
+
+      const cabecalho = [
+        `Lançamentos de ${periodoTexto} (${totalItens}):`,
+        `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
+      ];
+
+      const rodape = [
+        ...(itensOmitidos > 0 ? [`… e mais ${itensOmitidos} lançamento(s). Peça um intervalo menor para ver todos.`] : []),
+        `Para corrigir ou cancelar, diga por exemplo: "Cancela o almoço de ${formatarData(periodo.ate)}" ou "Corrige o mercado de hoje para R$ 150".`,
+      ];
+
+      return [...cabecalho, "", ...secoes, "", ...rodape].join("\n");
+    }
   }
 }

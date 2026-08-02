@@ -1,3 +1,5 @@
+import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
+
 export interface MensagemHistorico {
   papel: "usuario" | "sistema";
   conteudo: string;
@@ -38,21 +40,34 @@ Existem 9 intenções possíveis:
 
 1. REGISTRAR_MOVIMENTO — o usuário relatou uma receita, despesa, transferência, reembolso,
    empréstimo, estorno, retirada ou aporte. Ex.: "Gastei R$ 45 no almoço hoje",
-   "Recebi R$ 5.000 do cliente XPTO", "Comprei uma TV de R$ 3.000 parcelada em 10x no Inter".
+   "Recebi R$ 5.000 do cliente XPTO", "Comprei uma TV de R$ 3.000 parcelada em 10x no Inter",
+   "fiz mercado", "almocei", "paguei a gasolina".
+   - Mensagens VAGAS (só descrevem o gasto/ganho sem valor, conta ou perfil) AINDA SÃO
+     REGISTRAR_MOVIMENTO — preencha o que souber (descricao, tipo_movimento) e use
+     SOLICITAR_INFORMACAO para pedir o que falta. NUNCA invente valor nem conta. NUNCA
+     responda NAO_RECONHECIDA para "fiz mercado", "almocei", "gastei no uber" e similares.
+   - Dados obrigatórios antes de concluir: valor, conta_nome OU cartao_nome, e perfil.
+     Data: se o usuário não disser, use dataAtual (hoje). Não invente valor.
    - "perfil" indica se o GASTO/GANHO em si é pessoal ('pf') ou da empresa ('pj') — não confundir
      com o perfil da conta/cartão usado para pagar. Ex.: "Paguei o churrasco do Marcio com a conta
      da empresa" é perfil 'pf' (o churrasco é pessoal) mesmo saindo de uma conta 'pj'.
+   - Perfil padrão do contexto: se "perfilPadrao" vier preenchido ('pf' ou 'pj'), USE esse valor
+     sem perguntar — significa que o usuário só tem contas/cartões daquele perfil (não é
+     obrigatório ter conta jurídica para usar o app, nem o contrário). Só pergunte se é pessoal
+     ou da empresa quando perfilPadrao for null (há mistura PF e PJ, ou ainda não há cadastro).
    - Use os nomes de conta/cartão/categoria/pessoa exatamente como existem no contexto abaixo
      quando conseguir identificar uma correspondência óbvia (ex.: usuário disse "Nubank" e existe
      uma conta "Nubank PF" no contexto — use o nome completo da conta). Se o usuário não mencionar
-     conta nem cartão, tente inferir pelos hábitos informados no contexto (ex.: cartão principal).
+     conta nem cartão, tente inferir pelos hábitos informados no contexto (ex.: cartão principal)
+     ou, se houver só uma conta e nenhum cartão, use essa conta. Se ainda assim não souber, peça
+     via SOLICITAR_INFORMACAO.
    - Categoria e pessoa podem ser um nome novo, que ainda não existe no contexto — isso é esperado
      e será criado automaticamente depois (cadastro incremental).
    - "parcelas" só deve ser preenchido quando o usuário mencionar explicitamente parcelamento, e
      nesse caso é obrigatório haver um cartão.
 
 2. CONSULTAR_VISAO — o usuário fez uma pergunta sobre a própria situação financeira, nunca um
-   lançamento novo. "tipo_visao" deve ser exatamente um destes 7 valores:
+   lançamento novo. "tipo_visao" deve ser exatamente um destes 8 valores:
    - "saldos": quanto tem disponível em conta(s). Ex.: "quanto tenho no total?", "quanto tenho na
      conta da empresa?", "qual o saldo do Nubank?". Se o usuário citar uma conta específica, preencha
      filtros.conta_nome; se citar "pessoal" ou "da empresa" sem citar uma conta específica, preencha
@@ -72,12 +87,18 @@ Existem 9 intenções possíveis:
      dinheiro da empresa?", "quanto a empresa gastou com meu cartão pessoal?".
    - "evolucao": comparação de receitas x despesas mês a mês, ao longo do tempo.
      Ex.: "como estão minhas finanças nos últimos meses?", "minhas despesas estão subindo?".
+   - "historico": lista os lançamentos de um dia ou intervalo (para revisar, corrigir ou cancelar).
+     Ex.: "o que eu lancei hoje?", "mostra meus lançamentos de ontem", "quais lançamentos de 1 a
+     15 de agosto?", "extrato da semana", "lista o que gastei na C6 Bank ontem".
+     Preencha filtros.periodo: para um dia só use de = ate (ex.: hoje → ambos = dataAtual); para
+     intervalo use de/ate distintos. Se citar conta/cartão/categoria/perfil, preencha o filtro
+     correspondente. Sem período explícito, deixe periodo vazio (o sistema usa o mês atual).
    Regra de perfil em filtros: sempre que a própria pergunta mencionar "pessoal"/"da empresa"/
    "PF"/"PJ" (ex.: "quanto A EMPRESA me deve", "quanto tenho na conta EMPRESARIAL"), preencha
    filtros.perfil com 'pf' ou 'pj' usando o mesmo vocabulário descrito nas regras gerais — não deixe
    de preencher esse filtro só porque o tipo_visao já parece óbvio. Se o usuário não mencionar
    período, deixe filtros.periodo vazio — o sistema aplica um padrão sensato para cada tipo_visao
-   (ex.: mês atual para "categoria", últimos 6 meses para "evolucao").
+   (ex.: mês atual para "categoria" e "historico", últimos 6 meses para "evolucao").
 
 3. CORRIGIR_MOVIMENTO — o usuário quer alterar um lançamento já registrado (valor, data, descrição,
    categoria, conta, cartão, pessoa, perfil, número de parcelas ou cancelar).
@@ -152,10 +173,10 @@ Regras gerais:
   contexto.
 - Vocabulário de "perfil" (usado em REGISTRAR_MOVIMENTO, CRIAR_CONTA, CRIAR_CARTAO e CORRIGIR_CONTA): palavras como
   "empresarial", "da empresa", "comercial", "do negócio", "PJ", "CNPJ" indicam perfil 'pj'; palavras
-  como "pessoal", "particular", "minha", "PF", "CPF" indicam perfil 'pf'. Se a mensagem não trouxer
-  nenhuma pista de perfil e não houver como inferir do histórico recente, para CRIAR_CONTA/
-  CRIAR_CARTAO use SOLICITAR_INFORMACAO perguntando se é pessoal ou da empresa — nunca assuma um
-  perfil por padrão.
+  como "pessoal", "particular", "minha", "PF", "CPF" indicam perfil 'pf'.
+  Ordem de decisão do perfil: (1) pista explícita na mensagem/histórico; (2) "perfilPadrao" do
+  contexto, se existir; (3) só então SOLICITAR_INFORMACAO perguntando se é pessoal ou da empresa.
+  Nunca invente 'pj' quando o usuário só tem contas pessoais, nem o contrário.
 - Se "totalContas" for 0, o usuário provavelmente está em onboarding — priorize interpretar
   mensagens ambíguas como CRIAR_CONTA quando fizer sentido.
 - Campos numéricos (valor, saldo_inicial, saldo_atual, limite, fechamento, vencimento) devem ser sempre um
@@ -167,11 +188,14 @@ Regras gerais:
 
 /** Monta o prompt do turno atual: contexto do usuário (JSON) + histórico recente + a mensagem em si. */
 export function montar_prompt_usuario(mensagem: string, contexto: ContextoInterpretacao): string {
+  const perfilPadrao = inferir_perfil_padrao(contexto.contas, contexto.cartoes);
+
   const contextoFormatado = JSON.stringify(
     {
       dataAtual: contexto.dataAtual,
       totalContas: contexto.contas.length,
       totalCartoes: contexto.cartoes.length,
+      perfilPadrao,
       contas: contexto.contas,
       cartoes: contexto.cartoes,
       categorias: contexto.categorias,

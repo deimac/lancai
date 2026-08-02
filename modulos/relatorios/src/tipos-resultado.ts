@@ -85,6 +85,35 @@ export interface ResultadoEvolucao {
   meses: MesEvolucao[];
 }
 
+export interface ItemHistorico {
+  descricao: string;
+  tipo: string;
+  valor: number;
+  perfil: Perfil;
+  /** Nome da conta, ou `null` quando o lançamento foi no cartão. */
+  contaNome: string | null;
+  /** Prefixo amigável fica na formatação ("cartão X"); aqui só o nome. */
+  cartaoNome: string | null;
+  categoriaNome: string | null;
+}
+
+export interface DiaHistorico {
+  data: string;
+  itens: ItemHistorico[];
+}
+
+export interface ResultadoHistorico {
+  periodo: { de: string; ate: string };
+  totalReceitas: number;
+  totalDespesas: number;
+  saldoPeriodo: number;
+  /** Quantidade total de lançamentos no período (antes do limite de exibição). */
+  totalItens: number;
+  /** Quantos ficaram de fora por causa do limite de exibição. */
+  itensOmitidos: number;
+  dias: DiaHistorico[];
+}
+
 export type ResultadoVisao =
   | { tipo: "saldos"; dados: ResultadoSaldos }
   | { tipo: "cartoes"; dados: ResultadoCartoes }
@@ -92,4 +121,5 @@ export type ResultadoVisao =
   | { tipo: "categoria"; dados: ResultadoCategoria }
   | { tipo: "futuro"; dados: ResultadoFuturo }
   | { tipo: "fluxo"; dados: ResultadoFluxo }
-  | { tipo: "evolucao"; dados: ResultadoEvolucao };
+  | { tipo: "evolucao"; dados: ResultadoEvolucao }
+  | { tipo: "historico"; dados: ResultadoHistorico };

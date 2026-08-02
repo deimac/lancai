@@ -39,10 +39,15 @@ const diaDoMesSchema = z.preprocess(
 export const schemaIntencaoRegistrarMovimento = z.object({
   intencao: z.literal("REGISTRAR_MOVIMENTO"),
   tipo_movimento: tipoMovimentoSchema,
-  valor: z.number().positive(),
-  data_movimento: dataISOSchema,
+  /**
+   * Opcional na saída bruta da IA: mensagens vagas ("fiz mercado") podem vir sem valor.
+   * O `normalizar_intencao` em `@lancai/ia` completa defaults ou converte para
+   * SOLICITAR_INFORMACAO antes de chegar no motor.
+   */
+  valor: z.number().positive().nullable().optional(),
+  data_movimento: dataISOSchema.nullable().optional(),
   descricao: z.string().min(1),
-  perfil: perfilSchema,
+  perfil: perfilSchema.nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),
   cartao_nome: z.string().min(1).nullable().optional(),
   conta_destino_nome: z.string().min(1).nullable().optional(),
@@ -60,6 +65,7 @@ export const tipoVisaoSchema = z.enum([
   "futuro",
   "fluxo",
   "evolucao",
+  "historico",
 ]);
 export type TipoVisao = z.infer<typeof tipoVisaoSchema>;
 

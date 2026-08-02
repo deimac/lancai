@@ -2,6 +2,7 @@ import { z } from "zod";
 import { schemaIntencaoDetectada } from "@lancai/tipos";
 import type { IntencaoDetectada } from "@lancai/tipos";
 import type { OrquestradorIA } from "./orquestrador-ia";
+import { normalizar_intencao_movimento } from "./normalizar-intencao-movimento";
 import type { ContextoInterpretacao } from "./prompt";
 import { montar_prompt_sistema, montar_prompt_usuario } from "./prompt";
 
@@ -37,6 +38,6 @@ export class InterpretadorIntencoes {
       system: montar_prompt_sistema(),
       prompt: montar_prompt_usuario(mensagem, contexto),
     });
-    return resultado.intencao_detectada;
+    return normalizar_intencao_movimento(resultado.intencao_detectada, contexto);
   }
 }

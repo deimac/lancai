@@ -45,8 +45,11 @@ ${resumoCadastro}
 "Quero cadastrar minha conta Nubank com saldo de R$ 500"
 "Cadastra meu cartão Inter, limite 3000, fecha dia 5 e vence dia 12"
 
-📊 Consultas (em breve)
-"Quanto gastei este mês?" — essa função ainda está sendo desenvolvida.
+📊 Consultas
+"Quanto tenho no total?"
+"Quanto gastei com alimentação este mês?"
+"O que eu lancei hoje?"
+"Mostra meus lançamentos de 1 a 15 de agosto"
 
 Digite "menu" ou "ajuda" a qualquer momento para ver essas opções de novo.`;
 }

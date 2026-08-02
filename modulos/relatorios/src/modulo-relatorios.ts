@@ -6,14 +6,17 @@ import type { RepositorioRelatorios } from "./repositorio-relatorios";
 import type {
   CategoriaComTotal,
   CompraParcelada,
+  DiaHistorico,
   ItemFluxo,
   ItemFuturo,
+  ItemHistorico,
   MesEvolucao,
   ResultadoVisao,
 } from "./tipos-resultado";
 
 const QUANTIDADE_MESES_EVOLUCAO = 6;
 const QUANTIDADE_ITENS_RANKING_CATEGORIA = 5;
+const LIMITE_ITENS_HISTORICO = 40;
 
 /**
  * Responde `CONSULTAR_VISAO` — a Fase 5 do roadmap. Recebe filtros já
@@ -50,6 +53,8 @@ export class ModuloRelatorios {
         return { tipo: "fluxo", dados: await this.consultar_fluxo(filtros, dataAtual) };
       case "evolucao":
         return { tipo: "evolucao", dados: await this.consultar_evolucao(filtros, dataAtual) };
+      case "historico":
+        return { tipo: "historico", dados: await this.consultar_historico(filtros, dataAtual) };
     }
   }
 
@@ -289,5 +294,80 @@ export class ModuloRelatorios {
     });
 
     return { periodo, meses };
+  }
+
+  /**
+   * Extrato conversacional: lista lançamentos do período agrupados por dia,
+   * com totais de receitas/despesas. Limitado a `LIMITE_ITENS_HISTORICO` itens
+   * na resposta (os mais recentes), mantendo `totalItens`/`itensOmitidos` para
+   * a formatação avisar quando houve corte.
+   */
+  private async consultar_historico(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
+    const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
+
+    const [movimentos, contas, cartoes, categorias] = await Promise.all([
+      this.repositorio.listarMovimentos(filtros.usuarioId, {
+        perfil: filtros.perfil,
+        contaId: filtros.contaId,
+        cartaoId: filtros.cartaoId,
+        categoriaId: filtros.categoriaId,
+        pessoaId: filtros.pessoaId,
+        periodo,
+      }),
+      this.repositorio.listarContas(filtros.usuarioId),
+      this.repositorio.listarCartoes(filtros.usuarioId),
+      this.repositorio.listarCategorias(filtros.usuarioId),
+    ]);
+
+    const mapaContas = new Map(contas.map((conta) => [conta.id, conta.nome]));
+    const mapaCartoes = new Map(cartoes.map((cartao) => [cartao.id, cartao.nome]));
+    const mapaCategorias = new Map(categorias.map((categoria) => [categoria.id, categoria.nome]));
+
+    const ordenados = [...movimentos].sort((a, b) => {
+      const porData = b.dataMovimento.localeCompare(a.dataMovimento);
+      if (porData !== 0) return porData;
+      return b.dataLancamento.getTime() - a.dataLancamento.getTime();
+    });
+
+    const totalReceitas = ordenados
+      .filter((movimento) => movimento.tipo === "receita")
+      .reduce((acumulado, movimento) => somar(acumulado, movimento.valor), 0);
+    const totalDespesas = ordenados
+      .filter((movimento) => movimento.tipo === "despesa")
+      .reduce((acumulado, movimento) => somar(acumulado, movimento.valor), 0);
+
+    const totalItens = ordenados.length;
+    const itensOmitidos = Math.max(0, totalItens - LIMITE_ITENS_HISTORICO);
+    const exibidos = ordenados.slice(0, LIMITE_ITENS_HISTORICO);
+
+    const porDia = new Map<string, ItemHistorico[]>();
+    for (const movimento of exibidos) {
+      const item: ItemHistorico = {
+        descricao: movimento.descricao,
+        tipo: movimento.tipo,
+        valor: paraNumero(movimento.valor),
+        perfil: movimento.perfil,
+        contaNome: movimento.contaId ? (mapaContas.get(movimento.contaId) ?? null) : null,
+        cartaoNome: movimento.cartaoId ? (mapaCartoes.get(movimento.cartaoId) ?? null) : null,
+        categoriaNome: mapaCategorias.get(movimento.categoriaId) ?? null,
+      };
+      const itensDoDia = porDia.get(movimento.dataMovimento) ?? [];
+      itensDoDia.push(item);
+      porDia.set(movimento.dataMovimento, itensDoDia);
+    }
+
+    const dias: DiaHistorico[] = [...porDia.entries()]
+      .sort(([dataA], [dataB]) => dataB.localeCompare(dataA))
+      .map(([data, itens]) => ({ data, itens }));
+
+    return {
+      periodo,
+      totalReceitas,
+      totalDespesas,
+      saldoPeriodo: somar(totalReceitas, -totalDespesas),
+      totalItens,
+      itensOmitidos,
+      dias,
+    };
   }
 }

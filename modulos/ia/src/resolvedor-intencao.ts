@@ -41,6 +41,13 @@ export class ResolvedorIntencao {
   ): Promise<EntradaCriarMovimento> {
     const { usuarioId, criadoPor } = contexto;
 
+    if (intencao.valor == null) throw new ErroDadosIncompletos("REGISTRAR_MOVIMENTO", "o valor");
+    if (!intencao.perfil) throw new ErroDadosIncompletos("REGISTRAR_MOVIMENTO", "se é pessoal ou da empresa");
+    if (!intencao.data_movimento) throw new ErroDadosIncompletos("REGISTRAR_MOVIMENTO", "a data");
+    if (!intencao.conta_nome && !intencao.cartao_nome) {
+      throw new ErroDadosIncompletos("REGISTRAR_MOVIMENTO", "a conta ou o cartão usado");
+    }
+
     const contaId = await this.resolver_conta_opcional(usuarioId, intencao.conta_nome);
     const cartaoId = await this.resolver_cartao_opcional(usuarioId, intencao.cartao_nome);
     const contaDestinoId = await this.resolver_conta_opcional(usuarioId, intencao.conta_destino_nome, "conta de destino");

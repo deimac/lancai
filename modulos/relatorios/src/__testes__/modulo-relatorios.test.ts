@@ -4,7 +4,16 @@ import type { Cartao, Categoria, Conta, Movimento, Parcela } from "@lancai/banco
 import type { FiltrosVisaoResolvidos } from "@lancai/tipos";
 import { ModuloRelatorios } from "../modulo-relatorios";
 import { RepositorioRelatoriosMemoria } from "../repositorio-relatorios-memoria";
-import type { ResultadoCartoes, ResultadoCategoria, ResultadoEvolucao, ResultadoFluxo, ResultadoFuturo, ResultadoParcelamentos, ResultadoSaldos } from "../tipos-resultado";
+import type {
+  ResultadoCartoes,
+  ResultadoCategoria,
+  ResultadoEvolucao,
+  ResultadoFluxo,
+  ResultadoFuturo,
+  ResultadoHistorico,
+  ResultadoParcelamentos,
+  ResultadoSaldos,
+} from "../tipos-resultado";
 
 const DATA_ATUAL = "2026-08-15";
 
@@ -396,6 +405,119 @@ describe("ModuloRelatorios", () => {
       expect(mesAgosto).toEqual({ mes: "2026-08", receitas: 1000, despesas: 200, saldoLiquido: 800 });
       expect(mesJulho).toEqual({ mes: "2026-07", receitas: 0, despesas: 50, saldoLiquido: -50 });
       expect(dados.meses).toHaveLength(6);
+    });
+  });
+
+  describe("historico", () => {
+    it("agrupa por dia com totais e ignora cancelados", async () => {
+      const conta = criarConta(usuarioId, { nome: "C6 Bank", perfil: "pf" });
+      const cartao = criarCartao(usuarioId, conta.id, { nome: "Nubank" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Almoço",
+          tipo: "despesa",
+          valor: "45.00",
+          dataMovimento: "2026-08-15",
+          contaId: conta.id,
+          dataLancamento: new Date("2026-08-15T12:00:00Z"),
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Pix João",
+          tipo: "receita",
+          valor: "2500.00",
+          dataMovimento: "2026-08-14",
+          contaId: conta.id,
+          dataLancamento: new Date("2026-08-14T10:00:00Z"),
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Uber",
+          tipo: "despesa",
+          valor: "32.00",
+          dataMovimento: "2026-08-14",
+          cartaoId: cartao.id,
+          dataLancamento: new Date("2026-08-14T18:00:00Z"),
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Cancelado",
+          tipo: "despesa",
+          valor: "999.00",
+          status: "cancelado",
+          dataMovimento: "2026-08-15",
+          contaId: conta.id,
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, { periodo: { de: "2026-08-14", ate: "2026-08-15" } }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+
+      expect(dados.totalItens).toBe(3);
+      expect(dados.itensOmitidos).toBe(0);
+      expect(dados.totalReceitas).toBe(2500);
+      expect(dados.totalDespesas).toBe(77);
+      expect(dados.saldoPeriodo).toBe(2423);
+      expect(dados.dias.map((dia) => dia.data)).toEqual(["2026-08-15", "2026-08-14"]);
+      expect(dados.dias[1]?.itens.map((item) => item.descricao)).toEqual(["Uber", "Pix João"]);
+      expect(dados.dias[0]?.itens[0]).toMatchObject({
+        descricao: "Almoço",
+        contaNome: "C6 Bank",
+        cartaoNome: null,
+      });
+    });
+
+    it("usa o mês atual quando o período não é informado e corta em 40 itens", async () => {
+      const conta = criarConta(usuarioId, { nome: "C6 Bank" });
+      repositorio.contas.set(conta.id, conta);
+
+      for (let indice = 1; indice <= 41; indice += 1) {
+        const dia = String(Math.min(indice, 28)).padStart(2, "0");
+        repositorio.movimentos.set(
+          randomUUID(),
+          criarMovimento(usuarioId, categoria.id, {
+            descricao: `Item ${indice}`,
+            valor: "10.00",
+            dataMovimento: `2026-08-${dia}`,
+            contaId: conta.id,
+            dataLancamento: new Date(`2026-08-${dia}T${String(indice % 24).padStart(2, "0")}:00:00Z`),
+          }),
+        );
+      }
+
+      const resultado = await relatorios.consultar_visao("historico", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoHistorico;
+
+      expect(dados.periodo).toEqual({ de: "2026-08-01", ate: "2026-08-31" });
+      expect(dados.totalItens).toBe(41);
+      expect(dados.itensOmitidos).toBe(1);
+      expect(dados.dias.reduce((total, dia) => total + dia.itens.length, 0)).toBe(40);
+    });
+
+    it("retorna vazio quando não há lançamentos no período", async () => {
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, { periodo: { de: "2026-01-01", ate: "2026-01-31" } }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+
+      expect(dados.totalItens).toBe(0);
+      expect(dados.dias).toEqual([]);
     });
   });
 });

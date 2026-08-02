@@ -137,4 +137,72 @@ describe("montar_resposta_visao", () => {
     expect(texto).toContain(formatarMoeda(1000));
     expect(texto).toContain(formatarMoeda(200));
   });
+
+  it("formata histórico agrupado por dia com totais e dica de correção", () => {
+    const texto = montar_resposta_visao({
+      tipo: "historico",
+      dados: {
+        periodo: { de: "2026-08-14", ate: "2026-08-15" },
+        totalReceitas: 2500,
+        totalDespesas: 77,
+        saldoPeriodo: 2423,
+        totalItens: 3,
+        itensOmitidos: 0,
+        dias: [
+          {
+            data: "2026-08-15",
+            itens: [
+              {
+                descricao: "Almoço",
+                tipo: "despesa",
+                valor: 45,
+                perfil: "pf",
+                contaNome: "C6 Bank",
+                cartaoNome: null,
+                categoriaNome: "Alimentação",
+              },
+            ],
+          },
+          {
+            data: "2026-08-14",
+            itens: [
+              {
+                descricao: "Uber",
+                tipo: "despesa",
+                valor: 32,
+                perfil: "pf",
+                contaNome: null,
+                cartaoNome: "Nubank",
+                categoriaNome: "Transporte",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(texto).toContain("Lançamentos de 14/08/2026 a 15/08/2026 (3):");
+    expect(texto).toContain(`Receitas ${formatarMoeda(2500)}`);
+    expect(texto).toContain("15/08/2026");
+    expect(texto).toContain("- Almoço · despesa ·");
+    expect(texto).toContain("C6 Bank");
+    expect(texto).toContain("cartão Nubank");
+    expect(texto).toContain("Cancela o almoço");
+  });
+
+  it("informa quando o histórico do período está vazio", () => {
+    const texto = montar_resposta_visao({
+      tipo: "historico",
+      dados: {
+        periodo: { de: "2026-01-01", ate: "2026-01-31" },
+        totalReceitas: 0,
+        totalDespesas: 0,
+        saldoPeriodo: 0,
+        totalItens: 0,
+        itensOmitidos: 0,
+        dias: [],
+      },
+    });
+    expect(texto).toBe("Não encontrei lançamentos nesse período.");
+  });
 });
