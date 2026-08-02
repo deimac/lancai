@@ -11,7 +11,9 @@ export type ProvedorIA = (typeof PROVEDORES_IA)[number];
 /** Modelos padrão por provedor, sobrepostos por `<PROVEDOR>_MODEL` no ambiente. */
 const MODELOS_PADRAO: Record<ProvedorIA, string> = {
   gemini: "gemini-2.0-flash",
-  groq: "llama-3.3-70b-versatile",
+  // Precisa ser um modelo com suporte a saída estruturada (`response_format: json_schema`) na
+  // Groq — hoje só openai/gpt-oss-20b e openai/gpt-oss-120b; llama-3.3-70b-versatile devolve 400.
+  groq: "openai/gpt-oss-120b",
   openrouter: "openai/gpt-4o-mini",
   ollama: "llama3.1",
   openai: "gpt-4o-mini",
@@ -130,6 +132,11 @@ export class OrquestradorIA {
             schema: entrada.schema,
             prompt: entrada.prompt,
             system: entrada.system,
+            // A Groq exige, por padrão, que TODO campo esteja em "required" no modo estrito
+            // (mesmo os opcionais/nulos) — como nosso schema tem muitos campos legitimamente
+            // ausentes (não apenas nulos), usamos o modo best-effort só para esse provedor;
+            // outros provedores ignoram essa chave por não reconhecerem o namespace "groq".
+            providerOptions: { groq: { strictJsonSchema: false } },
           });
           return resultado.object;
         } catch (erro) {
