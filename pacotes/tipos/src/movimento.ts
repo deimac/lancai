@@ -87,7 +87,10 @@ export const schemaCorrigirMovimento = z.object({
       contaId: z.string().uuid().optional(),
       cartaoId: z.string().uuid().optional(),
       pessoaId: z.string().uuid().optional(),
+      perfil: perfilSchema.optional(),
       status: statusMovimentoSchema.optional(),
+      /** Regenera o parcelamento da compra no cartão com essa quantidade. */
+      parcelas: z.number().int().min(1).max(360).optional(),
     })
     .refine((campos) => Object.keys(campos).length > 0, {
       message: "Informe ao menos um campo para corrigir",

@@ -35,6 +35,13 @@ export interface OperacaoCorrecao {
   campos: Partial<NovoMovimento>;
   atualizacoesSaldoConta: Array<{ contaId: string; saldoAtual: number }>;
   auditoria: NovaAuditoria;
+  /**
+   * Quando true, cancela logicamente todas as parcelas não canceladas do movimento
+   * e, se `novasParcelas` vier preenchido, as recria (ex.: mudar valor ou nº de parcelas).
+   */
+  regenerarParcelas?: {
+    novasParcelas: NovaParcela[];
+  };
 }
 
 /**
@@ -49,6 +56,8 @@ export interface RepositorioFinanceiro {
   obterCategoria(id: string): Promise<Categoria | undefined>;
   obterPessoa(id: string): Promise<Pessoa | undefined>;
   obterMovimento(id: string): Promise<Movimento | undefined>;
+  /** Parcelas não canceladas de um movimento (para regenerar em correções). */
+  listarParcelasDoMovimento(movimentoId: string): Promise<Parcela[]>;
   /** Soma de parcelas com status 'previsto' ou 'realizado' (não canceladas) de um cartão. */
   obterTotalComprometidoCartao(cartaoId: string): Promise<number>;
   persistirOperacao(operacao: OperacaoPersistencia): Promise<ResultadoOperacaoPersistencia>;

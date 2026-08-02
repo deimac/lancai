@@ -23,6 +23,25 @@ export class ErroReferenciaNaoEncontrada extends Error {
 }
 
 /**
+ * Rede de segurança contra duplicação acidental: a IA tentou CRIAR_CONTA/CRIAR_CARTAO com um
+ * nome que já existe para o usuário. Sem essa checagem, uma mensagem ambígua (ex.: um pedido de
+ * correção de saldo que a IA não soube classificar) poderia virar silenciosamente uma conta/
+ * cartão duplicado em vez de atualizar o que já existe — o caminho certo nesse caso é
+ * CORRIGIR_CONTA/CORRIGIR_CARTAO.
+ */
+export class ErroEntidadeJaExiste extends Error {
+  constructor(
+    public readonly tipoEntidade: "conta" | "cartão",
+    public readonly nome: string,
+  ) {
+    super(
+      `Você já tem ${tipoEntidade === "conta" ? "uma conta" : "um cartão"} chamado "${nome}". Se quiser mudar o saldo, nome ou outro dado, é só me dizer o que alterar.`,
+    );
+    this.name = "ErroEntidadeJaExiste";
+  }
+}
+
+/**
  * A IA devolveu CRIAR_CONTA/CRIAR_CARTAO já "completa" (sem passar por
  * SOLICITAR_INFORMACAO), mas algum campo obrigatório ainda veio vazio — não
  * deveria acontecer no fluxo normal (é o prompt que instrui a usar

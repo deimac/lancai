@@ -12,6 +12,7 @@ import {
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
 import { ModuloRelatorios, RepositorioRelatoriosDrizzle } from "@lancai/relatorios";
+import { interpretar_resposta_confirmacao_exclusao } from "../interpretar-confirmacao-exclusao";
 import { montar_resposta_chat } from "../montar-resposta-chat";
 import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
 
@@ -127,7 +128,15 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
       return resposta.send({ sessaoId: sessaoAtual.id, intencao: intencaoMenu, resposta: respostaTexto });
     }
 
-    const intencao = await interpretador.interpretar_mensagem(dados.mensagem, contexto);
+    // Atalho: resposta "sim"/"não" após o sistema pedir confirmação de exclusão.
+    const intencaoConfirmacao = interpretar_resposta_confirmacao_exclusao(
+      dados.mensagem,
+      contexto.historicoRecente,
+    );
+
+    const intencao =
+      intencaoConfirmacao ??
+      (await interpretador.interpretar_mensagem(dados.mensagem, contexto));
 
     await banco.insert(chatTabela).values({
       sessaoId: sessaoAtual.id,

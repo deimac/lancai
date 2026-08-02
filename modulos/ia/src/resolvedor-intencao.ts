@@ -1,15 +1,19 @@
 import type { Cartao, Conta } from "@lancai/banco";
 import type {
+  EntradaAtualizarCartao,
+  EntradaAtualizarConta,
   EntradaCorrigirMovimento,
   EntradaCriarMovimento,
   FiltrosVisaoResolvidos,
   IntencaoConsultarVisao,
+  IntencaoCorrigirCartao,
+  IntencaoCorrigirConta,
   IntencaoCorrigirMovimento,
   IntencaoCriarCartao,
   IntencaoCriarConta,
   IntencaoRegistrarMovimento,
 } from "@lancai/tipos";
-import { ErroDadosIncompletos, ErroReferenciaNaoEncontrada } from "./erros";
+import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada } from "./erros";
 import type { RepositorioContexto } from "./repositorio-contexto";
 
 const NOME_CATEGORIA_PADRAO = "Outros";
@@ -84,6 +88,9 @@ export class ResolvedorIntencao {
     if (camposAlterados.valor != null) campos.valor = camposAlterados.valor;
     if (camposAlterados.descricao) campos.descricao = camposAlterados.descricao;
     if (camposAlterados.data_movimento) campos.dataMovimento = camposAlterados.data_movimento;
+    if (camposAlterados.perfil) campos.perfil = camposAlterados.perfil;
+    if (camposAlterados.parcelas != null) campos.parcelas = camposAlterados.parcelas;
+    if (camposAlterados.status) campos.status = camposAlterados.status;
 
     if (camposAlterados.categoria_nome) {
       const categoria = await this.buscar_ou_criar_categoria(usuarioId, camposAlterados.categoria_nome, "ambos");
@@ -94,6 +101,9 @@ export class ResolvedorIntencao {
     }
     if (camposAlterados.cartao_nome) {
       campos.cartaoId = await this.resolver_cartao_obrigatorio(usuarioId, camposAlterados.cartao_nome);
+    }
+    if (camposAlterados.pessoa_nome) {
+      campos.pessoaId = await this.resolver_ou_criar_pessoa(usuarioId, camposAlterados.pessoa_nome);
     }
 
     return {
@@ -150,6 +160,9 @@ export class ResolvedorIntencao {
     if (intencao.saldo_inicial == null) throw new ErroDadosIncompletos("CRIAR_CONTA", "saldo atual da conta");
     if (!intencao.perfil) throw new ErroDadosIncompletos("CRIAR_CONTA", "perfil (pessoal ou empresa)");
 
+    const existente = await this.repositorio.buscarContaPorNome(contexto.usuarioId, intencao.nome);
+    if (existente) throw new ErroEntidadeJaExiste("conta", existente.nome);
+
     return this.repositorio.criarConta({
       nome: intencao.nome,
       saldoInicial: intencao.saldo_inicial,
@@ -167,6 +180,9 @@ export class ResolvedorIntencao {
     if (!intencao.perfil) throw new ErroDadosIncompletos("CRIAR_CARTAO", "perfil (pessoal ou empresa)");
     if (!intencao.conta_nome) throw new ErroDadosIncompletos("CRIAR_CARTAO", "qual conta paga a fatura desse cartão");
 
+    const existente = await this.repositorio.buscarCartaoPorNome(contexto.usuarioId, intencao.nome);
+    if (existente) throw new ErroEntidadeJaExiste("cartão", existente.nome);
+
     const contaId = await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome, "conta vinculada ao cartão");
 
     return this.repositorio.criarCartao({
@@ -178,6 +194,84 @@ export class ResolvedorIntencao {
       contaId,
       usuarioId: contexto.usuarioId,
     });
+  }
+
+  /**
+   * Corrige uma conta JÁ EXISTENTE (ex.: "muda o saldo da conta Mercado Pago pra 5000").
+   * Ponto-chave do fix para o bug de duplicação: pedidos de alteração de saldo/nome/perfil
+   * de uma conta existente devem passar por aqui, nunca por `resolver_criar_conta`.
+   */
+  async resolver_corrigir_conta(intencao: IntencaoCorrigirConta, contexto: ContextoResolucao): Promise<Conta> {
+    const contaId = await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome);
+    const alterados = intencao.campos_alterados;
+
+    const dados: EntradaAtualizarConta = {};
+    if (alterados.nome != null) dados.nome = alterados.nome;
+    if (alterados.saldo_atual != null) dados.saldoAtual = alterados.saldo_atual;
+    if (alterados.perfil != null) dados.perfil = alterados.perfil;
+    if (alterados.ativo != null) dados.ativo = alterados.ativo;
+
+    if (Object.keys(dados).length === 0) {
+      throw new ErroDadosIncompletos("CORRIGIR_CONTA", "o que deseja alterar (nome, saldo, perfil ou exclusão)");
+    }
+
+    return this.repositorio.atualizarConta(contexto.usuarioId, contaId, dados);
+  }
+
+  /** Mesma lógica de `resolver_corrigir_conta`, mas para cartão. */
+  async resolver_corrigir_cartao(intencao: IntencaoCorrigirCartao, contexto: ContextoResolucao): Promise<Cartao> {
+    const cartaoId = await this.resolver_cartao_obrigatorio(contexto.usuarioId, intencao.cartao_nome);
+    const alterados = intencao.campos_alterados;
+
+    const dados: EntradaAtualizarCartao = {};
+    if (alterados.nome != null) dados.nome = alterados.nome;
+    if (alterados.limite != null) dados.limite = alterados.limite;
+    if (alterados.fechamento != null) dados.fechamento = alterados.fechamento;
+    if (alterados.vencimento != null) dados.vencimento = alterados.vencimento;
+    if (alterados.perfil != null) dados.perfil = alterados.perfil;
+    if (alterados.ativo != null) dados.ativo = alterados.ativo;
+    if (alterados.conta_nome != null) {
+      dados.contaId = await this.resolver_conta_obrigatoria(
+        contexto.usuarioId,
+        alterados.conta_nome,
+        "conta vinculada ao cartão",
+      );
+    }
+
+    if (Object.keys(dados).length === 0) {
+      throw new ErroDadosIncompletos(
+        "CORRIGIR_CARTAO",
+        "o que deseja alterar (nome, limite, fechamento, vencimento, perfil, conta ou exclusão)",
+      );
+    }
+
+    return this.repositorio.atualizarCartao(contexto.usuarioId, cartaoId, dados);
+  }
+
+  /**
+   * Prévia da exclusão de conta: resolve o nome e conta quantos lançamentos
+   * ainda estão vinculados (não cancelados). Usado para montar a pergunta de
+   * confirmação sem alterar nada no banco.
+   */
+  async preparar_confirmacao_exclusao_conta(
+    usuarioId: string,
+    contaNome: string,
+  ): Promise<{ nome: string; totalLancamentos: number }> {
+    const conta = await this.repositorio.buscarContaPorNome(usuarioId, contaNome);
+    if (!conta) throw new ErroReferenciaNaoEncontrada("conta", contaNome);
+    const totalLancamentos = await this.repositorio.contarMovimentosVinculadosConta(conta.id);
+    return { nome: conta.nome, totalLancamentos };
+  }
+
+  /** Mesma lógica de `preparar_confirmacao_exclusao_conta`, para cartão. */
+  async preparar_confirmacao_exclusao_cartao(
+    usuarioId: string,
+    cartaoNome: string,
+  ): Promise<{ nome: string; totalLancamentos: number }> {
+    const cartao = await this.repositorio.buscarCartaoPorNome(usuarioId, cartaoNome);
+    if (!cartao) throw new ErroReferenciaNaoEncontrada("cartão", cartaoNome);
+    const totalLancamentos = await this.repositorio.contarMovimentosVinculadosCartao(cartao.id);
+    return { nome: cartao.nome, totalLancamentos };
   }
 
   private async resolver_conta_opcional(

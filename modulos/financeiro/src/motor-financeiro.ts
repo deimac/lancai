@@ -18,7 +18,7 @@ import {
   ErroTipoMovimentoNaoImplementado,
   ErroValidacaoFinanceira,
 } from "./erros";
-import type { RepositorioFinanceiro, ResultadoOperacaoPersistencia } from "./repositorio";
+import type { OperacaoCorrecao, RepositorioFinanceiro, ResultadoOperacaoPersistencia } from "./repositorio";
 
 export type ResultadoCriarMovimento = ResultadoOperacaoPersistencia;
 
@@ -284,10 +284,10 @@ export class MotorFinanceiro {
   }
 
   /**
-   * Corrige um lançamento existente (ex.: "corrige o combustível de ontem para R$ 210").
-   * Nunca apaga o registro anterior — grava o estado anterior/atual em `auditoria`
-   * (ADR: sistema append-only) e, se o valor mudou e o movimento afeta uma conta
-   * (não cartão, não transferência), ajusta `saldo_atual` pela diferença.
+   * Corrige um lançamento existente (ex.: "corrige o combustível de ontem para R$ 210",
+   * "muda o notebook de 10x pra 12x"). Nunca apaga o registro anterior — grava auditoria
+   * e, quando necessário, ajusta saldo e regenera parcelas (append-only: parcelas antigas
+   * ficam com status `cancelado`).
    */
   async corrigir_movimento(entradaBruta: EntradaCorrigirMovimento): Promise<Movimento> {
     const entrada = schemaCorrigirMovimento.parse(entradaBruta);
@@ -295,6 +295,9 @@ export class MotorFinanceiro {
     const movimentoAtual = await this.repositorio.obterMovimento(entrada.movimentoId);
     if (!movimentoAtual) {
       throw new ErroRecursoNaoEncontrado("movimento", entrada.movimentoId);
+    }
+    if (movimentoAtual.status === "cancelado") {
+      throw new ErroValidacaoFinanceira("Esse lançamento já está cancelado e não pode ser alterado.");
     }
 
     const campos = entrada.campos;
@@ -304,6 +307,7 @@ export class MotorFinanceiro {
     if (campos.dataMovimento !== undefined) camposParaAtualizar.dataMovimento = campos.dataMovimento;
     if (campos.status !== undefined) camposParaAtualizar.status = campos.status;
     if (campos.valor !== undefined) camposParaAtualizar.valor = paraColuna(campos.valor);
+    if (campos.perfil !== undefined) camposParaAtualizar.perfil = campos.perfil;
 
     if (campos.categoriaId !== undefined) {
       const categoria = await this.repositorio.obterCategoria(campos.categoriaId);
@@ -328,38 +332,14 @@ export class MotorFinanceiro {
 
     camposParaAtualizar.alteradoPor = entrada.alteradoPor;
 
-    const atualizacoesSaldoConta: Array<{ contaId: string; saldoAtual: number }> = [];
+    const atualizacoesSaldoConta = await this.calcular_ajustes_saldo_na_correcao(movimentoAtual, campos);
 
-    const contaDestinoDaCorrecao = campos.contaId ?? movimentoAtual.contaId;
-    const vaiMudarConta = campos.valor !== undefined && contaDestinoDaCorrecao;
-
-    if (vaiMudarConta && movimentoAtual.status === "realizado" && movimentoAtual.tipo !== "transferencia") {
-      if (campos.contaId && campos.contaId !== movimentoAtual.contaId) {
-        throw new ErroValidacaoFinanceira(
-          "Trocar a conta de um movimento realizado neste MVP ainda não é suportado — cancele e recrie o lançamento.",
-        );
-      }
-
-      const direcao = obter_direcao_padrao(movimentoAtual.tipo);
-      if (direcao === undefined) {
-        throw new ErroTipoMovimentoNaoImplementado(movimentoAtual.tipo);
-      }
-
-      const conta = await this.repositorio.obterConta(contaDestinoDaCorrecao as string);
-      if (!conta) {
-        throw new ErroRecursoNaoEncontrado("conta", contaDestinoDaCorrecao as string);
-      }
-
-      const valorAntigo = paraNumero(movimentoAtual.valor);
-      const valorNovo = campos.valor as number;
-      const saldoAjustado = arredondar(paraNumero(conta.saldoAtual) + direcao * (valorNovo - valorAntigo));
-      atualizacoesSaldoConta.push({ contaId: conta.id, saldoAtual: saldoAjustado });
-    }
+    const regenerarParcelas = await this.preparar_regeneracao_parcelas(movimentoAtual, campos);
 
     const auditoria: NovaAuditoria = {
       tabela: "movimento",
       registroId: entrada.movimentoId,
-      acao: "ALTERACAO",
+      acao: campos.status === "cancelado" ? "CANCELAMENTO" : "ALTERACAO",
       estadoAnterior: movimentoAtual,
       estadoAtual: { ...movimentoAtual, ...camposParaAtualizar },
       alteradoPor: entrada.alteradoPor,
@@ -370,6 +350,138 @@ export class MotorFinanceiro {
       campos: camposParaAtualizar,
       atualizacoesSaldoConta,
       auditoria,
+      regenerarParcelas,
     });
+  }
+
+  /**
+   * Calcula os deltas de `saldo_atual` necessários para a correção:
+   * - mudança de valor na mesma conta;
+   * - troca segura de conta (reverte na antiga, aplica na nova);
+   * - cancelamento (reverte o efeito do lançamento realizado).
+   * Movimentos em cartão / transferência não mexem em saldo de conta aqui.
+   */
+  private async calcular_ajustes_saldo_na_correcao(
+    movimentoAtual: Movimento,
+    campos: EntradaCorrigirMovimento["campos"],
+  ): Promise<Array<{ contaId: string; saldoAtual: number }>> {
+    if (movimentoAtual.tipo === "transferencia" || movimentoAtual.cartaoId) {
+      return [];
+    }
+
+    const direcao = obter_direcao_padrao(movimentoAtual.tipo);
+    if (direcao === undefined) {
+      throw new ErroTipoMovimentoNaoImplementado(movimentoAtual.tipo);
+    }
+
+    const valorAntigo = paraNumero(movimentoAtual.valor);
+    const valorNovo = campos.valor ?? valorAntigo;
+    const contaAntigaId = movimentoAtual.contaId;
+    const contaNovaId = campos.contaId ?? contaAntigaId;
+    const statusNovo = campos.status ?? movimentoAtual.status;
+    const atualizacoes = new Map<string, number>();
+
+    const obter_saldo_base = async (contaId: string): Promise<number> => {
+      if (atualizacoes.has(contaId)) return atualizacoes.get(contaId) as number;
+      const conta = await this.repositorio.obterConta(contaId);
+      if (!conta) throw new ErroRecursoNaoEncontrado("conta", contaId);
+      return paraNumero(conta.saldoAtual);
+    };
+
+    // Só mexe em saldo se o movimento estava (ou continua) realizado.
+    if (movimentoAtual.status !== "realizado") {
+      return [];
+    }
+
+    if (statusNovo === "cancelado") {
+      if (contaAntigaId) {
+        const saldo = await obter_saldo_base(contaAntigaId);
+        atualizacoes.set(contaAntigaId, arredondar(saldo - direcao * valorAntigo));
+      }
+      return [...atualizacoes.entries()].map(([contaId, saldoAtual]) => ({ contaId, saldoAtual }));
+    }
+
+    if (contaAntigaId && contaNovaId && contaAntigaId !== contaNovaId) {
+      const saldoAntiga = await obter_saldo_base(contaAntigaId);
+      const saldoNova = await obter_saldo_base(contaNovaId);
+      atualizacoes.set(contaAntigaId, arredondar(saldoAntiga - direcao * valorAntigo));
+      atualizacoes.set(contaNovaId, arredondar(saldoNova + direcao * valorNovo));
+      return [...atualizacoes.entries()].map(([contaId, saldoAtual]) => ({ contaId, saldoAtual }));
+    }
+
+    if (campos.valor !== undefined && contaNovaId) {
+      const saldo = await obter_saldo_base(contaNovaId);
+      atualizacoes.set(contaNovaId, arredondar(saldo + direcao * (valorNovo - valorAntigo)));
+    }
+
+    return [...atualizacoes.entries()].map(([contaId, saldoAtual]) => ({ contaId, saldoAtual }));
+  }
+
+  /**
+   * Se o lançamento é no cartão e mudou valor, data, número de parcelas ou cartão,
+   * cancela as parcelas antigas e gera um novo conjunto coerente com o cartão.
+   */
+  private async preparar_regeneracao_parcelas(
+    movimentoAtual: Movimento,
+    campos: EntradaCorrigirMovimento["campos"],
+  ): Promise<OperacaoCorrecao["regenerarParcelas"] | undefined> {
+    const cartaoId = campos.cartaoId ?? movimentoAtual.cartaoId;
+    if (!cartaoId) {
+      if (campos.parcelas !== undefined) {
+        throw new ErroValidacaoFinanceira("Só dá para alterar o número de parcelas de uma compra no cartão.");
+      }
+      return undefined;
+    }
+
+    const parcelasAtuais = await this.repositorio.listarParcelasDoMovimento(movimentoAtual.id);
+    const precisaRegenerar =
+      campos.valor !== undefined ||
+      campos.dataMovimento !== undefined ||
+      campos.parcelas !== undefined ||
+      campos.cartaoId !== undefined ||
+      campos.status === "cancelado";
+
+    if (!precisaRegenerar || parcelasAtuais.length === 0) {
+      return undefined;
+    }
+
+    if (campos.status === "cancelado") {
+      return { novasParcelas: [] };
+    }
+
+    const cartao = await this.repositorio.obterCartao(cartaoId);
+    if (!cartao) throw new ErroRecursoNaoEncontrado("cartao", cartaoId);
+
+    const valorNovo = campos.valor ?? paraNumero(movimentoAtual.valor);
+    const quantidade =
+      campos.parcelas ?? (parcelasAtuais.length >= 2 ? parcelasAtuais.length : 1);
+    const dataCompra = deISOParaData(campos.dataMovimento ?? movimentoAtual.dataMovimento);
+
+    const parcelasCalculadas = registrar_parcelamento(valorNovo, quantidade, dataCompra, {
+      fechamento: cartao.fechamento,
+      vencimento: cartao.vencimento,
+    });
+
+    // Limite: desconsidera o comprometido deste próprio movimento (que será cancelado).
+    const comprometidoAtual = await this.repositorio.obterTotalComprometidoCartao(cartaoId);
+    const comprometidoDesteMovimento = parcelasAtuais.reduce(
+      (soma, parcela) => soma + paraNumero(parcela.valor),
+      0,
+    );
+    const comprometidoSemEste = arredondar(comprometidoAtual - comprometidoDesteMovimento);
+    const limite = paraNumero(cartao.limite);
+    if (comprometidoSemEste + valorNovo > limite) {
+      throw new ErroLimiteCartaoExcedido(cartao.nome, limite, comprometidoSemEste + valorNovo);
+    }
+
+    const novasParcelas: NovaParcela[] = parcelasCalculadas.map((parcela) => ({
+      movimentoId: movimentoAtual.id,
+      numeroParcela: parcela.numeroParcela,
+      valor: paraColuna(parcela.valor),
+      dataMovimento: parcela.dataMovimento,
+      status: "previsto",
+    }));
+
+    return { novasParcelas };
   }
 }

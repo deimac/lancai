@@ -56,6 +56,13 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     return linha;
   }
 
+  async listarParcelasDoMovimento(movimentoId: string) {
+    return this.banco
+      .select()
+      .from(parcelaTabela)
+      .where(and(eq(parcelaTabela.movimentoId, movimentoId), ne(parcelaTabela.status, "cancelado")));
+  }
+
   async obterTotalComprometidoCartao(cartaoId: string) {
     const linhas = await this.banco
       .select({ valor: parcelaTabela.valor })
@@ -110,6 +117,18 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
           .update(contaTabela)
           .set({ saldoAtual: String(atualizacaoSaldo.saldoAtual), dataAtualizacao: new Date() })
           .where(eq(contaTabela.id, atualizacaoSaldo.contaId));
+      }
+
+      if (operacao.regenerarParcelas) {
+        await tx
+          .update(parcelaTabela)
+          .set({ status: "cancelado", dataAtualizacao: new Date() })
+          .where(
+            and(eq(parcelaTabela.movimentoId, operacao.movimentoId), ne(parcelaTabela.status, "cancelado")),
+          );
+        if (operacao.regenerarParcelas.novasParcelas.length > 0) {
+          await tx.insert(parcelaTabela).values(operacao.regenerarParcelas.novasParcelas);
+        }
       }
 
       await tx.insert(auditoriaTabela).values(operacao.auditoria);

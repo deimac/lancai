@@ -1,8 +1,9 @@
 import { formatarMoeda } from "@lancai/tipos";
 import type { IntencaoDetectada } from "@lancai/tipos";
 import type { MotorFinanceiro } from "@lancai/financeiro";
-import type { ResolvedorIntencao } from "@lancai/ia";
+import { ErroEntidadeJaExiste, type ResolvedorIntencao } from "@lancai/ia";
 import type { ModuloRelatorios } from "@lancai/relatorios";
+import { montar_confirmacao_exclusao } from "./montar-confirmacao-exclusao";
 import { montar_resposta_visao } from "./montar-resposta-visao";
 
 interface ContextoResposta {
@@ -55,6 +56,12 @@ export async function montar_resposta_chat(
     case "CORRIGIR_MOVIMENTO": {
       const entrada = await contexto.resolvedor.resolver_corrigir_movimento(intencao, referenciaResolucao);
       const movimentoAtualizado = await contexto.motor.corrigir_movimento(entrada);
+      if (movimentoAtualizado.status === "cancelado") {
+        return `Lançamento "${movimentoAtualizado.descricao}" cancelado.`;
+      }
+      if (intencao.campos_alterados.parcelas != null) {
+        return `Lançamento "${movimentoAtualizado.descricao}" atualizado — agora em ${intencao.campos_alterados.parcelas}x (total ${formatarMoeda(movimentoAtualizado.valor)}).`;
+      }
       return `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
     }
 
@@ -66,15 +73,35 @@ export async function montar_resposta_chat(
 
     case "CRIAR_CONTA": {
       const eraPrimeiraConta = contexto.totalContas === 0;
-      const conta = await contexto.resolvedor.resolver_criar_conta(intencao, referenciaResolucao);
-      const confirmacao = `Conta "${conta.nome}" criada com saldo de ${formatarMoeda(conta.saldoAtual)} (${
-        conta.perfil === "pj" ? "empresa" : "pessoal"
-      }).`;
+      try {
+        const conta = await contexto.resolvedor.resolver_criar_conta(intencao, referenciaResolucao);
+        const confirmacao = `Conta "${conta.nome}" criada com saldo de ${formatarMoeda(conta.saldoAtual)} (${
+          conta.perfil === "pj" ? "empresa" : "pessoal"
+        }).`;
 
-      if (eraPrimeiraConta) {
-        return `${confirmacao} Quer cadastrar um cartão de crédito também, ou já pode começar a registrar seus gastos e receitas por aqui.`;
+        if (eraPrimeiraConta) {
+          return `${confirmacao} Quer cadastrar um cartão de crédito também, ou já pode começar a registrar seus gastos e receitas por aqui.`;
+        }
+        return confirmacao;
+      } catch (erro) {
+        // Rede de segurança: se a IA classificou um pedido de ajuste como CRIAR_CONTA
+        // (ex.: "corrija o saldo da conta C6 pra 4,03"), atualiza a conta existente em
+        // vez de falhar ou duplicar.
+        if (!(erro instanceof ErroEntidadeJaExiste) || !intencao.nome || intencao.saldo_inicial == null) {
+          throw erro;
+        }
+        const conta = await contexto.resolvedor.resolver_corrigir_conta(
+          {
+            intencao: "CORRIGIR_CONTA",
+            conta_nome: intencao.nome,
+            campos_alterados: { saldo_atual: intencao.saldo_inicial, perfil: intencao.perfil ?? null },
+          },
+          referenciaResolucao,
+        );
+        return `Conta "${conta.nome}" atualizada — saldo atual de ${formatarMoeda(conta.saldoAtual)} (${
+          conta.perfil === "pj" ? "empresa" : "pessoal"
+        }).`;
       }
-      return confirmacao;
     }
 
     case "CRIAR_CARTAO": {
@@ -86,6 +113,40 @@ export async function montar_resposta_chat(
         return `${confirmacao} Já pode começar a registrar suas compras nesse cartão só me contando o que comprou.`;
       }
       return confirmacao;
+    }
+
+    case "CORRIGIR_CONTA": {
+      if (intencao.campos_alterados.ativo === false && intencao.campos_alterados.confirmado !== true) {
+        const previa = await contexto.resolvedor.preparar_confirmacao_exclusao_conta(
+          contexto.usuarioId,
+          intencao.conta_nome,
+        );
+        return montar_confirmacao_exclusao("conta", previa.nome, previa.totalLancamentos);
+      }
+
+      const conta = await contexto.resolvedor.resolver_corrigir_conta(intencao, referenciaResolucao);
+      if (conta.ativo === false) {
+        return `Conta "${conta.nome}" removida.`;
+      }
+      return `Conta "${conta.nome}" atualizada — saldo atual de ${formatarMoeda(conta.saldoAtual)} (${
+        conta.perfil === "pj" ? "empresa" : "pessoal"
+      }).`;
+    }
+
+    case "CORRIGIR_CARTAO": {
+      if (intencao.campos_alterados.ativo === false && intencao.campos_alterados.confirmado !== true) {
+        const previa = await contexto.resolvedor.preparar_confirmacao_exclusao_cartao(
+          contexto.usuarioId,
+          intencao.cartao_nome,
+        );
+        return montar_confirmacao_exclusao("cartão", previa.nome, previa.totalLancamentos);
+      }
+
+      const cartao = await contexto.resolvedor.resolver_corrigir_cartao(intencao, referenciaResolucao);
+      if (cartao.ativo === false) {
+        return `Cartão "${cartao.nome}" removido.`;
+      }
+      return `Cartão "${cartao.nome}" atualizado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.`;
     }
 
     case "SOLICITAR_INFORMACAO":

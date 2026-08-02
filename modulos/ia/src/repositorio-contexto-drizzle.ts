@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, ne } from "drizzle-orm";
+import { and, count, desc, eq, ilike, ne } from "drizzle-orm";
 import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
@@ -9,7 +9,7 @@ import {
 } from "@lancai/banco";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
 import { calcularMelhorDiaCompra } from "@lancai/tipos";
-import type { EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
+import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 import type { ReferenciaMovimentoParaCorrecao, RepositorioContexto } from "./repositorio-contexto";
 
 export class RepositorioContextoDrizzle implements RepositorioContexto {
@@ -49,7 +49,9 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const linhas = await this.banco
       .select()
       .from(contaTabela)
-      .where(and(eq(contaTabela.usuarioId, usuarioId), ilike(contaTabela.nome, `%${nome}%`)))
+      .where(
+        and(eq(contaTabela.usuarioId, usuarioId), eq(contaTabela.ativo, true), ilike(contaTabela.nome, `%${nome}%`)),
+      )
       .limit(1);
     return linhas[0];
   }
@@ -58,7 +60,9 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const linhas = await this.banco
       .select()
       .from(cartaoTabela)
-      .where(and(eq(cartaoTabela.usuarioId, usuarioId), ilike(cartaoTabela.nome, `%${nome}%`)))
+      .where(
+        and(eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true), ilike(cartaoTabela.nome, `%${nome}%`)),
+      )
       .limit(1);
     return linhas[0];
   }
@@ -130,6 +134,46 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     return cartao;
   }
 
+  async atualizarConta(usuarioId: string, contaId: string, dados: EntradaAtualizarConta): Promise<Conta> {
+    const valores: Partial<typeof contaTabela.$inferInsert> = { dataAtualizacao: new Date() };
+    if (dados.nome != null) valores.nome = dados.nome;
+    if (dados.saldoAtual != null) valores.saldoAtual = String(dados.saldoAtual);
+    if (dados.perfil != null) valores.perfil = dados.perfil;
+    if (dados.ativo != null) valores.ativo = dados.ativo;
+
+    const linhas = await this.banco
+      .update(contaTabela)
+      .set(valores)
+      .where(and(eq(contaTabela.id, contaId), eq(contaTabela.usuarioId, usuarioId)))
+      .returning();
+    const conta = linhas[0];
+    if (!conta) throw new Error("Falha ao atualizar conta — conta não encontrada.");
+    return conta;
+  }
+
+  async atualizarCartao(usuarioId: string, cartaoId: string, dados: EntradaAtualizarCartao): Promise<Cartao> {
+    const valores: Partial<typeof cartaoTabela.$inferInsert> = { dataAtualizacao: new Date() };
+    if (dados.nome != null) valores.nome = dados.nome;
+    if (dados.limite != null) valores.limite = String(dados.limite);
+    if (dados.fechamento != null) {
+      valores.fechamento = dados.fechamento;
+      valores.melhorDiaCompra = calcularMelhorDiaCompra(dados.fechamento);
+    }
+    if (dados.vencimento != null) valores.vencimento = dados.vencimento;
+    if (dados.perfil != null) valores.perfil = dados.perfil;
+    if (dados.contaId != null) valores.contaId = dados.contaId;
+    if (dados.ativo != null) valores.ativo = dados.ativo;
+
+    const linhas = await this.banco
+      .update(cartaoTabela)
+      .set(valores)
+      .where(and(eq(cartaoTabela.id, cartaoId), eq(cartaoTabela.usuarioId, usuarioId)))
+      .returning();
+    const cartao = linhas[0];
+    if (!cartao) throw new Error("Falha ao atualizar cartão — cartão não encontrado.");
+    return cartao;
+  }
+
   async buscarMovimentoParaCorrecao(
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
@@ -149,5 +193,21 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
       .orderBy(desc(movimentoTabela.dataLancamento))
       .limit(1);
     return linhas[0];
+  }
+
+  async contarMovimentosVinculadosConta(contaId: string): Promise<number> {
+    const [linha] = await this.banco
+      .select({ total: count() })
+      .from(movimentoTabela)
+      .where(and(eq(movimentoTabela.contaId, contaId), ne(movimentoTabela.status, "cancelado")));
+    return Number(linha?.total ?? 0);
+  }
+
+  async contarMovimentosVinculadosCartao(cartaoId: string): Promise<number> {
+    const [linha] = await this.banco
+      .select({ total: count() })
+      .from(movimentoTabela)
+      .where(and(eq(movimentoTabela.cartaoId, cartaoId), ne(movimentoTabela.status, "cancelado")));
+    return Number(linha?.total ?? 0);
   }
 }

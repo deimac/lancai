@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { cartao, obter_banco } from "@lancai/banco";
 import { calcularMelhorDiaCompra, schemaCriarCartao } from "@lancai/tipos";
 
@@ -27,9 +27,12 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
     if (usuarioId) {
-      return banco.select().from(cartao).where(eq(cartao.usuarioId, usuarioId));
+      return banco
+        .select()
+        .from(cartao)
+        .where(and(eq(cartao.usuarioId, usuarioId), eq(cartao.ativo, true)));
     }
-    return banco.select().from(cartao);
+    return banco.select().from(cartao).where(eq(cartao.ativo, true));
   });
 
   app.get("/:id", async (requisicao, resposta) => {

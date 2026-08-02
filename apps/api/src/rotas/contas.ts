@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { conta, obter_banco } from "@lancai/banco";
 import { schemaCriarConta } from "@lancai/tipos";
 
@@ -24,9 +24,12 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
     const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
     if (usuarioId) {
-      return banco.select().from(conta).where(eq(conta.usuarioId, usuarioId));
+      return banco
+        .select()
+        .from(conta)
+        .where(and(eq(conta.usuarioId, usuarioId), eq(conta.ativo, true)));
     }
-    return banco.select().from(conta);
+    return banco.select().from(conta).where(eq(conta.ativo, true));
   });
 
   app.get("/:id", async (requisicao, resposta) => {

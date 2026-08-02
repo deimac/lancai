@@ -1,5 +1,5 @@
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
-import type { EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
+import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 
 export interface ReferenciaMovimentoParaCorrecao {
   descricao?: string;
@@ -33,9 +33,19 @@ export interface RepositorioContexto {
   /** Usado pelo onboarding conversacional (CRIAR_CARTAO) — mesma regra de negócio do POST /cartoes. */
   criarCartao(dados: EntradaCriarCartao): Promise<Cartao>;
 
+  /** Usado por CORRIGIR_CONTA para atualizar uma conta já existente (nome, saldo e/ou perfil). */
+  atualizarConta(usuarioId: string, contaId: string, dados: EntradaAtualizarConta): Promise<Conta>;
+  /** Usado por CORRIGIR_CARTAO para atualizar um cartão já existente. */
+  atualizarCartao(usuarioId: string, cartaoId: string, dados: EntradaAtualizarCartao): Promise<Cartao>;
+
   /** Usado por CORRIGIR_MOVIMENTO para localizar o lançamento alvo pela descrição/data. */
   buscarMovimentoParaCorrecao(
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
   ): Promise<Movimento | undefined>;
+
+  /** Contagem de lançamentos não cancelados vinculados à conta (para aviso na exclusão). */
+  contarMovimentosVinculadosConta(contaId: string): Promise<number>;
+  /** Contagem de lançamentos não cancelados vinculados ao cartão (para aviso na exclusão). */
+  contarMovimentosVinculadosCartao(cartaoId: string): Promise<number>;
 }

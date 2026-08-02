@@ -349,6 +349,102 @@ describe("MotorFinanceiro", () => {
         }),
       ).rejects.toThrow(ErroRecursoNaoEncontrado);
     });
+
+    it("troca a conta de um movimento realizado ajustando os dois saldos", async () => {
+      const contaOrigem = criarConta({ usuarioId, nome: "Nubank", saldoAtual: "1000.00" });
+      const contaDestino = criarConta({ usuarioId, nome: "Inter", saldoAtual: "500.00" });
+      repositorio.contas.set(contaOrigem.id, contaOrigem);
+      repositorio.contas.set(contaDestino.id, contaDestino);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Almoço",
+        valor: 50,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-08-01",
+        contaId: contaOrigem.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      await motor.corrigir_movimento({
+        movimentoId: resultado.movimentos[0]!.id,
+        alteradoPor: usuarioId,
+        campos: { contaId: contaDestino.id },
+      });
+
+      // Origem: 1000 - 50 = 950, depois reverte (+50) = 1000
+      expect(Number((await repositorio.obterConta(contaOrigem.id))?.saldoAtual)).toBe(1000);
+      // Destino: 500 - 50 = 450
+      expect(Number((await repositorio.obterConta(contaDestino.id))?.saldoAtual)).toBe(450);
+    });
+
+    it("cancela um lançamento e devolve o valor ao saldo da conta", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Almoço",
+        valor: 50,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-08-01",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      const cancelado = await motor.corrigir_movimento({
+        movimentoId: resultado.movimentos[0]!.id,
+        alteradoPor: usuarioId,
+        campos: { status: "cancelado" },
+      });
+
+      expect(cancelado.status).toBe("cancelado");
+      expect(Number((await repositorio.obterConta(conta.id))?.saldoAtual)).toBe(1000);
+      expect(repositorio.auditorias.at(-1)?.acao).toBe("CANCELAMENTO");
+    });
+
+    it("regenera parcelas ao mudar o número de parcelas de uma compra no cartão", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, limite: "10000.00", fechamento: 20, vencimento: 27 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Notebook",
+        valor: 3000,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-08-01",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+        parcelamento: { quantidadeParcelas: 10 },
+      });
+      expect(resultado.parcelas).toHaveLength(10);
+
+      await motor.corrigir_movimento({
+        movimentoId: resultado.movimentos[0]!.id,
+        alteradoPor: usuarioId,
+        campos: { parcelas: 12 },
+      });
+
+      const parcelasAtivas = await repositorio.listarParcelasDoMovimento(resultado.movimentos[0]!.id);
+      expect(parcelasAtivas).toHaveLength(12);
+      expect(parcelasAtivas.every((parcela) => parcela.valor === "250.00")).toBe(true);
+
+      const canceladas = [...repositorio.parcelas.values()].filter(
+        (parcela) => parcela.movimentoId === resultado.movimentos[0]!.id && parcela.status === "cancelado",
+      );
+      expect(canceladas).toHaveLength(10);
+    });
   });
 
   describe("receita em conta", () => {

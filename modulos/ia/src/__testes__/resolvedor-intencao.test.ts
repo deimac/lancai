@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Conta, Movimento } from "@lancai/banco";
 import { ResolvedorIntencao } from "../resolvedor-intencao";
 import { RepositorioContextoEmMemoria } from "../repositorio-contexto-memoria";
-import { ErroDadosIncompletos, ErroReferenciaNaoEncontrada } from "../erros";
+import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada } from "../erros";
 
 function criarConta(sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -338,6 +338,102 @@ describe("ResolvedorIntencao", () => {
           { usuarioId, criadoPor: usuarioId },
         ),
       ).rejects.toThrow(ErroDadosIncompletos);
+    });
+
+    it("lança ErroEntidadeJaExiste quando já existe conta com o mesmo nome (evita duplicação)", async () => {
+      const existente = criarConta({ usuarioId, nome: "C6 Bank", saldoAtual: "4.01" });
+      repositorio.contas.set(existente.id, existente);
+
+      await expect(
+        resolvedor.resolver_criar_conta(
+          { intencao: "CRIAR_CONTA", nome: "C6 Bank", saldo_inicial: 4.03, perfil: "pf" },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroEntidadeJaExiste);
+
+      const contas = await repositorio.listarContas(usuarioId);
+      expect(contas).toHaveLength(1);
+      expect(contas[0]?.saldoAtual).toBe("4.01");
+    });
+  });
+
+  describe("resolver_corrigir_conta", () => {
+    it("atualiza o saldo de uma conta existente sem criar outra", async () => {
+      const existente = criarConta({ usuarioId, nome: "C6 Bank", saldoAtual: "4.01" });
+      repositorio.contas.set(existente.id, existente);
+
+      const atualizada = await resolvedor.resolver_corrigir_conta(
+        {
+          intencao: "CORRIGIR_CONTA",
+          conta_nome: "c6",
+          campos_alterados: { saldo_atual: 4.03 },
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(atualizada.id).toBe(existente.id);
+      expect(atualizada.saldoAtual).toBe("4.03");
+      expect(await repositorio.listarContas(usuarioId)).toHaveLength(1);
+    });
+
+    it("lança ErroReferenciaNaoEncontrada quando a conta citada não existe", async () => {
+      await expect(
+        resolvedor.resolver_corrigir_conta(
+          {
+            intencao: "CORRIGIR_CONTA",
+            conta_nome: "Conta que não existe",
+            campos_alterados: { saldo_atual: 100 },
+          },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroReferenciaNaoEncontrada);
+    });
+
+    it("exclui logicamente a conta (ativo = false) sem apagar o registro", async () => {
+      const existente = criarConta({ usuarioId, nome: "Inter" });
+      repositorio.contas.set(existente.id, existente);
+
+      const removida = await resolvedor.resolver_corrigir_conta(
+        {
+          intencao: "CORRIGIR_CONTA",
+          conta_nome: "Inter",
+          campos_alterados: { ativo: false },
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(removida.ativo).toBe(false);
+      expect(await repositorio.listarContas(usuarioId)).toHaveLength(0);
+      expect(repositorio.contas.get(existente.id)?.ativo).toBe(false);
+    });
+  });
+
+  describe("resolver_corrigir_cartao", () => {
+    it("exclui logicamente o cartão (ativo = false)", async () => {
+      const conta = criarConta({ usuarioId, nome: "Mercado Pago" });
+      repositorio.contas.set(conta.id, conta);
+      const cartao = await repositorio.criarCartao({
+        nome: "Nubank",
+        limite: 10000,
+        fechamento: 20,
+        vencimento: 27,
+        perfil: "pj",
+        contaId: conta.id,
+        usuarioId,
+      });
+
+      const removido = await resolvedor.resolver_corrigir_cartao(
+        {
+          intencao: "CORRIGIR_CARTAO",
+          cartao_nome: "Nubank",
+          campos_alterados: { ativo: false },
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(removido.id).toBe(cartao.id);
+      expect(removido.ativo).toBe(false);
+      expect(await repositorio.listarCartoes(usuarioId)).toHaveLength(0);
     });
   });
 

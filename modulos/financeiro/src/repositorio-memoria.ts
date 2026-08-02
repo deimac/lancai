@@ -40,6 +40,12 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     return this.movimentos.get(id);
   }
 
+  async listarParcelasDoMovimento(movimentoId: string) {
+    return [...this.parcelas.values()].filter(
+      (parcela) => parcela.movimentoId === movimentoId && parcela.status !== "cancelado",
+    );
+  }
+
   async obterTotalComprometidoCartao(cartaoId: string) {
     let total = 0;
     for (const movimento of this.movimentos.values()) {
@@ -146,6 +152,27 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         saldoAtual: String(atualizacao.saldoAtual),
         dataAtualizacao: new Date(),
       });
+    }
+
+    if (operacao.regenerarParcelas) {
+      for (const [id, parcela] of this.parcelas.entries()) {
+        if (parcela.movimentoId !== operacao.movimentoId || parcela.status === "cancelado") continue;
+        this.parcelas.set(id, { ...parcela, status: "cancelado", dataAtualizacao: new Date() });
+      }
+      for (const novaParcela of operacao.regenerarParcelas.novasParcelas) {
+        const agora = new Date();
+        const parcela: Parcela = {
+          id: novaParcela.id ?? randomUUID(),
+          movimentoId: novaParcela.movimentoId,
+          numeroParcela: novaParcela.numeroParcela,
+          valor: String(novaParcela.valor),
+          dataMovimento: novaParcela.dataMovimento,
+          status: novaParcela.status ?? "previsto",
+          dataCriacao: agora,
+          dataAtualizacao: agora,
+        };
+        this.parcelas.set(parcela.id, parcela);
+      }
     }
 
     this.auditorias.push({

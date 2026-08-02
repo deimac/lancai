@@ -41,6 +41,27 @@ export const schemaCriarCartao = z.object({
 });
 export type EntradaCriarCartao = z.infer<typeof schemaCriarCartao>;
 
+/** Usado por CORRIGIR_CONTA — todo campo é opcional pois só os citados pelo usuário devem mudar. */
+export const schemaAtualizarConta = z.object({
+  nome: z.string().min(1).optional(),
+  saldoAtual: z.number().optional(),
+  perfil: perfilSchema.optional(),
+  ativo: z.boolean().optional(),
+});
+export type EntradaAtualizarConta = z.infer<typeof schemaAtualizarConta>;
+
+/** Usado por CORRIGIR_CARTAO — todo campo é opcional pois só os citados pelo usuário devem mudar. */
+export const schemaAtualizarCartao = z.object({
+  nome: z.string().min(1).optional(),
+  limite: z.number().positive().optional(),
+  fechamento: z.number().int().min(1).max(31).optional(),
+  vencimento: z.number().int().min(1).max(31).optional(),
+  perfil: perfilSchema.optional(),
+  contaId: z.string().uuid().optional(),
+  ativo: z.boolean().optional(),
+});
+export type EntradaAtualizarCartao = z.infer<typeof schemaAtualizarCartao>;
+
 export const schemaCriarCategoria = z.object({
   nome: z.string().min(1),
   tipo: z.enum(["receita", "despesa", "ambos"]),

@@ -96,6 +96,12 @@ export const schemaIntencaoCorrigirMovimento = z.object({
     categoria_nome: z.string().min(1).nullable().optional(),
     conta_nome: z.string().min(1).nullable().optional(),
     cartao_nome: z.string().min(1).nullable().optional(),
+    pessoa_nome: z.string().min(1).nullable().optional(),
+    perfil: perfilSchema.nullable().optional(),
+    /** Novo número de parcelas (só compras no cartão). Regenera as parcelas restantes. */
+    parcelas: z.number().int().min(1).max(360).nullable().optional(),
+    /** Use "cancelado" para apagar logicamente o lançamento. */
+    status: z.enum(["previsto", "realizado", "cancelado"]).nullable().optional(),
   }),
 });
 export type IntencaoCorrigirMovimento = z.infer<typeof schemaIntencaoCorrigirMovimento>;
@@ -139,6 +145,53 @@ export const schemaIntencaoCriarCartao = z.object({
 export type IntencaoCriarCartao = z.infer<typeof schemaIntencaoCriarCartao>;
 
 /**
+ * Corrige uma conta JÁ EXISTENTE (ex.: "muda o saldo da conta Mercado Pago pra 5000",
+ * "renomeia minha conta Caixa pra Carteira"). Diferente de CRIAR_CONTA — que sempre cria um
+ * registro novo — aqui a conta precisa existir; a intenção correta é o que evita que um pedido
+ * de correção de saldo seja mal interpretado como um novo cadastro e duplique a conta.
+ */
+export const schemaIntencaoCorrigirConta = z.object({
+  intencao: z.literal("CORRIGIR_CONTA"),
+  conta_nome: z.string().min(1),
+  campos_alterados: z.object({
+    nome: z.string().min(1).nullable().optional(),
+    saldo_atual: z.number().nullable().optional(),
+    perfil: perfilSchema.nullable().optional(),
+    /**
+     * Exclusão lógica (append-only): `false` = remover/apagar/excluir a conta.
+     * O registro permanece no banco com `ativo = false` e some das listagens.
+     */
+    ativo: z.boolean().nullable().optional(),
+    /**
+     * Só é `true` depois que o usuário confirmou a exclusão (respondeu "sim" à
+     * pergunta do sistema). Sem isso, o backend só pergunta se deseja excluir.
+     */
+    confirmado: z.boolean().nullable().optional(),
+  }),
+});
+export type IntencaoCorrigirConta = z.infer<typeof schemaIntencaoCorrigirConta>;
+
+/** Mesma lógica de `schemaIntencaoCorrigirConta`, mas para cartão. */
+export const schemaIntencaoCorrigirCartao = z.object({
+  intencao: z.literal("CORRIGIR_CARTAO"),
+  cartao_nome: z.string().min(1),
+  campos_alterados: z.object({
+    nome: z.string().min(1).nullable().optional(),
+    limite: z.number().nullable().optional(),
+    fechamento: diaDoMesSchema.nullable().optional(),
+    vencimento: diaDoMesSchema.nullable().optional(),
+    perfil: perfilSchema.nullable().optional(),
+    /** Conta que passa a pagar a fatura desse cartão. */
+    conta_nome: z.string().min(1).nullable().optional(),
+    /** Exclusão lógica: `false` = remover/apagar/excluir o cartão. */
+    ativo: z.boolean().nullable().optional(),
+    /** `true` só após o usuário confirmar a exclusão. */
+    confirmado: z.boolean().nullable().optional(),
+  }),
+});
+export type IntencaoCorrigirCartao = z.infer<typeof schemaIntencaoCorrigirCartao>;
+
+/**
  * Usada quando a IA já identificou qual intenção o usuário quer (ex.:
  * cadastrar uma conta), mas falta pelo menos um dado obrigatório para
  * completá-la. Em vez de inventar valores, o `InterpretadorIntencoes` devolve
@@ -171,6 +224,8 @@ export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoCorrigirMovimento,
   schemaIntencaoCriarConta,
   schemaIntencaoCriarCartao,
+  schemaIntencaoCorrigirConta,
+  schemaIntencaoCorrigirCartao,
   schemaIntencaoSolicitarInformacao,
   schemaIntencaoMenu,
   schemaIntencaoNaoReconhecida,
