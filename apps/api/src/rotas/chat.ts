@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { chat as chatTabela, obter_banco, sessao as sessaoTabela } from "@lancai/banco";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
@@ -9,15 +9,19 @@ import {
   RepositorioContextoDrizzle,
   ResolvedorIntencao,
 } from "@lancai/ia";
-import type { ContextoInterpretacao } from "@lancai/ia";
+import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
 import { montar_resposta_chat } from "../montar-resposta-chat";
+import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
 
 const schemaRequisicaoChat = z.object({
   usuarioId: z.string().uuid(),
   mensagem: z.string().min(1),
   sessaoId: z.string().uuid().optional(),
 });
+
+/** Quantas mensagens (usuário + sistema) olhar para trás para o slot-filling entre turnos. */
+const TAMANHO_HISTORICO_RECENTE = 8;
 
 const orquestrador = new OrquestradorIA();
 const interpretador = new InterpretadorIntencoes(orquestrador);
@@ -39,13 +43,32 @@ async function obter_ou_criar_sessao(usuarioId: string, sessaoId?: string) {
   return novaSessao;
 }
 
-async function montar_contexto(usuarioId: string): Promise<ContextoInterpretacao> {
-  const [contas, cartoes, categorias, pessoas, habitos] = await Promise.all([
+/**
+ * Busca as últimas mensagens de "usuario"/"sistema" da sessão (descartando as
+ * linhas de papel "ia", que guardam o JSON bruto da intenção — não é texto
+ * conversacional útil para o histórico que a IA lê). Devolve em ordem
+ * cronológica (mais antiga primeiro).
+ */
+async function buscar_historico_recente(sessaoId: string): Promise<MensagemHistorico[]> {
+  const banco = obter_banco();
+  const mensagens = await banco
+    .select({ papel: chatTabela.papel, conteudo: chatTabela.conteudo })
+    .from(chatTabela)
+    .where(and(eq(chatTabela.sessaoId, sessaoId), inArray(chatTabela.papel, ["usuario", "sistema"])))
+    .orderBy(desc(chatTabela.dataCriacao))
+    .limit(TAMANHO_HISTORICO_RECENTE);
+
+  return mensagens.reverse() as MensagemHistorico[];
+}
+
+async function montar_contexto(usuarioId: string, sessaoId: string): Promise<ContextoInterpretacao> {
+  const [contas, cartoes, categorias, pessoas, habitos, historicoRecente] = await Promise.all([
     repositorioContexto.listarContas(usuarioId),
     repositorioContexto.listarCartoes(usuarioId),
     repositorioContexto.listarCategorias(usuarioId),
     repositorioContexto.listarPessoas(usuarioId),
     memoria.buscar_habitos(usuarioId),
+    buscar_historico_recente(sessaoId),
   ]);
 
   return {
@@ -55,6 +78,7 @@ async function montar_contexto(usuarioId: string): Promise<ContextoInterpretacao
     categorias: categorias.map((categoria) => ({ nome: categoria.nome, tipo: categoria.tipo })),
     pessoas: pessoas.map((pessoa) => ({ nome: pessoa.nome, tipo: pessoa.tipo })),
     habitos,
+    historicoRecente,
   };
 }
 
@@ -72,13 +96,35 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
 
     const sessaoAtual = await obter_ou_criar_sessao(dados.usuarioId, dados.sessaoId);
 
+    // Contexto (incluindo historicoRecente) é montado ANTES de inserir a mensagem
+    // atual — senão ela apareceria duplicada (uma vez no histórico, outra como
+    // "mensagem atual") no prompt do InterpretadorIntencoes.
+    const contexto = await montar_contexto(dados.usuarioId, sessaoAtual.id);
+
     await banco.insert(chatTabela).values({
       sessaoId: sessaoAtual.id,
       papel: "usuario",
       conteudo: dados.mensagem,
     });
 
-    const contexto = await montar_contexto(dados.usuarioId);
+    // Atalho determinístico: "menu"/"ajuda" nunca passa pela IA (sem custo,
+    // sem depender de nenhum provedor estar disponível).
+    if (eh_atalho_menu(dados.mensagem)) {
+      const intencaoMenu = { intencao: "MENU" as const };
+      const respostaTexto = montar_resposta_menu({
+        totalContas: contexto.contas.length,
+        totalCartoes: contexto.cartoes.length,
+      });
+
+      await banco.insert(chatTabela).values({
+        sessaoId: sessaoAtual.id,
+        papel: "sistema",
+        conteudo: respostaTexto,
+      });
+
+      return resposta.send({ sessaoId: sessaoAtual.id, intencao: intencaoMenu, resposta: respostaTexto });
+    }
+
     const intencao = await interpretador.interpretar_mensagem(dados.mensagem, contexto);
 
     await banco.insert(chatTabela).values({
@@ -93,6 +139,8 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
       criadoPor: dados.usuarioId,
       resolvedor,
       motor,
+      totalContas: contexto.contas.length,
+      totalCartoes: contexto.cartoes.length,
     });
 
     await banco.insert(chatTabela).values({

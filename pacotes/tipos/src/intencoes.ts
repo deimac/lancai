@@ -89,10 +89,67 @@ export const schemaIntencaoNaoReconhecida = z.object({
 });
 export type IntencaoNaoReconhecida = z.infer<typeof schemaIntencaoNaoReconhecida>;
 
+/**
+ * Onboarding/cadastro incremental de conta via conversa. Campos opcionais
+ * porque um turno pode trazer só parte dos dados (slot-filling flexível) —
+ * quando algo obrigatório falta, o `InterpretadorIntencoes` deve preferir
+ * `SOLICITAR_INFORMACAO` em vez de inventar um valor.
+ */
+export const schemaIntencaoCriarConta = z.object({
+  intencao: z.literal("CRIAR_CONTA"),
+  nome: z.string().min(1).nullable().optional(),
+  saldo_inicial: z.number().nullable().optional(),
+  perfil: perfilSchema.nullable().optional(),
+});
+export type IntencaoCriarConta = z.infer<typeof schemaIntencaoCriarConta>;
+
+/** Onboarding/cadastro incremental de cartão via conversa (mesma lógica de campos opcionais). */
+export const schemaIntencaoCriarCartao = z.object({
+  intencao: z.literal("CRIAR_CARTAO"),
+  nome: z.string().min(1).nullable().optional(),
+  limite: z.number().nullable().optional(),
+  fechamento: z.number().int().min(1).max(31).nullable().optional(),
+  vencimento: z.number().int().min(1).max(31).nullable().optional(),
+  perfil: perfilSchema.nullable().optional(),
+  conta_nome: z.string().min(1).nullable().optional(),
+});
+export type IntencaoCriarCartao = z.infer<typeof schemaIntencaoCriarCartao>;
+
+/**
+ * Usada quando a IA já identificou qual intenção o usuário quer (ex.:
+ * cadastrar uma conta), mas falta pelo menos um dado obrigatório para
+ * completá-la. Em vez de inventar valores, o `InterpretadorIntencoes` devolve
+ * essa intenção com a pergunta certa; o sistema a repassa ao usuário e, no
+ * próximo turno, o histórico recente da conversa (não um estado persistido)
+ * dá à IA o contexto necessário para juntar a resposta à intenção pendente.
+ */
+export const schemaIntencaoSolicitarInformacao = z.object({
+  intencao: z.literal("SOLICITAR_INFORMACAO"),
+  intencao_pendente: z.enum(["CRIAR_CONTA", "CRIAR_CARTAO", "REGISTRAR_MOVIMENTO"]),
+  pergunta: z.string().min(1),
+  dados_parciais: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+export type IntencaoSolicitarInformacao = z.infer<typeof schemaIntencaoSolicitarInformacao>;
+
+/**
+ * Nunca é gerada pela IA — usada exclusivamente pelo atalho determinístico de
+ * "menu"/"ajuda" em `apps/api/src/rotas/chat.ts`, que intercepta a mensagem
+ * antes de chamar o `InterpretadorIntencoes` (resposta fixa, sem custo de IA
+ * e sem depender de nenhum provedor estar disponível).
+ */
+export const schemaIntencaoMenu = z.object({
+  intencao: z.literal("MENU"),
+});
+export type IntencaoMenu = z.infer<typeof schemaIntencaoMenu>;
+
 export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoRegistrarMovimento,
   schemaIntencaoConsultarVisao,
   schemaIntencaoCorrigirMovimento,
+  schemaIntencaoCriarConta,
+  schemaIntencaoCriarCartao,
+  schemaIntencaoSolicitarInformacao,
+  schemaIntencaoMenu,
   schemaIntencaoNaoReconhecida,
 ]);
 export type IntencaoDetectada = z.infer<typeof schemaIntencaoDetectada>;

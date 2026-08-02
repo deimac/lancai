@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Conta, Movimento } from "@lancai/banco";
 import { ResolvedorIntencao } from "../resolvedor-intencao";
 import { RepositorioContextoEmMemoria } from "../repositorio-contexto-memoria";
-import { ErroReferenciaNaoEncontrada } from "../erros";
+import { ErroDadosIncompletos, ErroReferenciaNaoEncontrada } from "../erros";
 
 function criarConta(sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -239,6 +239,113 @@ describe("ResolvedorIntencao", () => {
           { usuarioId, criadoPor: usuarioId },
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
+    });
+  });
+
+  describe("resolver_criar_conta", () => {
+    it("cria a conta com os dados informados", async () => {
+      const conta = await resolvedor.resolver_criar_conta(
+        { intencao: "CRIAR_CONTA", nome: "Nubank", saldo_inicial: 1000, perfil: "pf" },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(conta.nome).toBe("Nubank");
+      expect(conta.saldoAtual).toBe("1000");
+      expect(conta.perfil).toBe("pf");
+      expect(conta.usuarioId).toBe(usuarioId);
+
+      const contasCriadas = await repositorio.listarContas(usuarioId);
+      expect(contasCriadas).toHaveLength(1);
+    });
+
+    it("lança ErroDadosIncompletos quando falta o nome", async () => {
+      await expect(
+        resolvedor.resolver_criar_conta(
+          { intencao: "CRIAR_CONTA", saldo_inicial: 1000, perfil: "pf" },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroDadosIncompletos);
+    });
+
+    it("lança ErroDadosIncompletos quando falta o saldo inicial", async () => {
+      await expect(
+        resolvedor.resolver_criar_conta(
+          { intencao: "CRIAR_CONTA", nome: "Nubank", perfil: "pf" },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroDadosIncompletos);
+    });
+
+    it("lança ErroDadosIncompletos quando falta o perfil", async () => {
+      await expect(
+        resolvedor.resolver_criar_conta(
+          { intencao: "CRIAR_CONTA", nome: "Nubank", saldo_inicial: 1000 },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroDadosIncompletos);
+    });
+  });
+
+  describe("resolver_criar_cartao", () => {
+    it("cria o cartão resolvendo conta_nome para contaId", async () => {
+      const conta = criarConta({ usuarioId, nome: "Inter" });
+      repositorio.contas.set(conta.id, conta);
+
+      const cartao = await resolvedor.resolver_criar_cartao(
+        {
+          intencao: "CRIAR_CARTAO",
+          nome: "Nubank",
+          limite: 5000,
+          fechamento: 20,
+          vencimento: 27,
+          perfil: "pf",
+          conta_nome: "inter",
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(cartao.nome).toBe("Nubank");
+      expect(cartao.limite).toBe("5000");
+      expect(cartao.fechamento).toBe(20);
+      expect(cartao.vencimento).toBe(27);
+      expect(cartao.contaId).toBe(conta.id);
+      expect(cartao.melhorDiaCompra).toBe(21);
+    });
+
+    it("lança ErroReferenciaNaoEncontrada quando a conta_nome citada não existe", async () => {
+      await expect(
+        resolvedor.resolver_criar_cartao(
+          {
+            intencao: "CRIAR_CARTAO",
+            nome: "Nubank",
+            limite: 5000,
+            fechamento: 20,
+            vencimento: 27,
+            perfil: "pf",
+            conta_nome: "Conta que não existe",
+          },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroReferenciaNaoEncontrada);
+    });
+
+    it("lança ErroDadosIncompletos quando falta o limite", async () => {
+      const conta = criarConta({ usuarioId });
+      repositorio.contas.set(conta.id, conta);
+
+      await expect(
+        resolvedor.resolver_criar_cartao(
+          {
+            intencao: "CRIAR_CARTAO",
+            nome: "Nubank",
+            fechamento: 20,
+            vencimento: 27,
+            perfil: "pf",
+            conta_nome: conta.nome,
+          },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroDadosIncompletos);
     });
   });
 });

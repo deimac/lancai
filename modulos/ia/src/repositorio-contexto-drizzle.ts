@@ -8,6 +8,8 @@ import {
   pessoa as pessoaTabela,
 } from "@lancai/banco";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
+import { calcularMelhorDiaCompra } from "@lancai/tipos";
+import type { EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 import type { ReferenciaMovimentoParaCorrecao, RepositorioContexto } from "./repositorio-contexto";
 
 export class RepositorioContextoDrizzle implements RepositorioContexto {
@@ -91,6 +93,41 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const pessoa = linhas[0];
     if (!pessoa) throw new Error("Falha ao criar pessoa automaticamente.");
     return pessoa;
+  }
+
+  async criarConta(dados: EntradaCriarConta): Promise<Conta> {
+    const linhas = await this.banco
+      .insert(contaTabela)
+      .values({
+        nome: dados.nome,
+        perfil: dados.perfil,
+        usuarioId: dados.usuarioId,
+        saldoInicial: String(dados.saldoInicial),
+        saldoAtual: String(dados.saldoInicial),
+      })
+      .returning();
+    const conta = linhas[0];
+    if (!conta) throw new Error("Falha ao criar conta.");
+    return conta;
+  }
+
+  async criarCartao(dados: EntradaCriarCartao): Promise<Cartao> {
+    const linhas = await this.banco
+      .insert(cartaoTabela)
+      .values({
+        nome: dados.nome,
+        limite: String(dados.limite),
+        fechamento: dados.fechamento,
+        vencimento: dados.vencimento,
+        melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
+        perfil: dados.perfil,
+        contaId: dados.contaId,
+        usuarioId: dados.usuarioId,
+      })
+      .returning();
+    const cartao = linhas[0];
+    if (!cartao) throw new Error("Falha ao criar cartão.");
+    return cartao;
   }
 
   async buscarMovimentoParaCorrecao(

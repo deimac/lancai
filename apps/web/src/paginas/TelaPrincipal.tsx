@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LogOut, Menu } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi } from "../lib/api";
 import type { CartaoResumo, ContaResumo } from "../lib/api";
 import { JanelaChat } from "../componentes/JanelaChat";
+import type { JanelaChatHandle } from "../componentes/JanelaChat";
 import { PainelSaldos } from "../componentes/PainelSaldos";
 import { Botao } from "../componentes/ui/Botao";
 
@@ -12,6 +13,7 @@ export function TelaPrincipal() {
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
   const [carregandoSaldos, setCarregandoSaldos] = useState(true);
+  const janelaChatRef = useRef<JanelaChatHandle>(null);
 
   const recarregar_saldos = useCallback(async () => {
     if (!usuario) return;
@@ -47,15 +49,30 @@ export function TelaPrincipal() {
           <p className="text-sm font-semibold text-texto">LançAI</p>
           <p className="text-xs text-texto-suave">Olá, {usuario.nome}</p>
         </div>
-        <Botao variante="fantasma" onClick={sair}>
-          <LogOut size={14} />
-          Sair
-        </Botao>
+        <div className="flex items-center gap-2">
+          <Botao variante="fantasma" onClick={() => janelaChatRef.current?.enviarMensagem("menu")}>
+            <Menu size={14} />
+            Menu
+          </Botao>
+          <Botao variante="fantasma" onClick={sair}>
+            <LogOut size={14} />
+            Sair
+          </Botao>
+        </div>
       </header>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[1fr_360px]">
         <main className="flex h-full flex-col overflow-hidden border-r border-borda">
-          <JanelaChat usuarioId={usuario.id} aoRegistrarOuCorrigirMovimento={recarregar_saldos} />
+          {carregandoSaldos ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-texto-suave">Carregando...</div>
+          ) : (
+            <JanelaChat
+              ref={janelaChatRef}
+              usuarioId={usuario.id}
+              temContas={contas.length > 0}
+              aoRegistrarOuCorrigirMovimento={recarregar_saldos}
+            />
+          )}
         </main>
 
         <aside className="hidden overflow-y-auto p-4 md:block">

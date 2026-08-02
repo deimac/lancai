@@ -1,4 +1,5 @@
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
+import type { EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 
 export interface ReferenciaMovimentoParaCorrecao {
   descricao?: string;
@@ -26,6 +27,11 @@ export interface RepositorioContexto {
 
   criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria>;
   criarPessoa(usuarioId: string, nome: string, tipo: Pessoa["tipo"]): Promise<Pessoa>;
+
+  /** Usado pelo onboarding conversacional (CRIAR_CONTA) — mesma regra de negócio do POST /contas. */
+  criarConta(dados: EntradaCriarConta): Promise<Conta>;
+  /** Usado pelo onboarding conversacional (CRIAR_CARTAO) — mesma regra de negócio do POST /cartoes. */
+  criarCartao(dados: EntradaCriarCartao): Promise<Cartao>;
 
   /** Usado por CORRIGIR_MOVIMENTO para localizar o lançamento alvo pela descrição/data. */
   buscarMovimentoParaCorrecao(

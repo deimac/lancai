@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import type { FormEvent } from "react";
 import { Send } from "lucide-react";
 import { clienteApi, ErroApi } from "../lib/api";
@@ -6,18 +6,47 @@ import { Botao } from "./ui/Botao";
 import { Campo } from "./ui/Campo";
 import { BolhaMensagem } from "./BolhaMensagem";
 import type { MensagemLocal } from "./BolhaMensagem";
+import { ChipsAtalho } from "./ChipsAtalho";
+
+export interface JanelaChatHandle {
+  /** Envia uma mensagem pelo mesmo pipeline do formulário — usado pelo botão "Menu" do cabeçalho. */
+  enviarMensagem: (texto: string) => void;
+}
 
 interface PropsJanelaChat {
   usuarioId: string;
+  /** Se o usuário ainda não tem nenhuma conta cadastrada, o chat abre em modo onboarding. */
+  temContas: boolean;
   aoRegistrarOuCorrigirMovimento?: () => void;
 }
 
-const MENSAGEM_BOAS_VINDAS: MensagemLocal = {
-  id: "boas-vindas",
-  papel: "sistema",
-  conteudo:
-    'Oi! Pode me contar seus lançamentos como se estivesse conversando. Ex.: "Gastei R$ 45 no almoço hoje no Nubank".',
-};
+/** Intenções que alteram saldos/limites e por isso exigem recarregar o PainelSaldos. */
+const INTENCOES_QUE_AFETAM_SALDOS = new Set([
+  "REGISTRAR_MOVIMENTO",
+  "CORRIGIR_MOVIMENTO",
+  "CRIAR_CONTA",
+  "CRIAR_CARTAO",
+]);
+
+function montar_mensagem_boas_vindas(temContas: boolean): MensagemLocal {
+  if (temContas) {
+    return {
+      id: "boas-vindas",
+      papel: "sistema",
+      conteudo:
+        'Oi! Pode me contar seus lançamentos como se estivesse conversando. Ex.: "Gastei R$ 45 no almoço hoje no Nubank".',
+    };
+  }
+
+  return {
+    id: "boas-vindas",
+    papel: "sistema",
+    conteudo:
+      "Oi! Eu sou o Lançai. Aqui você não preenche formulário nenhum — é só me contar suas contas e cartões conversando, como se estivesse mandando mensagem para um amigo.\n\n" +
+      'Pra começar, me conta: qual é o nome de uma conta ou carteira sua e quanto tem nela hoje? Ex.: "Tenho uma conta Nubank com R$ 1.200".\n\n' +
+      'Se preferir, use os atalhos abaixo ou digite "ajuda" a qualquer momento.',
+  };
+}
 
 /**
  * Chat conversacional do Lançai. Diferente do `useChat` do AI SDK (pensado
@@ -26,36 +55,40 @@ const MENSAGEM_BOAS_VINDAS: MensagemLocal = {
  * a intenção; quem "fala" de volta é o MotorFinanceiro. Por isso o estado do
  * chat aqui é gerenciado localmente, sem streaming.
  */
-export function JanelaChat({ usuarioId, aoRegistrarOuCorrigirMovimento }: PropsJanelaChat) {
-  const [mensagens, setMensagens] = useState<MensagemLocal[]>([MENSAGEM_BOAS_VINDAS]);
+export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function JanelaChat(
+  { usuarioId, temContas, aoRegistrarOuCorrigirMovimento },
+  ref,
+) {
+  const [mensagens, setMensagens] = useState<MensagemLocal[]>(() => [montar_mensagem_boas_vindas(temContas)]);
   const [textoAtual, setTextoAtual] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const sessaoIdRef = useRef<string | undefined>(undefined);
+  const [mostrarChips, setMostrarChips] = useState(!temContas);
+  const [sessaoId, setSessaoId] = useState<string | undefined>(undefined);
 
-  async function enviar(evento: FormEvent) {
-    evento.preventDefault();
-    const mensagem = textoAtual.trim();
+  async function enviarTexto(mensagem: string) {
     if (!mensagem || enviando) return;
 
     const mensagemUsuario: MensagemLocal = { id: crypto.randomUUID(), papel: "usuario", conteudo: mensagem };
     setMensagens((atual) => [...atual, mensagemUsuario]);
-    setTextoAtual("");
+    setMostrarChips(false);
     setEnviando(true);
 
     try {
       const resposta = await clienteApi.enviar_mensagem_chat({
         usuarioId,
         mensagem,
-        sessaoId: sessaoIdRef.current,
+        sessaoId,
       });
-      sessaoIdRef.current = resposta.sessaoId;
+      setSessaoId(resposta.sessaoId);
 
       setMensagens((atual) => [
         ...atual,
         { id: crypto.randomUUID(), papel: "sistema", conteudo: resposta.resposta },
       ]);
 
-      if (resposta.intencao.intencao === "REGISTRAR_MOVIMENTO" || resposta.intencao.intencao === "CORRIGIR_MOVIMENTO") {
+      if (resposta.intencao.intencao === "MENU") {
+        setMostrarChips(true);
+      } else if (INTENCOES_QUE_AFETAM_SALDOS.has(resposta.intencao.intencao)) {
         aoRegistrarOuCorrigirMovimento?.();
       }
     } catch (erro) {
@@ -67,6 +100,20 @@ export function JanelaChat({ usuarioId, aoRegistrarOuCorrigirMovimento }: PropsJ
     } finally {
       setEnviando(false);
     }
+  }
+
+  useImperativeHandle(ref, () => ({
+    enviarMensagem: (texto: string) => {
+      void enviarTexto(texto);
+    },
+  }));
+
+  async function enviar(evento: FormEvent) {
+    evento.preventDefault();
+    const mensagem = textoAtual.trim();
+    if (!mensagem) return;
+    setTextoAtual("");
+    await enviarTexto(mensagem);
   }
 
   return (
@@ -82,6 +129,10 @@ export function JanelaChat({ usuarioId, aoRegistrarOuCorrigirMovimento }: PropsJ
         )}
       </div>
 
+      {mostrarChips && (
+        <ChipsAtalho aoSelecionar={(mensagem) => void enviarTexto(mensagem)} desabilitado={enviando} />
+      )}
+
       <form onSubmit={enviar} className="flex items-center gap-2 border-t border-borda p-3">
         <Campo
           value={textoAtual}
@@ -96,4 +147,4 @@ export function JanelaChat({ usuarioId, aoRegistrarOuCorrigirMovimento }: PropsJ
       </form>
     </div>
   );
-}
+});

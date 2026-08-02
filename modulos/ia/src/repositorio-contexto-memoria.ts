@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
+import { calcularMelhorDiaCompra } from "@lancai/tipos";
+import type { EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 import type { ReferenciaMovimentoParaCorrecao, RepositorioContexto } from "./repositorio-contexto";
 
 function correspondeAoNome(nomeArmazenado: string, nomeBuscado: string): boolean {
@@ -66,6 +68,43 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
     const pessoa: Pessoa = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, dataCriacao: agora, dataAtualizacao: agora };
     this.pessoas.set(pessoa.id, pessoa);
     return pessoa;
+  }
+
+  async criarConta(dados: EntradaCriarConta): Promise<Conta> {
+    const agora = new Date();
+    const conta: Conta = {
+      id: randomUUID(),
+      nome: dados.nome,
+      perfil: dados.perfil,
+      usuarioId: dados.usuarioId,
+      saldoInicial: String(dados.saldoInicial),
+      saldoAtual: String(dados.saldoInicial),
+      ativo: true,
+      dataCriacao: agora,
+      dataAtualizacao: agora,
+    };
+    this.contas.set(conta.id, conta);
+    return conta;
+  }
+
+  async criarCartao(dados: EntradaCriarCartao): Promise<Cartao> {
+    const agora = new Date();
+    const cartao: Cartao = {
+      id: randomUUID(),
+      nome: dados.nome,
+      limite: String(dados.limite),
+      fechamento: dados.fechamento,
+      vencimento: dados.vencimento,
+      melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
+      perfil: dados.perfil,
+      contaId: dados.contaId,
+      usuarioId: dados.usuarioId,
+      ativo: true,
+      dataCriacao: agora,
+      dataAtualizacao: agora,
+    };
+    this.cartoes.set(cartao.id, cartao);
+    return cartao;
   }
 
   async buscarMovimentoParaCorrecao(usuarioId: string, referencia: ReferenciaMovimentoParaCorrecao) {

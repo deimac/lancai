@@ -21,3 +21,19 @@ export class ErroReferenciaNaoEncontrada extends Error {
     this.name = "ErroReferenciaNaoEncontrada";
   }
 }
+
+/**
+ * A IA devolveu CRIAR_CONTA/CRIAR_CARTAO já "completa" (sem passar por
+ * SOLICITAR_INFORMACAO), mas algum campo obrigatório ainda veio vazio — não
+ * deveria acontecer no fluxo normal (é o prompt que instrui a usar
+ * SOLICITAR_INFORMACAO quando falta dado), mas serve de rede de segurança.
+ */
+export class ErroDadosIncompletos extends Error {
+  constructor(
+    public readonly intencao: string,
+    public readonly campoFaltante: string,
+  ) {
+    super(`Para ${intencao.toLowerCase()}, ainda preciso saber: ${campoFaltante}.`);
+    this.name = "ErroDadosIncompletos";
+  }
+}

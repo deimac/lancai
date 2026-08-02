@@ -1,10 +1,13 @@
+import type { Cartao, Conta } from "@lancai/banco";
 import type {
   EntradaCorrigirMovimento,
   EntradaCriarMovimento,
   IntencaoCorrigirMovimento,
+  IntencaoCriarCartao,
+  IntencaoCriarConta,
   IntencaoRegistrarMovimento,
 } from "@lancai/tipos";
-import { ErroReferenciaNaoEncontrada } from "./erros";
+import { ErroDadosIncompletos, ErroReferenciaNaoEncontrada } from "./erros";
 import type { RepositorioContexto } from "./repositorio-contexto";
 
 const NOME_CATEGORIA_PADRAO = "Outros";
@@ -96,6 +99,48 @@ export class ResolvedorIntencao {
       alteradoPor: criadoPor,
       campos,
     };
+  }
+
+  /**
+   * Cria uma conta a partir do onboarding conversacional. No fluxo normal, a
+   * IA só devolve CRIAR_CONTA "completa" (nome, saldo_inicial, perfil) depois
+   * de já ter usado SOLICITAR_INFORMACAO para preencher o que faltava — os
+   * campos ausentes aqui são tratados como erro (rede de segurança, não o
+   * caminho esperado).
+   */
+  async resolver_criar_conta(intencao: IntencaoCriarConta, contexto: ContextoResolucao): Promise<Conta> {
+    if (!intencao.nome) throw new ErroDadosIncompletos("CRIAR_CONTA", "nome da conta");
+    if (intencao.saldo_inicial == null) throw new ErroDadosIncompletos("CRIAR_CONTA", "saldo atual da conta");
+    if (!intencao.perfil) throw new ErroDadosIncompletos("CRIAR_CONTA", "perfil (pessoal ou empresa)");
+
+    return this.repositorio.criarConta({
+      nome: intencao.nome,
+      saldoInicial: intencao.saldo_inicial,
+      perfil: intencao.perfil,
+      usuarioId: contexto.usuarioId,
+    });
+  }
+
+  /** Mesma lógica de `resolver_criar_conta`, mas para cartão — resolve `conta_nome` para `contaId`. */
+  async resolver_criar_cartao(intencao: IntencaoCriarCartao, contexto: ContextoResolucao): Promise<Cartao> {
+    if (!intencao.nome) throw new ErroDadosIncompletos("CRIAR_CARTAO", "nome do cartão");
+    if (intencao.limite == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "limite do cartão");
+    if (intencao.fechamento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de fechamento da fatura");
+    if (intencao.vencimento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de vencimento da fatura");
+    if (!intencao.perfil) throw new ErroDadosIncompletos("CRIAR_CARTAO", "perfil (pessoal ou empresa)");
+    if (!intencao.conta_nome) throw new ErroDadosIncompletos("CRIAR_CARTAO", "qual conta paga a fatura desse cartão");
+
+    const contaId = await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome, "conta vinculada ao cartão");
+
+    return this.repositorio.criarCartao({
+      nome: intencao.nome,
+      limite: intencao.limite,
+      fechamento: intencao.fechamento,
+      vencimento: intencao.vencimento,
+      perfil: intencao.perfil,
+      contaId,
+      usuarioId: contexto.usuarioId,
+    });
   }
 
   private async resolver_conta_opcional(

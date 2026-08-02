@@ -8,6 +8,9 @@ interface ContextoResposta {
   criadoPor: string;
   resolvedor: ResolvedorIntencao;
   motor: MotorFinanceiro;
+  /** Contagens ANTES deste turno — usadas para saber se é a 1ª conta/cartão (onboarding). */
+  totalContas: number;
+  totalCartoes: number;
 }
 
 function capitalizar(texto: string): string {
@@ -55,6 +58,36 @@ export async function montar_resposta_chat(
 
     case "CONSULTAR_VISAO":
       return `Ainda estou aprendendo a responder consultas do tipo "${intencao.tipo_visao}" — essa função chega em uma próxima fase do Lançai.`;
+
+    case "CRIAR_CONTA": {
+      const eraPrimeiraConta = contexto.totalContas === 0;
+      const conta = await contexto.resolvedor.resolver_criar_conta(intencao, referenciaResolucao);
+      const confirmacao = `Conta "${conta.nome}" criada com saldo de ${formatarMoeda(conta.saldoAtual)} (${
+        conta.perfil === "pj" ? "empresa" : "pessoal"
+      }).`;
+
+      if (eraPrimeiraConta) {
+        return `${confirmacao} Quer cadastrar um cartão de crédito também, ou já pode começar a registrar seus gastos e receitas por aqui.`;
+      }
+      return confirmacao;
+    }
+
+    case "CRIAR_CARTAO": {
+      const eraPrimeiroCartao = contexto.totalCartoes === 0;
+      const cartao = await contexto.resolvedor.resolver_criar_cartao(intencao, referenciaResolucao);
+      const confirmacao = `Cartão "${cartao.nome}" criado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.`;
+
+      if (eraPrimeiroCartao) {
+        return `${confirmacao} Já pode começar a registrar suas compras nesse cartão só me contando o que comprou.`;
+      }
+      return confirmacao;
+    }
+
+    case "SOLICITAR_INFORMACAO":
+      return intencao.pergunta;
+
+    case "MENU":
+      return 'Digite "menu" ou "ajuda" a qualquer momento para ver os comandos disponíveis.';
 
     case "NAO_RECONHECIDA":
       return intencao.motivo || "Não entendi essa mensagem. Pode reformular?";

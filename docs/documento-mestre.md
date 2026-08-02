@@ -200,8 +200,6 @@ A IA traduz qualquer frase exclusivamente em um JSON validado por schema Zod (`p
 
 `conta_destino_nome` é preenchido apenas quando `tipo_movimento = "transferencia"`. Quando o usuário não cita conta/cartão/categoria/pessoa, o campo correspondente vem `null` — a resolução de contexto (Fase 3, `modulos/ia/resolvedor-intencao.ts`) decide o que fazer: categoria vazia vira "Outros"; conta/cartão vazios ficam a cargo do `MotorFinanceiro` (que exige pelo menos um dos dois).
 
-Existe uma 5ª intenção, `NAO_RECONHECIDA` (`{ "intencao": "NAO_RECONHECIDA", "motivo": "..." }`), não prevista nos documentos originais mas necessária como *escape hatch*: evita que o `InterpretadorIntencoes` seja forçado a forçar uma mensagem fora do domínio financeiro (saudações, perguntas genéricas) em uma das outras três intenções.
-
 ### `CONSULTAR_VISAO`
 ```json
 {
@@ -225,6 +223,45 @@ Existe uma 5ª intenção, `NAO_RECONHECIDA` (`{ "intencao": "NAO_RECONHECIDA", 
   "campos_alterados": { "valor": 210 }
 }
 ```
+
+### `CRIAR_CONTA`, `CRIAR_CARTAO` e `SOLICITAR_INFORMACAO` (onboarding conversacional)
+
+Adicionadas para o onboarding 100% conversacional: nenhum formulário, nem terminal — o usuário cadastra contas e cartões conversando, e a IA sabe pedir o que falta.
+
+```json
+{ "intencao": "CRIAR_CONTA", "nome": "Nubank", "saldo_inicial": 1200, "perfil": "pf" }
+```
+
+```json
+{
+  "intencao": "CRIAR_CARTAO",
+  "nome": "Nubank",
+  "limite": 5000,
+  "fechamento": 20,
+  "vencimento": 27,
+  "perfil": "pf",
+  "conta_nome": "Nubank"
+}
+```
+
+Todos os campos de `CRIAR_CONTA`/`CRIAR_CARTAO` são opcionais no schema (**slot-filling flexível**): o usuário pode informar tudo numa frase só, em qualquer ordem, ou aos poucos em várias mensagens. Quando a IA já sabe que o usuário quer criar uma conta/cartão (ou registrar um movimento) mas falta algum campo obrigatório, ela devolve `SOLICITAR_INFORMACAO` em vez de inventar o valor:
+
+```json
+{
+  "intencao": "SOLICITAR_INFORMACAO",
+  "intencao_pendente": "CRIAR_CONTA",
+  "pergunta": "Qual o saldo atual dessa conta?",
+  "dados_parciais": { "nome": "Nubank", "perfil": "pf" }
+}
+```
+
+**Não existe estado de "onboarding pendente" persistido no banco.** A cada turno, `apps/api/src/rotas/chat.ts` monta o contexto da IA (`ContextoInterpretacao`, `modulos/ia/src/prompt.ts`) incluindo `historicoRecente` — as últimas mensagens de `chat` com papel `usuario`/`sistema` da sessão atual. É esse histórico que dá à IA a informação de que uma pergunta foi feita no turno anterior, permitindo juntar a resposta curta do usuário (ex.: "R$ 1.200") com a intenção que estava sendo montada. O prompt também recebe `totalContas`/`totalCartoes`, usados para a IA priorizar `CRIAR_CONTA` quando a mensagem for ambígua e o usuário ainda não tiver nenhuma conta.
+
+Resolução e persistência ficam em `modulos/ia/src/resolvedor-intencao.ts` (`resolver_criar_conta`/`resolver_criar_cartao`, que usam `RepositorioContexto.criarConta`/`criarCartao`) — diferente da resolução de `REGISTRAR_MOVIMENTO` (seção 9), aqui a criação de conta/cartão É o objetivo explícito da intenção, não um efeito colateral automático.
+
+Por fim, existe um atalho **determinístico** (sem IA) para "menu"/"ajuda": se a mensagem do usuário for exatamente `menu`, `ajuda`, `/menu`, `/ajuda` ou `help` (case-insensitive), `apps/api/src/rotas/chat.ts` intercepta antes de chamar o `InterpretadorIntencoes` e responde com o texto fixo de `apps/api/src/montar-resposta-menu.ts` — lista de comandos por categoria e contagem atual de contas/cartões. Esse atalho nunca consome cota de nenhum provedor de IA e funciona mesmo se todos estiverem indisponíveis. A intenção sintética `MENU` (`{ "intencao": "MENU" }`) existe no schema só para o retorno da rota ter um formato consistente — a IA nunca a gera.
+
+Existe uma intenção adicional, `NAO_RECONHECIDA` (`{ "intencao": "NAO_RECONHECIDA", "motivo": "..." }`), não prevista nos documentos originais mas necessária como *escape hatch*: evita que o `InterpretadorIntencoes` seja forçado a encaixar uma mensagem fora do domínio financeiro (saudações, perguntas genéricas) em uma das outras intenções.
 
 ---
 

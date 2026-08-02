@@ -1,3 +1,8 @@
+export interface MensagemHistorico {
+  papel: "usuario" | "sistema";
+  conteudo: string;
+}
+
 export interface ContextoInterpretacao {
   /** Data de hoje no formato YYYY-MM-DD, usada para resolver "ontem", "hoje" etc. */
   dataAtual: string;
@@ -7,6 +12,14 @@ export interface ContextoInterpretacao {
   pessoas: Array<{ nome: string; tipo: string }>;
   /** Hábitos aprendidos (modulos/memoria), ex.: { chave: "cartao_principal", valor: "Nubank" }. */
   habitos: Array<{ chave: string; valor: string }>;
+  /**
+   * Últimas mensagens da sessão atual (mais antiga primeiro), usadas para
+   * slot-filling flexível entre turnos — ex.: o usuário responde só "R$ 1000"
+   * depois de o sistema perguntar o saldo de uma conta que estava criando.
+   * Não existe estado de "intenção pendente" persistido: é este histórico que
+   * dá à IA o contexto para juntar a resposta à intenção anterior.
+   */
+  historicoRecente: MensagemHistorico[];
 }
 
 /**
@@ -21,7 +34,7 @@ Sua ÚNICA responsabilidade é transformar a mensagem do usuário em um objeto J
 que será validado e processado por um Motor Financeiro determinístico. Você NUNCA valida regras
 de negócio, calcula saldos ou decide se algo é permitido — apenas interpreta a linguagem.
 
-Existem 4 intenções possíveis:
+Existem 7 intenções possíveis:
 
 1. REGISTRAR_MOVIMENTO — o usuário relatou uma receita, despesa, transferência, reembolso,
    empréstimo, estorno, retirada ou aporte. Ex.: "Gastei R$ 45 no almoço hoje",
@@ -47,21 +60,51 @@ Existem 4 intenções possíveis:
    "referencia" descreve como localizar o lançamento original (pela descrição e/ou data);
    "campos_alterados" contém apenas os campos que devem mudar.
 
-4. NAO_RECONHECIDA — a mensagem não é um lançamento, consulta ou correção financeira
+4. CRIAR_CONTA — o usuário quer cadastrar uma conta/carteira nova (onboarding ou a qualquer momento).
+   Ex.: "Quero cadastrar minha conta Nubank", "Tenho uma conta Caixa pessoal com R$ 500".
+   Campos: nome, saldo_inicial, perfil ('pf' ou 'pj'). Preencha só o que a mensagem (ou o histórico
+   recente) já deixou claro; se faltar algo obrigatório, use SOLICITAR_INFORMACAO em vez de inventar.
+
+5. CRIAR_CARTAO — o usuário quer cadastrar um cartão de crédito novo.
+   Ex.: "Cadastra meu cartão Nubank, limite 5000, fecha dia 20 e vence dia 27".
+   Campos: nome, limite, fechamento (dia do mês), vencimento (dia do mês), perfil, conta_nome
+   (a conta que paga a fatura desse cartão — deve existir no contexto). Mesma regra: se faltar algo
+   obrigatório, use SOLICITAR_INFORMACAO.
+
+6. SOLICITAR_INFORMACAO — você já sabe que o usuário quer CRIAR_CONTA, CRIAR_CARTAO ou
+   REGISTRAR_MOVIMENTO, mas falta pelo menos um dado obrigatório que nem a mensagem atual nem o
+   histórico recente esclarecem. Preencha "intencao_pendente" com a intenção-alvo, "pergunta" com
+   uma pergunta curta e direta pedindo exatamente o que falta, e "dados_parciais" com o que já foi
+   extraído até agora (pode ser omitido se nada foi extraído ainda).
+   - Regra de ouro do slot-filling: SEMPRE releia o "historicoRecente" antes de decidir o que falta.
+     Se o sistema acabou de perguntar algo (ex.: "qual o saldo dessa conta?") e a mensagem atual é
+     só a resposta (ex.: "1000" ou "R$ 1.000"), você DEVE juntar essa resposta com a intenção que
+     estava sendo montada e, se agora estiver completa, devolver CRIAR_CONTA/CRIAR_CARTAO/
+     REGISTRAR_MOVIMENTO completos — nunca repita a mesma pergunta nem gere NAO_RECONHECIDA para uma
+     resposta curta que claramente completa a pergunta anterior.
+   - O usuário pode dar todos os dados de uma vez, em qualquer ordem, numa frase só, ou aos poucos
+     em várias mensagens — os dois formatos são igualmente válidos.
+
+7. NAO_RECONHECIDA — a mensagem não é um lançamento, consulta, correção ou cadastro financeiro
    (ex.: saudação, pergunta fora do domínio). Preencha "motivo" brevemente.
 
 Regras gerais:
 - Resolva expressões relativas de data ("hoje", "ontem", "anteontem", "dia 10") usando a
   "dataAtual" fornecida no contexto do usuário. Datas sempre no formato YYYY-MM-DD.
-- Nunca invente valores, nomes ou datas que não estejam na mensagem ou no contexto.
+- Nunca invente valores, nomes ou datas que não estejam na mensagem, no histórico recente ou no
+  contexto.
+- Se "totalContas" for 0, o usuário provavelmente está em onboarding — priorize interpretar
+  mensagens ambíguas como CRIAR_CONTA quando fizer sentido.
 - Responda SEMPRE no formato JSON definido pelo schema — nunca em texto livre.`;
 }
 
-/** Monta o prompt do turno atual: contexto do usuário (JSON) + a mensagem em si. */
+/** Monta o prompt do turno atual: contexto do usuário (JSON) + histórico recente + a mensagem em si. */
 export function montar_prompt_usuario(mensagem: string, contexto: ContextoInterpretacao): string {
   const contextoFormatado = JSON.stringify(
     {
       dataAtual: contexto.dataAtual,
+      totalContas: contexto.contas.length,
+      totalCartoes: contexto.cartoes.length,
       contas: contexto.contas,
       cartoes: contexto.cartoes,
       categorias: contexto.categorias,
@@ -72,5 +115,11 @@ export function montar_prompt_usuario(mensagem: string, contexto: ContextoInterp
     2,
   );
 
-  return `Contexto do usuário:\n${contextoFormatado}\n\nMensagem do usuário:\n"""${mensagem}"""`;
+  const historicoFormatado = contexto.historicoRecente.length
+    ? contexto.historicoRecente
+        .map((item) => `${item.papel === "usuario" ? "Usuário" : "Sistema"}: ${item.conteudo}`)
+        .join("\n")
+    : "(nenhuma mensagem anterior nesta sessão)";
+
+  return `Contexto do usuário:\n${contextoFormatado}\n\nHistórico recente da conversa (mais antiga primeiro):\n${historicoFormatado}\n\nMensagem atual do usuário:\n"""${mensagem}"""`;
 }
