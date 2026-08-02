@@ -44,6 +44,8 @@ function criarCartao(usuarioId: string, contaId: string, sobrepor: Partial<Carta
     melhorDiaCompra: 21,
     perfil: "pf",
     ativo: true,
+    final4: null,
+    dadosPlasticosCifrados: null,
     contaId,
     usuarioId,
     dataCriacao: agora,

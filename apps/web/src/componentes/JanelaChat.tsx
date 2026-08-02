@@ -1,5 +1,6 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import type { FormEvent } from "react";
+import type { IntencaoDetectada } from "@lancai/tipos";
 import { Send } from "lucide-react";
 import { clienteApi, ErroApi } from "../lib/api";
 import { Botao } from "./ui/Botao";
@@ -20,13 +21,35 @@ interface PropsJanelaChat {
   aoRegistrarOuCorrigirMovimento?: () => void;
 }
 
-/** Intenções que alteram saldos/limites e por isso exigem recarregar o PainelSaldos. */
-const INTENCOES_QUE_AFETAM_SALDOS = new Set([
+/** Intenções que alteram saldos/limites/lista e por isso exigem recarregar o PainelSaldos. */
+const INTENCOES_QUE_AFETAM_SALDOS = new Set<IntencaoDetectada["intencao"]>([
   "REGISTRAR_MOVIMENTO",
   "CORRIGIR_MOVIMENTO",
   "CRIAR_CONTA",
   "CRIAR_CARTAO",
+  "CORRIGIR_CONTA",
+  "CORRIGIR_CARTAO",
 ]);
+
+function intencao_afeta_saldos(intencao: IntencaoDetectada): boolean {
+  if (!INTENCOES_QUE_AFETAM_SALDOS.has(intencao.intencao)) return false;
+  // Pedido de exclusão ainda não confirmado: o backend só pergunta, nada mudou.
+  if (
+    (intencao.intencao === "CORRIGIR_CONTA" || intencao.intencao === "CORRIGIR_CARTAO") &&
+    intencao.campos_alterados.ativo === false &&
+    intencao.campos_alterados.confirmado !== true
+  ) {
+    return false;
+  }
+  if (
+    intencao.intencao === "CORRIGIR_MOVIMENTO" &&
+    intencao.campos_alterados.status === "cancelado" &&
+    intencao.campos_alterados.confirmado !== true
+  ) {
+    return false;
+  }
+  return true;
+}
 
 function montar_mensagem_boas_vindas(temContas: boolean): MensagemLocal {
   if (temContas) {
@@ -65,10 +88,20 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
   const [mostrarChips, setMostrarChips] = useState(!temContas);
   const [sessaoId, setSessaoId] = useState<string | undefined>(undefined);
 
+  const ultimaMensagem = mensagens[mensagens.length - 1];
+  const aguardandoSenhaCartao =
+    ultimaMensagem?.papel === "sistema" &&
+    ultimaMensagem.conteudo.startsWith('Para ver os dados do cartão "');
+
   async function enviarTexto(mensagem: string) {
     if (!mensagem || enviando) return;
 
-    const mensagemUsuario: MensagemLocal = { id: crypto.randomUUID(), papel: "usuario", conteudo: mensagem };
+    const eraPedidoSenha = aguardandoSenhaCartao;
+    const mensagemUsuario: MensagemLocal = {
+      id: crypto.randomUUID(),
+      papel: "usuario",
+      conteudo: eraPedidoSenha ? "[senha omitida]" : mensagem,
+    };
     setMensagens((atual) => [...atual, mensagemUsuario]);
     setMostrarChips(false);
     setEnviando(true);
@@ -88,7 +121,7 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
 
       if (resposta.intencao.intencao === "MENU") {
         setMostrarChips(true);
-      } else if (INTENCOES_QUE_AFETAM_SALDOS.has(resposta.intencao.intencao)) {
+      } else if (intencao_afeta_saldos(resposta.intencao)) {
         aoRegistrarOuCorrigirMovimento?.();
       }
     } catch (erro) {
@@ -135,11 +168,17 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
 
       <form onSubmit={enviar} className="flex items-center gap-2 border-t border-borda p-3">
         <Campo
+          type={aguardandoSenhaCartao ? "password" : "text"}
           value={textoAtual}
           onChange={(evento) => setTextoAtual(evento.target.value)}
-          placeholder="Conte o que aconteceu com o seu dinheiro..."
+          placeholder={
+            aguardandoSenhaCartao
+              ? "Digite a senha da sua conta LançAI..."
+              : "Conte o que aconteceu com o seu dinheiro..."
+          }
           disabled={enviando}
           autoFocus
+          autoComplete={aguardandoSenhaCartao ? "current-password" : "off"}
         />
         <Botao type="submit" disabled={enviando || !textoAtual.trim()}>
           <Send size={16} />

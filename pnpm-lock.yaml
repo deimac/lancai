@@ -62,6 +62,9 @@ importers:
       '@lancai/tipos':
         specifier: workspace:*
         version: link:../../pacotes/tipos
+      '@supabase/supabase-js':
+        specifier: ^2.111.0
+        version: 2.111.0
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1

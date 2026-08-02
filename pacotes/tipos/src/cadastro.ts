@@ -38,6 +38,10 @@ export const schemaCriarCartao = z.object({
   perfil: perfilSchema,
   contaId: z.string().uuid(),
   usuarioId: z.string().uuid(),
+  /** Últimos 4 dígitos (em claro) quando o usuário informou o número do plástico. */
+  final4: z.string().length(4).optional(),
+  /** Payload AES-GCM com número/validade/CVV — nunca expor em listagens. */
+  dadosPlasticosCifrados: z.string().min(1).optional(),
 });
 export type EntradaCriarCartao = z.infer<typeof schemaCriarCartao>;
 
@@ -59,6 +63,8 @@ export const schemaAtualizarCartao = z.object({
   perfil: perfilSchema.optional(),
   contaId: z.string().uuid().optional(),
   ativo: z.boolean().optional(),
+  final4: z.string().length(4).optional(),
+  dadosPlasticosCifrados: z.string().min(1).optional(),
 });
 export type EntradaAtualizarCartao = z.infer<typeof schemaAtualizarCartao>;
 

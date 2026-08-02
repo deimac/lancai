@@ -59,9 +59,14 @@ export function PainelSaldos({ contas, cartoes, carregando }: PropsPainelSaldos)
           )}
           {cartoes.map((cartao) => (
             <Cartao key={cartao.id} className="flex items-center justify-between py-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-texto">{cartao.nome}</span>
-                <RotuloPerfil perfil={cartao.perfil} />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-texto">{cartao.nome}</span>
+                  <RotuloPerfil perfil={cartao.perfil} />
+                </div>
+                {cartao.final4 ? (
+                  <span className="text-xs text-texto-suave">•••• {cartao.final4}</span>
+                ) : null}
               </div>
               <span className="text-xs text-texto-suave">vence dia {cartao.vencimento}</span>
             </Cartao>

@@ -22,6 +22,15 @@ const historicoContaComLancamentos = [
   },
 ];
 
+const historicoLancamento = [
+  { papel: "usuario" as const, conteudo: "cancela o almoço de hoje" },
+  {
+    papel: "sistema" as const,
+    conteudo:
+      'Deseja realmente excluir o lançamento "Almoço" de 02/08/2026 (R$\u00a045,00)? Responda "sim" para confirmar ou "não" para cancelar.',
+  },
+];
+
 describe("extrair_pendencia_exclusao", () => {
   it("detecta cartão na última mensagem do sistema", () => {
     expect(extrair_pendencia_exclusao(historicoCartao)).toEqual({
@@ -34,6 +43,14 @@ describe("extrair_pendencia_exclusao", () => {
     expect(extrair_pendencia_exclusao(historicoContaComLancamentos)).toEqual({
       tipo: "conta",
       nome: "C6 Bank",
+    });
+  });
+
+  it("detecta lançamento com data convertida para ISO", () => {
+    expect(extrair_pendencia_exclusao(historicoLancamento)).toEqual({
+      tipo: "lançamento",
+      descricao: "Almoço",
+      dataMovimento: "2026-08-02",
     });
   });
 
@@ -60,6 +77,14 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
       intencao: "CORRIGIR_CONTA",
       conta_nome: "C6 Bank",
       campos_alterados: { ativo: false, confirmado: true },
+    });
+  });
+
+  it("confirma exclusão de lançamento com sim", () => {
+    expect(interpretar_resposta_confirmacao_exclusao("sim", historicoLancamento)).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Almoço", data_movimento: "2026-08-02" },
+      campos_alterados: { status: "cancelado", confirmado: true },
     });
   });
 

@@ -6,7 +6,14 @@ import {
   ErroTipoMovimentoNaoImplementado,
   ErroValidacaoFinanceira,
 } from "@lancai/financeiro";
-import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada, ErroTodosProvedoresFalharam } from "@lancai/ia";
+import {
+  ErroCifragemCartao,
+  ErroDadosIncompletos,
+  ErroDadosPlasticosInvalidos,
+  ErroEntidadeJaExiste,
+  ErroReferenciaNaoEncontrada,
+  ErroTodosProvedoresFalharam,
+} from "@lancai/ia";
 
 export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta: FastifyReply) {
   if (erro instanceof ZodError) {
@@ -23,7 +30,9 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     erro instanceof ErroTipoMovimentoNaoImplementado ||
     erro instanceof ErroReferenciaNaoEncontrada ||
     erro instanceof ErroDadosIncompletos ||
-    erro instanceof ErroEntidadeJaExiste
+    erro instanceof ErroEntidadeJaExiste ||
+    erro instanceof ErroDadosPlasticosInvalidos ||
+    erro instanceof ErroCifragemCartao
   ) {
     return resposta.status(422).send({ erro: erro.message });
   }

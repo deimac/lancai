@@ -1,3 +1,4 @@
+export * from "./cifragem-cartao";
 export * from "./erros";
 export * from "./inferir-perfil-padrao";
 export * from "./orquestrador-ia";

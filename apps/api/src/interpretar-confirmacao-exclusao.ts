@@ -1,15 +1,21 @@
 import type { MensagemHistorico } from "@lancai/ia";
 import type { IntencaoDetectada } from "@lancai/tipos";
 
-const PADRAO_CONFIRMACAO =
+const PADRAO_CONTA_CARTAO =
   /Deseja realmente excluir (?:a|o) (conta|cartão) "([^"]+)"\?/;
+
+const PADRAO_LANCAMENTO =
+  /Deseja realmente excluir o lançamento "([^"]+)" de (\d{2})\/(\d{2})\/(\d{4})(?:\s*\([^)]*\))?\?/;
 
 const AFIRMATIVAS = /^(sim|confirmo|confirma|pode excluir|pode apagar|ok|quero|yes)\.?$/i;
 const NEGATIVAS = /^(não|nao|cancela|cancelar|não quero|nao quero|no)\.?$/i;
 
-export interface PendenciaExclusao {
-  tipo: "conta" | "cartão";
-  nome: string;
+export type PendenciaExclusao =
+  | { tipo: "conta" | "cartão"; nome: string }
+  | { tipo: "lançamento"; descricao: string; dataMovimento: string };
+
+function data_br_para_iso(dia: string, mes: string, ano: string): string {
+  return `${ano}-${mes}-${dia}`;
 }
 
 /** Extrai a pendência de exclusão da última mensagem do sistema no histórico. */
@@ -19,9 +25,22 @@ export function extrair_pendencia_exclusao(
   for (let i = historicoRecente.length - 1; i >= 0; i -= 1) {
     const mensagem = historicoRecente[i];
     if (mensagem?.papel !== "sistema") continue;
-    const match = PADRAO_CONFIRMACAO.exec(mensagem.conteudo);
-    if (!match) return null;
-    return { tipo: match[1] as "conta" | "cartão", nome: match[2]! };
+
+    const lancamento = PADRAO_LANCAMENTO.exec(mensagem.conteudo);
+    if (lancamento) {
+      return {
+        tipo: "lançamento",
+        descricao: lancamento[1]!,
+        dataMovimento: data_br_para_iso(lancamento[2]!, lancamento[3]!, lancamento[4]!),
+      };
+    }
+
+    const contaCartao = PADRAO_CONTA_CARTAO.exec(mensagem.conteudo);
+    if (contaCartao) {
+      return { tipo: contaCartao[1] as "conta" | "cartão", nome: contaCartao[2]! };
+    }
+
+    return null;
   }
   return null;
 }
@@ -40,6 +59,16 @@ export function interpretar_resposta_confirmacao_exclusao(
   const texto = mensagem.trim();
 
   if (AFIRMATIVAS.test(texto)) {
+    if (pendencia.tipo === "lançamento") {
+      return {
+        intencao: "CORRIGIR_MOVIMENTO",
+        referencia: {
+          descricao: pendencia.descricao,
+          data_movimento: pendencia.dataMovimento,
+        },
+        campos_alterados: { status: "cancelado", confirmado: true },
+      };
+    }
     if (pendencia.tipo === "conta") {
       return {
         intencao: "CORRIGIR_CONTA",

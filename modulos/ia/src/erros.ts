@@ -56,3 +56,6 @@ export class ErroDadosIncompletos extends Error {
     this.name = "ErroDadosIncompletos";
   }
 }
+
+/** Número/validade/CVV inválidos no cadastro ou correção de cartão. */
+export { ErroDadosPlasticosInvalidos, ErroCifragemCartao } from "./cifragem-cartao";

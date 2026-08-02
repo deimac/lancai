@@ -108,6 +108,11 @@ export const schemaIntencaoCorrigirMovimento = z.object({
     parcelas: z.number().int().min(1).max(360).nullable().optional(),
     /** Use "cancelado" para apagar logicamente o lançamento. */
     status: z.enum(["previsto", "realizado", "cancelado"]).nullable().optional(),
+    /**
+     * Só é `true` depois que o usuário confirmou o cancelamento (respondeu "sim").
+     * Sem isso, o backend só pergunta se deseja excluir o lançamento.
+     */
+    confirmado: z.boolean().nullable().optional(),
   }),
 });
 export type IntencaoCorrigirMovimento = z.infer<typeof schemaIntencaoCorrigirMovimento>;
@@ -147,6 +152,12 @@ export const schemaIntencaoCriarCartao = z.object({
   vencimento: diaDoMesSchema.nullable().optional(),
   perfil: perfilSchema.nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),
+  /** Número do plástico (opcional no cadastro). */
+  numero: z.string().min(1).nullable().optional(),
+  /** Validade do plástico no formato MM/AA. */
+  validade: z.string().min(1).nullable().optional(),
+  /** CVV do plástico. */
+  cvv: z.string().min(1).nullable().optional(),
 });
 export type IntencaoCriarCartao = z.infer<typeof schemaIntencaoCriarCartao>;
 
@@ -193,9 +204,23 @@ export const schemaIntencaoCorrigirCartao = z.object({
     ativo: z.boolean().nullable().optional(),
     /** `true` só após o usuário confirmar a exclusão. */
     confirmado: z.boolean().nullable().optional(),
+    numero: z.string().min(1).nullable().optional(),
+    validade: z.string().min(1).nullable().optional(),
+    cvv: z.string().min(1).nullable().optional(),
   }),
 });
 export type IntencaoCorrigirCartao = z.infer<typeof schemaIntencaoCorrigirCartao>;
+
+/**
+ * Pedido para ver número/validade/CVV de um cartão. O sistema NÃO revela os
+ * dados neste turno — só pede a senha da conta LançAI; a revelação acontece
+ * no atalho determinístico após a senha ser validada.
+ */
+export const schemaIntencaoConsultarDadosCartao = z.object({
+  intencao: z.literal("CONSULTAR_DADOS_CARTAO"),
+  cartao_nome: z.string().min(1),
+});
+export type IntencaoConsultarDadosCartao = z.infer<typeof schemaIntencaoConsultarDadosCartao>;
 
 /**
  * Usada quando a IA já identificou qual intenção o usuário quer (ex.:
@@ -232,6 +257,7 @@ export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoCriarCartao,
   schemaIntencaoCorrigirConta,
   schemaIntencaoCorrigirCartao,
+  schemaIntencaoConsultarDadosCartao,
   schemaIntencaoSolicitarInformacao,
   schemaIntencaoMenu,
   schemaIntencaoNaoReconhecida,

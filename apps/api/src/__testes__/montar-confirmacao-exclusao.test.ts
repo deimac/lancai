@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { montar_confirmacao_exclusao } from "../montar-confirmacao-exclusao";
+import { formatarMoeda } from "@lancai/tipos";
+import {
+  montar_confirmacao_exclusao,
+  montar_confirmacao_exclusao_lancamento,
+} from "../montar-confirmacao-exclusao";
 
 describe("montar_confirmacao_exclusao", () => {
   it("pergunta confirmação simples quando não há lançamentos vinculados", () => {
@@ -20,5 +24,13 @@ describe("montar_confirmacao_exclusao", () => {
     expect(texto).toContain('Deseja realmente excluir a conta "C6 Bank"?');
     expect(texto).toContain("existem 3 lançamentos vinculados");
     expect(texto).toContain("a essa conta");
+  });
+});
+
+describe("montar_confirmacao_exclusao_lancamento", () => {
+  it("pergunta confirmação com descrição, data e valor", () => {
+    expect(montar_confirmacao_exclusao_lancamento("Almoço", "2026-08-02", 45)).toBe(
+      `Deseja realmente excluir o lançamento "Almoço" de 02/08/2026 (${formatarMoeda(45)})? Responda "sim" para confirmar ou "não" para cancelar.`,
+    );
   });
 });

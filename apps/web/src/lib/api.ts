@@ -15,6 +15,8 @@ export interface CartaoResumo {
   limite: string;
   perfil: Perfil;
   vencimento: number;
+  /** Últimos 4 dígitos quando o plástico foi cadastrado. */
+  final4?: string | null;
 }
 
 export interface Usuario {

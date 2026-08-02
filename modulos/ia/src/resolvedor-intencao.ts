@@ -13,6 +13,10 @@ import type {
   IntencaoCriarConta,
   IntencaoRegistrarMovimento,
 } from "@lancai/tipos";
+import {
+  ErroDadosPlasticosInvalidos,
+  preparar_persistencia_plasticos,
+} from "./cifragem-cartao";
 import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada } from "./erros";
 import type { RepositorioContexto } from "./repositorio-contexto";
 
@@ -192,6 +196,8 @@ export class ResolvedorIntencao {
 
     const contaId = await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome, "conta vinculada ao cartão");
 
+    const plasticos = this.montar_plasticos_opcionais(intencao.numero, intencao.validade, intencao.cvv);
+
     return this.repositorio.criarCartao({
       nome: intencao.nome,
       limite: intencao.limite,
@@ -200,6 +206,7 @@ export class ResolvedorIntencao {
       perfil: intencao.perfil,
       contaId,
       usuarioId: contexto.usuarioId,
+      ...plasticos,
     });
   }
 
@@ -245,10 +252,22 @@ export class ResolvedorIntencao {
       );
     }
 
+    const temAlgumPlastico =
+      alterados.numero != null || alterados.validade != null || alterados.cvv != null;
+    if (temAlgumPlastico) {
+      if (!alterados.numero || !alterados.validade || !alterados.cvv) {
+        throw new ErroDadosIncompletos(
+          "CORRIGIR_CARTAO",
+          "número, validade (MM/AA) e CVV juntos para atualizar os dados do plástico",
+        );
+      }
+      Object.assign(dados, this.montar_plasticos_opcionais(alterados.numero, alterados.validade, alterados.cvv));
+    }
+
     if (Object.keys(dados).length === 0) {
       throw new ErroDadosIncompletos(
         "CORRIGIR_CARTAO",
-        "o que deseja alterar (nome, limite, fechamento, vencimento, perfil, conta ou exclusão)",
+        "o que deseja alterar (nome, limite, fechamento, vencimento, perfil, conta, dados do plástico ou exclusão)",
       );
     }
 
@@ -279,6 +298,52 @@ export class ResolvedorIntencao {
     if (!cartao) throw new ErroReferenciaNaoEncontrada("cartão", cartaoNome);
     const totalLancamentos = await this.repositorio.contarMovimentosVinculadosCartao(cartao.id);
     return { nome: cartao.nome, totalLancamentos };
+  }
+
+  /**
+   * Prévia do cancelamento de lançamento: localiza o alvo pela referência sem
+   * alterar nada — usada para montar a pergunta de confirmação.
+   */
+  async preparar_confirmacao_exclusao_movimento(
+    usuarioId: string,
+    referencia: { descricao?: string | null; data_movimento?: string | null },
+  ): Promise<{ descricao: string; dataMovimento: string; valor: number }> {
+    const movimento = await this.repositorio.buscarMovimentoParaCorrecao(usuarioId, {
+      descricao: referencia.descricao ?? undefined,
+      dataMovimento: referencia.data_movimento ?? undefined,
+    });
+    if (!movimento) {
+      throw new ErroReferenciaNaoEncontrada(
+        "lançamento",
+        referencia.descricao ?? referencia.data_movimento ?? "não especificado",
+      );
+    }
+    return {
+      descricao: movimento.descricao,
+      dataMovimento: movimento.dataMovimento,
+      valor: Number(movimento.valor),
+    };
+  }
+
+  private montar_plasticos_opcionais(
+    numero: string | null | undefined,
+    validade: string | null | undefined,
+    cvv: string | null | undefined,
+  ): { final4?: string; dadosPlasticosCifrados?: string } {
+    const temAlgum = numero != null || validade != null || cvv != null;
+    if (!temAlgum) return {};
+    if (!numero || !validade || !cvv) {
+      throw new ErroDadosIncompletos(
+        "CRIAR_CARTAO",
+        "número, validade (MM/AA) e CVV juntos se for salvar os dados do plástico",
+      );
+    }
+    try {
+      return preparar_persistencia_plasticos({ numero, validade, cvv });
+    } catch (erro) {
+      if (erro instanceof ErroDadosPlasticosInvalidos) throw erro;
+      throw erro;
+    }
   }
 
   private async resolver_conta_opcional(

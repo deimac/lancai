@@ -8,6 +8,13 @@
       "when": 1785596275057,
       "tag": "0000_spicy_black_crow",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785690600000,
+      "tag": "0001_cartao_dados_plasticos",
+      "breakpoints": true
     }
   ]
 }

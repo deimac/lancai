@@ -15,9 +15,14 @@ export function TelaPrincipal() {
   const [carregandoSaldos, setCarregandoSaldos] = useState(true);
   const janelaChatRef = useRef<JanelaChatHandle>(null);
 
-  const recarregar_saldos = useCallback(async () => {
+  /**
+   * Busca contas/cartões. No mount usa loading completo; depois do chat usa
+   * modo silencioso para atualizar o painel sem desmontar o JanelaChat (senão
+   * o histórico da conversa some e parece que “só atualiza com F5”).
+   */
+  const recarregar_saldos = useCallback(async (silencioso = false) => {
     if (!usuario) return;
-    setCarregandoSaldos(true);
+    if (!silencioso) setCarregandoSaldos(true);
     try {
       const [contasCarregadas, cartoesCarregados] = await Promise.all([
         clienteApi.listar_contas(usuario.id),
@@ -26,16 +31,13 @@ export function TelaPrincipal() {
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
     } finally {
-      setCarregandoSaldos(false);
+      if (!silencioso) setCarregandoSaldos(false);
     }
   }, [usuario]);
 
   useEffect(() => {
-    // recarregar_saldos já inicia com carregandoSaldos=true (mesmo valor do
-    // estado inicial) — busca de dados no mount, sem efeito colateral real de
-    // re-render extra; reaproveitada aqui para não duplicar a lógica de fetch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    recarregar_saldos();
+    void recarregar_saldos();
   }, [recarregar_saldos]);
 
   if (!usuario) {
@@ -70,7 +72,9 @@ export function TelaPrincipal() {
               ref={janelaChatRef}
               usuarioId={usuario.id}
               temContas={contas.length > 0}
-              aoRegistrarOuCorrigirMovimento={recarregar_saldos}
+              aoRegistrarOuCorrigirMovimento={() => {
+                void recarregar_saldos(true);
+              }}
             />
           )}
         </main>

@@ -127,6 +127,8 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
         perfil: dados.perfil,
         contaId: dados.contaId,
         usuarioId: dados.usuarioId,
+        final4: dados.final4,
+        dadosPlasticosCifrados: dados.dadosPlasticosCifrados,
       })
       .returning();
     const cartao = linhas[0];
@@ -163,6 +165,8 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     if (dados.perfil != null) valores.perfil = dados.perfil;
     if (dados.contaId != null) valores.contaId = dados.contaId;
     if (dados.ativo != null) valores.ativo = dados.ativo;
+    if (dados.final4 != null) valores.final4 = dados.final4;
+    if (dados.dadosPlasticosCifrados != null) valores.dadosPlasticosCifrados = dados.dadosPlasticosCifrados;
 
     const linhas = await this.banco
       .update(cartaoTabela)

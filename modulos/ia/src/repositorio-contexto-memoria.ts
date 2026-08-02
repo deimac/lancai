@@ -100,6 +100,8 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       contaId: dados.contaId,
       usuarioId: dados.usuarioId,
       ativo: true,
+      final4: dados.final4 ?? null,
+      dadosPlasticosCifrados: dados.dadosPlasticosCifrados ?? null,
       dataCriacao: agora,
       dataAtualizacao: agora,
     };
@@ -136,6 +138,8 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       perfil: dados.perfil ?? cartao.perfil,
       contaId: dados.contaId ?? cartao.contaId,
       ativo: dados.ativo ?? cartao.ativo,
+      final4: dados.final4 ?? cartao.final4,
+      dadosPlasticosCifrados: dados.dadosPlasticosCifrados ?? cartao.dadosPlasticosCifrados,
       dataAtualizacao: new Date(),
     };
     this.cartoes.set(cartaoId, atualizado);

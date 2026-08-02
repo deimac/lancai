@@ -1,20 +1,28 @@
 import type { FastifyInstance } from "fastify";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { chat as chatTabela, obter_banco, sessao as sessaoTabela } from "@lancai/banco";
+import { chat as chatTabela, obter_banco, sessao as sessaoTabela, usuario as usuarioTabela } from "@lancai/banco";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import {
   InterpretadorIntencoes,
   OrquestradorIA,
   RepositorioContextoDrizzle,
   ResolvedorIntencao,
+  decifrar_dados_plasticos,
 } from "@lancai/ia";
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
 import { ModuloRelatorios, RepositorioRelatoriosDrizzle } from "@lancai/relatorios";
+import {
+  extrair_pendencia_senha_cartao,
+  mensagem_parece_senha,
+  redigir_senha_no_historico,
+} from "../interpretar-confirmacao-senha-cartao";
 import { interpretar_resposta_confirmacao_exclusao } from "../interpretar-confirmacao-exclusao";
+import { montar_dados_cartao_protegidos } from "../montar-dados-cartao";
 import { montar_resposta_chat } from "../montar-resposta-chat";
 import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
+import { verificar_senha_usuario } from "../verificar-senha-usuario";
 
 const schemaRequisicaoChat = z.object({
   usuarioId: z.string().uuid(),
@@ -85,6 +93,45 @@ async function montar_contexto(usuarioId: string, sessaoId: string): Promise<Con
   };
 }
 
+async function responder_com_dados_cartao_apos_senha(entrada: {
+  usuarioId: string;
+  cartaoNome: string;
+  senha: string;
+}): Promise<{ intencao: { intencao: "CONSULTAR_DADOS_CARTAO"; cartao_nome: string }; resposta: string }> {
+  const banco = obter_banco();
+  const [usuario] = await banco.select().from(usuarioTabela).where(eq(usuarioTabela.id, entrada.usuarioId)).limit(1);
+  if (!usuario) {
+    return {
+      intencao: { intencao: "CONSULTAR_DADOS_CARTAO", cartao_nome: entrada.cartaoNome },
+      resposta: "Não encontrei seu usuário para validar a senha.",
+    };
+  }
+
+  const senhaOk = await verificar_senha_usuario(usuario.email, entrada.senha);
+  const intencao = { intencao: "CONSULTAR_DADOS_CARTAO" as const, cartao_nome: entrada.cartaoNome };
+
+  if (!senhaOk) {
+    return {
+      intencao,
+      resposta: "Senha incorreta. Tente de novo ou diga o nome do cartão outra vez.",
+    };
+  }
+
+  const cartao = await repositorioContexto.buscarCartaoPorNome(entrada.usuarioId, entrada.cartaoNome);
+  if (!cartao) {
+    return { intencao, resposta: `Não encontrei o cartão "${entrada.cartaoNome}".` };
+  }
+  if (!cartao.dadosPlasticosCifrados) {
+    return {
+      intencao,
+      resposta: `O cartão "${cartao.nome}" não tem número/validade/CVV salvos. Você pode me passar esses dados para eu guardar.`,
+    };
+  }
+
+  const plasticos = decifrar_dados_plasticos(cartao.dadosPlasticosCifrados);
+  return { intencao, resposta: montar_dados_cartao_protegidos(cartao, plasticos) };
+}
+
 /**
  * Fluxo completo do chat conversacional:
  * usuário -> OrquestradorIA -> InterpretadorIntencoes -> ResolvedorIntencao -> MotorFinanceiro.
@@ -103,6 +150,40 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
     // atual — senão ela apareceria duplicada (uma vez no histórico, outra como
     // "mensagem atual") no prompt do InterpretadorIntencoes.
     const contexto = await montar_contexto(dados.usuarioId, sessaoAtual.id);
+
+    // Atalho de senha: redige a mensagem ANTES de gravar e NÃO passa pela IA.
+    const cartaoPendenteSenha = extrair_pendencia_senha_cartao(contexto.historicoRecente);
+    if (cartaoPendenteSenha && mensagem_parece_senha(dados.mensagem)) {
+      await banco.insert(chatTabela).values({
+        sessaoId: sessaoAtual.id,
+        papel: "usuario",
+        conteudo: redigir_senha_no_historico(),
+      });
+
+      const resultado = await responder_com_dados_cartao_apos_senha({
+        usuarioId: dados.usuarioId,
+        cartaoNome: cartaoPendenteSenha,
+        senha: dados.mensagem.trim(),
+      });
+
+      await banco.insert(chatTabela).values({
+        sessaoId: sessaoAtual.id,
+        papel: "ia",
+        conteudo: JSON.stringify(resultado.intencao),
+        intencaoDetectada: resultado.intencao,
+      });
+      await banco.insert(chatTabela).values({
+        sessaoId: sessaoAtual.id,
+        papel: "sistema",
+        conteudo: resultado.resposta,
+      });
+
+      return resposta.send({
+        sessaoId: sessaoAtual.id,
+        intencao: resultado.intencao,
+        resposta: resultado.resposta,
+      });
+    }
 
     await banco.insert(chatTabela).values({
       sessaoId: sessaoAtual.id,

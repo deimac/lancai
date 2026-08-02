@@ -1,3 +1,10 @@
+import { formatarMoeda } from "@lancai/tipos";
+
+function formatarData(dataISO: string): string {
+  const [ano, mes, dia] = dataISO.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
 /**
  * Monta a pergunta de confirmação antes de excluir conta/cartão.
  * Se houver lançamentos vinculados, reforça o aviso com a quantidade.
@@ -20,4 +27,13 @@ export function montar_confirmacao_exclusao(
       : `existem ${totalLancamentos} lançamentos vinculados`;
 
   return `${base} Atenção: ${rotulo} a ${artigo === "a" ? "essa" : "esse"} ${tipo} — ${artigo} ${tipo} some da listagem, mas o histórico dos lançamentos é preservado. Responda "sim" para confirmar ou "não" para cancelar.`;
+}
+
+/** Pergunta de confirmação antes de cancelar um lançamento. */
+export function montar_confirmacao_exclusao_lancamento(
+  descricao: string,
+  dataMovimento: string,
+  valor: number,
+): string {
+  return `Deseja realmente excluir o lançamento "${descricao}" de ${formatarData(dataMovimento)} (${formatarMoeda(valor)})? Responda "sim" para confirmar ou "não" para cancelar.`;
 }

@@ -3,7 +3,11 @@ import type { IntencaoDetectada } from "@lancai/tipos";
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import { ErroEntidadeJaExiste, type ResolvedorIntencao } from "@lancai/ia";
 import type { ModuloRelatorios } from "@lancai/relatorios";
-import { montar_confirmacao_exclusao } from "./montar-confirmacao-exclusao";
+import {
+  montar_confirmacao_exclusao,
+  montar_confirmacao_exclusao_lancamento,
+} from "./montar-confirmacao-exclusao";
+import { montar_pedido_senha_cartao } from "./montar-pedido-senha-cartao";
 import { montar_resposta_visao } from "./montar-resposta-visao";
 
 interface ContextoResposta {
@@ -54,6 +58,14 @@ export async function montar_resposta_chat(
     }
 
     case "CORRIGIR_MOVIMENTO": {
+      if (intencao.campos_alterados.status === "cancelado" && intencao.campos_alterados.confirmado !== true) {
+        const previa = await contexto.resolvedor.preparar_confirmacao_exclusao_movimento(
+          contexto.usuarioId,
+          intencao.referencia,
+        );
+        return montar_confirmacao_exclusao_lancamento(previa.descricao, previa.dataMovimento, previa.valor);
+      }
+
       const entrada = await contexto.resolvedor.resolver_corrigir_movimento(intencao, referenciaResolucao);
       const movimentoAtualizado = await contexto.motor.corrigir_movimento(entrada);
       if (movimentoAtualizado.status === "cancelado") {
@@ -107,12 +119,21 @@ export async function montar_resposta_chat(
     case "CRIAR_CARTAO": {
       const eraPrimeiroCartao = contexto.totalCartoes === 0;
       const cartao = await contexto.resolvedor.resolver_criar_cartao(intencao, referenciaResolucao);
-      const confirmacao = `Cartão "${cartao.nome}" criado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.`;
+      const final4 = cartao.final4 ? ` Final •••• ${cartao.final4} salvo.` : "";
+      const confirmacao = `Cartão "${cartao.nome}" criado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
 
       if (eraPrimeiroCartao) {
         return `${confirmacao} Já pode começar a registrar suas compras nesse cartão só me contando o que comprou.`;
       }
       return confirmacao;
+    }
+
+    case "CONSULTAR_DADOS_CARTAO": {
+      const previa = await contexto.resolvedor.preparar_confirmacao_exclusao_cartao(
+        contexto.usuarioId,
+        intencao.cartao_nome,
+      );
+      return montar_pedido_senha_cartao(previa.nome);
     }
 
     case "CORRIGIR_CONTA": {
@@ -146,7 +167,8 @@ export async function montar_resposta_chat(
       if (cartao.ativo === false) {
         return `Cartão "${cartao.nome}" removido.`;
       }
-      return `Cartão "${cartao.nome}" atualizado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.`;
+      const final4 = cartao.final4 ? ` Final •••• ${cartao.final4}.` : "";
+      return `Cartão "${cartao.nome}" atualizado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
     }
 
     case "SOLICITAR_INFORMACAO":

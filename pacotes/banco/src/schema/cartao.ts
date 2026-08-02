@@ -14,6 +14,13 @@ export const cartao = pgTable("cartao", {
   melhorDiaCompra: integer("melhor_dia_compra").notNull(),
   perfil: perfilEnum("perfil").notNull(),
   ativo: boolean("ativo").notNull().default(true),
+  /** Últimos 4 dígitos do plástico (em claro) — só para identificação na UI. */
+  final4: text("final4"),
+  /**
+   * Payload AES-256-GCM (base64) com número, validade e CVV.
+   * Nunca deve ser devolvido em listagens públicas — só após validar senha no chat.
+   */
+  dadosPlasticosCifrados: text("dados_plasticos_cifrados"),
   contaId: uuid("conta_id")
     .notNull()
     .references(() => conta.id),

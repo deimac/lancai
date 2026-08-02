@@ -43,13 +43,13 @@ ${resumoCadastro}
 
 🏦 Cadastrar conta ou cartão
 "Quero cadastrar minha conta Nubank com saldo de R$ 500"
-"Cadastra meu cartão Inter, limite 3000, fecha dia 5 e vence dia 12"
+"Cadastra meu cartão Inter, limite 3000, fecha dia 5 e vence dia 12, número ..., validade 08/30, CVV 123"
 
 📊 Consultas
 "Quanto tenho no total?"
 "Quanto gastei com alimentação este mês?"
 "O que eu lancei hoje?"
-"Mostra meus lançamentos de 1 a 15 de agosto"
+"Mostra os dados do cartão Nubank" — pede a senha da conta LançAI antes de revelar
 
 Digite "menu" ou "ajuda" a qualquer momento para ver essas opções de novo.`;
 }

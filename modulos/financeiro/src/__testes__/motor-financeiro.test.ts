@@ -32,6 +32,8 @@ function criarCartao(contaId: string, sobrepor: Partial<Cartao> = {}): Cartao {
     melhorDiaCompra: 21,
     perfil: "pf",
     ativo: true,
+    final4: null,
+    dadosPlasticosCifrados: null,
     contaId,
     usuarioId: randomUUID(),
     dataCriacao: agora,

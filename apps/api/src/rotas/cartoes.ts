@@ -3,6 +3,12 @@ import { and, eq } from "drizzle-orm";
 import { cartao, obter_banco } from "@lancai/banco";
 import { calcularMelhorDiaCompra, schemaCriarCartao } from "@lancai/tipos";
 
+/** Remove o payload cifrado das respostas públicas de listagem. */
+function cartao_publico<T extends { dadosPlasticosCifrados?: string | null }>(linha: T) {
+  const { dadosPlasticosCifrados: _omitido, ...publico } = linha;
+  return publico;
+}
+
 export async function registrar_rotas_cartao(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaCriarCartao.parse(requisicao.body);
@@ -18,21 +24,23 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
         perfil: dados.perfil,
         contaId: dados.contaId,
         usuarioId: dados.usuarioId,
+        final4: dados.final4,
+        dadosPlasticosCifrados: dados.dadosPlasticosCifrados,
       })
       .returning();
-    return resposta.status(201).send(criado);
+    return resposta.status(201).send(cartao_publico(criado!));
   });
 
   app.get("/", async (requisicao) => {
     const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
-    if (usuarioId) {
-      return banco
-        .select()
-        .from(cartao)
-        .where(and(eq(cartao.usuarioId, usuarioId), eq(cartao.ativo, true)));
-    }
-    return banco.select().from(cartao).where(eq(cartao.ativo, true));
+    const linhas = usuarioId
+      ? await banco
+          .select()
+          .from(cartao)
+          .where(and(eq(cartao.usuarioId, usuarioId), eq(cartao.ativo, true)))
+      : await banco.select().from(cartao).where(eq(cartao.ativo, true));
+    return linhas.map(cartao_publico);
   });
 
   app.get("/:id", async (requisicao, resposta) => {
@@ -42,6 +50,6 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     if (!encontrado) {
       return resposta.status(404).send({ erro: "Cartão não encontrado." });
     }
-    return encontrado;
+    return cartao_publico(encontrado);
   });
 }
