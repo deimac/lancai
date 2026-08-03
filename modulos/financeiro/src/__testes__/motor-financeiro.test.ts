@@ -743,5 +743,25 @@ describe("MotorFinanceiro", () => {
       expect(resultado.movimentos[0]?.formaPagamento).toBe("pix");
       expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(410);
     });
+
+    it("assume pix quando lançamento em conta vem sem formaPagamento", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "500.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Salário",
+        valor: 200,
+        tipo: "receita",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-10",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos[0]?.formaPagamento).toBe("pix");
+    });
   });
 });

@@ -69,8 +69,8 @@ export const schemaIntencaoRegistrarMovimento = z.object({
   pessoa_nome: z.string().min(1).nullable().optional(),
   parcelas: z.number().int().min(2).max(360).nullable().optional(),
   /**
-   * Meio de pagamento. Em cartão, omitir = crédito (default). Em conta, omitir = null
-   * (não perguntar). Inferir de "pix", "boleto", "no débito", etc. quando explícito.
+   * Meio de pagamento. Em cartão, omitir = crédito. Em conta, omitir = pix
+   * (nunca null). Inferir de "pix", "boleto", "no débito", etc. quando explícito.
    */
   forma_pagamento: formaPagamentoSchema.nullable().optional(),
 });

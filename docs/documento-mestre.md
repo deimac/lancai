@@ -120,7 +120,8 @@ Não existe tabela `empresa` (ver seção 4).
 **Forma de pagamento e modalidade (defaults para não perguntar):**
 - Cadastro de cartão: sem conta → `modalidade = credito`; com conta → `multiplo`; “cartão de débito” explícito → `debito` (exige conta).
 - Lançamento no cartão: sem pista de débito → `forma_pagamento = credito` (não perguntar). “No débito” → `debito` (exige conta vinculada no cartão; baixa saldo, sem parcelas/limite).
-- Lançamento na conta: inferir `pix`/`transferencia`/`boleto`/`dinheiro` se a frase deixar claro; senão `forma_pagamento = null` e **não perguntar**.
+- Lançamento na conta (pagamento/recebimento): inferir `pix`/`transferencia`/`boleto`/`dinheiro` se a frase deixar claro; senão `forma_pagamento = pix` (default) — **nunca null** e **não perguntar**.
+- Perfil do lançamento (`pf`/`pj`): se o usuário não disser, herda o perfil da conta ou do cartão usado — **não perguntar**. Só pergunta perfil quando ainda não há conta/cartão resolvido e há mistura PF/PJ sem padrão único.
 
 ### Convenção de caixa
 

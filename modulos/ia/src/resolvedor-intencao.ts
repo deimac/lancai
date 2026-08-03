@@ -64,7 +64,9 @@ export class ResolvedorIntencao {
       tipo: intencao.tipo_movimento,
       status: "realizado",
       perfil: intencao.perfil,
-      formaPagamento: intencao.forma_pagamento ?? null,
+      formaPagamento:
+        intencao.forma_pagamento ??
+        (intencao.cartao_nome ? "credito" : intencao.conta_nome ? "pix" : null),
       dataMovimento: intencao.data_movimento,
       contaId,
       cartaoId,

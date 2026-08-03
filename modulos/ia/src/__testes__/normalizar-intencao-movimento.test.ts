@@ -58,7 +58,7 @@ describe("normalizar_intencao_movimento", () => {
     });
   });
 
-  it("pergunta perfil e conta quando há mistura pf/pj", () => {
+  it("com mistura pf/pj pede só a conta — sem perguntar perfil", () => {
     const resultado = normalizar_intencao_movimento(
       {
         intencao: "REGISTRAR_MOVIMENTO",
@@ -77,7 +77,55 @@ describe("normalizar_intencao_movimento", () => {
     expect(resultado.intencao).toBe("SOLICITAR_INFORMACAO");
     if (resultado.intencao !== "SOLICITAR_INFORMACAO") return;
     expect(resultado.pergunta).toContain("conta");
-    expect(resultado.pergunta).toContain("pessoal ou da empresa");
+    expect(resultado.pergunta).not.toContain("pessoal ou da empresa");
+  });
+
+  it("assume o perfil da conta/cartão citado mesmo com mistura pf/pj", () => {
+    const naEmpresa = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        descricao: "Software",
+        valor: 200,
+        conta_nome: "Mercado Pago",
+      },
+      contexto({
+        contas: [
+          { nome: "C6 Bank", perfil: "pf" },
+          { nome: "Mercado Pago", perfil: "pj" },
+        ],
+      }),
+    );
+    expect(naEmpresa).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      perfil: "pj",
+      conta_nome: "Mercado Pago",
+      forma_pagamento: "pix",
+    });
+
+    const noCartao = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        descricao: "Almoço",
+        valor: 40,
+        cartao_nome: "Azul Itaú",
+      },
+      contexto({
+        contas: [
+          { nome: "C6 Bank", perfil: "pf" },
+          { nome: "Mercado Pago", perfil: "pj" },
+        ],
+        cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
+      }),
+      "gastei 40 de almoço no Azul Itaú",
+    );
+    expect(noCartao).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      perfil: "pf",
+      cartao_nome: "Azul Itaú",
+      forma_pagamento: "credito",
+    });
   });
 
   it("completa lançamento quando só falta o que o contexto resolve", () => {

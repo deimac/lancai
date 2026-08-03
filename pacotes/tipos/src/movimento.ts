@@ -42,7 +42,10 @@ export const schemaCriarMovimento = z
     tipo: tipoMovimentoSchema,
     status: statusMovimentoSchema.default("realizado"),
     perfil: perfilSchema,
-    /** Meio de pagamento; null/omitido = não informado (ok em conta). */
+    /**
+     * Meio de pagamento. Em conta, omitido vira `pix` no motor.
+     * Em cartão, omitido vira `credito` (ou `debito` se explícito).
+     */
     formaPagamento: formaPagamentoSchema.nullable().optional(),
     dataMovimento: dataISOSchema,
     contaId: z.string().uuid().optional(),

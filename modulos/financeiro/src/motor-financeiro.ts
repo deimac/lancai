@@ -83,7 +83,7 @@ export class MotorFinanceiro {
       tipo: entrada.tipo,
       status: entrada.status,
       perfil: entrada.perfil,
-      formaPagamento: entrada.formaPagamento ?? null,
+      formaPagamento: entrada.formaPagamento ?? "pix",
       dataMovimento: entrada.dataMovimento,
       contaId: conta.id,
       categoriaId: entrada.categoriaId,

@@ -71,14 +71,42 @@ function resolver_forma_pagamento(
   // Cartão sem pista de débito → crédito (não perguntar).
   if (intencao.cartao_nome) return "credito";
 
-  // Conta sem pista → null (não perguntar).
+  // Conta (pagamento/recebimento) sem pista → Pix (nunca null).
+  if (intencao.conta_nome) return "pix";
+
+  return null;
+}
+
+function nome_corresponde(cadastro: string, citado: string): boolean {
+  const a = cadastro.toLocaleLowerCase("pt-BR");
+  const b = citado.toLocaleLowerCase("pt-BR");
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+/**
+ * Perfil do lançamento = perfil da conta/cartão usado. Assim, mesmo com
+ * mistura PF/PJ no cadastro, não perguntamos se a origem já está clara.
+ */
+function inferir_perfil_da_origem(
+  contexto: ContextoInterpretacao,
+  contaNome: string | null | undefined,
+  cartaoNome: string | null | undefined,
+): Perfil | null {
+  if (cartaoNome) {
+    const cartao = contexto.cartoes.find((item) => nome_corresponde(item.nome, cartaoNome));
+    if (cartao?.perfil === "pf" || cartao?.perfil === "pj") return cartao.perfil;
+  }
+  if (contaNome) {
+    const conta = contexto.contas.find((item) => nome_corresponde(item.nome, contaNome));
+    if (conta?.perfil === "pf" || conta?.perfil === "pj") return conta.perfil;
+  }
   return null;
 }
 
 /**
- * Completa defaults seguros (data = hoje, perfil único, conta única/hábito,
- * forma_pagamento) e, se ainda faltar dado obrigatório, converte para
- * SOLICITAR_INFORMACAO. Nunca pede forma de pagamento.
+ * Completa defaults seguros (data = hoje, perfil da conta/cartão, forma_pagamento)
+ * e, se ainda faltar dado obrigatório, converte para SOLICITAR_INFORMACAO.
+ * Nunca pede forma de pagamento; com conta/cartão resolvido, nunca pede perfil.
  */
 export function normalizar_intencao_movimento(
   intencao: IntencaoDetectada,
@@ -93,17 +121,22 @@ export function normalizar_intencao_movimento(
   const completa: IntencaoRegistrarMovimento = {
     ...intencao,
     data_movimento: intencao.data_movimento ?? contexto.dataAtual,
-    perfil: (intencao.perfil ?? perfilPadrao) as Perfil | null | undefined,
     conta_nome: intencao.conta_nome ?? origemPadrao.conta_nome ?? null,
     cartao_nome: intencao.cartao_nome ?? origemPadrao.cartao_nome ?? null,
   };
 
+  const perfilOrigem = inferir_perfil_da_origem(contexto, completa.conta_nome, completa.cartao_nome);
+  completa.perfil = (intencao.perfil ?? perfilOrigem ?? perfilPadrao) as Perfil | null | undefined;
   completa.forma_pagamento = resolver_forma_pagamento(completa, mensagem);
 
   const faltantes: CampoFaltante[] = [];
   if (completa.valor == null) faltantes.push("valor");
   if (!completa.conta_nome && !completa.cartao_nome) faltantes.push("conta");
-  if (!completa.perfil) faltantes.push("perfil");
+  // Perfil vem da conta/cartão — nunca perguntar junto com "qual conta".
+  // Só pergunta perfil se a origem já existe e ainda assim não deu para resolver.
+  if (!completa.perfil && (completa.conta_nome || completa.cartao_nome)) {
+    faltantes.push("perfil");
+  }
 
   if (faltantes.length > 0) {
     return {

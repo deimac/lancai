@@ -76,7 +76,7 @@ describe("normalizar forma e modalidade", () => {
     });
   });
 
-  it("conta sem pista de forma fica null", () => {
+  it("conta sem pista de forma assume pix", () => {
     const resultado = normalizar_intencao_movimento(
       {
         intencao: "REGISTRAR_MOVIMENTO",
@@ -91,7 +91,7 @@ describe("normalizar forma e modalidade", () => {
 
     expect(resultado).toMatchObject({
       intencao: "REGISTRAR_MOVIMENTO",
-      forma_pagamento: null,
+      forma_pagamento: "pix",
     });
   });
 

@@ -67,14 +67,15 @@ Existem 10 intenções possíveis:
      'debito'. NUNCA pergunte forma de pagamento.
      * Com cartao_nome e sem "débito" → forma_pagamento = credito (default silencioso).
      * "no débito" / "débito" → forma_pagamento = debito (cartão precisa ter conta vinculada).
-     * Com conta e "pix"/"boleto"/"TED"/"dinheiro" → preencha; senão omita (null).
+     * Com conta: "pix"/"boleto"/"TED"/"dinheiro" → preencha; se não disser → pix (nunca null).
    - "perfil" indica se o GASTO/GANHO em si é pessoal ('pf') ou da empresa ('pj') — não confundir
      com o perfil da conta/cartão usado para pagar. Ex.: "Paguei o churrasco do Marcio com a conta
      da empresa" é perfil 'pf' (o churrasco é pessoal) mesmo saindo de uma conta 'pj'.
-   - Perfil padrão do contexto: se "perfilPadrao" vier preenchido ('pf' ou 'pj'), USE esse valor
-     sem perguntar — significa que o usuário só tem contas/cartões daquele perfil (não é
-     obrigatório ter conta jurídica para usar o app, nem o contrário). Só pergunte se é pessoal
-     ou da empresa quando perfilPadrao for null (há mistura PF e PJ, ou ainda não há cadastro).
+   - Perfil do lançamento: se o usuário NÃO disser se é pessoal/empresa, USE o perfil da
+     conta_nome ou cartao_nome citada (campo "perfil" dela no contexto) — NÃO pergunte.
+     Ex.: gasto na "Mercado Pago" (pj) → perfil 'pj'; gasto no cartão "Azul Itaú" (pf) → 'pf'.
+     Se "perfilPadrao" vier preenchido e ainda não houver conta/cartão, use perfilPadrao.
+     Só pergunte perfil quando não houver conta/cartão resolvido E perfilPadrao for null.
    - Use os nomes de conta/cartão/categoria/pessoa exatamente como existem no contexto abaixo
      quando conseguir identificar uma correspondência óbvia (ex.: usuário disse "Nubank" e existe
      uma conta "Nubank PF" no contexto — use o nome completo da conta). Se o usuário não mencionar
@@ -222,8 +223,9 @@ Regras gerais:
 - Vocabulário de "perfil" (usado em REGISTRAR_MOVIMENTO, CRIAR_CONTA, CRIAR_CARTAO e CORRIGIR_CONTA): palavras como
   "empresarial", "da empresa", "comercial", "do negócio", "PJ", "CNPJ" indicam perfil 'pj'; palavras
   como "pessoal", "particular", "minha", "PF", "CPF" indicam perfil 'pf'.
-  Ordem de decisão do perfil: (1) pista explícita na mensagem/histórico; (2) "perfilPadrao" do
-  contexto, se existir; (3) só então SOLICITAR_INFORMACAO perguntando se é pessoal ou da empresa.
+  Ordem de decisão do perfil: (1) pista explícita na mensagem/histórico; (2) perfil da
+  conta/cartão usado no lançamento; (3) "perfilPadrao" do contexto; (4) só então
+  SOLICITAR_INFORMACAO — e nunca peça perfil se a conta/cartão já estiver definida.
   Nunca invente 'pj' quando o usuário só tem contas pessoais, nem o contrário.
 - Se "totalContas" for 0, o usuário provavelmente está em onboarding — priorize interpretar
   mensagens ambíguas como CRIAR_CONTA quando fizer sentido.
