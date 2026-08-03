@@ -21,9 +21,11 @@ export const cartao = pgTable("cartao", {
    * Nunca deve ser devolvido em listagens públicas — só após validar senha no chat.
    */
   dadosPlasticosCifrados: text("dados_plasticos_cifrados"),
-  contaId: uuid("conta_id")
-    .notNull()
-    .references(() => conta.id),
+  /**
+   * Conta preferencial para pagar a fatura — opcional. O pagamento da fatura
+   * pode usar qualquer conta no momento do lançamento.
+   */
+  contaId: uuid("conta_id").references(() => conta.id),
   usuarioId: uuid("usuario_id")
     .notNull()
     .references(() => usuario.id),

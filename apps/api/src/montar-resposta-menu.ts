@@ -43,7 +43,7 @@ ${resumoCadastro}
 
 🏦 Cadastrar conta ou cartão
 "Quero cadastrar minha conta Nubank com saldo de R$ 500"
-"Cadastra meu cartão Inter, limite 3000, fecha dia 5 e vence dia 12, número ..., validade 08/30, CVV 123"
+"Cadastra meu cartão Inter, limite 3000, fecha dia 5 e vence dia 12"
 
 📊 Consultas
 "Quanto tenho no total?"

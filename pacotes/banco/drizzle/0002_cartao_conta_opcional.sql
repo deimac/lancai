@@ -1,0 +1,1 @@
+ALTER TABLE "cartao" ALTER COLUMN "conta_id" DROP NOT NULL;

@@ -15,6 +15,13 @@
       "when": 1785690600000,
       "tag": "0001_cartao_dados_plasticos",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785691800000,
+      "tag": "0002_cartao_conta_opcional",
+      "breakpoints": true
     }
   ]
 }

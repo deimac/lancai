@@ -12,6 +12,7 @@ function contexto(parcial: Partial<ContextoInterpretacao> = {}): ContextoInterpr
     pessoas: [],
     habitos: [],
     historicoRecente: [],
+    intencaoPendente: null,
     ...parcial,
   };
 }

@@ -36,7 +36,8 @@ export const schemaCriarCartao = z.object({
   fechamento: z.number().int().min(1).max(31),
   vencimento: z.number().int().min(1).max(31),
   perfil: perfilSchema,
-  contaId: z.string().uuid(),
+  /** Conta preferencial da fatura — opcional; o pagamento pode usar qualquer conta. */
+  contaId: z.string().uuid().optional(),
   usuarioId: z.string().uuid(),
   /** Últimos 4 dígitos (em claro) quando o usuário informou o número do plástico. */
   final4: z.string().length(4).optional(),

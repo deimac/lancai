@@ -39,6 +39,37 @@ export function normalizar_numero_cartao(numero: string): string {
   return numero.replace(/[\s-]/g, "");
 }
 
+/**
+ * Extrai número / validade / CVV de uma frase em linguagem natural.
+ * Usado como rede de segurança quando a IA devolve CORRIGIR_CARTAO/CRIAR_CARTAO
+ * sem preencher os três campos juntos, mesmo com a mensagem completa.
+ */
+export function extrair_dados_plasticos_da_mensagem(mensagem: string): Partial<DadosPlasticosCartao> {
+  const resultado: Partial<DadosPlasticosCartao> = {};
+
+  const cvvMatch = /\bcvv\s*[:.]?\s*(\d{3,4})\b/i.exec(mensagem);
+  if (cvvMatch?.[1]) resultado.cvv = cvvMatch[1];
+
+  const validadeMatch =
+    /(?:validade|val\.?|exp\.?)\s*[:.]?\s*(\d{1,2})\s*[/\-]\s*(\d{2}|\d{4})\b/i.exec(mensagem) ??
+    /\b(\d{1,2})\s*[/\-]\s*(\d{2}|\d{4})\b/.exec(mensagem);
+  if (validadeMatch?.[1] && validadeMatch[2]) {
+    resultado.validade = `${validadeMatch[1]}/${validadeMatch[2]}`;
+  }
+
+  // Sequência de 13–19 dígitos com espaços/hífens opcionais (evita pegar CVV/dias).
+  const candidatos = mensagem.match(/(?:\d[\s\-]*){13,19}/g) ?? [];
+  for (const candidato of candidatos) {
+    const digitos = normalizar_numero_cartao(candidato);
+    if (/^\d{13,19}$/.test(digitos)) {
+      resultado.numero = digitos;
+      break;
+    }
+  }
+
+  return resultado;
+}
+
 /** Validade no formato MM/AA. */
 export function normalizar_validade(validade: string): string {
   const limpa = validade.trim().replace("-", "/");

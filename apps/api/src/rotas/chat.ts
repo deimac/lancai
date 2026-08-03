@@ -72,15 +72,74 @@ async function buscar_historico_recente(sessaoId: string): Promise<MensagemHisto
   return mensagens.reverse() as MensagemHistorico[];
 }
 
+/**
+ * Recupera dados já extraídos do último turno da IA quando o cadastro ainda
+ * está em slot-filling (SOLICITAR_INFORMACAO ou CRIAR_* incompleto). Sem isso,
+ * a próxima mensagem do usuário perde limite/nome etc. que já tinham sido
+ * capturados — o histórico textual sozinho não é confiável para a LLM.
+ */
+async function buscar_intencao_pendente(
+  sessaoId: string,
+): Promise<ContextoInterpretacao["intencaoPendente"]> {
+  const banco = obter_banco();
+  const [ultimaIa] = await banco
+    .select({ intencaoDetectada: chatTabela.intencaoDetectada })
+    .from(chatTabela)
+    .where(and(eq(chatTabela.sessaoId, sessaoId), eq(chatTabela.papel, "ia")))
+    .orderBy(desc(chatTabela.dataCriacao))
+    .limit(1);
+
+  const bruta = ultimaIa?.intencaoDetectada;
+  if (!bruta || typeof bruta !== "object" || Array.isArray(bruta)) return null;
+
+  const intencao = bruta as Record<string, unknown>;
+  if (intencao.intencao === "SOLICITAR_INFORMACAO") {
+    const pendente = intencao.intencao_pendente;
+    if (pendente !== "CRIAR_CONTA" && pendente !== "CRIAR_CARTAO" && pendente !== "REGISTRAR_MOVIMENTO") {
+      return null;
+    }
+    return {
+      intencao_pendente: pendente,
+      dados_parciais:
+        intencao.dados_parciais && typeof intencao.dados_parciais === "object"
+          ? (intencao.dados_parciais as Record<string, unknown>)
+          : null,
+    };
+  }
+
+  if (intencao.intencao === "CRIAR_CARTAO") {
+    const incompleto =
+      !intencao.nome ||
+      intencao.limite == null ||
+      intencao.fechamento == null ||
+      intencao.vencimento == null ||
+      !intencao.perfil;
+    if (!incompleto) return null;
+    const { intencao: _ignorar, ...campos } = intencao;
+    return { intencao_pendente: "CRIAR_CARTAO", dados_parciais: campos };
+  }
+
+  if (intencao.intencao === "CRIAR_CONTA") {
+    const incompleto = !intencao.nome || intencao.saldo_inicial == null || !intencao.perfil;
+    if (!incompleto) return null;
+    const { intencao: _ignorar, ...campos } = intencao;
+    return { intencao_pendente: "CRIAR_CONTA", dados_parciais: campos };
+  }
+
+  return null;
+}
+
 async function montar_contexto(usuarioId: string, sessaoId: string): Promise<ContextoInterpretacao> {
-  const [contas, cartoes, categorias, pessoas, habitos, historicoRecente] = await Promise.all([
-    repositorioContexto.listarContas(usuarioId),
-    repositorioContexto.listarCartoes(usuarioId),
-    repositorioContexto.listarCategorias(usuarioId),
-    repositorioContexto.listarPessoas(usuarioId),
-    memoria.buscar_habitos(usuarioId),
-    buscar_historico_recente(sessaoId),
-  ]);
+  const [contas, cartoes, categorias, pessoas, habitos, historicoRecente, intencaoPendente] =
+    await Promise.all([
+      repositorioContexto.listarContas(usuarioId),
+      repositorioContexto.listarCartoes(usuarioId),
+      repositorioContexto.listarCategorias(usuarioId),
+      repositorioContexto.listarPessoas(usuarioId),
+      memoria.buscar_habitos(usuarioId),
+      buscar_historico_recente(sessaoId),
+      buscar_intencao_pendente(sessaoId),
+    ]);
 
   return {
     dataAtual: new Date().toISOString().slice(0, 10),
@@ -90,6 +149,7 @@ async function montar_contexto(usuarioId: string, sessaoId: string): Promise<Con
     pessoas: pessoas.map((pessoa) => ({ nome: pessoa.nome, tipo: pessoa.tipo })),
     habitos,
     historicoRecente,
+    intencaoPendente,
   };
 }
 

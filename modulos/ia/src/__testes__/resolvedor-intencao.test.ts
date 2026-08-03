@@ -480,10 +480,24 @@ describe("ResolvedorIntencao", () => {
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
 
-    it("lança ErroDadosIncompletos quando falta o limite", async () => {
-      const conta = criarConta({ usuarioId });
-      repositorio.contas.set(conta.id, conta);
+    it("cria o cartão sem conta vinculada quando conta_nome não é informado", async () => {
+      const cartao = await resolvedor.resolver_criar_cartao(
+        {
+          intencao: "CRIAR_CARTAO",
+          nome: "Azul Itaú",
+          limite: 8000,
+          fechamento: 10,
+          vencimento: 17,
+          perfil: "pf",
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
 
+      expect(cartao.nome).toBe("Azul Itaú");
+      expect(cartao.contaId).toBeNull();
+    });
+
+    it("lança ErroDadosIncompletos quando falta o limite", async () => {
       await expect(
         resolvedor.resolver_criar_cartao(
           {
@@ -492,7 +506,6 @@ describe("ResolvedorIntencao", () => {
             fechamento: 20,
             vencimento: 27,
             perfil: "pf",
-            conta_nome: conta.nome,
           },
           { usuarioId, criadoPor: usuarioId },
         ),

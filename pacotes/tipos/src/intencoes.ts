@@ -7,6 +7,20 @@ const dataISOSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");
 
 /**
+ * Número/validade/CVV às vezes vêm como number da LLM (ex.: cvv: 443).
+ * Converte para string antes da validação para não derrubar a intenção inteira.
+ */
+const textoPlasticoSchema = z.preprocess((valor) => {
+  if (valor == null) return valor;
+  if (typeof valor === "number" && Number.isFinite(valor)) return String(Math.trunc(valor));
+  if (typeof valor === "string") {
+    const texto = valor.trim();
+    return texto.length > 0 ? texto : null;
+  }
+  return valor;
+}, z.string().min(1).nullable().optional());
+
+/**
  * Alguns modelos de IA (observado no gemini-3.6-flash em modo "thinking") ocasionalmente
  * degeneram a geração de um número pequeno numa versão gigante do mesmo dígito seguida só
  * de zeros (ex.: 27 vira 2.7e+17 ou 27000000000000000). O padrão é inconfundível — mesmos
@@ -153,11 +167,11 @@ export const schemaIntencaoCriarCartao = z.object({
   perfil: perfilSchema.nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),
   /** Número do plástico (opcional no cadastro). */
-  numero: z.string().min(1).nullable().optional(),
+  numero: textoPlasticoSchema,
   /** Validade do plástico no formato MM/AA. */
-  validade: z.string().min(1).nullable().optional(),
+  validade: textoPlasticoSchema,
   /** CVV do plástico. */
-  cvv: z.string().min(1).nullable().optional(),
+  cvv: textoPlasticoSchema,
 });
 export type IntencaoCriarCartao = z.infer<typeof schemaIntencaoCriarCartao>;
 
@@ -204,9 +218,9 @@ export const schemaIntencaoCorrigirCartao = z.object({
     ativo: z.boolean().nullable().optional(),
     /** `true` só após o usuário confirmar a exclusão. */
     confirmado: z.boolean().nullable().optional(),
-    numero: z.string().min(1).nullable().optional(),
-    validade: z.string().min(1).nullable().optional(),
-    cvv: z.string().min(1).nullable().optional(),
+    numero: textoPlasticoSchema,
+    validade: textoPlasticoSchema,
+    cvv: textoPlasticoSchema,
   }),
 });
 export type IntencaoCorrigirCartao = z.infer<typeof schemaIntencaoCorrigirCartao>;

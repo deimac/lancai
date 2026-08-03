@@ -182,19 +182,21 @@ export class ResolvedorIntencao {
     });
   }
 
-  /** Mesma lógica de `resolver_criar_conta`, mas para cartão — resolve `conta_nome` para `contaId`. */
+  /** Mesma lógica de `resolver_criar_conta`, mas para cartão — `conta_nome` é opcional. */
   async resolver_criar_cartao(intencao: IntencaoCriarCartao, contexto: ContextoResolucao): Promise<Cartao> {
     if (!intencao.nome) throw new ErroDadosIncompletos("CRIAR_CARTAO", "nome do cartão");
     if (intencao.limite == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "limite do cartão");
     if (intencao.fechamento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de fechamento da fatura");
     if (intencao.vencimento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de vencimento da fatura");
     if (!intencao.perfil) throw new ErroDadosIncompletos("CRIAR_CARTAO", "perfil (pessoal ou empresa)");
-    if (!intencao.conta_nome) throw new ErroDadosIncompletos("CRIAR_CARTAO", "qual conta paga a fatura desse cartão");
 
     const existente = await this.repositorio.buscarCartaoPorNome(contexto.usuarioId, intencao.nome);
     if (existente) throw new ErroEntidadeJaExiste("cartão", existente.nome);
 
-    const contaId = await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome, "conta vinculada ao cartão");
+    // Conta preferencial da fatura é opcional — o usuário pode pagar com qualquer conta depois.
+    const contaId = intencao.conta_nome
+      ? await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome, "conta vinculada ao cartão")
+      : undefined;
 
     const plasticos = this.montar_plasticos_opcionais(intencao.numero, intencao.validade, intencao.cvv);
 
@@ -255,13 +257,16 @@ export class ResolvedorIntencao {
     const temAlgumPlastico =
       alterados.numero != null || alterados.validade != null || alterados.cvv != null;
     if (temAlgumPlastico) {
-      if (!alterados.numero || !alterados.validade || !alterados.cvv) {
+      const numero = alterados.numero != null ? String(alterados.numero).trim() : "";
+      const validade = alterados.validade != null ? String(alterados.validade).trim() : "";
+      const cvv = alterados.cvv != null ? String(alterados.cvv).trim() : "";
+      if (!numero || !validade || !cvv) {
         throw new ErroDadosIncompletos(
           "CORRIGIR_CARTAO",
           "número, validade (MM/AA) e CVV juntos para atualizar os dados do plástico",
         );
       }
-      Object.assign(dados, this.montar_plasticos_opcionais(alterados.numero, alterados.validade, alterados.cvv));
+      Object.assign(dados, this.montar_plasticos_opcionais(numero, validade, cvv));
     }
 
     if (Object.keys(dados).length === 0) {

@@ -97,7 +97,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       vencimento: dados.vencimento,
       melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
       perfil: dados.perfil,
-      contaId: dados.contaId,
+      contaId: dados.contaId ?? null,
       usuarioId: dados.usuarioId,
       ativo: true,
       final4: dados.final4 ?? null,

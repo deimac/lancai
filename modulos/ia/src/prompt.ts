@@ -5,6 +5,17 @@ export interface MensagemHistorico {
   conteudo: string;
 }
 
+/**
+ * Última intenção de cadastro ainda incompleta (SOLICITAR_INFORMACAO ou
+ * CRIAR_* parcial), lida da linha de papel "ia" da sessão. Complementa o
+ * histórico textual para o slot-filling não perder campos já extraídos
+ * (ex.: limite informado no turno anterior).
+ */
+export interface IntencaoPendenteSlot {
+  intencao_pendente: "CRIAR_CONTA" | "CRIAR_CARTAO" | "REGISTRAR_MOVIMENTO";
+  dados_parciais?: Record<string, unknown> | null;
+}
+
 export interface ContextoInterpretacao {
   /** Data de hoje no formato YYYY-MM-DD, usada para resolver "ontem", "hoje" etc. */
   dataAtual: string;
@@ -18,10 +29,14 @@ export interface ContextoInterpretacao {
    * Últimas mensagens da sessão atual (mais antiga primeiro), usadas para
    * slot-filling flexível entre turnos — ex.: o usuário responde só "R$ 1000"
    * depois de o sistema perguntar o saldo de uma conta que estava criando.
-   * Não existe estado de "intenção pendente" persistido: é este histórico que
-   * dá à IA o contexto para juntar a resposta à intenção anterior.
    */
   historicoRecente: MensagemHistorico[];
+  /**
+   * Dados já extraídos da intenção pendente (quando o sistema acabou de pedir
+   * um campo faltante). A IA e o normalizador devem mesclar isso com a resposta
+   * atual — nunca descartar limite/nome/etc. já capturados.
+   */
+  intencaoPendente?: IntencaoPendenteSlot | null;
 }
 
 /**
@@ -129,12 +144,18 @@ Existem 10 intenções possíveis:
 5. CRIAR_CARTAO — o usuário quer cadastrar um cartão de crédito NOVO, que ainda não existe no
    contexto. Ex.: "Cadastra meu cartão Nubank, limite 5000, fecha dia 20 e vence dia 27".
    Campos obrigatórios: nome, limite, fechamento (dia do mês da fatura), vencimento (dia do mês
-   da fatura), perfil, conta_nome (conta que paga a fatura — deve existir no contexto).
+   da fatura), perfil.
+   conta_nome é OPCIONAL (conta preferencial da fatura). NÃO pergunte qual conta paga a fatura
+   se o usuário não citar — nem todo cartão tem conta vinculada; o pagamento da fatura pode usar
+   qualquer conta depois. Só preencha conta_nome se o usuário informar explicitamente.
    Campos opcionais do plástico: numero, validade (MM/AA), cvv — só preencha se o usuário informar
    ou se ele pedir para salvar esses dados; nunca invente. Se informar só parte (ex.: só número),
    use SOLICITAR_INFORMACAO pedindo validade e CVV. Se faltar dado obrigatório, use
    SOLICITAR_INFORMACAO; se o cartão citado já existe na lista "cartoes" do contexto, use
    CORRIGIR_CARTAO em vez de CRIAR_CARTAO.
+   - "em uso", "comprometido", "já usei", "gasto" NÃO é o limite — ignore para o campo limite
+     (o comprometido vem dos lançamentos). Ex.: "limite 12.889,00 e 10.181,11 em uso" →
+     limite = 12889 (só o valor anunciado como limite).
 
 6. CORRIGIR_CONTA — o usuário quer alterar ou excluir uma conta que JÁ EXISTE (nome, saldo atual,
    perfil ou remoção). Ex.: "Muda o saldo da conta Mercado Pago pra 5000", "Renomeia a conta Caixa
@@ -156,7 +177,9 @@ Existem 10 intenções possíveis:
      confirmado = false (ou omitido). NUNCA responda NAO_RECONHECIDA nesse pedido.
    - Mesma regra de confirmação do item 6: se o sistema pediu confirmação e o usuário disse "sim",
      devolva ativo = false com confirmado = true.
-   - Para atualizar número/validade/CVV, preencha os três em campos_alterados juntos.
+   - Para atualizar número/validade/CVV, preencha os TRÊS em campos_alterados juntos
+     (numero, validade, cvv). Nunca envie só um ou dois — se a mensagem trouxer os três
+     (ex.: "4783…, validade 11/32, cvv 443"), copie os três. cvv e numero são sempre string.
 
 8. CONSULTAR_DADOS_CARTAO — o usuário quer ver os dados do plástico (número, validade, CVV) de um
    cartão. Ex.: "mostra os dados do cartão Nubank", "qual o número do meu Inter?", "me fala o CVV
@@ -170,12 +193,14 @@ Existem 10 intenções possíveis:
    histórico recente esclarecem. Preencha "intencao_pendente" com a intenção-alvo, "pergunta" com
    uma pergunta curta e direta pedindo exatamente o que falta, e "dados_parciais" com o que já foi
    extraído até agora (pode ser omitido se nada foi extraído ainda).
-   - Regra de ouro do slot-filling: SEMPRE releia o "historicoRecente" antes de decidir o que falta.
-     Se o sistema acabou de perguntar algo (ex.: "qual o saldo dessa conta?") e a mensagem atual é
-     só a resposta (ex.: "1000" ou "R$ 1.000"), você DEVE juntar essa resposta com a intenção que
-     estava sendo montada e, se agora estiver completa, devolver CRIAR_CONTA/CRIAR_CARTAO/
-     REGISTRAR_MOVIMENTO completos — nunca repita a mesma pergunta nem gere NAO_RECONHECIDA para uma
-     resposta curta que claramente completa a pergunta anterior.
+   - Regra de ouro do slot-filling: SEMPRE releia o "historicoRecente" E o bloco
+     "intencaoPendente" (se existir) antes de decidir o que falta. "intencaoPendente.dados_parciais"
+     tem os campos JÁ capturados (ex.: nome, limite) — você DEVE copiá-los de volta para
+     CRIAR_CARTAO/CRIAR_CONTA/dados_parciais no turno atual. Nunca peça de novo um campo que já
+     está em dados_parciais nem devolva CRIAR_* sem esses campos.
+   - Se o sistema acabou de perguntar algo (ex.: "qual o dia de fechamento?") e a mensagem atual é
+     a resposta (ex.: "fechamento 30, vencimento 06"), junte com intencaoPendente/histórico e,
+     se completo, devolva CRIAR_CONTA/CRIAR_CARTAO/REGISTRAR_MOVIMENTO — nunca NAO_RECONHECIDA.
    - O usuário pode dar todos os dados de uma vez, em qualquer ordem, numa frase só, ou aos poucos
      em várias mensagens — os dois formatos são igualmente válidos.
    - Se a última mensagem do sistema pediu a SENHA da conta LançAI para ver dados do cartão, NÃO
@@ -198,10 +223,11 @@ Regras gerais:
   Nunca invente 'pj' quando o usuário só tem contas pessoais, nem o contrário.
 - Se "totalContas" for 0, o usuário provavelmente está em onboarding — priorize interpretar
   mensagens ambíguas como CRIAR_CONTA quando fizer sentido.
-- Campos numéricos (valor, saldo_inicial, saldo_atual, limite, fechamento, vencimento) devem ser sempre um
-  número simples, exatamente como está na mensagem (ex.: 27, 5000, 180.50) — nunca em notação
-  científica, nunca com mais dígitos do que o usuário disse. "fechamento" e "vencimento" são
-  sempre um dia do mês entre 1 e 31.
+- Campos numéricos (valor, saldo_inicial, saldo_atual, limite, fechamento, vencimento) devem ser
+  sempre um número JSON simples (ex.: 27, 5000, 180.5) — nunca string, nunca notação científica.
+  Formato brasileiro: ponto é milhar e vírgula é decimal — "12.889,00" = 12889; "1.250,50" = 1250.5;
+  "10.181,11" = 10181.11. NÃO use 12.889 como se o ponto fosse decimal.
+  "fechamento" e "vencimento" são sempre um dia do mês entre 1 e 31 (ex.: "vencimento 06" → 6).
 - Responda SEMPRE no formato JSON definido pelo schema — nunca em texto livre.`;
 }
 
@@ -220,6 +246,7 @@ export function montar_prompt_usuario(mensagem: string, contexto: ContextoInterp
       categorias: contexto.categorias,
       pessoas: contexto.pessoas,
       habitos: contexto.habitos,
+      intencaoPendente: contexto.intencaoPendente ?? null,
     },
     null,
     2,
