@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { perfilSchema } from "./cadastro";
+import { formaPagamentoSchema, modalidadeCartaoSchema, perfilSchema } from "./cadastro";
 import { tipoMovimentoSchema } from "./movimento";
 
 const dataISOSchema = z
@@ -68,6 +68,11 @@ export const schemaIntencaoRegistrarMovimento = z.object({
   categoria_nome: z.string().min(1).nullable().optional(),
   pessoa_nome: z.string().min(1).nullable().optional(),
   parcelas: z.number().int().min(2).max(360).nullable().optional(),
+  /**
+   * Meio de pagamento. Em cartão, omitir = crédito (default). Em conta, omitir = null
+   * (não perguntar). Inferir de "pix", "boleto", "no débito", etc. quando explícito.
+   */
+  forma_pagamento: formaPagamentoSchema.nullable().optional(),
 });
 export type IntencaoRegistrarMovimento = z.infer<typeof schemaIntencaoRegistrarMovimento>;
 
@@ -122,6 +127,7 @@ export const schemaIntencaoCorrigirMovimento = z.object({
     parcelas: z.number().int().min(1).max(360).nullable().optional(),
     /** Use "cancelado" para apagar logicamente o lançamento. */
     status: z.enum(["previsto", "realizado", "cancelado"]).nullable().optional(),
+    forma_pagamento: formaPagamentoSchema.nullable().optional(),
     /**
      * Só é `true` depois que o usuário confirmou o cancelamento (respondeu "sim").
      * Sem isso, o backend só pergunta se deseja excluir o lançamento.
@@ -165,6 +171,11 @@ export const schemaIntencaoCriarCartao = z.object({
   fechamento: diaDoMesSchema.nullable().optional(),
   vencimento: diaDoMesSchema.nullable().optional(),
   perfil: perfilSchema.nullable().optional(),
+  /**
+   * Opcional: o normalizador define credito (sem conta), multiplo (com conta)
+   * ou debito (só se o usuário disser "cartão de débito").
+   */
+  modalidade: modalidadeCartaoSchema.nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),
   /** Número do plástico (opcional no cadastro). */
   numero: textoPlasticoSchema,
@@ -212,7 +223,8 @@ export const schemaIntencaoCorrigirCartao = z.object({
     fechamento: diaDoMesSchema.nullable().optional(),
     vencimento: diaDoMesSchema.nullable().optional(),
     perfil: perfilSchema.nullable().optional(),
-    /** Conta que passa a pagar a fatura desse cartão. */
+    modalidade: modalidadeCartaoSchema.nullable().optional(),
+    /** Conta vinculada (débito / preferencial da fatura). */
     conta_nome: z.string().min(1).nullable().optional(),
     /** Exclusão lógica: `false` = remover/apagar/excluir o cartão. */
     ativo: z.boolean().nullable().optional(),

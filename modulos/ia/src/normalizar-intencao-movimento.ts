@@ -1,4 +1,5 @@
-import type { IntencaoDetectada, IntencaoRegistrarMovimento, Perfil } from "@lancai/tipos";
+import type { FormaPagamento, IntencaoDetectada, IntencaoRegistrarMovimento, Perfil } from "@lancai/tipos";
+import { inferir_forma_pagamento_da_mensagem } from "./inferir-forma-pagamento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
 import type { ContextoInterpretacao } from "./prompt";
 
@@ -54,17 +55,35 @@ function dados_parciais_de(intencao: IntencaoRegistrarMovimento): Record<string,
   if (intencao.categoria_nome) dados.categoria_nome = intencao.categoria_nome;
   if (intencao.pessoa_nome) dados.pessoa_nome = intencao.pessoa_nome;
   if (intencao.parcelas != null) dados.parcelas = intencao.parcelas;
+  if (intencao.forma_pagamento) dados.forma_pagamento = intencao.forma_pagamento;
   return dados;
 }
 
+function resolver_forma_pagamento(
+  intencao: IntencaoRegistrarMovimento,
+  mensagem: string,
+): FormaPagamento | null | undefined {
+  if (intencao.forma_pagamento) return intencao.forma_pagamento;
+
+  const inferida = inferir_forma_pagamento_da_mensagem(mensagem);
+  if (inferida) return inferida;
+
+  // Cartão sem pista de débito → crédito (não perguntar).
+  if (intencao.cartao_nome) return "credito";
+
+  // Conta sem pista → null (não perguntar).
+  return null;
+}
+
 /**
- * Completa defaults seguros (data = hoje, perfil único, conta única/hábito) e,
- * se ainda faltar dado obrigatório, converte para SOLICITAR_INFORMACAO em vez
- * de deixar o motor falhar ou a IA inventar valores.
+ * Completa defaults seguros (data = hoje, perfil único, conta única/hábito,
+ * forma_pagamento) e, se ainda faltar dado obrigatório, converte para
+ * SOLICITAR_INFORMACAO. Nunca pede forma de pagamento.
  */
 export function normalizar_intencao_movimento(
   intencao: IntencaoDetectada,
   contexto: ContextoInterpretacao,
+  mensagem = "",
 ): IntencaoDetectada {
   if (intencao.intencao !== "REGISTRAR_MOVIMENTO") return intencao;
 
@@ -78,6 +97,8 @@ export function normalizar_intencao_movimento(
     conta_nome: intencao.conta_nome ?? origemPadrao.conta_nome ?? null,
     cartao_nome: intencao.cartao_nome ?? origemPadrao.cartao_nome ?? null,
   };
+
+  completa.forma_pagamento = resolver_forma_pagamento(completa, mensagem);
 
   const faltantes: CampoFaltante[] = [];
   if (completa.valor == null) faltantes.push("valor");

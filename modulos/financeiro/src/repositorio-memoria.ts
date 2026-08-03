@@ -71,6 +71,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         tipo: novoMovimento.tipo,
         status: novoMovimento.status ?? "realizado",
         perfil: novoMovimento.perfil,
+        formaPagamento: novoMovimento.formaPagamento ?? null,
         dataMovimento: novoMovimento.dataMovimento,
         dataLancamento: novoMovimento.dataLancamento ?? agora,
         contaId: novoMovimento.contaId ?? null,

@@ -40,3 +40,16 @@ export const acaoAuditoriaEnum = pgEnum("acao_auditoria", [
 export const statusSessaoEnum = pgEnum("status_sessao", ["ativa", "encerrada"]);
 
 export const papelChatEnum = pgEnum("papel_chat", ["usuario", "sistema", "ia"]);
+
+/** Crédito puro, débito puro, ou plástico que aceita os dois (com conta vinculada). */
+export const modalidadeCartaoEnum = pgEnum("modalidade_cartao", ["credito", "debito", "multiplo"]);
+
+/** Meio usado no lançamento — independente do `tipo_movimento` (receita/despesa/…). */
+export const formaPagamentoEnum = pgEnum("forma_pagamento", [
+  "pix",
+  "transferencia",
+  "boleto",
+  "dinheiro",
+  "credito",
+  "debito",
+]);

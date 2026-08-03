@@ -1,5 +1,5 @@
 import { boolean, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { perfilEnum } from "./enums";
+import { modalidadeCartaoEnum, perfilEnum } from "./enums";
 import { conta } from "./conta";
 import { usuario } from "./usuario";
 
@@ -13,6 +13,12 @@ export const cartao = pgTable("cartao", {
   /** Calculado dinamicamente pelo MotorFinanceiro: dia seguinte ao fechamento. */
   melhorDiaCompra: integer("melhor_dia_compra").notNull(),
   perfil: perfilEnum("perfil").notNull(),
+  /**
+   * credito = só fatura/limite; debito = só baixa saldo da conta vinculada;
+   * multiplo = os dois (conta vinculada obrigatória). Default no cadastro:
+   * sem conta → credito; com conta → multiplo.
+   */
+  modalidade: modalidadeCartaoEnum("modalidade").notNull().default("credito"),
   ativo: boolean("ativo").notNull().default(true),
   /** Últimos 4 dígitos do plástico (em claro) — só para identificação na UI. */
   final4: text("final4"),

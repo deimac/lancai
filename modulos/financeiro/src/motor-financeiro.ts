@@ -53,7 +53,10 @@ export class MotorFinanceiro {
     }
 
     if (entrada.cartaoId) {
-      return this.criar_movimento_em_cartao(entrada);
+      if (entrada.formaPagamento === "debito") {
+        return this.criar_movimento_debito_cartao(entrada);
+      }
+      return this.criar_movimento_credito_cartao(entrada);
     }
 
     return this.criar_movimento_em_conta(entrada);
@@ -80,6 +83,7 @@ export class MotorFinanceiro {
       tipo: entrada.tipo,
       status: entrada.status,
       perfil: entrada.perfil,
+      formaPagamento: entrada.formaPagamento ?? null,
       dataMovimento: entrada.dataMovimento,
       contaId: conta.id,
       categoriaId: entrada.categoriaId,
@@ -133,6 +137,8 @@ export class MotorFinanceiro {
     const idOrigem = randomUUID();
     const idDestino = randomUUID();
 
+    const formaTransferencia = entrada.formaPagamento ?? "transferencia";
+
     const movimentoOrigem: NovoMovimento = {
       id: idOrigem,
       descricao: `${entrada.descricao} (enviado para ${contaDestino.nome})`,
@@ -140,6 +146,7 @@ export class MotorFinanceiro {
       tipo: "transferencia",
       status: entrada.status,
       perfil: entrada.perfil,
+      formaPagamento: formaTransferencia,
       dataMovimento: entrada.dataMovimento,
       contaId: contaOrigem.id,
       categoriaId: entrada.categoriaId,
@@ -155,6 +162,7 @@ export class MotorFinanceiro {
       tipo: "transferencia",
       status: entrada.status,
       perfil: entrada.perfil,
+      formaPagamento: formaTransferencia,
       dataMovimento: entrada.dataMovimento,
       contaId: contaDestino.id,
       categoriaId: entrada.categoriaId,
@@ -209,7 +217,10 @@ export class MotorFinanceiro {
     });
   }
 
-  private async criar_movimento_em_cartao(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+  /**
+   * Compra no crédito: consome limite, gera parcelas, não mexe no saldo da conta.
+   */
+  private async criar_movimento_credito_cartao(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
     if (!tipo_movimento_implementado(entrada.tipo)) {
       throw new ErroTipoMovimentoNaoImplementado(entrada.tipo);
     }
@@ -220,6 +231,11 @@ export class MotorFinanceiro {
     }
     if (!cartao.ativo) {
       throw new ErroValidacaoFinanceira(`Cartão "${cartao.nome}" está inativo.`);
+    }
+    if (cartao.modalidade === "debito") {
+      throw new ErroValidacaoFinanceira(
+        `O cartão "${cartao.nome}" é só de débito. Use "no débito" ou cadastre um cartão de crédito/múltiplo.`,
+      );
     }
 
     const quantidadeParcelas = entrada.parcelamento?.quantidadeParcelas ?? 1;
@@ -238,6 +254,7 @@ export class MotorFinanceiro {
       tipo: entrada.tipo,
       status: entrada.status,
       perfil: entrada.perfil,
+      formaPagamento: "credito",
       dataMovimento: entrada.dataMovimento,
       cartaoId: cartao.id,
       categoriaId: entrada.categoriaId,
@@ -284,6 +301,88 @@ export class MotorFinanceiro {
   }
 
   /**
+   * Compra no débito do cartão: baixa o saldo da conta vinculada na hora,
+   * sem parcelas e sem consumir limite.
+   */
+  private async criar_movimento_debito_cartao(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+    if (!tipo_movimento_implementado(entrada.tipo)) {
+      throw new ErroTipoMovimentoNaoImplementado(entrada.tipo);
+    }
+    if (entrada.parcelamento) {
+      throw new ErroValidacaoFinanceira("Parcelamento só é suportado em compras no crédito.");
+    }
+
+    const cartao = await this.repositorio.obterCartao(entrada.cartaoId as string);
+    if (!cartao) {
+      throw new ErroRecursoNaoEncontrado("cartao", entrada.cartaoId as string);
+    }
+    if (!cartao.ativo) {
+      throw new ErroValidacaoFinanceira(`Cartão "${cartao.nome}" está inativo.`);
+    }
+    if (cartao.modalidade === "credito") {
+      throw new ErroValidacaoFinanceira(
+        `O cartão "${cartao.nome}" é só de crédito. Para usar débito, vincule uma conta a ele (fica múltiplo).`,
+      );
+    }
+    if (!cartao.contaId) {
+      throw new ErroValidacaoFinanceira(
+        `O cartão "${cartao.nome}" não tem conta vinculada. Vincule uma conta para pagar no débito.`,
+      );
+    }
+
+    const conta = await this.repositorio.obterConta(cartao.contaId);
+    if (!conta) {
+      throw new ErroRecursoNaoEncontrado("conta", cartao.contaId);
+    }
+    if (!conta.ativo) {
+      throw new ErroValidacaoFinanceira(`Conta "${conta.nome}" vinculada ao cartão está inativa.`);
+    }
+
+    const movimentoId = randomUUID();
+    const novoMovimento: NovoMovimento = {
+      id: movimentoId,
+      descricao: entrada.descricao,
+      valor: paraColuna(entrada.valor),
+      tipo: entrada.tipo,
+      status: entrada.status,
+      perfil: entrada.perfil,
+      formaPagamento: "debito",
+      dataMovimento: entrada.dataMovimento,
+      cartaoId: cartao.id,
+      contaId: conta.id,
+      categoriaId: entrada.categoriaId,
+      pessoaId: entrada.pessoaId,
+      usuarioId: entrada.usuarioId,
+      criadoPor: entrada.criadoPor,
+    };
+
+    const atualizacoesSaldoConta = [];
+    if (entrada.status === "realizado") {
+      const saldoNovo = calcular_saldo(paraNumero(conta.saldoAtual), entrada.tipo, entrada.valor);
+      atualizacoesSaldoConta.push({ contaId: conta.id, saldoAtual: saldoNovo });
+    }
+
+    const auditoria: NovaAuditoria = {
+      tabela: "movimento",
+      registroId: movimentoId,
+      acao: "INSERCAO",
+      estadoAnterior: null,
+      estadoAtual: {
+        ...novoMovimento,
+        fluxoCruzado: eh_fluxo_cruzado(entrada.perfil, cartao.perfil),
+      },
+      alteradoPor: entrada.criadoPor,
+    };
+
+    return this.repositorio.persistirOperacao({
+      movimentos: [novoMovimento],
+      parcelas: [],
+      atualizacoesSaldoConta,
+      auditorias: [auditoria],
+    });
+  }
+
+  /**
    * Corrige um lançamento existente (ex.: "corrige o combustível de ontem para R$ 210",
    * "muda o notebook de 10x pra 12x"). Nunca apaga o registro anterior — grava auditoria
    * e, quando necessário, ajusta saldo e regenera parcelas (append-only: parcelas antigas
@@ -308,6 +407,7 @@ export class MotorFinanceiro {
     if (campos.status !== undefined) camposParaAtualizar.status = campos.status;
     if (campos.valor !== undefined) camposParaAtualizar.valor = paraColuna(campos.valor);
     if (campos.perfil !== undefined) camposParaAtualizar.perfil = campos.perfil;
+    if (campos.formaPagamento !== undefined) camposParaAtualizar.formaPagamento = campos.formaPagamento;
 
     if (campos.categoriaId !== undefined) {
       const categoria = await this.repositorio.obterCategoria(campos.categoriaId);

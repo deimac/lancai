@@ -40,8 +40,8 @@ export class InterpretadorIntencoes {
       system: montar_prompt_sistema(),
       prompt: montar_prompt_usuario(mensagem, contexto),
     });
-    const aposMovimento = normalizar_intencao_movimento(resultado.intencao_detectada, contexto);
-    const aposCadastro = normalizar_intencao_cadastro(aposMovimento, contexto);
+    const aposMovimento = normalizar_intencao_movimento(resultado.intencao_detectada, contexto, mensagem);
+    const aposCadastro = normalizar_intencao_cadastro(aposMovimento, contexto, mensagem);
     return normalizar_intencao_plasticos(aposCadastro, mensagem);
   }
 }

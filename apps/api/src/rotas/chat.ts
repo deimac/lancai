@@ -144,7 +144,12 @@ async function montar_contexto(usuarioId: string, sessaoId: string): Promise<Con
   return {
     dataAtual: new Date().toISOString().slice(0, 10),
     contas: contas.map((conta) => ({ nome: conta.nome, perfil: conta.perfil })),
-    cartoes: cartoes.map((cartao) => ({ nome: cartao.nome, perfil: cartao.perfil })),
+    cartoes: cartoes.map((cartao) => ({
+      nome: cartao.nome,
+      perfil: cartao.perfil,
+      modalidade: cartao.modalidade,
+      temConta: Boolean(cartao.contaId),
+    })),
     categorias: categorias.map((categoria) => ({ nome: categoria.nome, tipo: categoria.tipo })),
     pessoas: pessoas.map((pessoa) => ({ nome: pessoa.nome, tipo: pessoa.tipo })),
     habitos,

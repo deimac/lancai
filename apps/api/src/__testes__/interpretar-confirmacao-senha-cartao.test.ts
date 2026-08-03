@@ -36,6 +36,7 @@ describe("pedido de senha do cartão", () => {
         vencimento: 17,
         melhorDiaCompra: 11,
         perfil: "pf",
+        modalidade: "credito",
         ativo: true,
         final4: "1111",
         dadosPlasticosCifrados: "x",

@@ -4,6 +4,7 @@ export * from "./inferir-perfil-padrao";
 export * from "./orquestrador-ia";
 export * from "./prompt";
 export * from "./interpretador-intencoes";
+export * from "./inferir-forma-pagamento";
 export * from "./normalizar-intencao-cadastro";
 export * from "./normalizar-intencao-movimento";
 export * from "./normalizar-intencao-plasticos";

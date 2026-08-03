@@ -30,6 +30,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     tipo: "despesa",
     status: "realizado",
     perfil: "pf",
+    formaPagamento: null,
     dataMovimento: "2026-07-31",
     dataLancamento: agora,
     contaId: null,
@@ -460,6 +461,7 @@ describe("ResolvedorIntencao", () => {
       expect(cartao.fechamento).toBe(20);
       expect(cartao.vencimento).toBe(27);
       expect(cartao.contaId).toBe(conta.id);
+      expect(cartao.modalidade).toBe("multiplo");
       expect(cartao.melhorDiaCompra).toBe(21);
     });
 
@@ -495,6 +497,41 @@ describe("ResolvedorIntencao", () => {
 
       expect(cartao.nome).toBe("Azul Itaú");
       expect(cartao.contaId).toBeNull();
+      expect(cartao.modalidade).toBe("credito");
+    });
+
+    it("cria cartão de débito exigindo conta vinculada", async () => {
+      const conta = criarConta({ usuarioId, nome: "C6 Bank" });
+      repositorio.contas.set(conta.id, conta);
+
+      const cartao = await resolvedor.resolver_criar_cartao(
+        {
+          intencao: "CRIAR_CARTAO",
+          nome: "Visa Débito",
+          perfil: "pf",
+          modalidade: "debito",
+          conta_nome: "C6 Bank",
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(cartao.modalidade).toBe("debito");
+      expect(cartao.contaId).toBe(conta.id);
+      expect(cartao.limite).toBe("0");
+    });
+
+    it("lança ErroDadosIncompletos quando cartão de débito vem sem conta", async () => {
+      await expect(
+        resolvedor.resolver_criar_cartao(
+          {
+            intencao: "CRIAR_CARTAO",
+            nome: "Visa Débito",
+            perfil: "pf",
+            modalidade: "debito",
+          },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroDadosIncompletos);
     });
 
     it("lança ErroDadosIncompletos quando falta o limite", async () => {

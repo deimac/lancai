@@ -125,6 +125,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
         vencimento: dados.vencimento,
         melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
         perfil: dados.perfil,
+        modalidade: dados.modalidade ?? (dados.contaId ? "multiplo" : "credito"),
         contaId: dados.contaId,
         usuarioId: dados.usuarioId,
         final4: dados.final4,
@@ -163,7 +164,8 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     }
     if (dados.vencimento != null) valores.vencimento = dados.vencimento;
     if (dados.perfil != null) valores.perfil = dados.perfil;
-    if (dados.contaId != null) valores.contaId = dados.contaId;
+    if (dados.modalidade != null) valores.modalidade = dados.modalidade;
+    if (dados.contaId !== undefined) valores.contaId = dados.contaId;
     if (dados.ativo != null) valores.ativo = dados.ativo;
     if (dados.final4 != null) valores.final4 = dados.final4;
     if (dados.dadosPlasticosCifrados != null) valores.dadosPlasticosCifrados = dados.dadosPlasticosCifrados;

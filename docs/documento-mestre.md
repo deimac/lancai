@@ -101,10 +101,10 @@ Não há coluna ou tabela extra para isso — é sempre computado em tempo de co
 |---|---|
 | `usuario` | Usuário dono da conta |
 | `conta` | Local com saldo disponível (Nubank, Caixa, Carteira). Nunca "account". |
-| `cartao` | Cartão de crédito (limite, fechamento, vencimento) |
+| `cartao` | Cartão (`modalidade`: credito / debito / multiplo). Crédito usa limite/fatura; débito baixa saldo da conta vinculada. Sem conta vinculada = crédito; com conta = múltiplo por padrão. |
 | `categoria` | Classificação do movimento (Alimentação, Combustível...) |
 | `pessoa` | Cliente, fornecedor, sócio ou familiar ligado a um movimento |
-| `movimento` | Qualquer evento financeiro. Nunca "transação". |
+| `movimento` | Qualquer evento financeiro. Nunca "transação". Tem `forma_pagamento` opcional (`pix`, `transferencia`, `boleto`, `dinheiro`, `credito`, `debito`) — independente de `tipo`. |
 | `parcela` | Desdobramento de um movimento parcelado |
 | `memoria` | Conhecimento e hábitos aprendidos do usuário (pertence ao sistema, não à IA) |
 | `auditoria` | Registro imutável de alterações |
@@ -115,7 +115,12 @@ Não existe tabela `empresa` (ver seção 4).
 
 ### Campos padrão
 
-`id`, `nome`, `descricao`, `valor`, `saldo`, `saldo_inicial`, `saldo_atual`, `tipo`, `status`, `perfil`, `ativo`, `categoria_id`, `cartao_id`, `conta_id`, `usuario_id`, `pessoa_id`, `data_movimento`, `data_lancamento`, `data_criacao`, `data_atualizacao`, `criado_por`, `alterado_por`.
+`id`, `nome`, `descricao`, `valor`, `saldo`, `saldo_inicial`, `saldo_atual`, `tipo`, `status`, `perfil`, `modalidade`, `forma_pagamento`, `ativo`, `categoria_id`, `cartao_id`, `conta_id`, `usuario_id`, `pessoa_id`, `data_movimento`, `data_lancamento`, `data_criacao`, `data_atualizacao`, `criado_por`, `alterado_por`.
+
+**Forma de pagamento e modalidade (defaults para não perguntar):**
+- Cadastro de cartão: sem conta → `modalidade = credito`; com conta → `multiplo`; “cartão de débito” explícito → `debito` (exige conta).
+- Lançamento no cartão: sem pista de débito → `forma_pagamento = credito` (não perguntar). “No débito” → `debito` (exige conta vinculada no cartão; baixa saldo, sem parcelas/limite).
+- Lançamento na conta: inferir `pix`/`transferencia`/`boleto`/`dinheiro` se a frase deixar claro; senão `forma_pagamento = null` e **não perguntar**.
 
 ### Convenção de caixa
 

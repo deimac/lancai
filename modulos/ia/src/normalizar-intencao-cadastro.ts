@@ -3,13 +3,15 @@ import type {
   IntencaoCriarConta,
   IntencaoDetectada,
   IntencaoSolicitarInformacao,
+  ModalidadeCartao,
   Perfil,
 } from "@lancai/tipos";
+import { mensagem_pede_cartao_debito } from "./inferir-forma-pagamento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
 import type { ContextoInterpretacao, IntencaoPendenteSlot } from "./prompt";
 
 type CampoFaltanteConta = "nome" | "saldo_inicial" | "perfil";
-type CampoFaltanteCartao = "nome" | "limite" | "fechamento" | "vencimento" | "perfil";
+type CampoFaltanteCartao = "nome" | "limite" | "fechamento" | "vencimento" | "perfil" | "conta";
 
 function como_numero(valor: unknown): number | null {
   if (typeof valor === "number" && Number.isFinite(valor)) return valor;
@@ -56,23 +58,52 @@ function mesclar_criar_conta(
   };
 }
 
+function como_modalidade(valor: unknown): ModalidadeCartao | null {
+  return valor === "credito" || valor === "debito" || valor === "multiplo" ? valor : null;
+}
+
+function inferir_modalidade_cartao(
+  atual: Partial<IntencaoCriarCartao>,
+  parciais: Record<string, unknown>,
+  mensagem: string,
+): ModalidadeCartao {
+  const explicita = como_modalidade(atual.modalidade) ?? como_modalidade(parciais.modalidade);
+  if (explicita) return explicita;
+  if (mensagem_pede_cartao_debito(mensagem)) return "debito";
+  const contaNome = como_texto(atual.conta_nome) ?? como_texto(parciais.conta_nome);
+  if (contaNome) return "multiplo";
+  return "credito";
+}
+
 function mesclar_criar_cartao(
   atual: Partial<IntencaoCriarCartao>,
   parciais: Record<string, unknown>,
   perfilPadrao: Perfil | null,
+  mensagem: string,
 ): IntencaoCriarCartao {
-  return {
+  const modalidade = inferir_modalidade_cartao(atual, parciais, mensagem);
+  const mesclado: IntencaoCriarCartao = {
     intencao: "CRIAR_CARTAO",
     nome: como_texto(atual.nome) ?? como_texto(parciais.nome),
     limite: atual.limite ?? como_numero(parciais.limite),
     fechamento: atual.fechamento ?? como_dia(parciais.fechamento),
     vencimento: atual.vencimento ?? como_dia(parciais.vencimento),
     perfil: como_perfil(atual.perfil) ?? como_perfil(parciais.perfil) ?? perfilPadrao,
+    modalidade,
     conta_nome: como_texto(atual.conta_nome) ?? como_texto(parciais.conta_nome),
     numero: como_texto(atual.numero) ?? como_texto(parciais.numero),
     validade: como_texto(atual.validade) ?? como_texto(parciais.validade),
     cvv: como_texto(atual.cvv) ?? como_texto(parciais.cvv),
   };
+
+  // Cartão só de débito: não exige ciclo de fatura/limite — defaults neutros.
+  if (mesclado.modalidade === "debito") {
+    if (mesclado.limite == null) mesclado.limite = 0;
+    if (mesclado.fechamento == null) mesclado.fechamento = 1;
+    if (mesclado.vencimento == null) mesclado.vencimento = 1;
+  }
+
+  return mesclado;
 }
 
 function dados_parciais_conta(completa: IntencaoCriarConta): Record<string, unknown> {
@@ -90,6 +121,7 @@ function dados_parciais_cartao(completa: IntencaoCriarCartao): Record<string, un
   if (completa.fechamento != null) dados.fechamento = completa.fechamento;
   if (completa.vencimento != null) dados.vencimento = completa.vencimento;
   if (completa.perfil) dados.perfil = completa.perfil;
+  if (completa.modalidade) dados.modalidade = completa.modalidade;
   if (completa.conta_nome) dados.conta_nome = completa.conta_nome;
   if (completa.numero) dados.numero = completa.numero;
   if (completa.validade) dados.validade = completa.validade;
@@ -116,6 +148,7 @@ function montar_pergunta_cartao(faltantes: CampoFaltanteCartao[]): string {
     fechamento: "o dia de fechamento da fatura",
     vencimento: "o dia de vencimento da fatura",
     perfil: "se o cartão é pessoal ou da empresa",
+    conta: "a conta vinculada (obrigatória para cartão de débito)",
   };
   const partes = faltantes.map((campo) => rotulos[campo]);
   if (partes.length === 1) return `Para cadastrar o cartão, preciso saber ${partes[0]}.`;
@@ -153,10 +186,14 @@ function faltantes_conta(completa: IntencaoCriarConta): CampoFaltanteConta[] {
 function faltantes_cartao(completa: IntencaoCriarCartao): CampoFaltanteCartao[] {
   const faltantes: CampoFaltanteCartao[] = [];
   if (!completa.nome) faltantes.push("nome");
+  if (!completa.perfil) faltantes.push("perfil");
+  if (completa.modalidade === "debito") {
+    if (!completa.conta_nome) faltantes.push("conta");
+    return faltantes;
+  }
   if (completa.limite == null) faltantes.push("limite");
   if (completa.fechamento == null) faltantes.push("fechamento");
   if (completa.vencimento == null) faltantes.push("vencimento");
-  if (!completa.perfil) faltantes.push("perfil");
   return faltantes;
 }
 
@@ -177,6 +214,7 @@ function parciais_da_pendente(pendente: IntencaoPendenteSlot | null | undefined)
 export function normalizar_intencao_cadastro(
   intencao: IntencaoDetectada,
   contexto: ContextoInterpretacao,
+  mensagem = "",
 ): IntencaoDetectada {
   const perfilPadrao = inferir_perfil_padrao(contexto.contas, contexto.cartoes);
   const { alvo, dados: parciaisPendentes } = parciais_da_pendente(contexto.intencaoPendente);
@@ -201,6 +239,7 @@ export function normalizar_intencao_cadastro(
         dados_de_parcial(intencao.dados_parciais) as Partial<IntencaoCriarCartao>,
         alvo === "CRIAR_CARTAO" ? parciaisPendentes : {},
         perfilPadrao,
+        mensagem,
       );
       const faltantes = faltantes_cartao(completa);
       if (faltantes.length === 0) return completa;
@@ -229,6 +268,7 @@ export function normalizar_intencao_cadastro(
       intencao,
       alvo === "CRIAR_CARTAO" ? parciaisPendentes : {},
       perfilPadrao,
+      mensagem,
     );
     const faltantes = faltantes_cartao(completa);
     if (faltantes.length > 0) return solicitar_cartao(completa, faltantes);

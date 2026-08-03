@@ -22,6 +22,12 @@ function RotuloPerfil({ perfil }: { perfil: "pf" | "pj" }) {
   );
 }
 
+function rotulo_modalidade(modalidade: CartaoResumo["modalidade"]): string {
+  if (modalidade === "debito") return "débito";
+  if (modalidade === "multiplo") return "múltiplo";
+  return "crédito";
+}
+
 export function PainelSaldos({ contas, cartoes, carregando }: PropsPainelSaldos) {
   const totalContas = contas.reduce((total, conta) => total + Number(conta.saldoAtual), 0);
 
@@ -63,12 +69,15 @@ export function PainelSaldos({ contas, cartoes, carregando }: PropsPainelSaldos)
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-texto">{cartao.nome}</span>
                   <RotuloPerfil perfil={cartao.perfil} />
+                  <span className="text-[11px] text-texto-suave">{rotulo_modalidade(cartao.modalidade)}</span>
                 </div>
                 {cartao.final4 ? (
                   <span className="text-xs text-texto-suave">•••• {cartao.final4}</span>
                 ) : null}
               </div>
-              <span className="text-xs text-texto-suave">vence dia {cartao.vencimento}</span>
+              <span className="text-xs text-texto-suave">
+                {cartao.modalidade === "debito" ? "débito" : `vence dia ${cartao.vencimento}`}
+              </span>
             </Cartao>
           ))}
         </div>

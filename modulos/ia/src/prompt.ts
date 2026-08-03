@@ -20,7 +20,7 @@ export interface ContextoInterpretacao {
   /** Data de hoje no formato YYYY-MM-DD, usada para resolver "ontem", "hoje" etc. */
   dataAtual: string;
   contas: Array<{ nome: string; perfil: string }>;
-  cartoes: Array<{ nome: string; perfil: string }>;
+  cartoes: Array<{ nome: string; perfil: string; modalidade: string; temConta: boolean }>;
   categorias: Array<{ nome: string; tipo: string }>;
   pessoas: Array<{ nome: string; tipo: string }>;
   /** Hábitos aprendidos (modulos/memoria), ex.: { chave: "cartao_principal", valor: "Nubank" }. */
@@ -56,13 +56,18 @@ Existem 10 intenções possíveis:
 1. REGISTRAR_MOVIMENTO — o usuário relatou uma receita, despesa, transferência, reembolso,
    empréstimo, estorno, retirada ou aporte. Ex.: "Gastei R$ 45 no almoço hoje",
    "Recebi R$ 5.000 do cliente XPTO", "Comprei uma TV de R$ 3.000 parcelada em 10x no Inter",
-   "fiz mercado", "almocei", "paguei a gasolina".
+   "fiz mercado", "almocei", "paguei a gasolina", "paguei no pix", "no débito do Nubank".
    - Mensagens VAGAS (só descrevem o gasto/ganho sem valor, conta ou perfil) AINDA SÃO
      REGISTRAR_MOVIMENTO — preencha o que souber (descricao, tipo_movimento) e use
      SOLICITAR_INFORMACAO para pedir o que falta. NUNCA invente valor nem conta. NUNCA
      responda NAO_RECONHECIDA para "fiz mercado", "almocei", "gastei no uber" e similares.
    - Dados obrigatórios antes de concluir: valor, conta_nome OU cartao_nome, e perfil.
      Data: se o usuário não disser, use dataAtual (hoje). Não invente valor.
+   - forma_pagamento (opcional): 'pix' | 'transferencia' | 'boleto' | 'dinheiro' | 'credito' |
+     'debito'. NUNCA pergunte forma de pagamento.
+     * Com cartao_nome e sem "débito" → forma_pagamento = credito (default silencioso).
+     * "no débito" / "débito" → forma_pagamento = debito (cartão precisa ter conta vinculada).
+     * Com conta e "pix"/"boleto"/"TED"/"dinheiro" → preencha; senão omita (null).
    - "perfil" indica se o GASTO/GANHO em si é pessoal ('pf') ou da empresa ('pj') — não confundir
      com o perfil da conta/cartão usado para pagar. Ex.: "Paguei o churrasco do Marcio com a conta
      da empresa" é perfil 'pf' (o churrasco é pessoal) mesmo saindo de uma conta 'pj'.
@@ -141,21 +146,20 @@ Existem 10 intenções possíveis:
      5.000 na conta Mercado Pago" quando "Mercado Pago" já existe é uma correção de saldo, não um
      novo cadastro).
 
-5. CRIAR_CARTAO — o usuário quer cadastrar um cartão de crédito NOVO, que ainda não existe no
-   contexto. Ex.: "Cadastra meu cartão Nubank, limite 5000, fecha dia 20 e vence dia 27".
-   Campos obrigatórios: nome, limite, fechamento (dia do mês da fatura), vencimento (dia do mês
-   da fatura), perfil.
-   conta_nome é OPCIONAL (conta preferencial da fatura). NÃO pergunte qual conta paga a fatura
-   se o usuário não citar — nem todo cartão tem conta vinculada; o pagamento da fatura pode usar
-   qualquer conta depois. Só preencha conta_nome se o usuário informar explicitamente.
-   Campos opcionais do plástico: numero, validade (MM/AA), cvv — só preencha se o usuário informar
-   ou se ele pedir para salvar esses dados; nunca invente. Se informar só parte (ex.: só número),
-   use SOLICITAR_INFORMACAO pedindo validade e CVV. Se faltar dado obrigatório, use
-   SOLICITAR_INFORMACAO; se o cartão citado já existe na lista "cartoes" do contexto, use
-   CORRIGIR_CARTAO em vez de CRIAR_CARTAO.
-   - "em uso", "comprometido", "já usei", "gasto" NÃO é o limite — ignore para o campo limite
-     (o comprometido vem dos lançamentos). Ex.: "limite 12.889,00 e 10.181,11 em uso" →
-     limite = 12889 (só o valor anunciado como limite).
+5. CRIAR_CARTAO — o usuário quer cadastrar um cartão NOVO, que ainda não existe no contexto.
+   Ex.: "Cadastra meu cartão Nubank, limite 5000, fecha dia 20 e vence dia 27".
+   Campos obrigatórios (crédito/múltiplo): nome, limite, fechamento, vencimento, perfil.
+   modalidade: 'credito' | 'debito' | 'multiplo'. Defaults (NÃO pergunte):
+   - sem conta_nome → modalidade = credito;
+   - com conta_nome → modalidade = multiplo;
+   - só se disser "cartão de débito" → modalidade = debito (aí conta_nome é obrigatória;
+     limite/fechamento/vencimento podem ser omitidos).
+   conta_nome é OPCIONAL no crédito. NÃO pergunte conta se o usuário não citar.
+   Campos opcionais do plástico: numero, validade (MM/AA), cvv — só se o usuário informar;
+   nunca invente. Se faltar dado obrigatório, use SOLICITAR_INFORMACAO; se o cartão já existe
+   em "cartoes", use CORRIGIR_CARTAO.
+   - "em uso"/"comprometido" NÃO é o limite — ignore. Ex.: "limite 12.889,00 e 10.181,11 em uso"
+     → limite = 12889.
 
 6. CORRIGIR_CONTA — o usuário quer alterar ou excluir uma conta que JÁ EXISTE (nome, saldo atual,
    perfil ou remoção). Ex.: "Muda o saldo da conta Mercado Pago pra 5000", "Renomeia a conta Caixa

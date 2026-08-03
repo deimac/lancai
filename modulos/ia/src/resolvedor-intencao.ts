@@ -64,6 +64,7 @@ export class ResolvedorIntencao {
       tipo: intencao.tipo_movimento,
       status: "realizado",
       perfil: intencao.perfil,
+      formaPagamento: intencao.forma_pagamento ?? null,
       dataMovimento: intencao.data_movimento,
       contaId,
       cartaoId,
@@ -102,6 +103,9 @@ export class ResolvedorIntencao {
     if (camposAlterados.perfil) campos.perfil = camposAlterados.perfil;
     if (camposAlterados.parcelas != null) campos.parcelas = camposAlterados.parcelas;
     if (camposAlterados.status) campos.status = camposAlterados.status;
+    if (camposAlterados.forma_pagamento !== undefined) {
+      campos.formaPagamento = camposAlterados.forma_pagamento;
+    }
 
     if (camposAlterados.categoria_nome) {
       const categoria = await this.buscar_ou_criar_categoria(usuarioId, camposAlterados.categoria_nome, "ambos");
@@ -182,18 +186,26 @@ export class ResolvedorIntencao {
     });
   }
 
-  /** Mesma lógica de `resolver_criar_conta`, mas para cartão — `conta_nome` é opcional. */
+  /** Mesma lógica de `resolver_criar_conta`, mas para cartão — `conta_nome` é opcional no crédito. */
   async resolver_criar_cartao(intencao: IntencaoCriarCartao, contexto: ContextoResolucao): Promise<Cartao> {
     if (!intencao.nome) throw new ErroDadosIncompletos("CRIAR_CARTAO", "nome do cartão");
-    if (intencao.limite == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "limite do cartão");
-    if (intencao.fechamento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de fechamento da fatura");
-    if (intencao.vencimento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de vencimento da fatura");
     if (!intencao.perfil) throw new ErroDadosIncompletos("CRIAR_CARTAO", "perfil (pessoal ou empresa)");
+
+    const modalidade =
+      intencao.modalidade ?? (intencao.conta_nome ? "multiplo" : "credito");
+
+    if (modalidade === "debito" && !intencao.conta_nome) {
+      throw new ErroDadosIncompletos("CRIAR_CARTAO", "a conta vinculada (obrigatória para cartão de débito)");
+    }
+    if (modalidade !== "debito") {
+      if (intencao.limite == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "limite do cartão");
+      if (intencao.fechamento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de fechamento da fatura");
+      if (intencao.vencimento == null) throw new ErroDadosIncompletos("CRIAR_CARTAO", "dia de vencimento da fatura");
+    }
 
     const existente = await this.repositorio.buscarCartaoPorNome(contexto.usuarioId, intencao.nome);
     if (existente) throw new ErroEntidadeJaExiste("cartão", existente.nome);
 
-    // Conta preferencial da fatura é opcional — o usuário pode pagar com qualquer conta depois.
     const contaId = intencao.conta_nome
       ? await this.resolver_conta_obrigatoria(contexto.usuarioId, intencao.conta_nome, "conta vinculada ao cartão")
       : undefined;
@@ -202,10 +214,11 @@ export class ResolvedorIntencao {
 
     return this.repositorio.criarCartao({
       nome: intencao.nome,
-      limite: intencao.limite,
-      fechamento: intencao.fechamento,
-      vencimento: intencao.vencimento,
+      limite: intencao.limite ?? 0,
+      fechamento: intencao.fechamento ?? 1,
+      vencimento: intencao.vencimento ?? 1,
       perfil: intencao.perfil,
+      modalidade,
       contaId,
       usuarioId: contexto.usuarioId,
       ...plasticos,
@@ -245,6 +258,7 @@ export class ResolvedorIntencao {
     if (alterados.fechamento != null) dados.fechamento = alterados.fechamento;
     if (alterados.vencimento != null) dados.vencimento = alterados.vencimento;
     if (alterados.perfil != null) dados.perfil = alterados.perfil;
+    if (alterados.modalidade != null) dados.modalidade = alterados.modalidade;
     if (alterados.ativo != null) dados.ativo = alterados.ativo;
     if (alterados.conta_nome != null) {
       dados.contaId = await this.resolver_conta_obrigatoria(
@@ -252,6 +266,8 @@ export class ResolvedorIntencao {
         alterados.conta_nome,
         "conta vinculada ao cartão",
       );
+      // Vincular conta a um cartão de crédito puro o torna múltiplo.
+      if (dados.modalidade == null) dados.modalidade = "multiplo";
     }
 
     const temAlgumPlastico =

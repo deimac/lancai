@@ -1,5 +1,5 @@
 import { date, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { perfilEnum, statusMovimentoEnum, tipoMovimentoEnum } from "./enums";
+import { formaPagamentoEnum, perfilEnum, statusMovimentoEnum, tipoMovimentoEnum } from "./enums";
 import { conta } from "./conta";
 import { cartao } from "./cartao";
 import { categoria } from "./categoria";
@@ -16,6 +16,11 @@ export const movimento = pgTable("movimento", {
   status: statusMovimentoEnum("status").notNull().default("realizado"),
   /** Define se o gasto/ganho em si é pessoal ('pf') ou empresarial ('pj'). */
   perfil: perfilEnum("perfil").notNull(),
+  /**
+   * Meio de pagamento (pix, crédito, débito…). Independente de `tipo`.
+   * Pode ser null em lançamentos antigos ou quando a mensagem não deixou claro.
+   */
+  formaPagamento: formaPagamentoEnum("forma_pagamento"),
   dataMovimento: date("data_movimento").notNull(),
   dataLancamento: timestamp("data_lancamento", { withTimezone: true }).notNull().defaultNow(),
   contaId: uuid("conta_id").references(() => conta.id),

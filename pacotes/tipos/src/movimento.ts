@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { perfilSchema } from "./cadastro";
+import { formaPagamentoSchema, perfilSchema } from "./cadastro";
 
 export const tipoMovimentoSchema = z.enum([
   "receita",
@@ -42,6 +42,8 @@ export const schemaCriarMovimento = z
     tipo: tipoMovimentoSchema,
     status: statusMovimentoSchema.default("realizado"),
     perfil: perfilSchema,
+    /** Meio de pagamento; null/omitido = não informado (ok em conta). */
+    formaPagamento: formaPagamentoSchema.nullable().optional(),
     dataMovimento: dataISOSchema,
     contaId: z.string().uuid().optional(),
     cartaoId: z.string().uuid().optional(),
@@ -71,6 +73,10 @@ export const schemaCriarMovimento = z
   .refine((dado) => !dado.parcelamento || Boolean(dado.cartaoId), {
     message: "Parcelamento neste MVP só é suportado em compras no cartão",
     path: ["parcelamento"],
+  })
+  .refine((dado) => !dado.parcelamento || dado.formaPagamento !== "debito", {
+    message: "Parcelamento só é suportado em compras no crédito",
+    path: ["parcelamento"],
   });
 
 export type EntradaCriarMovimento = z.infer<typeof schemaCriarMovimento>;
@@ -89,6 +95,7 @@ export const schemaCorrigirMovimento = z.object({
       pessoaId: z.string().uuid().optional(),
       perfil: perfilSchema.optional(),
       status: statusMovimentoSchema.optional(),
+      formaPagamento: formaPagamentoSchema.nullable().optional(),
       /** Regenera o parcelamento da compra no cartão com essa quantidade. */
       parcelas: z.number().int().min(1).max(360).optional(),
     })

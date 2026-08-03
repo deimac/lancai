@@ -27,6 +27,25 @@ function capitalizar(texto: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
+function rotulo_modalidade(modalidade: string): string {
+  if (modalidade === "debito") return "débito";
+  if (modalidade === "multiplo") return "múltiplo (crédito e débito)";
+  return "crédito";
+}
+
+function rotulo_forma_pagamento(forma: string | null | undefined): string {
+  if (!forma) return "";
+  const mapa: Record<string, string> = {
+    pix: "via Pix",
+    transferencia: "via transferência",
+    boleto: "via boleto",
+    dinheiro: "em dinheiro",
+    credito: "no crédito",
+    debito: "no débito",
+  };
+  return mapa[forma] ? ` (${mapa[forma]})` : "";
+}
+
 /**
  * Executa a intenção detectada contra o MotorFinanceiro/ModuloRelatorios (via
  * ResolvedorIntencao) e devolve o texto de confirmação/resposta que o usuário
@@ -42,19 +61,20 @@ export async function montar_resposta_chat(
     case "REGISTRAR_MOVIMENTO": {
       const entrada = await contexto.resolvedor.resolver_registrar_movimento(intencao, referenciaResolucao);
       const resultado = await contexto.motor.criar_movimento(entrada);
+      const viaForma = rotulo_forma_pagamento(entrada.formaPagamento);
 
       if (resultado.parcelas.length > 1) {
         const primeiraParcela = resultado.parcelas[0];
         return `Compra de ${formatarMoeda(entrada.valor)} registrada em ${resultado.parcelas.length}x de ${formatarMoeda(
           primeiraParcela?.valor ?? "0",
-        )} — "${entrada.descricao}".`;
+        )} — "${entrada.descricao}"${viaForma}.`;
       }
 
       if (resultado.movimentos.length === 2) {
-        return `Transferência de ${formatarMoeda(entrada.valor)} registrada com sucesso.`;
+        return `Transferência de ${formatarMoeda(entrada.valor)} registrada com sucesso${viaForma}.`;
       }
 
-      return `${capitalizar(entrada.tipo)} de ${formatarMoeda(entrada.valor)} registrada em "${entrada.descricao}" (${entrada.dataMovimento}).`;
+      return `${capitalizar(entrada.tipo)} de ${formatarMoeda(entrada.valor)} registrada em "${entrada.descricao}" (${entrada.dataMovimento})${viaForma}.`;
     }
 
     case "CORRIGIR_MOVIMENTO": {
@@ -120,7 +140,11 @@ export async function montar_resposta_chat(
       const eraPrimeiroCartao = contexto.totalCartoes === 0;
       const cartao = await contexto.resolvedor.resolver_criar_cartao(intencao, referenciaResolucao);
       const final4 = cartao.final4 ? ` Final •••• ${cartao.final4} salvo.` : "";
-      const confirmacao = `Cartão "${cartao.nome}" criado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
+      const modalidade = rotulo_modalidade(cartao.modalidade);
+      const confirmacao =
+        cartao.modalidade === "debito"
+          ? `Cartão "${cartao.nome}" criado (${modalidade}).${final4}`
+          : `Cartão "${cartao.nome}" criado (${modalidade}) — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
 
       if (eraPrimeiroCartao) {
         return `${confirmacao} Já pode começar a registrar suas compras nesse cartão só me contando o que comprou.`;
@@ -168,7 +192,8 @@ export async function montar_resposta_chat(
         return `Cartão "${cartao.nome}" removido.`;
       }
       const final4 = cartao.final4 ? ` Final •••• ${cartao.final4}.` : "";
-      return `Cartão "${cartao.nome}" atualizado — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
+      const modalidade = rotulo_modalidade(cartao.modalidade);
+      return `Cartão "${cartao.nome}" atualizado (${modalidade}) — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
     }
 
     case "SOLICITAR_INFORMACAO":

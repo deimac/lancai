@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Cartao, Categoria, Conta, Pessoa } from "@lancai/banco";
 import { MotorFinanceiro } from "../motor-financeiro";
 import { RepositorioFinanceiroMemoria } from "../repositorio-memoria";
-import { ErroLimiteCartaoExcedido, ErroRecursoNaoEncontrado } from "../erros";
+import { ErroLimiteCartaoExcedido, ErroRecursoNaoEncontrado, ErroValidacaoFinanceira } from "../erros";
 
 function criarConta(sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -31,6 +31,7 @@ function criarCartao(contaId: string, sobrepor: Partial<Cartao> = {}): Cartao {
     vencimento: 27,
     melhorDiaCompra: 21,
     perfil: "pf",
+    modalidade: "multiplo",
     ativo: true,
     final4: null,
     dadosPlasticosCifrados: null,
@@ -642,6 +643,105 @@ describe("MotorFinanceiro", () => {
           criadoPor: usuarioId,
         }),
       ).rejects.toThrow(ErroLimiteCartaoExcedido);
+    });
+
+    it("compra no crédito sem formaPagamento usa crédito e consome limite", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, modalidade: "credito", limite: "5000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Almoço",
+        valor: 80,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        dataMovimento: "2026-07-10",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos[0]?.formaPagamento).toBe("credito");
+      expect(resultado.parcelas).toHaveLength(1);
+      expect(repositorio.contas.get(conta.id)?.saldoAtual).toBe("1000.00");
+    });
+
+    it("compra no débito baixa saldo da conta vinculada sem parcelas", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, modalidade: "multiplo", limite: "5000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Farmácia",
+        valor: 120,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        formaPagamento: "debito",
+        dataMovimento: "2026-07-10",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos[0]?.formaPagamento).toBe("debito");
+      expect(resultado.movimentos[0]?.contaId).toBe(conta.id);
+      expect(resultado.parcelas).toHaveLength(0);
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(880);
+    });
+
+    it("rejeita débito em cartão só de crédito", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, {
+        usuarioId,
+        modalidade: "credito",
+        contaId: null,
+      });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      await expect(
+        motor.criar_movimento({
+          descricao: "Farmácia",
+          valor: 50,
+          tipo: "despesa",
+          status: "realizado",
+          perfil: "pf",
+          formaPagamento: "debito",
+          dataMovimento: "2026-07-10",
+          cartaoId: cartao.id,
+          categoriaId: categoria.id,
+          usuarioId,
+          criadoPor: usuarioId,
+        }),
+      ).rejects.toThrow(ErroValidacaoFinanceira);
+    });
+
+    it("persiste forma pix em lançamento na conta", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "500.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const resultado = await motor.criar_movimento({
+        descricao: "Mercado",
+        valor: 90,
+        tipo: "despesa",
+        status: "realizado",
+        perfil: "pf",
+        formaPagamento: "pix",
+        dataMovimento: "2026-07-10",
+        contaId: conta.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos[0]?.formaPagamento).toBe("pix");
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(410);
     });
   });
 });

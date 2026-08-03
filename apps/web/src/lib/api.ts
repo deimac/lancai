@@ -14,6 +14,7 @@ export interface CartaoResumo {
   nome: string;
   limite: string;
   perfil: Perfil;
+  modalidade: "credito" | "debito" | "multiplo";
   vencimento: number;
   /** Últimos 4 dígitos quando o plástico foi cadastrado. */
   final4?: string | null;

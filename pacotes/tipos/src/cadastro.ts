@@ -3,6 +3,19 @@ import { z } from "zod";
 export const perfilSchema = z.enum(["pf", "pj"]);
 export type Perfil = z.infer<typeof perfilSchema>;
 
+export const modalidadeCartaoSchema = z.enum(["credito", "debito", "multiplo"]);
+export type ModalidadeCartao = z.infer<typeof modalidadeCartaoSchema>;
+
+export const formaPagamentoSchema = z.enum([
+  "pix",
+  "transferencia",
+  "boleto",
+  "dinheiro",
+  "credito",
+  "debito",
+]);
+export type FormaPagamento = z.infer<typeof formaPagamentoSchema>;
+
 export const schemaCriarUsuario = z.object({
   nome: z.string().min(1),
   email: z.string().email(),
@@ -32,11 +45,16 @@ export type EntradaCriarConta = z.infer<typeof schemaCriarConta>;
 
 export const schemaCriarCartao = z.object({
   nome: z.string().min(1),
-  limite: z.number().positive(),
+  limite: z.number().nonnegative(),
   fechamento: z.number().int().min(1).max(31),
   vencimento: z.number().int().min(1).max(31),
   perfil: perfilSchema,
-  /** Conta preferencial da fatura — opcional; o pagamento pode usar qualquer conta. */
+  /**
+   * Default aplicado no repositório: credito sem conta, multiplo com conta.
+   * debito exige contaId.
+   */
+  modalidade: modalidadeCartaoSchema.optional(),
+  /** Conta vinculada (débito / fatura preferencial) — opcional no crédito puro. */
   contaId: z.string().uuid().optional(),
   usuarioId: z.string().uuid(),
   /** Últimos 4 dígitos (em claro) quando o usuário informou o número do plástico. */
@@ -58,11 +76,12 @@ export type EntradaAtualizarConta = z.infer<typeof schemaAtualizarConta>;
 /** Usado por CORRIGIR_CARTAO — todo campo é opcional pois só os citados pelo usuário devem mudar. */
 export const schemaAtualizarCartao = z.object({
   nome: z.string().min(1).optional(),
-  limite: z.number().positive().optional(),
+  limite: z.number().nonnegative().optional(),
   fechamento: z.number().int().min(1).max(31).optional(),
   vencimento: z.number().int().min(1).max(31).optional(),
   perfil: perfilSchema.optional(),
-  contaId: z.string().uuid().optional(),
+  modalidade: modalidadeCartaoSchema.optional(),
+  contaId: z.string().uuid().nullable().optional(),
   ativo: z.boolean().optional(),
   final4: z.string().length(4).optional(),
   dadosPlasticosCifrados: z.string().min(1).optional(),

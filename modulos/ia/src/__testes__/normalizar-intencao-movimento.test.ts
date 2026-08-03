@@ -115,7 +115,7 @@ describe("normalizar_intencao_movimento", () => {
           { nome: "C6 Bank", perfil: "pf" },
           { nome: "Nubank", perfil: "pf" },
         ],
-        cartoes: [{ nome: "Nubank", perfil: "pf" }],
+        cartoes: [{ nome: "Nubank", perfil: "pf", modalidade: "credito", temConta: false }],
         habitos: [{ chave: "cartao_principal", valor: "Nubank" }],
       }),
     );
