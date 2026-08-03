@@ -9,6 +9,7 @@ import {
   RepositorioContextoDrizzle,
   ResolvedorIntencao,
   decifrar_dados_plasticos,
+  interpretar_lancamento_rapido,
 } from "@lancai/ia";
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
@@ -280,9 +281,12 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
       contexto.historicoRecente,
     );
 
+    // Atalho: lançamento óbvio (valor + verbo + conta/cartão) — sem latência de IA.
+    const intencaoRapida =
+      intencaoConfirmacao ?? interpretar_lancamento_rapido(dados.mensagem, contexto);
+
     const intencao =
-      intencaoConfirmacao ??
-      (await interpretador.interpretar_mensagem(dados.mensagem, contexto));
+      intencaoRapida ?? (await interpretador.interpretar_mensagem(dados.mensagem, contexto));
 
     await banco.insert(chatTabela).values({
       sessaoId: sessaoAtual.id,

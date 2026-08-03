@@ -77,11 +77,12 @@ Existem 10 intenções possíveis:
      Se "perfilPadrao" vier preenchido e ainda não houver conta/cartão, use perfilPadrao.
      Só pergunte perfil quando não houver conta/cartão resolvido E perfilPadrao for null.
    - Use os nomes de conta/cartão/categoria/pessoa exatamente como existem no contexto abaixo
-     quando conseguir identificar uma correspondência óbvia (ex.: usuário disse "Nubank" e existe
-     uma conta "Nubank PF" no contexto — use o nome completo da conta). Se o usuário não mencionar
-     conta nem cartão, tente inferir pelos hábitos informados no contexto (ex.: cartão principal)
-     ou, se houver só uma conta e nenhum cartão, use essa conta. Se ainda assim não souber, peça
-     via SOLICITAR_INFORMACAO.
+     quando conseguir identificar uma correspondência óbvia ou parcial (ex.: "cartão azul" →
+     "Azul Itaú"; "C6" → "C6 Bank"). Se a mensagem disser "cartão"/"cartao", preencha cartao_nome
+     (não conta_nome). Nunca devolva REGISTRAR_MOVIMENTO/SOLICITAR pedindo conta/cartão se a
+     mensagem já citou um cartão ou conta que bate com o contexto. Se o usuário não mencionar
+     conta nem cartão, tente hábitos (cartão/conta principal) ou conta única. Só então
+     SOLICITAR_INFORMACAO.
    - Categoria e pessoa podem ser um nome novo, que ainda não existe no contexto — isso é esperado
      e será criado automaticamente depois (cadastro incremental).
    - "parcelas" só deve ser preenchido quando o usuário mencionar explicitamente parcelamento, e

@@ -1,5 +1,10 @@
 import type { FormaPagamento, IntencaoDetectada, IntencaoRegistrarMovimento, Perfil } from "@lancai/tipos";
 import { inferir_forma_pagamento_da_mensagem } from "./inferir-forma-pagamento";
+import {
+  inferir_origem_da_mensagem,
+  nome_corresponde_cadastro,
+  resolver_nome_canonico,
+} from "./inferir-origem-movimento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
 import type { ContextoInterpretacao } from "./prompt";
 
@@ -68,45 +73,81 @@ function resolver_forma_pagamento(
   const inferida = inferir_forma_pagamento_da_mensagem(mensagem);
   if (inferida) return inferida;
 
-  // Cartão sem pista de débito → crédito (não perguntar).
   if (intencao.cartao_nome) return "credito";
-
-  // Conta (pagamento/recebimento) sem pista → Pix (nunca null).
   if (intencao.conta_nome) return "pix";
 
   return null;
 }
 
-function nome_corresponde(cadastro: string, citado: string): boolean {
-  const a = cadastro.toLocaleLowerCase("pt-BR");
-  const b = citado.toLocaleLowerCase("pt-BR");
-  return a === b || a.includes(b) || b.includes(a);
-}
-
-/**
- * Perfil do lançamento = perfil da conta/cartão usado. Assim, mesmo com
- * mistura PF/PJ no cadastro, não perguntamos se a origem já está clara.
- */
 function inferir_perfil_da_origem(
   contexto: ContextoInterpretacao,
   contaNome: string | null | undefined,
   cartaoNome: string | null | undefined,
 ): Perfil | null {
   if (cartaoNome) {
-    const cartao = contexto.cartoes.find((item) => nome_corresponde(item.nome, cartaoNome));
+    const cartao = contexto.cartoes.find((item) => nome_corresponde_cadastro(item.nome, cartaoNome));
     if (cartao?.perfil === "pf" || cartao?.perfil === "pj") return cartao.perfil;
   }
   if (contaNome) {
-    const conta = contexto.contas.find((item) => nome_corresponde(item.nome, contaNome));
+    const conta = contexto.contas.find((item) => nome_corresponde_cadastro(item.nome, contaNome));
     if (conta?.perfil === "pf" || conta?.perfil === "pj") return conta.perfil;
   }
   return null;
 }
 
+function somar_dias_iso(dataISO: string, dias: number): string {
+  const data = new Date(`${dataISO}T12:00:00.000Z`);
+  data.setUTCDate(data.getUTCDate() + dias);
+  return data.toISOString().slice(0, 10);
+}
+
+/** Corrige "ontem"/"hoje"/"anteontem" se a IA errou ou omitiu a data. */
+function resolver_data_movimento(
+  dataAtual: string,
+  dataDaIa: string | null | undefined,
+  mensagem: string,
+): string {
+  const texto = mensagem.toLocaleLowerCase("pt-BR");
+  if (/\banteontem\b/.test(texto)) return somar_dias_iso(dataAtual, -2);
+  if (/\bontem\b/.test(texto)) return somar_dias_iso(dataAtual, -1);
+  if (/\bhoje\b/.test(texto)) return dataAtual;
+  return dataDaIa ?? dataAtual;
+}
+
+function resolver_origem(
+  intencao: IntencaoRegistrarMovimento,
+  contexto: ContextoInterpretacao,
+  mensagem: string,
+): { conta_nome: string | null; cartao_nome: string | null } {
+  const daMensagem = inferir_origem_da_mensagem(mensagem, contexto);
+  const doHabito = inferir_conta_ou_cartao(contexto);
+
+  const cartaoCitado = intencao.cartao_nome ?? daMensagem.cartao_nome ?? null;
+  const contaCitada = intencao.conta_nome ?? daMensagem.conta_nome ?? null;
+
+  if (cartaoCitado) {
+    return {
+      cartao_nome: resolver_nome_canonico(cartaoCitado, contexto.cartoes),
+      conta_nome: null,
+    };
+  }
+
+  if (contaCitada) {
+    return {
+      conta_nome: resolver_nome_canonico(contaCitada, contexto.contas),
+      cartao_nome: null,
+    };
+  }
+
+  return {
+    cartao_nome: doHabito.cartao_nome ?? null,
+    conta_nome: doHabito.conta_nome ?? null,
+  };
+}
+
 /**
- * Completa defaults seguros (data = hoje, perfil da conta/cartão, forma_pagamento)
+ * Completa defaults seguros (data, origem da mensagem, perfil, forma_pagamento)
  * e, se ainda faltar dado obrigatório, converte para SOLICITAR_INFORMACAO.
- * Nunca pede forma de pagamento; com conta/cartão resolvido, nunca pede perfil.
  */
 export function normalizar_intencao_movimento(
   intencao: IntencaoDetectada,
@@ -116,13 +157,13 @@ export function normalizar_intencao_movimento(
   if (intencao.intencao !== "REGISTRAR_MOVIMENTO") return intencao;
 
   const perfilPadrao = inferir_perfil_padrao(contexto.contas, contexto.cartoes);
-  const origemPadrao = inferir_conta_ou_cartao(contexto);
+  const origem = resolver_origem(intencao, contexto, mensagem);
 
   const completa: IntencaoRegistrarMovimento = {
     ...intencao,
-    data_movimento: intencao.data_movimento ?? contexto.dataAtual,
-    conta_nome: intencao.conta_nome ?? origemPadrao.conta_nome ?? null,
-    cartao_nome: intencao.cartao_nome ?? origemPadrao.cartao_nome ?? null,
+    data_movimento: resolver_data_movimento(contexto.dataAtual, intencao.data_movimento, mensagem),
+    conta_nome: origem.conta_nome,
+    cartao_nome: origem.cartao_nome,
   };
 
   const perfilOrigem = inferir_perfil_da_origem(contexto, completa.conta_nome, completa.cartao_nome);
@@ -132,8 +173,6 @@ export function normalizar_intencao_movimento(
   const faltantes: CampoFaltante[] = [];
   if (completa.valor == null) faltantes.push("valor");
   if (!completa.conta_nome && !completa.cartao_nome) faltantes.push("conta");
-  // Perfil vem da conta/cartão — nunca perguntar junto com "qual conta".
-  // Só pergunta perfil se a origem já existe e ainda assim não deu para resolver.
   if (!completa.perfil && (completa.conta_nome || completa.cartao_nome)) {
     faltantes.push("perfil");
   }
