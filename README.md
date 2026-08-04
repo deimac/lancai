@@ -47,6 +47,26 @@ pnpm dev                   # sobe apps/api e apps/web em paralelo
 - API: http://localhost:3333
 - Web: http://localhost:5173
 
+## IA híbrida (cloud + Ollama)
+
+Ordem padrão: **Groq → Gemini 2.0 Flash → Ollama** (`qwen2.5:3b-instruct`).
+
+- Cloud resolve latência e qualidade no dia a dia.
+- Ollama é **último fallback** (evita 503 se as APIs caírem). Em VPS sem GPU (ex.: Hostinger KVM2, 2 vCPU / 8 GB) o modelo 3B cabe, mas fica lento — não use como padrão.
+- Circuito: após 3 falhas seguidas num provedor, ele fica pausado ~2 minutos.
+- Health-check com cache TTL pula provedor morto antes do timeout da mensagem.
+- Redis/BullMQ **não** entram no caminho do `/chat` neste estágio (chat síncrono; fila não evita 503 e custa RAM). Detalhes em [`docs/ia-hibrida-ollama.md`](docs/ia-hibrida-ollama.md).
+
+```bash
+# Fallback local no Mac (dev) ou na VPS
+brew install ollama          # ou: curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:3b-instruct
+# No .env:
+# OLLAMA_BASE_URL=http://127.0.0.1:11434
+# OLLAMA_MODEL=qwen2.5:3b-instruct
+# LLM_ORDEM_FALLBACK=groq,gemini,ollama
+```
+
 ## Scripts úteis
 
 - `pnpm test` — roda os testes (Vitest) de todos os pacotes/módulos.
