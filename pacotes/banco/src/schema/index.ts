@@ -10,3 +10,4 @@ export * from "./memoria";
 export * from "./auditoria";
 export * from "./sessao";
 export * from "./chat";
+export * from "./evolution-evento";
