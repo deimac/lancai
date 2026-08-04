@@ -150,6 +150,40 @@ describe("normalizar_intencao_movimento", () => {
     });
   });
 
+  it("resolve ontem e data explícita pela mensagem", () => {
+    const ontem = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        descricao: "Farmacia",
+        valor: 18.98,
+        cartao_nome: "Azul Itaú",
+      },
+      contexto({
+        dataAtual: "2026-08-03",
+        cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
+      }),
+      "gastei ontem 18,98 na farmacia no cartao azul",
+    );
+    expect(ontem).toMatchObject({ data_movimento: "2026-08-02" });
+
+    const explicita = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        descricao: "Farmacia",
+        valor: 18.98,
+        cartao_nome: "Azul Itaú",
+      },
+      contexto({
+        dataAtual: "2026-08-03",
+        cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
+      }),
+      "gastei 18,98 na farmacia no cartao azul no dia 02/08/2026",
+    );
+    expect(explicita).toMatchObject({ data_movimento: "2026-08-02" });
+  });
+
   it("usa hábito de cartão principal quando disponível", () => {
     const resultado = normalizar_intencao_movimento(
       {

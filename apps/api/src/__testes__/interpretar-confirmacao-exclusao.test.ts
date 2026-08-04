@@ -54,6 +54,22 @@ describe("extrair_pendencia_exclusao", () => {
     });
   });
 
+  it("detecta exclusão em lote", () => {
+    expect(
+      extrair_pendencia_exclusao([
+        {
+          papel: "sistema",
+          conteudo:
+            'Deseja realmente excluir os 2 lançamentos de "farmacia" de 02/08/2026 (total R$\u00a037,96)? Responda "sim" para confirmar ou "não" para cancelar.',
+        },
+      ]),
+    ).toEqual({
+      tipo: "lançamento",
+      descricao: "farmacia",
+      dataMovimento: "2026-08-02",
+    });
+  });
+
   it("retorna null quando não há confirmação pendente", () => {
     expect(
       extrair_pendencia_exclusao([{ papel: "sistema", conteudo: "Conta atualizada." }]),

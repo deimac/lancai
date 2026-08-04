@@ -61,4 +61,18 @@ describe("interpretar_lancamento_rapido", () => {
     expect(interpretar_lancamento_rapido("gastei na farmacia no cartao azul", contexto())).toBeNull();
     expect(interpretar_lancamento_rapido("gastei 18,98 na farmacia", contexto())).toBeNull();
   });
+
+  it("não mistura data explícita na descrição", () => {
+    const resultado = interpretar_lancamento_rapido(
+      "gastei 18,98 na farmacia no cartao azul no dia 02/08/2026",
+      contexto(),
+    );
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      data_movimento: "2026-08-02",
+    });
+    if (resultado?.intencao === "REGISTRAR_MOVIMENTO") {
+      expect(resultado.descricao.toLowerCase()).toBe("farmacia");
+    }
+  });
 });

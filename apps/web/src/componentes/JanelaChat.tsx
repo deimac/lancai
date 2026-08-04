@@ -48,6 +48,10 @@ function intencao_afeta_saldos(intencao: IntencaoDetectada): boolean {
   ) {
     return false;
   }
+  // Duplicata ainda não confirmada: backend só pergunta (confirmado === false explícito).
+  if (intencao.intencao === "REGISTRAR_MOVIMENTO" && intencao.confirmado === false) {
+    return false;
+  }
   return true;
 }
 

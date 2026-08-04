@@ -5,14 +5,17 @@ const PADRAO_CONTA_CARTAO =
   /Deseja realmente excluir (?:a|o) (conta|cartão) "([^"]+)"\?/;
 
 const PADRAO_LANCAMENTO =
-  /Deseja realmente excluir o lançamento "([^"]+)" de (\d{2})\/(\d{2})\/(\d{4})(?:\s*\([^)]*\))?\?/;
+  /Deseja realmente excluir o lançamento "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
+
+const PADRAO_LANCAMENTOS =
+  /Deseja realmente excluir os (\d+) lançamentos de "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
 
 const AFIRMATIVAS = /^(sim|confirmo|confirma|pode excluir|pode apagar|ok|quero|yes)\.?$/i;
 const NEGATIVAS = /^(não|nao|cancela|cancelar|não quero|nao quero|no)\.?$/i;
 
 export type PendenciaExclusao =
   | { tipo: "conta" | "cartão"; nome: string }
-  | { tipo: "lançamento"; descricao: string; dataMovimento: string };
+  | { tipo: "lançamento"; descricao: string; dataMovimento: string | null };
 
 function data_br_para_iso(dia: string, mes: string, ano: string): string {
   return `${ano}-${mes}-${dia}`;
@@ -26,12 +29,27 @@ export function extrair_pendencia_exclusao(
     const mensagem = historicoRecente[i];
     if (mensagem?.papel !== "sistema") continue;
 
+    const varios = PADRAO_LANCAMENTOS.exec(mensagem.conteudo);
+    if (varios) {
+      return {
+        tipo: "lançamento",
+        descricao: varios[2]!,
+        dataMovimento:
+          varios[3] && varios[4] && varios[5]
+            ? data_br_para_iso(varios[3], varios[4], varios[5])
+            : null,
+      };
+    }
+
     const lancamento = PADRAO_LANCAMENTO.exec(mensagem.conteudo);
     if (lancamento) {
       return {
         tipo: "lançamento",
         descricao: lancamento[1]!,
-        dataMovimento: data_br_para_iso(lancamento[2]!, lancamento[3]!, lancamento[4]!),
+        dataMovimento:
+          lancamento[2] && lancamento[3] && lancamento[4]
+            ? data_br_para_iso(lancamento[2], lancamento[3], lancamento[4])
+            : null,
       };
     }
 

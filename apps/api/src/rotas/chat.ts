@@ -14,11 +14,13 @@ import {
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
 import { ModuloRelatorios, RepositorioRelatoriosDrizzle } from "@lancai/relatorios";
+import { hojeISO, type IntencaoDetectada } from "@lancai/tipos";
 import {
   extrair_pendencia_senha_cartao,
   mensagem_parece_senha,
   redigir_senha_no_historico,
 } from "../interpretar-confirmacao-senha-cartao";
+import { interpretar_resposta_confirmacao_duplicata } from "../interpretar-confirmacao-duplicata";
 import { interpretar_resposta_confirmacao_exclusao } from "../interpretar-confirmacao-exclusao";
 import { montar_dados_cartao_protegidos } from "../montar-dados-cartao";
 import { montar_resposta_chat } from "../montar-resposta-chat";
@@ -130,6 +132,21 @@ async function buscar_intencao_pendente(
   return null;
 }
 
+/** Última intenção bruta da IA na sessão — usada para confirmar duplicata de lançamento. */
+async function buscar_ultima_intencao_ia(sessaoId: string): Promise<IntencaoDetectada | null> {
+  const banco = obter_banco();
+  const [ultimaIa] = await banco
+    .select({ intencaoDetectada: chatTabela.intencaoDetectada })
+    .from(chatTabela)
+    .where(and(eq(chatTabela.sessaoId, sessaoId), eq(chatTabela.papel, "ia")))
+    .orderBy(desc(chatTabela.dataCriacao))
+    .limit(1);
+
+  const bruta = ultimaIa?.intencaoDetectada;
+  if (!bruta || typeof bruta !== "object" || Array.isArray(bruta)) return null;
+  return bruta as IntencaoDetectada;
+}
+
 async function montar_contexto(usuarioId: string, sessaoId: string): Promise<ContextoInterpretacao> {
   const [contas, cartoes, categorias, pessoas, habitos, historicoRecente, intencaoPendente] =
     await Promise.all([
@@ -143,7 +160,7 @@ async function montar_contexto(usuarioId: string, sessaoId: string): Promise<Con
     ]);
 
   return {
-    dataAtual: new Date().toISOString().slice(0, 10),
+    dataAtual: hojeISO(),
     contas: contas.map((conta) => ({ nome: conta.nome, perfil: conta.perfil })),
     cartoes: cartoes.map((cartao) => ({
       nome: cartao.nome,
@@ -275,11 +292,15 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
       return resposta.send({ sessaoId: sessaoAtual.id, intencao: intencaoMenu, resposta: respostaTexto });
     }
 
-    // Atalho: resposta "sim"/"não" após o sistema pedir confirmação de exclusão.
-    const intencaoConfirmacao = interpretar_resposta_confirmacao_exclusao(
-      dados.mensagem,
-      contexto.historicoRecente,
-    );
+    // Atalho: resposta "sim"/"não" após confirmação de exclusão ou de duplicata.
+    const ultimaIntencaoIa = await buscar_ultima_intencao_ia(sessaoAtual.id);
+    const intencaoConfirmacao =
+      interpretar_resposta_confirmacao_exclusao(dados.mensagem, contexto.historicoRecente) ??
+      interpretar_resposta_confirmacao_duplicata(
+        dados.mensagem,
+        contexto.historicoRecente,
+        ultimaIntencaoIa,
+      );
 
     // Atalho: lançamento óbvio (valor + verbo + conta/cartão) — sem latência de IA.
     const intencaoRapida =
@@ -306,13 +327,25 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
       totalCartoes: contexto.cartoes.length,
     });
 
+    // Duplicata: backend só perguntou — marca confirmado=false para a UI não refrescar saldos.
+    const intencaoResposta =
+      intencao.intencao === "REGISTRAR_MOVIMENTO" &&
+      intencao.confirmado !== true &&
+      respostaTexto.startsWith("Já existe um lançamento igual:")
+        ? { ...intencao, confirmado: false as const }
+        : intencao;
+
     await banco.insert(chatTabela).values({
       sessaoId: sessaoAtual.id,
       papel: "sistema",
       conteudo: respostaTexto,
     });
 
-    return resposta.send({ sessaoId: sessaoAtual.id, intencao, resposta: respostaTexto });
+    return resposta.send({
+      sessaoId: sessaoAtual.id,
+      intencao: intencaoResposta,
+      resposta: respostaTexto,
+    });
   });
 
   app.get("/:sessaoId/mensagens", async (requisicao) => {

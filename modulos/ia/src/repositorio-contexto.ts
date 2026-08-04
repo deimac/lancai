@@ -6,6 +6,14 @@ export interface ReferenciaMovimentoParaCorrecao {
   dataMovimento?: string;
 }
 
+export interface CriterioMovimentoSimilar {
+  descricao: string;
+  valor: number;
+  dataMovimento: string;
+  contaId?: string | null;
+  cartaoId?: string | null;
+}
+
 /**
  * Porta de leitura/escrita usada pelo `ResolvedorIntencao` para traduzir os
  * nomes em texto livre que a IA devolve (ex.: "Nubank", "Combustível") para
@@ -42,6 +50,24 @@ export interface RepositorioContexto {
   buscarMovimentoParaCorrecao(
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
+  ): Promise<Movimento | undefined>;
+
+  /**
+   * Lista todos os lançamentos que batem com a referência (descrição normalizada + data opcional).
+   * Usado para cancelar vários iguais de uma vez (ex.: farmácia duplicada).
+   */
+  listarMovimentosParaCorrecao(
+    usuarioId: string,
+    referencia: ReferenciaMovimentoParaCorrecao,
+  ): Promise<Movimento[]>;
+
+  /**
+   * Busca lançamento não cancelado com mesmo valor, data, descrição (sem acento/caixa)
+   * e mesma conta ou cartão — usado para avisar duplicata antes de registrar.
+   */
+  buscarMovimentoSimilar(
+    usuarioId: string,
+    criterio: CriterioMovimentoSimilar,
   ): Promise<Movimento | undefined>;
 
   /** Contagem de lançamentos não cancelados vinculados à conta (para aviso na exclusão). */

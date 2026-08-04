@@ -101,7 +101,32 @@ function somar_dias_iso(dataISO: string, dias: number): string {
   return data.toISOString().slice(0, 10);
 }
 
-/** Corrige "ontem"/"hoje"/"anteontem" se a IA errou ou omitiu a data. */
+/** Extrai data explícita DD/MM[/AAAA] da mensagem. */
+function extrair_data_explicita(mensagem: string, dataAtual: string): string | null {
+  const comAno = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/.exec(mensagem);
+  if (comAno) {
+    const dia = Number(comAno[1]);
+    const mes = Number(comAno[2]);
+    const ano = Number(comAno[3]);
+    if (dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12) {
+      return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+    }
+  }
+
+  const semAno = /\b(\d{1,2})\/(\d{1,2})\b/.exec(mensagem);
+  if (semAno) {
+    const dia = Number(semAno[1]);
+    const mes = Number(semAno[2]);
+    const ano = Number(dataAtual.slice(0, 4));
+    if (dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12 && Number.isFinite(ano)) {
+      return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+    }
+  }
+
+  return null;
+}
+
+/** Corrige "ontem"/"hoje"/data explícita se a IA errou ou omitiu a data. */
 function resolver_data_movimento(
   dataAtual: string,
   dataDaIa: string | null | undefined,
@@ -111,6 +136,10 @@ function resolver_data_movimento(
   if (/\banteontem\b/.test(texto)) return somar_dias_iso(dataAtual, -2);
   if (/\bontem\b/.test(texto)) return somar_dias_iso(dataAtual, -1);
   if (/\bhoje\b/.test(texto)) return dataAtual;
+
+  const explicita = extrair_data_explicita(mensagem, dataAtual);
+  if (explicita) return explicita;
+
   return dataDaIa ?? dataAtual;
 }
 

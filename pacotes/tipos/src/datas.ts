@@ -4,6 +4,16 @@
  * strings `YYYY-MM-DD` para evitar deslocamento de dia por timezone.
  */
 
+/** "Hoje" no fuso do app (padrão Brasil). Evita `toISOString()` que usa UTC. */
+export function hojeISO(agora: Date = new Date(), fuso = "America/Sao_Paulo"): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: fuso,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(agora);
+}
+
 export function paraDataISO(data: Date): string {
   return data.toISOString().slice(0, 10);
 }

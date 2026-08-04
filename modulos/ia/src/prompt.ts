@@ -87,6 +87,11 @@ Existem 10 intenções possíveis:
      e será criado automaticamente depois (cadastro incremental).
    - "parcelas" só deve ser preenchido quando o usuário mencionar explicitamente parcelamento, e
      nesse caso é obrigatório haver um cartão.
+   - "confirmado": o backend detecta lançamento duplicado (mesmo valor/data/descrição/origem) e
+     pergunta. No primeiro REGISTRAR_MOVIMENTO omita confirmado (ou false). Se o histórico mostra
+     "Já existe um lançamento igual" e a mensagem é "sim"/"confirmo" → devolva o mesmo
+     REGISTRAR_MOVIMENTO com confirmado = true. Se "não"/"cancela" → NAO_RECONHECIDA com motivo
+     "Lançamento não registrado — já existia um igual.".
 
 2. CONSULTAR_VISAO — o usuário fez uma pergunta sobre a própria situação financeira, nunca um
    lançamento novo. "tipo_visao" deve ser exatamente um destes 8 valores:
@@ -129,9 +134,11 @@ Existem 10 intenções possíveis:
    do Marcio pra Nubank".
    "referencia" localiza o lançamento (descrição e/ou data); "campos_alterados" só com o que mudou.
    - "parcelas": use quando o usuário pedir para mudar o número de parcelas de uma compra no cartão.
-   - Pedidos de "excluir/apagar/remover/cancelar/deletar lançamento" → CORRIGIR_MOVIMENTO com
+   - Pedidos de "excluir/apagar/remover/cancelar/deletar lançamento(s)" → CORRIGIR_MOVIMENTO com
      campos_alterados.status = "cancelado" e confirmado = false (ou omitido). O sistema pergunta
-     se o usuário confirma. NUNCA marque confirmado = true no primeiro pedido.
+     e cancela TODOS os lançamentos que batem com a descrição (e data, se houver). Em "referencia.descricao"
+     use um único termo simples (ex.: "farmacia"), sem listar variantes. NUNCA marque confirmado = true
+     no primeiro pedido.
    - Se o histórico recente mostra que o sistema pediu confirmação de exclusão desse lançamento
      e a mensagem atual é "sim"/"confirmo"/"pode excluir" → status = "cancelado" E confirmado = true.
      Se a resposta for "não"/"cancela" → NAO_RECONHECIDA com motivo "Exclusão cancelada.".

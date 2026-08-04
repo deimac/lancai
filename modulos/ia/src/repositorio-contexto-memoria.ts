@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
-import { calcularMelhorDiaCompra } from "@lancai/tipos";
+import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
-import type { ReferenciaMovimentoParaCorrecao, RepositorioContexto } from "./repositorio-contexto";
+import { descricao_corresponde_busca, normalizar_descricao } from "./normalizar-descricao";
+import type {
+  CriterioMovimentoSimilar,
+  ReferenciaMovimentoParaCorrecao,
+  RepositorioContexto,
+} from "./repositorio-contexto";
 
 function correspondeAoNome(nomeArmazenado: string, nomeBuscado: string): boolean {
   return nomeArmazenado.toLowerCase().includes(nomeBuscado.toLowerCase());
@@ -148,12 +153,34 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
     return atualizado;
   }
 
-  async buscarMovimentoParaCorrecao(usuarioId: string, referencia: ReferenciaMovimentoParaCorrecao) {
+  async listarMovimentosParaCorrecao(usuarioId: string, referencia: ReferenciaMovimentoParaCorrecao) {
     const candidatos = [...this.movimentos.values()].filter((movimento) => {
       if (movimento.usuarioId !== usuarioId || movimento.status === "cancelado") return false;
-      if (referencia.descricao && !correspondeAoNome(movimento.descricao, referencia.descricao)) return false;
       if (referencia.dataMovimento && movimento.dataMovimento !== referencia.dataMovimento) return false;
+      if (referencia.descricao && !descricao_corresponde_busca(movimento.descricao, referencia.descricao)) {
+        return false;
+      }
       return true;
+    });
+    candidatos.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
+    return candidatos;
+  }
+
+  async buscarMovimentoParaCorrecao(usuarioId: string, referencia: ReferenciaMovimentoParaCorrecao) {
+    const candidatos = await this.listarMovimentosParaCorrecao(usuarioId, referencia);
+    return candidatos[0];
+  }
+
+  async buscarMovimentoSimilar(usuarioId: string, criterio: CriterioMovimentoSimilar) {
+    const valorAlvo = paraColuna(criterio.valor);
+    const descricaoAlvo = normalizar_descricao(criterio.descricao);
+    const candidatos = [...this.movimentos.values()].filter((movimento) => {
+      if (movimento.usuarioId !== usuarioId || movimento.status === "cancelado") return false;
+      if (movimento.dataMovimento !== criterio.dataMovimento) return false;
+      if (movimento.valor !== valorAlvo) return false;
+      if (criterio.cartaoId && movimento.cartaoId !== criterio.cartaoId) return false;
+      if (!criterio.cartaoId && criterio.contaId && movimento.contaId !== criterio.contaId) return false;
+      return normalizar_descricao(movimento.descricao) === descricaoAlvo;
     });
     candidatos.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
     return candidatos[0];

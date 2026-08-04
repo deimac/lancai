@@ -68,6 +68,8 @@ function extrair_descricao(
 
   texto = texto
     .replace(/\b(hoje|ontem|anteontem)\b/gi, " ")
+    .replace(/\bno dia\b/gi, " ")
+    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ")
     .replace(/R\$?\s*[\d.]+(?:,\d{2})?/gi, " ")
     .replace(/\b\d{1,3}(?:\.\d{3})*,\d{2}\b/g, " ")
     .replace(/\b\d+,\d{2}\b/g, " ")

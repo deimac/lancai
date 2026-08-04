@@ -7,6 +7,7 @@ export * from "./interpretador-intencoes";
 export * from "./inferir-forma-pagamento";
 export * from "./inferir-origem-movimento";
 export * from "./interpretar-lancamento-rapido";
+export * from "./normalizar-descricao";
 export * from "./normalizar-intencao-cadastro";
 export * from "./normalizar-intencao-movimento";
 export * from "./normalizar-intencao-plasticos";

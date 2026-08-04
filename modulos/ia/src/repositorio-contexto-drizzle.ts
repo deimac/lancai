@@ -8,9 +8,14 @@ import {
   pessoa as pessoaTabela,
 } from "@lancai/banco";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
-import { calcularMelhorDiaCompra } from "@lancai/tipos";
+import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
-import type { ReferenciaMovimentoParaCorrecao, RepositorioContexto } from "./repositorio-contexto";
+import { descricao_corresponde_busca, normalizar_descricao } from "./normalizar-descricao";
+import type {
+  CriterioMovimentoSimilar,
+  ReferenciaMovimentoParaCorrecao,
+  RepositorioContexto,
+} from "./repositorio-contexto";
 
 export class RepositorioContextoDrizzle implements RepositorioContexto {
   private get banco() {
@@ -180,14 +185,11 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     return cartao;
   }
 
-  async buscarMovimentoParaCorrecao(
+  async listarMovimentosParaCorrecao(
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
-  ): Promise<Movimento | undefined> {
+  ): Promise<Movimento[]> {
     const condicoes = [eq(movimentoTabela.usuarioId, usuarioId), ne(movimentoTabela.status, "cancelado")];
-    if (referencia.descricao) {
-      condicoes.push(ilike(movimentoTabela.descricao, `%${referencia.descricao}%`));
-    }
     if (referencia.dataMovimento) {
       condicoes.push(eq(movimentoTabela.dataMovimento, referencia.dataMovimento));
     }
@@ -197,8 +199,47 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
       .from(movimentoTabela)
       .where(and(...condicoes))
       .orderBy(desc(movimentoTabela.dataLancamento))
-      .limit(1);
+      .limit(100);
+
+    if (!referencia.descricao) return linhas;
+    return linhas.filter((movimento) =>
+      descricao_corresponde_busca(movimento.descricao, referencia.descricao!),
+    );
+  }
+
+  async buscarMovimentoParaCorrecao(
+    usuarioId: string,
+    referencia: ReferenciaMovimentoParaCorrecao,
+  ): Promise<Movimento | undefined> {
+    const linhas = await this.listarMovimentosParaCorrecao(usuarioId, referencia);
     return linhas[0];
+  }
+
+  async buscarMovimentoSimilar(
+    usuarioId: string,
+    criterio: CriterioMovimentoSimilar,
+  ): Promise<Movimento | undefined> {
+    const condicoes = [
+      eq(movimentoTabela.usuarioId, usuarioId),
+      ne(movimentoTabela.status, "cancelado"),
+      eq(movimentoTabela.dataMovimento, criterio.dataMovimento),
+      eq(movimentoTabela.valor, paraColuna(criterio.valor)),
+    ];
+    if (criterio.cartaoId) {
+      condicoes.push(eq(movimentoTabela.cartaoId, criterio.cartaoId));
+    } else if (criterio.contaId) {
+      condicoes.push(eq(movimentoTabela.contaId, criterio.contaId));
+    }
+
+    const linhas = await this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(and(...condicoes))
+      .orderBy(desc(movimentoTabela.dataLancamento))
+      .limit(20);
+
+    const alvo = normalizar_descricao(criterio.descricao);
+    return linhas.find((movimento) => normalizar_descricao(movimento.descricao) === alvo);
   }
 
   async contarMovimentosVinculadosConta(contaId: string): Promise<number> {

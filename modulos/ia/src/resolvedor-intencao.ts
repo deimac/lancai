@@ -18,9 +18,19 @@ import {
   preparar_persistencia_plasticos,
 } from "./cifragem-cartao";
 import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada } from "./erros";
+import { rotulo_descricao_busca } from "./normalizar-descricao";
 import type { RepositorioContexto } from "./repositorio-contexto";
 
 const NOME_CATEGORIA_PADRAO = "Outros";
+
+function nome_busca_lancamento(
+  descricao?: string | null,
+  dataMovimento?: string | null,
+): string {
+  const rotulo = rotulo_descricao_busca(descricao);
+  if (rotulo !== "não especificado") return rotulo;
+  return dataMovimento ?? "não especificado";
+}
 
 export interface ContextoResolucao {
   usuarioId: string;
@@ -92,7 +102,7 @@ export class ResolvedorIntencao {
     if (!movimentoAlvo) {
       throw new ErroReferenciaNaoEncontrada(
         "lançamento",
-        intencao.referencia.descricao ?? intencao.referencia.data_movimento ?? "não especificado",
+        nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
       );
     }
 
@@ -324,27 +334,113 @@ export class ResolvedorIntencao {
   }
 
   /**
-   * Prévia do cancelamento de lançamento: localiza o alvo pela referência sem
-   * alterar nada — usada para montar a pergunta de confirmação.
+   * Prévia do cancelamento: lista todos os lançamentos que batem com a
+   * referência (descrição normalizada + data opcional), sem side-effects.
    */
   async preparar_confirmacao_exclusao_movimento(
     usuarioId: string,
     referencia: { descricao?: string | null; data_movimento?: string | null },
-  ): Promise<{ descricao: string; dataMovimento: string; valor: number }> {
-    const movimento = await this.repositorio.buscarMovimentoParaCorrecao(usuarioId, {
+  ): Promise<{
+    descricao: string;
+    dataMovimento: string | null;
+    quantidade: number;
+    valorTotal: number;
+    movimentoIds: string[];
+  }> {
+    const movimentos = await this.repositorio.listarMovimentosParaCorrecao(usuarioId, {
       descricao: referencia.descricao ?? undefined,
       dataMovimento: referencia.data_movimento ?? undefined,
     });
-    if (!movimento) {
+    if (movimentos.length === 0) {
       throw new ErroReferenciaNaoEncontrada(
         "lançamento",
-        referencia.descricao ?? referencia.data_movimento ?? "não especificado",
+        nome_busca_lancamento(referencia.descricao, referencia.data_movimento),
       );
     }
+
+    const datas = new Set(movimentos.map((item) => item.dataMovimento));
+    const valorTotal = movimentos.reduce((soma, item) => soma + Number(item.valor), 0);
+    const rotulo = rotulo_descricao_busca(referencia.descricao);
+
     return {
-      descricao: movimento.descricao,
-      dataMovimento: movimento.dataMovimento,
-      valor: Number(movimento.valor),
+      descricao: rotulo !== "não especificado" ? rotulo : movimentos[0]!.descricao,
+      dataMovimento: datas.size === 1 ? movimentos[0]!.dataMovimento : null,
+      quantidade: movimentos.length,
+      valorTotal,
+      movimentoIds: movimentos.map((item) => item.id),
+    };
+  }
+
+  /** Resolve cancelamento em lote: um DTO por lançamento que bate com a referência. */
+  async resolver_cancelar_movimentos(
+    intencao: IntencaoCorrigirMovimento,
+    contexto: ContextoResolucao,
+  ): Promise<{ entradas: EntradaCorrigirMovimento[]; descricao: string }> {
+    const movimentos = await this.repositorio.listarMovimentosParaCorrecao(contexto.usuarioId, {
+      descricao: intencao.referencia.descricao ?? undefined,
+      dataMovimento: intencao.referencia.data_movimento ?? undefined,
+    });
+    if (movimentos.length === 0) {
+      throw new ErroReferenciaNaoEncontrada(
+        "lançamento",
+        nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
+      );
+    }
+
+    const rotulo = rotulo_descricao_busca(intencao.referencia.descricao);
+
+    return {
+      descricao: rotulo !== "não especificado" ? rotulo : movimentos[0]!.descricao,
+      entradas: movimentos.map((movimento) => ({
+        movimentoId: movimento.id,
+        alteradoPor: contexto.criadoPor,
+        campos: { status: "cancelado" as const },
+      })),
+    };
+  }
+
+  /**
+   * Se já existir lançamento igual (valor + data + descrição + conta/cartão),
+   * devolve os dados para a pergunta de confirmação. Sem side-effects.
+   */
+  async preparar_confirmacao_duplicata_movimento(
+    usuarioId: string,
+    intencao: IntencaoRegistrarMovimento,
+  ): Promise<{
+    descricao: string;
+    dataMovimento: string;
+    valor: number;
+    origemRotulo: string;
+  } | null> {
+    if (intencao.valor == null || !intencao.data_movimento) return null;
+
+    const conta = intencao.conta_nome
+      ? await this.repositorio.buscarContaPorNome(usuarioId, intencao.conta_nome)
+      : undefined;
+    const cartao = intencao.cartao_nome
+      ? await this.repositorio.buscarCartaoPorNome(usuarioId, intencao.cartao_nome)
+      : undefined;
+
+    const similar = await this.repositorio.buscarMovimentoSimilar(usuarioId, {
+      descricao: intencao.descricao,
+      valor: intencao.valor,
+      dataMovimento: intencao.data_movimento,
+      contaId: conta?.id ?? null,
+      cartaoId: cartao?.id ?? null,
+    });
+    if (!similar) return null;
+
+    const origemRotulo = intencao.cartao_nome
+      ? `no cartão ${cartao?.nome ?? intencao.cartao_nome}`
+      : intencao.conta_nome
+        ? `na conta ${conta?.nome ?? intencao.conta_nome}`
+        : "";
+
+    return {
+      descricao: similar.descricao,
+      dataMovimento: similar.dataMovimento,
+      valor: Number(similar.valor),
+      origemRotulo,
     };
   }
 

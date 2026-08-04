@@ -29,11 +29,27 @@ export function montar_confirmacao_exclusao(
   return `${base} Atenção: ${rotulo} a ${artigo === "a" ? "essa" : "esse"} ${tipo} — ${artigo} ${tipo} some da listagem, mas o histórico dos lançamentos é preservado. Responda "sim" para confirmar ou "não" para cancelar.`;
 }
 
-/** Pergunta de confirmação antes de cancelar um lançamento. */
+/** Pergunta de confirmação antes de cancelar um ou vários lançamentos. */
 export function montar_confirmacao_exclusao_lancamento(
+  descricao: string,
+  dataMovimento: string | null,
+  valorTotal: number,
+  quantidade = 1,
+): string {
+  const data = dataMovimento ? ` de ${formatarData(dataMovimento)}` : "";
+  if (quantidade <= 1) {
+    return `Deseja realmente excluir o lançamento "${descricao}"${data} (${formatarMoeda(valorTotal)})? Responda "sim" para confirmar ou "não" para cancelar.`;
+  }
+  return `Deseja realmente excluir os ${quantidade} lançamentos de "${descricao}"${data} (total ${formatarMoeda(valorTotal)})? Responda "sim" para confirmar ou "não" para cancelar.`;
+}
+
+/** Pergunta quando já existe lançamento com mesmo valor, data, lugar e origem. */
+export function montar_confirmacao_duplicata_lancamento(
   descricao: string,
   dataMovimento: string,
   valor: number,
+  origemRotulo: string,
 ): string {
-  return `Deseja realmente excluir o lançamento "${descricao}" de ${formatarData(dataMovimento)} (${formatarMoeda(valor)})? Responda "sim" para confirmar ou "não" para cancelar.`;
+  const origem = origemRotulo ? ` ${origemRotulo}` : "";
+  return `Já existe um lançamento igual: "${descricao}" de ${formatarData(dataMovimento)} (${formatarMoeda(valor)})${origem}. Deseja registrar mesmo assim? Responda "sim" para confirmar ou "não" para cancelar.`;
 }

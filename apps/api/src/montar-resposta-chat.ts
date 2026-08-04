@@ -4,6 +4,7 @@ import type { MotorFinanceiro } from "@lancai/financeiro";
 import { ErroEntidadeJaExiste, type ResolvedorIntencao } from "@lancai/ia";
 import type { ModuloRelatorios } from "@lancai/relatorios";
 import {
+  montar_confirmacao_duplicata_lancamento,
   montar_confirmacao_exclusao,
   montar_confirmacao_exclusao_lancamento,
 } from "./montar-confirmacao-exclusao";
@@ -59,6 +60,21 @@ export async function montar_resposta_chat(
 
   switch (intencao.intencao) {
     case "REGISTRAR_MOVIMENTO": {
+      if (intencao.confirmado !== true) {
+        const previa = await contexto.resolvedor.preparar_confirmacao_duplicata_movimento(
+          contexto.usuarioId,
+          intencao,
+        );
+        if (previa) {
+          return montar_confirmacao_duplicata_lancamento(
+            previa.descricao,
+            previa.dataMovimento,
+            previa.valor,
+            previa.origemRotulo,
+          );
+        }
+      }
+
       const entrada = await contexto.resolvedor.resolver_registrar_movimento(intencao, referenciaResolucao);
       const resultado = await contexto.motor.criar_movimento(entrada);
       const viaForma = rotulo_forma_pagamento(entrada.formaPagamento);
@@ -83,14 +99,27 @@ export async function montar_resposta_chat(
           contexto.usuarioId,
           intencao.referencia,
         );
-        return montar_confirmacao_exclusao_lancamento(previa.descricao, previa.dataMovimento, previa.valor);
+        return montar_confirmacao_exclusao_lancamento(
+          previa.descricao,
+          previa.dataMovimento,
+          previa.valorTotal,
+          previa.quantidade,
+        );
+      }
+
+      if (intencao.campos_alterados.status === "cancelado" && intencao.campos_alterados.confirmado === true) {
+        const lote = await contexto.resolvedor.resolver_cancelar_movimentos(intencao, referenciaResolucao);
+        for (const entrada of lote.entradas) {
+          await contexto.motor.corrigir_movimento(entrada);
+        }
+        if (lote.entradas.length === 1) {
+          return `Lançamento "${lote.descricao}" cancelado.`;
+        }
+        return `${lote.entradas.length} lançamentos de "${lote.descricao}" cancelados.`;
       }
 
       const entrada = await contexto.resolvedor.resolver_corrigir_movimento(intencao, referenciaResolucao);
       const movimentoAtualizado = await contexto.motor.corrigir_movimento(entrada);
-      if (movimentoAtualizado.status === "cancelado") {
-        return `Lançamento "${movimentoAtualizado.descricao}" cancelado.`;
-      }
       if (intencao.campos_alterados.parcelas != null) {
         return `Lançamento "${movimentoAtualizado.descricao}" atualizado — agora em ${intencao.campos_alterados.parcelas}x (total ${formatarMoeda(movimentoAtualizado.valor)}).`;
       }

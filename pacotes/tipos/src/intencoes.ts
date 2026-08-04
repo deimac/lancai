@@ -73,6 +73,12 @@ export const schemaIntencaoRegistrarMovimento = z.object({
    * (nunca null). Inferir de "pix", "boleto", "no débito", etc. quando explícito.
    */
   forma_pagamento: formaPagamentoSchema.nullable().optional(),
+  /**
+   * `true` só depois que o usuário confirmou registrar mesmo com lançamento
+   * igual já existente (mesmo valor, data, descrição e conta/cartão).
+   * Sem isso, o backend pergunta se deseja registrar de novo.
+   */
+  confirmado: z.boolean().nullable().optional(),
 });
 export type IntencaoRegistrarMovimento = z.infer<typeof schemaIntencaoRegistrarMovimento>;
 
