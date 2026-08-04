@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   obter_ordem_fallback_do_ambiente,
+  ollama_habilitado,
   PROVEDORES_IA,
   resetar_circuitos_provedores,
 } from "../orquestrador-ia";
@@ -24,5 +25,14 @@ describe("obter_ordem_fallback_do_ambiente", () => {
     process.env.LLM_ORDEM_FALLBACK = "groq,gemini,ollama";
     process.env.LLM_PROVEDOR_PADRAO = "gemini";
     expect(obter_ordem_fallback_do_ambiente()).toEqual(["gemini", "groq", "ollama"]);
+  });
+});
+
+describe("ollama_habilitado", () => {
+  it("fica desligado por padrão e só liga com flag explícita", () => {
+    expect(ollama_habilitado({})).toBe(false);
+    expect(ollama_habilitado({ OLLAMA_HABILITADO: "false" })).toBe(false);
+    expect(ollama_habilitado({ OLLAMA_HABILITADO: "true" })).toBe(true);
+    expect(ollama_habilitado({ OLLAMA_HABILITADO: "1" })).toBe(true);
   });
 });

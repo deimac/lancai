@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { evolutionEvento, obter_banco } from "@lancai/banco";
 import { schemaWebhookEvolution } from "../dtos/webhook-evolution";
+import { processar_e_responder_whatsapp } from "../servicos/processar-mensagem-whatsapp";
 import { validarAssinaturaEvolution } from "../webhooks/validar-assinatura-evolution";
 
 const LOG_ARQUIVO = "/tmp/lancai-evolution-webhook.log";
@@ -114,7 +115,7 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
       logarArquivo(linha);
     }
 
-    // 200 rápido para a Evolution; persistência em background (sem IA).
+    // 200 imediato — processamento e IA em background.
     await resposta.status(200).send({ ok: true });
 
     try {
@@ -139,6 +140,40 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
         "[evolution-webhook] falha ao salvar evento",
       );
       logarArquivo(`ERRO_SALVAR event=${evento.event} ${String(erro)}`);
+    }
+
+    if (nomeEvento !== "MESSAGES_UPSERT") return;
+    if (!resumo?.remoteJid || !resumo.texto) return;
+    if (resumo.fromMe) {
+      logarArquivo(`IGNORADO fromMe id=${resumo.messageId ?? "?"}`);
+      return;
+    }
+
+    try {
+      const resultado = await processar_e_responder_whatsapp({
+        remoteJid: resumo.remoteJid,
+        texto: resumo.texto,
+        fromMe: resumo.fromMe,
+      });
+
+      requisicao.log.info(
+        {
+          processado: resultado.processado,
+          motivo: resultado.motivo,
+          usuarioId: resultado.usuarioId,
+          sessaoId: resultado.sessaoId,
+        },
+        "[evolution-webhook] turno WhatsApp processado",
+      );
+      logarArquivo(
+        `PROCESSADO processado=${resultado.processado} motivo=${resultado.motivo ?? "-"} usuario=${resultado.usuarioId ?? "-"} resposta=${JSON.stringify(resultado.resposta?.slice(0, 120) ?? null)}`,
+      );
+    } catch (erro) {
+      requisicao.log.error(
+        { err: erro, remoteJid: resumo.remoteJid },
+        "[evolution-webhook] falha ao processar mensagem WhatsApp",
+      );
+      logarArquivo(`ERRO_PROCESSAR from=${resumo.remoteJid} ${String(erro)}`);
     }
   });
 }

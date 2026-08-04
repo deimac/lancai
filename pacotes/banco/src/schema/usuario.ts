@@ -4,6 +4,8 @@ export const usuario = pgTable("usuario", {
   id: uuid("id").primaryKey().defaultRandom(),
   nome: text("nome").notNull(),
   email: text("email").notNull().unique(),
+  /** Número WhatsApp só com dígitos (ex.: 5511999999999). Null até o primeiro vínculo. */
+  whatsappNumero: text("whatsapp_numero").unique(),
   ativo: boolean("ativo").notNull().default(true),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),

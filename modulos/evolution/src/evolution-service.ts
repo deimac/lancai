@@ -114,6 +114,14 @@ export class EvolutionService {
     });
   }
 
+  /** Alias semântico para resposta automática no WhatsApp. */
+  async enviarMensagemWhatsApp(entrada: {
+    numero: string;
+    texto: string;
+  }): Promise<unknown> {
+    return this.sendText(entrada.numero, entrada.texto);
+  }
+
   async sendImage(number: string, imageUrl: string, caption?: string): Promise<unknown> {
     return this.executar("sendImage", async () => {
       const { data } = await this.http.post(`/message/sendMedia/${this.instance}`, {

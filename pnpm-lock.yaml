@@ -47,6 +47,9 @@ importers:
       '@lancai/banco':
         specifier: workspace:*
         version: link:../../pacotes/banco
+      '@lancai/evolution':
+        specifier: workspace:*
+        version: link:../../modulos/evolution
       '@lancai/financeiro':
         specifier: workspace:*
         version: link:../../modulos/financeiro

@@ -41,9 +41,18 @@ function extrair_json_objeto(texto: string): unknown {
 }
 
 /**
- * Ordem padrão de produção: Groq (rápido) → Gemini estável → Ollama local (último recurso).
+ * Ordem padrão de produção: Groq (rápido) → Gemini estável.
+ * Ollama é opcional (local/dev) e só entra com `OLLAMA_HABILITADO=true`.
  * OpenRouter/OpenAI ficam depois se configurados.
  */
+
+/** Ollama fica isolado até ser ligado explicitamente (ex.: Mac local). Na VPS fica off. */
+export function ollama_habilitado(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const bruto = (env.OLLAMA_HABILITADO ?? "").trim().toLowerCase();
+  return bruto === "true" || bruto === "1" || bruto === "yes" || bruto === "on";
+}
 
 /** Modelos padrão por provedor, sobrepostos por `<PROVEDOR>_MODEL` no ambiente. */
 const MODELOS_PADRAO: Record<ProvedorIA, string> = {
@@ -125,7 +134,7 @@ function provedor_disponivel(provedor: ProvedorIA): boolean {
     case "openai":
       return Boolean(process.env.OPENAI_API_KEY);
     case "ollama":
-      return Boolean(process.env.OLLAMA_BASE_URL);
+      return ollama_habilitado() && Boolean(process.env.OLLAMA_BASE_URL);
   }
 }
 

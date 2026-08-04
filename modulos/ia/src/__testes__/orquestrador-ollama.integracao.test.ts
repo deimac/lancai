@@ -21,6 +21,7 @@ describe("OrquestradorIA + Ollama (integração)", () => {
     }
 
     resetar_circuitos_provedores();
+    process.env.OLLAMA_HABILITADO = "true";
     process.env.OLLAMA_BASE_URL = OLLAMA_URL;
     process.env.OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen2.5:3b-instruct";
 
