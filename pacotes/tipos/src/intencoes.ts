@@ -128,6 +128,11 @@ export const schemaIntencaoCorrigirMovimento = z.object({
     data_movimento: dataISOSchema.nullable().optional(),
     /** Código curto do lançamento (ex.: "a1b2c3d4" ou "#a1b2c3d4"). */
     codigo: z.string().min(4).max(36).nullable().optional(),
+    /**
+     * Posição 1-based na lista de semelhantes (desambiguação por número).
+     * Preenchido pelo atalho "1"/"2" após "Encontrei N lançamentos semelhantes…".
+     */
+    indice: z.number().int().positive().nullable().optional(),
   }),
   campos_alterados: z.object({
     valor: z.number().positive().nullable().optional(),

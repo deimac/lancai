@@ -15,6 +15,7 @@ const PADRAO_SEMELHANTES = /Encontrei (\d+) lançamentos semelhantes a "([^"]+)"
 
 const AFIRMATIVAS = /^(sim|confirmo|confirma|pode excluir|pode apagar|ok|quero|yes)\.?$/i;
 const AFIRMATIVAS_TODOS = /^(todos|todas|ambos|ambas|os dois|as duas)\.?$/i;
+const NUMERO_ESCOLHA = /^(?:o\s+|n[uú]mero\s+)?(\d+)\.?$/i;
 const NEGATIVAS = /^(não|nao|cancela|cancelar|não quero|nao quero|no)\.?$/i;
 
 export type PendenciaExclusao =
@@ -28,6 +29,7 @@ export type PendenciaExclusao =
   | {
       tipo: "lançamentos_semelhantes";
       descricao: string;
+      quantidade: number;
     };
 
 function data_br_para_iso(dia: string, mes: string, ano: string): string {
@@ -47,6 +49,7 @@ export function extrair_pendencia_exclusao(
       return {
         tipo: "lançamentos_semelhantes",
         descricao: semelhantes[2]!,
+        quantidade: Number(semelhantes[1]),
       };
     }
 
@@ -88,7 +91,7 @@ export function extrair_pendencia_exclusao(
 
 /**
  * Atalho determinístico: se o sistema acabou de pedir confirmação de exclusão
- * e o usuário responde "sim"/"não", monta a intenção sem passar pela IA.
+ * e o usuário responde "sim"/"não"/número/"todos", monta a intenção sem IA.
  */
 export function interpretar_resposta_confirmacao_exclusao(
   mensagem: string,
@@ -107,14 +110,37 @@ export function interpretar_resposta_confirmacao_exclusao(
           descricao: pendencia.descricao,
           data_movimento: null,
           codigo: null,
+          indice: null,
         },
         campos_alterados: { status: "cancelado", confirmado: true },
       };
     }
+
+    const escolha = NUMERO_ESCOLHA.exec(texto);
+    if (escolha) {
+      const indice = Number(escolha[1]);
+      if (indice < 1 || indice > pendencia.quantidade) {
+        return {
+          intencao: "NAO_RECONHECIDA",
+          motivo: `Número inválido. Escolha entre 1 e ${pendencia.quantidade}, ou diga "todos".`,
+        };
+      }
+      return {
+        intencao: "CORRIGIR_MOVIMENTO",
+        referencia: {
+          descricao: pendencia.descricao,
+          data_movimento: null,
+          codigo: null,
+          indice,
+        },
+        campos_alterados: { status: "cancelado", confirmado: true },
+      };
+    }
+
     if (NEGATIVAS.test(texto)) {
       return { intencao: "NAO_RECONHECIDA", motivo: "Exclusão cancelada." };
     }
-    // "sim" sozinho não apaga o lote — usuário precisa do código ou "todos".
+    // "sim" sozinho não apaga o lote.
     return null;
   }
 

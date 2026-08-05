@@ -1,4 +1,4 @@
-import type { Cartao, Conta } from "@lancai/banco";
+import type { Cartao, Conta, Movimento } from "@lancai/banco";
 import type {
   EntradaAtualizarCartao,
   EntradaAtualizarConta,
@@ -23,8 +23,11 @@ import {
   ErroReferenciaAmbiguo,
   ErroReferenciaNaoEncontrada,
 } from "./erros";
-import { formatar_codigo_movimento } from "./codigo-movimento";
-import { enxugar_descricao_lancamento, rotulo_descricao_busca } from "./normalizar-descricao";
+import {
+  montar_lista_lancamentos_semelhantes,
+  type ItemLancamentoSemelhante,
+} from "./montar-lista-semelhantes";
+import { rotulo_descricao_busca } from "./normalizar-descricao";
 import type { RepositorioContexto } from "./repositorio-contexto";
 
 const NOME_CATEGORIA_PADRAO = "Outros";
@@ -118,26 +121,23 @@ export class ResolvedorIntencao {
           : nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
       );
     }
-    if (candidatos.length > 1 && !intencao.referencia.codigo) {
+
+    let movimentoAlvo = candidatos[0]!;
+    const indice = intencao.referencia.indice ?? null;
+    if (indice != null) {
+      const escolhido = candidatos[indice - 1];
+      if (!escolhido) {
+        throw new ErroReferenciaNaoEncontrada("lançamento", `nº ${indice}`);
+      }
+      movimentoAlvo = escolhido;
+    } else if (candidatos.length > 1 && !intencao.referencia.codigo) {
       const rotulo = nome_busca_lancamento(
         intencao.referencia.descricao,
         intencao.referencia.data_movimento,
       );
-      const linhas = candidatos.map((item) => {
-        const data = item.dataMovimento.split("-").reverse().join("/");
-        return `- ${formatar_codigo_movimento(item.id)} · ${enxugar_descricao_lancamento(item.descricao)} · ${data}`;
-      });
-      const exemplo = formatar_codigo_movimento(candidatos[0]!.id);
-      throw new ErroReferenciaAmbiguo(
-        [
-          `Encontrei ${candidatos.length} lançamentos semelhantes a "${rotulo}":`,
-          ...linhas,
-          "",
-          `Qual deseja corrigir? Use o código (ex.: "Corrige o ${exemplo}").`,
-        ].join("\n"),
-      );
+      const itens = await this.itens_semelhantes_com_origem(usuarioId, candidatos);
+      throw new ErroReferenciaAmbiguo(montar_lista_lancamentos_semelhantes(rotulo, itens, "corrigir"));
     }
-    const movimentoAlvo = candidatos[0]!;
 
     const camposAlterados = intencao.campos_alterados;
     const campos: EntradaCorrigirMovimento["campos"] = {};
@@ -385,13 +385,7 @@ export class ResolvedorIntencao {
     valorTotal: number;
     movimentoIds: string[];
     codigo: string | null;
-    itens: Array<{
-      id: string;
-      descricao: string;
-      valor: number;
-      dataMovimento: string;
-      tipo: string;
-    }>;
+    itens: ItemLancamentoSemelhante[];
   }> {
     const movimentos = await this.repositorio.listarMovimentosParaCorrecao(usuarioId, {
       descricao: referencia.descricao ?? undefined,
@@ -410,6 +404,7 @@ export class ResolvedorIntencao {
     const datas = new Set(movimentos.map((item) => item.dataMovimento));
     const valorTotal = movimentos.reduce((soma, item) => soma + Number(item.valor), 0);
     const rotulo = rotulo_descricao_busca(referencia.descricao);
+    const itens = await this.itens_semelhantes_com_origem(usuarioId, movimentos);
 
     return {
       descricao: rotulo !== "não especificado" ? rotulo : movimentos[0]!.descricao,
@@ -418,13 +413,7 @@ export class ResolvedorIntencao {
       valorTotal,
       movimentoIds: movimentos.map((item) => item.id),
       codigo: movimentos.length === 1 ? movimentos[0]!.id : null,
-      itens: movimentos.map((item) => ({
-        id: item.id,
-        descricao: item.descricao,
-        valor: Number(item.valor),
-        dataMovimento: item.dataMovimento,
-        tipo: item.tipo,
-      })),
+      itens,
     };
   }
 
@@ -433,7 +422,7 @@ export class ResolvedorIntencao {
     intencao: IntencaoCorrigirMovimento,
     contexto: ContextoResolucao,
   ): Promise<{ entradas: EntradaCorrigirMovimento[]; descricao: string }> {
-    const movimentos = await this.repositorio.listarMovimentosParaCorrecao(contexto.usuarioId, {
+    let movimentos = await this.repositorio.listarMovimentosParaCorrecao(contexto.usuarioId, {
       descricao: intencao.referencia.descricao ?? undefined,
       dataMovimento: intencao.referencia.data_movimento ?? undefined,
       codigo: intencao.referencia.codigo ?? undefined,
@@ -445,6 +434,15 @@ export class ResolvedorIntencao {
           ? `#${intencao.referencia.codigo.replace(/^#/, "")}`
           : nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
       );
+    }
+
+    const indice = intencao.referencia.indice ?? null;
+    if (indice != null) {
+      const escolhido = movimentos[indice - 1];
+      if (!escolhido) {
+        throw new ErroReferenciaNaoEncontrada("lançamento", `nº ${indice}`);
+      }
+      movimentos = [escolhido];
     }
 
     const rotulo = rotulo_descricao_busca(intencao.referencia.descricao);
@@ -523,6 +521,36 @@ export class ResolvedorIntencao {
       if (erro instanceof ErroDadosPlasticosInvalidos) throw erro;
       throw erro;
     }
+  }
+
+  private async itens_semelhantes_com_origem(
+    usuarioId: string,
+    movimentos: Movimento[],
+  ): Promise<ItemLancamentoSemelhante[]> {
+    const [contas, cartoes] = await Promise.all([
+      this.repositorio.listarContas(usuarioId),
+      this.repositorio.listarCartoes(usuarioId),
+    ]);
+    const contasPorId = new Map(contas.map((c) => [c.id, c.nome]));
+    const cartoesPorId = new Map(cartoes.map((c) => [c.id, c.nome]));
+
+    return movimentos.map((item) => {
+      let origemRotulo: string | null = null;
+      if (item.cartaoId) {
+        const nome = cartoesPorId.get(item.cartaoId);
+        origemRotulo = nome ? `cartão ${nome}` : null;
+      } else if (item.contaId) {
+        origemRotulo = contasPorId.get(item.contaId) ?? null;
+      }
+      return {
+        id: item.id,
+        descricao: item.descricao,
+        valor: Number(item.valor),
+        dataMovimento: item.dataMovimento,
+        tipo: item.tipo,
+        origemRotulo,
+      };
+    });
   }
 
   private async resolver_conta_opcional(

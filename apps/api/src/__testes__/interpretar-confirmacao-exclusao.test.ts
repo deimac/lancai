@@ -78,12 +78,13 @@ describe("extrair_pendencia_exclusao", () => {
         {
           papel: "sistema",
           conteudo:
-            'Encontrei 2 lançamentos semelhantes a "Tênis":\n- #f41e31f0 · Tênis · - R$ 304,70 · 05/08/2026\n\nQual deseja excluir? Use o código ou diga "todos".',
+            'Encontrei 2 lançamentos semelhantes a "Tênis":\n1. - R$ 304,70 · 05/08/2026 · Mercado Pago\n2. - R$ 304,70 · 05/08/2026 · Mercado Pago\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
         },
       ]),
     ).toEqual({
       tipo: "lançamentos_semelhantes",
       descricao: "Tênis",
+      quantidade: 2,
     });
   });
 
@@ -160,14 +161,36 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
       {
         papel: "sistema" as const,
         conteudo:
-          'Encontrei 2 lançamentos semelhantes a "Tênis":\n- #f41e31f0 · Tênis\n\nQual deseja excluir? Use o código ou diga "todos".',
+          'Encontrei 2 lançamentos semelhantes a "Tênis":\n1. - R$ 304,70\n2. - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
       },
     ];
     expect(interpretar_resposta_confirmacao_exclusao("todos", historico)).toEqual({
       intencao: "CORRIGIR_MOVIMENTO",
-      referencia: { descricao: "Tênis", data_movimento: null, codigo: null },
+      referencia: { descricao: "Tênis", data_movimento: null, codigo: null, indice: null },
       campos_alterados: { status: "cancelado", confirmado: true },
     });
     expect(interpretar_resposta_confirmacao_exclusao("sim", historico)).toBeNull();
+  });
+
+  it("com semelhantes, número escolhe o índice", () => {
+    const historico = [
+      {
+        papel: "sistema" as const,
+        conteudo:
+          'Encontrei 2 lançamentos semelhantes a "Tênis":\n1. - R$ 304,70\n2. - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
+      },
+    ];
+    expect(interpretar_resposta_confirmacao_exclusao("1", historico)).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Tênis", data_movimento: null, codigo: null, indice: 1 },
+      campos_alterados: { status: "cancelado", confirmado: true },
+    });
+    expect(interpretar_resposta_confirmacao_exclusao("o 2", historico)).toMatchObject({
+      referencia: { indice: 2 },
+    });
+    expect(interpretar_resposta_confirmacao_exclusao("3", historico)).toEqual({
+      intencao: "NAO_RECONHECIDA",
+      motivo: 'Número inválido. Escolha entre 1 e 2, ou diga "todos".',
+    });
   });
 });

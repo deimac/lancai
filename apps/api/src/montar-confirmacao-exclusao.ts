@@ -1,50 +1,16 @@
 import {
-  enxugar_descricao_lancamento,
   formatar_codigo_movimento,
+  montar_lista_lancamentos_semelhantes,
+  type ItemLancamentoSemelhante,
 } from "@lancai/ia";
 import { formatarMoeda } from "@lancai/tipos";
+
+export type { ItemLancamentoSemelhante };
+export { montar_lista_lancamentos_semelhantes };
 
 function formatarData(dataISO: string): string {
   const [ano, mes, dia] = dataISO.split("-");
   return `${dia}/${mes}/${ano}`;
-}
-
-export type ItemLancamentoSemelhante = {
-  id: string;
-  descricao: string;
-  valor: number;
-  dataMovimento: string;
-  tipo?: string;
-};
-
-function sinal_valor(tipo?: string): "+" | "-" {
-  if (tipo === "receita" || tipo === "aporte") return "+";
-  return "-";
-}
-
-/** Lista candidatos ambíguos com código curto para o usuário escolher. */
-export function montar_lista_lancamentos_semelhantes(
-  descricao: string,
-  itens: ItemLancamentoSemelhante[],
-  acao: "excluir" | "corrigir" = "excluir",
-): string {
-  const linhas = itens.map((item) => {
-    const rotulo = enxugar_descricao_lancamento(item.descricao);
-    const valor = `${sinal_valor(item.tipo)} ${formatarMoeda(Number(item.valor))}`;
-    return `- ${formatar_codigo_movimento(item.id)} · ${rotulo} · ${valor} · ${formatarData(item.dataMovimento)}`;
-  });
-  const exemplo = itens[0] ? formatar_codigo_movimento(itens[0].id) : "#a1b2c3d4";
-  const rodape =
-    acao === "excluir"
-      ? `Qual deseja excluir? Use o código (ex.: "Cancela o ${exemplo}") ou diga "todos".`
-      : `Qual deseja corrigir? Use o código (ex.: "Corrige o ${exemplo}").`;
-
-  return [
-    `Encontrei ${itens.length} lançamentos semelhantes a "${descricao}":`,
-    ...linhas,
-    "",
-    rodape,
-  ].join("\n");
 }
 
 /**

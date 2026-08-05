@@ -272,7 +272,70 @@ describe("ResolvedorIntencao", () => {
         ),
       ).rejects.toThrow(ErroReferenciaAmbiguo);
     });
+
+    it("usa indice para escolher entre semelhantes na correção", async () => {
+      const antigo = criarMovimento({
+        usuarioId,
+        descricao: "Uber",
+        dataMovimento: "2026-08-05",
+        valor: "24.95",
+        dataLancamento: new Date("2026-08-05T10:00:00Z"),
+      });
+      const recente = criarMovimento({
+        usuarioId,
+        descricao: "Uber",
+        dataMovimento: "2026-08-05",
+        valor: "38.58",
+        dataLancamento: new Date("2026-08-05T12:00:00Z"),
+      });
+      repositorio.movimentos.set(antigo.id, antigo);
+      repositorio.movimentos.set(recente.id, recente);
+
+      const resultado = await resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: { descricao: "Uber", indice: 1 },
+          campos_alterados: { valor: 40 },
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(resultado.movimentoId).toBe(recente.id);
+      expect(resultado.campos.valor).toBe(40);
+    });
   });
+
+  describe("resolver_cancelar_movimentos", () => {
+    it("cancela só o item do indice", async () => {
+      const a = criarMovimento({
+        usuarioId,
+        descricao: "Tênis",
+        dataMovimento: "2026-08-05",
+        dataLancamento: new Date("2026-08-05T12:00:00Z"),
+      });
+      const b = criarMovimento({
+        usuarioId,
+        descricao: "Tênis",
+        dataMovimento: "2026-08-05",
+        dataLancamento: new Date("2026-08-05T11:00:00Z"),
+      });
+      repositorio.movimentos.set(a.id, a);
+      repositorio.movimentos.set(b.id, b);
+
+      const lote = await resolvedor.resolver_cancelar_movimentos(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: { descricao: "Tênis", indice: 2 },
+          campos_alterados: { status: "cancelado", confirmado: true },
+        },
+        { usuarioId, criadoPor: usuarioId },
+      );
+
+      expect(lote.entradas).toHaveLength(1);
+      expect(lote.entradas[0]?.movimentoId).toBe(b.id);
+    });
+  });
+
 
   describe("resolver_consultar_visao", () => {
     it("passa perfil e período direto, sem exigir nenhum filtro nomeado", async () => {

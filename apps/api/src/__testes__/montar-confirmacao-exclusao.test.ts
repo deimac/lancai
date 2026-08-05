@@ -36,7 +36,7 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
     );
   });
 
-  it("lista códigos quando há vários semelhantes (não apaga o lote no sim)", () => {
+  it("lista numerada quando há vários semelhantes", () => {
     const texto = montar_confirmacao_exclusao_lancamento(
       "Tênis",
       "2026-08-05",
@@ -50,6 +50,7 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
           valor: 304.7,
           dataMovimento: "2026-08-05",
           tipo: "despesa",
+          origemRotulo: "Mercado Pago",
         },
         {
           id: "b30d16ce-1111-2222-3333-444455556666",
@@ -57,15 +58,16 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
           valor: 304.7,
           dataMovimento: "2026-08-05",
           tipo: "despesa",
+          origemRotulo: "Mercado Pago",
         },
       ],
     );
     expect(texto).toContain('Encontrei 2 lançamentos semelhantes a "Tênis":');
-    expect(texto).toContain("#f41e31f0");
-    expect(texto).toContain("#b30d16ce");
-    expect(texto).toContain("Use o código");
-    expect(texto).toContain('ou diga "todos"');
-    expect(texto).not.toContain("Responda \"sim\"");
+    expect(texto).toMatch(/^1\. /m);
+    expect(texto).toMatch(/^2\. /m);
+    expect(texto).toContain('Digite o número (1, 2…) ou "todos"');
+    expect(texto).not.toContain("#f41e31f0");
+    expect(texto).not.toContain('Responda "sim"');
   });
 });
 
@@ -89,7 +91,9 @@ describe("montar_lista_lancamentos_semelhantes", () => {
       ],
       "corrigir",
     );
+    expect(texto).toContain("1. -");
     expect(texto).toContain("Qual deseja corrigir?");
+    expect(texto).toContain("Digite o número do lançamento");
     expect(texto).not.toContain("todos");
   });
 });

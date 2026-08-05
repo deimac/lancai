@@ -52,6 +52,8 @@ function ajustar_referencia_correcao(
   mensagem?: string,
 ): IntencaoCorrigirMovimento {
   if (!mensagem?.trim()) return intencao;
+  // Resposta numérica da desambiguação — não reinterpretar a mensagem como descrição.
+  if (intencao.referencia.indice != null) return intencao;
 
   const codigo = extrair_codigo_da_mensagem(mensagem) ?? intencao.referencia.codigo ?? null;
   const termo = codigo ? null : preferir_termo_referencia(mensagem, intencao.referencia.descricao);
