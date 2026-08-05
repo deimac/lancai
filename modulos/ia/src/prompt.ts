@@ -12,7 +12,11 @@ export interface MensagemHistorico {
  * (ex.: limite informado no turno anterior).
  */
 export interface IntencaoPendenteSlot {
-  intencao_pendente: "CRIAR_CONTA" | "CRIAR_CARTAO" | "REGISTRAR_MOVIMENTO";
+  intencao_pendente:
+    | "CRIAR_CONTA"
+    | "CRIAR_CARTAO"
+    | "REGISTRAR_MOVIMENTO"
+    | "CRIAR_RECORRENCIA";
   dados_parciais?: Record<string, unknown> | null;
 }
 
@@ -37,6 +41,8 @@ export interface ContextoInterpretacao {
    * atual — nunca descartar limite/nome/etc. já capturados.
    */
   intencaoPendente?: IntencaoPendenteSlot | null;
+  /** Nome do usuário (cadastro) — usado para personalizar perguntas. */
+  nomeUsuario?: string | null;
 }
 
 /**
@@ -64,8 +70,9 @@ Intenções do ramo pedido:
    Nunca trate "corrigir descrição" como exclusão.
 4) CRIAR_* — só se nome NÃO existe no contexto. Senão CORRIGIR_*.
 5) CONSULTAR_DADOS_CARTAO — ver número/CVV.
-6) SOLICITAR_INFORMACAO — falta dado; copie intencaoPendente.dados_parciais.
-7) NAO_RECONHECIDA — fora do domínio; motivo curto.
+6) SOLICITAR_INFORMACAO — falta dado (valor, conta, dia…); copie intencaoPendente.dados_parciais. Nunca invente valor nem diga "valor não informado".
+7) CRIAR_RECORRENCIA — "todo mês dia N …"; se faltar valor/conta/dia use SOLICITAR_INFORMACAO (pergunte "qual é o valor?").
+8) NAO_RECONHECIDA — fora do domínio; motivo curto.
 
 Datas via dataAtual. Números BR: "12.889,00"=12889. Use nomes do contexto. JSON do schema apenas.`;
 }

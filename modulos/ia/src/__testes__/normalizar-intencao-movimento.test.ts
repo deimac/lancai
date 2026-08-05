@@ -48,9 +48,9 @@ describe("normalizar_intencao_movimento", () => {
 
     expect(resultado.intencao).toBe("SOLICITAR_INFORMACAO");
     if (resultado.intencao !== "SOLICITAR_INFORMACAO") return;
-    expect(resultado.pergunta).toContain("valor");
-    expect(resultado.pergunta).toContain("conta");
-    expect(resultado.pergunta).not.toContain("pessoal ou da empresa");
+    // Um campo por vez: valor antes da conta.
+    expect(resultado.pergunta.toLocaleLowerCase("pt-BR")).toContain("valor");
+    expect(resultado.pergunta.toLocaleLowerCase("pt-BR")).not.toContain("conta");
     expect(resultado.dados_parciais).toMatchObject({
       descricao: "Mercado",
       perfil: "pf",

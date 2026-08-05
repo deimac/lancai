@@ -14,6 +14,7 @@ import {
   normalizar_intencao_cadastro,
   normalizar_intencao_movimento,
   normalizar_intencao_plasticos,
+  normalizar_intencao_recorrencia,
 } from "@lancai/ia";
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
@@ -119,7 +120,12 @@ async function buscar_intencao_pendente(
   const intencao = bruta as Record<string, unknown>;
   if (intencao.intencao === "SOLICITAR_INFORMACAO") {
     const pendente = intencao.intencao_pendente;
-    if (pendente !== "CRIAR_CONTA" && pendente !== "CRIAR_CARTAO" && pendente !== "REGISTRAR_MOVIMENTO") {
+    if (
+      pendente !== "CRIAR_CONTA" &&
+      pendente !== "CRIAR_CARTAO" &&
+      pendente !== "REGISTRAR_MOVIMENTO" &&
+      pendente !== "CRIAR_RECORRENCIA"
+    ) {
       return null;
     }
     return {
@@ -170,14 +176,16 @@ async function buscar_ultima_intencao_ia(sessaoId: string): Promise<IntencaoDete
 async function montar_contexto(usuarioId: string, sessaoId: string): Promise<ContextoInterpretacao> {
   const categorias = await garantir_categorias_padrao(usuarioId, repositorioContexto);
 
-  const [contas, cartoes, pessoas, habitos, historicoRecente, intencaoPendente] = await Promise.all([
-    repositorioContexto.listarContas(usuarioId),
-    repositorioContexto.listarCartoes(usuarioId),
-    repositorioContexto.listarPessoas(usuarioId),
-    memoria.buscar_habitos(usuarioId),
-    buscar_historico_recente(sessaoId),
-    buscar_intencao_pendente(sessaoId),
-  ]);
+  const [contas, cartoes, pessoas, habitos, historicoRecente, intencaoPendente, usuario] =
+    await Promise.all([
+      repositorioContexto.listarContas(usuarioId),
+      repositorioContexto.listarCartoes(usuarioId),
+      repositorioContexto.listarPessoas(usuarioId),
+      memoria.buscar_habitos(usuarioId),
+      buscar_historico_recente(sessaoId),
+      buscar_intencao_pendente(sessaoId),
+      banco_usuario_nome(usuarioId),
+    ]);
 
   return {
     dataAtual: hojeISO(),
@@ -193,7 +201,18 @@ async function montar_contexto(usuarioId: string, sessaoId: string): Promise<Con
     habitos,
     historicoRecente,
     intencaoPendente,
+    nomeUsuario: usuario,
   };
+}
+
+async function banco_usuario_nome(usuarioId: string): Promise<string | null> {
+  const banco = obter_banco();
+  const [linha] = await banco
+    .select({ nome: usuarioTabela.nome })
+    .from(usuarioTabela)
+    .where(eq(usuarioTabela.id, usuarioId))
+    .limit(1);
+  return linha?.nome ?? null;
 }
 
 async function responder_com_dados_cartao_apos_senha(entrada: {
@@ -324,7 +343,7 @@ export async function processar_turno_conversa(
     entrada.intencaoPrevia ??
     intencaoConfirmacao ??
     interpretar_orcamento_rapido(entrada.mensagem) ??
-    interpretar_recorrencia_rapida(entrada.mensagem) ??
+    interpretar_recorrencia_rapida(entrada.mensagem, contexto) ??
     interpretar_correcao_rapida(entrada.mensagem, contexto.dataAtual) ??
     interpretar_consulta_rapida(entrada.mensagem, contexto) ??
     interpretar_lancamento_rapido(entrada.mensagem, contexto);
@@ -342,8 +361,12 @@ export async function processar_turno_conversa(
   // Vision/atalhos também passam pelos normalizadores (conta/data/slot-filling).
   if (intencaoBruta) {
     intencao = normalizar_intencao_plasticos(
-      normalizar_intencao_cadastro(
-        normalizar_intencao_movimento(intencao, contexto, entrada.mensagem),
+      normalizar_intencao_recorrencia(
+        normalizar_intencao_cadastro(
+          normalizar_intencao_movimento(intencao, contexto, entrada.mensagem),
+          contexto,
+          entrada.mensagem,
+        ),
         contexto,
         entrada.mensagem,
       ),

@@ -23,6 +23,8 @@ export * from "./normalizar-descricao";
 export * from "./normalizar-intencao-cadastro";
 export * from "./normalizar-intencao-movimento";
 export * from "./normalizar-intencao-plasticos";
+export * from "./normalizar-intencao-recorrencia";
+export * from "./personalizar-pergunta";
 export * from "./repositorio-contexto";
 export * from "./repositorio-contexto-drizzle";
 export * from "./repositorio-contexto-memoria";

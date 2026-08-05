@@ -7,6 +7,7 @@ import {
 } from "./inferir-origem-movimento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
 import { enxugar_descricao_lancamento } from "./normalizar-descricao";
+import { perguntar_campo } from "./personalizar-pergunta";
 import type { ContextoInterpretacao } from "./prompt";
 
 /** Perfil explícito na mensagem (tem prioridade sobre perfil da conta/cartão). */
@@ -37,16 +38,18 @@ export function inferir_perfil_da_mensagem(mensagem: string): Perfil | null {
 
 type CampoFaltante = "valor" | "conta" | "perfil";
 
-function montar_pergunta_faltantes(faltantes: CampoFaltante[]): string {
-  const partes: string[] = [];
-  if (faltantes.includes("valor")) partes.push("qual o valor");
-  if (faltantes.includes("conta")) partes.push("em qual conta ou cartão");
-  if (faltantes.includes("perfil")) partes.push("se foi um gasto/ganho pessoal ou da empresa");
-
-  if (partes.length === 0) return "Pode me dar mais detalhes desse lançamento?";
-  if (partes.length === 1) return `Para registrar, preciso saber ${partes[0]}.`;
-  if (partes.length === 2) return `Para registrar, preciso saber ${partes[0]} e ${partes[1]}.`;
-  return `Para registrar, preciso saber ${partes[0]}, ${partes[1]} e ${partes[2]}.`;
+function montar_pergunta_faltantes(
+  faltantes: CampoFaltante[],
+  nomeUsuario?: string | null,
+): string {
+  const perguntas: Record<CampoFaltante, string> = {
+    valor: "Qual é o valor?",
+    conta: "Em qual conta ou cartão?",
+    perfil: "Foi pessoal ou da empresa?",
+  };
+  const primeiro = faltantes[0];
+  if (!primeiro) return perguntar_campo("Pode me dar mais detalhes?", nomeUsuario);
+  return perguntar_campo(perguntas[primeiro], nomeUsuario);
 }
 
 function inferir_conta_ou_cartao(contexto: ContextoInterpretacao): {
@@ -243,7 +246,7 @@ export function normalizar_intencao_movimento(
     return {
       intencao: "SOLICITAR_INFORMACAO",
       intencao_pendente: "REGISTRAR_MOVIMENTO",
-      pergunta: montar_pergunta_faltantes(faltantes),
+      pergunta: montar_pergunta_faltantes(faltantes, contexto.nomeUsuario),
       dados_parciais: dados_parciais_de(completa),
     };
   }

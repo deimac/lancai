@@ -10,6 +10,7 @@ describe("ramos-intencao", () => {
     expect(ramo_de_intencao_pendente("REGISTRAR_MOVIMENTO")).toBe("registrar");
     expect(ramo_de_intencao_pendente("CRIAR_CONTA")).toBe("cadastro");
     expect(ramo_de_intencao_pendente("CRIAR_CARTAO")).toBe("cadastro");
+    expect(ramo_de_intencao_pendente("CRIAR_RECORRENCIA")).toBe("recorrencia");
   });
 
   it("detecta resposta curta de slot", () => {

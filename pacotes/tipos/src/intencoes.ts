@@ -278,7 +278,12 @@ export type IntencaoConsultarDadosCartao = z.infer<typeof schemaIntencaoConsulta
  */
 export const schemaIntencaoSolicitarInformacao = z.object({
   intencao: z.literal("SOLICITAR_INFORMACAO"),
-  intencao_pendente: z.enum(["CRIAR_CONTA", "CRIAR_CARTAO", "REGISTRAR_MOVIMENTO"]),
+  intencao_pendente: z.enum([
+    "CRIAR_CONTA",
+    "CRIAR_CARTAO",
+    "REGISTRAR_MOVIMENTO",
+    "CRIAR_RECORRENCIA",
+  ]),
   pergunta: z.string().min(1),
   dados_parciais: z.record(z.string(), z.unknown()).nullable().optional(),
 });
@@ -314,8 +319,12 @@ export type IntencaoConsultarOrcamento = z.infer<typeof schemaIntencaoConsultarO
 export const schemaIntencaoCriarRecorrencia = z.object({
   intencao: z.literal("CRIAR_RECORRENCIA"),
   descricao: z.string().min(1),
-  valor: z.number().positive(),
-  dia_do_mes: diaDoMesSchema,
+  /**
+   * Opcional na saída bruta: "todo mês dia 10 Netflix no Nubank" pode vir sem valor.
+   * O normalizador converte para SOLICITAR_INFORMACAO antes de criar.
+   */
+  valor: z.number().positive().nullable().optional(),
+  dia_do_mes: diaDoMesSchema.nullable().optional(),
   tipo_movimento: tipoMovimentoSchema.nullable().optional(),
   categoria_nome: z.string().min(1).nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),

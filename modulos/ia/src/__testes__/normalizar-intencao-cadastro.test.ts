@@ -121,8 +121,9 @@ describe("normalizar_intencao_cadastro", () => {
       limite: 12889,
       perfil: "pf",
     });
+    // Um campo por vez: fechamento antes do vencimento.
     expect(resultado.pergunta).toMatch(/fechamento/i);
-    expect(resultado.pergunta).toMatch(/vencimento/i);
+    expect(resultado.pergunta).not.toMatch(/vencimento/i);
   });
 
   it("aceita limite em string no formato brasileiro nos dados parciais", () => {

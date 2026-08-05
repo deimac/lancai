@@ -1,4 +1,5 @@
 import type { IntencaoDetectada } from "@lancai/tipos";
+import type { ContextoInterpretacao } from "@lancai/ia";
 
 const ACAO_ESCRITA_FORTE =
   /\b(corrige|corrigir|apague|apaga|cancela lançamento|exclui lançamento)\b/i;
@@ -50,7 +51,10 @@ export function interpretar_orcamento_rapido(mensagem: string): IntencaoDetectad
   return null;
 }
 
-export function interpretar_recorrencia_rapida(mensagem: string): IntencaoDetectada | null {
+export function interpretar_recorrencia_rapida(
+  mensagem: string,
+  contexto?: ContextoInterpretacao | null,
+): IntencaoDetectada | null {
   const texto = mensagem.trim();
   if (!texto) return null;
   const lower = texto.toLocaleLowerCase("pt-BR");
@@ -69,26 +73,129 @@ export function interpretar_recorrencia_rapida(mensagem: string): IntencaoDetect
     }
   }
 
-  // "todo mês dia 10 Netflix 55" / "recorrente Netflix 55 dia 10"
-  const m = lower.match(
-    /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+(?:dia\s+)?(\d{1,2})?\s*(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)(?:\s+dia\s+(\d{1,2}))?/i,
-  );
-  if (m) {
-    const dia = Number(m[1] || m[4] || 1);
-    const descricao = m[2]!.replace(/\bdia\s+\d{1,2}\b/i, "").trim();
-    const valor = Number(m[3]!.replace(",", "."));
-    if (descricao.length >= 2 && valor > 0 && dia >= 1 && dia <= 31) {
+  // Resposta curta ao slot-filling (ex.: "55,90" após "qual é o valor?").
+  if (contexto?.intencaoPendente?.intencao_pendente === "CRIAR_RECORRENCIA") {
+    const parciais = contexto.intencaoPendente.dados_parciais ?? {};
+    const valorMsg = extrair_valor_ignorando_dia(lower);
+    const origemMsg = extrair_origem_no_na(texto, contexto);
+    const temSinal =
+      valorMsg != null ||
+      Boolean(origemMsg.conta_nome || origemMsg.cartao_nome) ||
+      texto.length <= 40;
+
+    if (temSinal && (typeof parciais.descricao === "string" || valorMsg != null)) {
       return {
         intencao: "CRIAR_RECORRENCIA",
-        descricao: capitalizar(descricao),
-        valor,
-        dia_do_mes: dia,
-        tipo_movimento: "despesa",
+        descricao:
+          typeof parciais.descricao === "string" && parciais.descricao.trim()
+            ? String(parciais.descricao)
+            : "Recorrência",
+        valor: valorMsg ?? (typeof parciais.valor === "number" ? parciais.valor : null),
+        dia_do_mes:
+          typeof parciais.dia_do_mes === "number" ? parciais.dia_do_mes : null,
+        tipo_movimento:
+          parciais.tipo_movimento === "receita" ? "receita" : "despesa",
+        categoria_nome:
+          typeof parciais.categoria_nome === "string" ? parciais.categoria_nome : null,
+        conta_nome:
+          origemMsg.conta_nome ??
+          (typeof parciais.conta_nome === "string" ? parciais.conta_nome : null),
+        cartao_nome:
+          origemMsg.cartao_nome ??
+          (typeof parciais.cartao_nome === "string" ? parciais.cartao_nome : null),
       };
     }
   }
 
+  // Completa: "todo mês dia 10 Netflix 55" (dia explícito antes da descrição).
+  const comDiaAntes = lower.match(
+    /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+dia\s+(\d{1,2})\s+(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)\b/i,
+  );
+  if (comDiaAntes) {
+    const criada = montar_recorrencia_completa(
+      Number(comDiaAntes[1]),
+      comDiaAntes[2]!,
+      comDiaAntes[3]!,
+      texto,
+      contexto,
+    );
+    if (criada) return criada;
+  }
+
+  // Completa: "recorrente Netflix 55 dia 10"
+  const comDiaDepois = lower.match(
+    /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)\s+dia\s+(\d{1,2})\b/i,
+  );
+  if (comDiaDepois) {
+    const criada = montar_recorrencia_completa(
+      Number(comDiaDepois[3]),
+      comDiaDepois[1]!,
+      comDiaDepois[2]!,
+      texto,
+      contexto,
+    );
+    if (criada) return criada;
+  }
+
+  // Incompleta: "todo mês dia 10 Netflix no Nubank" (sem valor) → normalizador pergunta.
+  if (/\b(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\b/.test(lower)) {
+    const m = lower.match(
+      /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+(?:dia\s+(\d{1,2})\s+)?(.+)/i,
+    );
+    if (m?.[2]) {
+      const diaBruto = m[1] ? Number(m[1]) : null;
+      const dia =
+        diaBruto != null && diaBruto >= 1 && diaBruto <= 31 ? diaBruto : null;
+      const trecho = m[2]
+        .replace(/\bdia\s+\d{1,2}\b/i, "")
+        .replace(/(?:r\$\s*)?\d+[.,]?\d*/g, "")
+        .trim();
+      const { descricao, conta_nome, cartao_nome } = separar_descricao_e_origem(
+        trecho,
+        texto,
+        contexto,
+      );
+      if (descricao.length >= 2) {
+        return {
+          intencao: "CRIAR_RECORRENCIA",
+          descricao: capitalizar(descricao),
+          valor: null,
+          dia_do_mes: dia,
+          tipo_movimento: "despesa",
+          conta_nome,
+          cartao_nome,
+        };
+      }
+    }
+  }
+
   return null;
+}
+
+function montar_recorrencia_completa(
+  dia: number,
+  trecho: string,
+  valorBruto: string,
+  texto: string,
+  contexto?: ContextoInterpretacao | null,
+): IntencaoDetectada | null {
+  const valor = Number(valorBruto.replace(",", "."));
+  const limpo = trecho.replace(/\bdia\s+\d{1,2}\b/i, "").trim();
+  const { descricao, conta_nome, cartao_nome } = separar_descricao_e_origem(
+    limpo,
+    texto,
+    contexto,
+  );
+  if (descricao.length < 2 || !(valor > 0) || dia < 1 || dia > 31) return null;
+  return {
+    intencao: "CRIAR_RECORRENCIA",
+    descricao: capitalizar(descricao),
+    valor,
+    dia_do_mes: dia,
+    tipo_movimento: "despesa",
+    conta_nome,
+    cartao_nome,
+  };
 }
 
 function extrair_categoria_orcamento(lower: string): string | null {
@@ -105,6 +212,62 @@ function extrair_valor(texto: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function extrair_valor_ignorando_dia(texto: string): number | null {
+  const limpo = texto.replace(/\bdia\s+\d{1,2}\b/gi, " ");
+  return extrair_valor(limpo);
+}
+
+/** "Netflix no Nubank" → descrição + conta/cartão textual. */
+function separar_descricao_e_origem(
+  trechoLower: string,
+  textoOriginal: string,
+  contexto?: ContextoInterpretacao | null,
+): { descricao: string; conta_nome: string | null; cartao_nome: string | null } {
+  const origem = extrair_origem_no_na(textoOriginal, contexto);
+  let descricao = trechoLower
+    .replace(/\b(?:no|na|em)\s+[a-záàâãéêíóôõúç0-9][\wáàâãéêíóôõúç0-9\s.-]{1,40}$/i, "")
+    .replace(/\b(?:cart[aã]o|conta|banco)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (descricao.length < 2 && trechoLower.trim().length >= 2) {
+    descricao = trechoLower.trim();
+  }
+
+  return {
+    descricao,
+    conta_nome: origem.conta_nome,
+    cartao_nome: origem.cartao_nome,
+  };
+}
+
+function extrair_origem_no_na(
+  texto: string,
+  contexto?: ContextoInterpretacao | null,
+): {
+  conta_nome: string | null;
+  cartao_nome: string | null;
+} {
+  const m = texto.match(/\b(?:no|na|em)\s+(?:cart[aã]o\s+)?([A-Za-zÁ-ú0-9][\wÁ-ú0-9 .-]{1,40})\s*$/i);
+  if (!m?.[1]) return { conta_nome: null, cartao_nome: null };
+  const nome = m[1].trim().replace(/\s+/g, " ");
+  const nomeLower = nome.toLocaleLowerCase("pt-BR");
+
+  const cartao = contexto?.cartoes.find((c) => c.nome.toLocaleLowerCase("pt-BR") === nomeLower
+    || c.nome.toLocaleLowerCase("pt-BR").includes(nomeLower)
+    || nomeLower.includes(c.nome.toLocaleLowerCase("pt-BR")));
+  if (cartao) return { conta_nome: null, cartao_nome: cartao.nome };
+
+  const conta = contexto?.contas.find((c) => c.nome.toLocaleLowerCase("pt-BR") === nomeLower
+    || c.nome.toLocaleLowerCase("pt-BR").includes(nomeLower)
+    || nomeLower.includes(c.nome.toLocaleLowerCase("pt-BR")));
+  if (conta) return { conta_nome: conta.nome, cartao_nome: null };
+
+  // Sem match no cadastro: tenta como cartão (assinaturas costumam ir no cartão).
+  return { conta_nome: null, cartao_nome: capitalizar(nome) };
+}
+
 function capitalizar(texto: string): string {
+  if (!texto) return texto;
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }

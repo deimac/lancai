@@ -10,7 +10,8 @@ Intenções:
 - CONSULTAR_VISAO: perguntas. tipo_visao: saldos|cartoes|historico|categoria|futuro|fluxo|evolucao|parcelamentos.
   Estabelecimento (Uber, 99, iFood) → historico + filtros.descricao. Categoria da lista → tipo categoria + categoria_nome. Periodo vazio = mês atual.
 - CORRIGIR_MOVIMENTO: alterar descrição/valor/categoria (campos_alterados) OU excluir (status cancelado). "Corrigir/alterar" NÃO é exclusão; só apagar/excluir/cancelar → status cancelado.
-- CRIAR_CONTA / CRIAR_CARTAO / CORRIGIR_CONTA / CORRIGIR_CARTAO / CONSULTAR_DADOS_CARTAO / SOLICITAR_INFORMACAO / MENU / NAO_RECONHECIDA.
+- CRIAR_CONTA / CRIAR_CARTAO / CORRIGIR_CONTA / CORRIGIR_CARTAO / CONSULTAR_DADOS_CARTAO / CRIAR_RECORRENCIA / SOLICITAR_INFORMACAO / MENU / NAO_RECONHECIDA.
+- Faltou valor/conta/dia em recorrência → SOLICITAR_INFORMACAO (pergunte; nunca invente nem diga "valor não informado").
 
 Regras de interpretação:
 - Use nomes de conta/cartão do contexto (ex.: "cartão azul" → "Azul Itaú").

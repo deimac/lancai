@@ -4,6 +4,7 @@ import { modelo_classificar_do_ambiente, type OrquestradorIA } from "./orquestra
 import { normalizar_intencao_cadastro } from "./normalizar-intencao-cadastro";
 import { normalizar_intencao_movimento } from "./normalizar-intencao-movimento";
 import { normalizar_intencao_plasticos } from "./normalizar-intencao-plasticos";
+import { normalizar_intencao_recorrencia } from "./normalizar-intencao-recorrencia";
 import type { ContextoInterpretacao } from "./prompt";
 import {
   montar_prompt_classificar,
@@ -73,7 +74,8 @@ export class InterpretadorIntencoes {
 
     const aposMovimento = normalizar_intencao_movimento(resultado.intencao_detectada, contexto, mensagem);
     const aposCadastro = normalizar_intencao_cadastro(aposMovimento, contexto, mensagem);
-    return normalizar_intencao_plasticos(aposCadastro, mensagem);
+    const aposRecorrencia = normalizar_intencao_recorrencia(aposCadastro, contexto, mensagem);
+    return normalizar_intencao_plasticos(aposRecorrencia, mensagem);
   }
 
   private async obter_ramo(mensagem: string, contexto: ContextoInterpretacao): Promise<RamoIntencao> {

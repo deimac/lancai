@@ -90,6 +90,7 @@ export function schema_por_ramo(ramo: RamoIntencao) {
           schemaIntencaoCriarRecorrencia,
           schemaIntencaoListarRecorrencias,
           schemaIntencaoCancelarRecorrencia,
+          schemaIntencaoSolicitarInformacao,
           schemaIntencaoNaoReconhecida,
         ]),
       });
@@ -101,9 +102,14 @@ export function schema_por_ramo(ramo: RamoIntencao) {
 }
 
 export function ramo_de_intencao_pendente(
-  pendente: "CRIAR_CONTA" | "CRIAR_CARTAO" | "REGISTRAR_MOVIMENTO",
+  pendente:
+    | "CRIAR_CONTA"
+    | "CRIAR_CARTAO"
+    | "REGISTRAR_MOVIMENTO"
+    | "CRIAR_RECORRENCIA",
 ): RamoIntencao {
   if (pendente === "REGISTRAR_MOVIMENTO") return "registrar";
+  if (pendente === "CRIAR_RECORRENCIA") return "recorrencia";
   return "cadastro";
 }
 

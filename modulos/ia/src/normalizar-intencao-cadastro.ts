@@ -8,6 +8,7 @@ import type {
 } from "@lancai/tipos";
 import { mensagem_pede_cartao_debito } from "./inferir-forma-pagamento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
+import { personalizar_pergunta, perguntar_campo } from "./personalizar-pergunta";
 import type { ContextoInterpretacao, IntencaoPendenteSlot } from "./prompt";
 
 type CampoFaltanteConta = "nome" | "saldo_inicial" | "perfil";
@@ -129,48 +130,59 @@ function dados_parciais_cartao(completa: IntencaoCriarCartao): Record<string, un
   return dados;
 }
 
-function montar_pergunta_conta(faltantes: CampoFaltanteConta[]): string {
-  const rotulos: Record<CampoFaltanteConta, string> = {
-    nome: "o nome da conta",
-    saldo_inicial: "o saldo atual da conta",
-    perfil: "se a conta é pessoal ou da empresa",
+function montar_pergunta_conta(
+  faltantes: CampoFaltanteConta[],
+  nomeUsuario?: string | null,
+): string {
+  const perguntas: Record<CampoFaltanteConta, string> = {
+    nome: "Qual é o nome da conta?",
+    saldo_inicial: "Qual é o saldo atual?",
+    perfil: "É pessoal ou da empresa?",
   };
-  const partes = faltantes.map((campo) => rotulos[campo]);
-  if (partes.length === 1) return `Para cadastrar a conta, preciso saber ${partes[0]}.`;
-  if (partes.length === 2) return `Para cadastrar a conta, preciso saber ${partes[0]} e ${partes[1]}.`;
-  return `Para cadastrar a conta, preciso saber ${partes[0]}, ${partes[1]} e ${partes[2]}.`;
+  const primeiro = faltantes[0];
+  if (!primeiro) return perguntar_campo("Pode me dar mais detalhes?", nomeUsuario);
+  return perguntar_campo(perguntas[primeiro], nomeUsuario);
 }
 
-function montar_pergunta_cartao(faltantes: CampoFaltanteCartao[]): string {
-  const rotulos: Record<CampoFaltanteCartao, string> = {
-    nome: "o nome do cartão",
-    limite: "o limite do cartão",
-    fechamento: "o dia de fechamento da fatura",
-    vencimento: "o dia de vencimento da fatura",
-    perfil: "se o cartão é pessoal ou da empresa",
-    conta: "a conta vinculada (obrigatória para cartão de débito)",
+function montar_pergunta_cartao(
+  faltantes: CampoFaltanteCartao[],
+  nomeUsuario?: string | null,
+): string {
+  const perguntas: Record<CampoFaltanteCartao, string> = {
+    nome: "Qual é o nome do cartão?",
+    limite: "Qual é o limite?",
+    fechamento: "Qual o dia de fechamento?",
+    vencimento: "Qual o dia de vencimento?",
+    perfil: "É pessoal ou da empresa?",
+    conta: "Qual é a conta vinculada?",
   };
-  const partes = faltantes.map((campo) => rotulos[campo]);
-  if (partes.length === 1) return `Para cadastrar o cartão, preciso saber ${partes[0]}.`;
-  if (partes.length === 2) return `Para cadastrar o cartão, preciso saber ${partes[0]} e ${partes[1]}.`;
-  const ultima = partes.pop()!;
-  return `Para cadastrar o cartão, preciso saber ${partes.join(", ")} e ${ultima}.`;
+  const primeiro = faltantes[0];
+  if (!primeiro) return perguntar_campo("Pode me dar mais detalhes?", nomeUsuario);
+  return perguntar_campo(perguntas[primeiro], nomeUsuario);
 }
 
-function solicitar_conta(completa: IntencaoCriarConta, faltantes: CampoFaltanteConta[]): IntencaoSolicitarInformacao {
+function solicitar_conta(
+  completa: IntencaoCriarConta,
+  faltantes: CampoFaltanteConta[],
+  nomeUsuario?: string | null,
+): IntencaoSolicitarInformacao {
   return {
     intencao: "SOLICITAR_INFORMACAO",
     intencao_pendente: "CRIAR_CONTA",
-    pergunta: montar_pergunta_conta(faltantes),
+    pergunta: montar_pergunta_conta(faltantes, nomeUsuario),
     dados_parciais: dados_parciais_conta(completa),
   };
 }
 
-function solicitar_cartao(completa: IntencaoCriarCartao, faltantes: CampoFaltanteCartao[]): IntencaoSolicitarInformacao {
+function solicitar_cartao(
+  completa: IntencaoCriarCartao,
+  faltantes: CampoFaltanteCartao[],
+  nomeUsuario?: string | null,
+): IntencaoSolicitarInformacao {
   return {
     intencao: "SOLICITAR_INFORMACAO",
     intencao_pendente: "CRIAR_CARTAO",
-    pergunta: montar_pergunta_cartao(faltantes),
+    pergunta: montar_pergunta_cartao(faltantes, nomeUsuario),
     dados_parciais: dados_parciais_cartao(completa),
   };
 }
@@ -218,6 +230,7 @@ export function normalizar_intencao_cadastro(
 ): IntencaoDetectada {
   const perfilPadrao = inferir_perfil_padrao(contexto.contas, contexto.cartoes);
   const { alvo, dados: parciaisPendentes } = parciais_da_pendente(contexto.intencaoPendente);
+  const nome = contexto.nomeUsuario;
 
   if (intencao.intencao === "SOLICITAR_INFORMACAO") {
     if (intencao.intencao_pendente === "CRIAR_CONTA") {
@@ -229,8 +242,10 @@ export function normalizar_intencao_cadastro(
       const faltantes = faltantes_conta(completa);
       if (faltantes.length === 0) return completa;
       return {
-        ...solicitar_conta(completa, faltantes),
-        pergunta: intencao.pergunta || montar_pergunta_conta(faltantes),
+        ...solicitar_conta(completa, faltantes, nome),
+        pergunta: intencao.pergunta
+          ? personalizar_pergunta(intencao.pergunta, nome)
+          : montar_pergunta_conta(faltantes, nome),
       };
     }
 
@@ -244,8 +259,10 @@ export function normalizar_intencao_cadastro(
       const faltantes = faltantes_cartao(completa);
       if (faltantes.length === 0) return completa;
       return {
-        ...solicitar_cartao(completa, faltantes),
-        pergunta: intencao.pergunta || montar_pergunta_cartao(faltantes),
+        ...solicitar_cartao(completa, faltantes, nome),
+        pergunta: intencao.pergunta
+          ? personalizar_pergunta(intencao.pergunta, nome)
+          : montar_pergunta_cartao(faltantes, nome),
       };
     }
 
@@ -259,7 +276,7 @@ export function normalizar_intencao_cadastro(
       perfilPadrao,
     );
     const faltantes = faltantes_conta(completa);
-    if (faltantes.length > 0) return solicitar_conta(completa, faltantes);
+    if (faltantes.length > 0) return solicitar_conta(completa, faltantes, nome);
     return completa;
   }
 
@@ -271,7 +288,7 @@ export function normalizar_intencao_cadastro(
       mensagem,
     );
     const faltantes = faltantes_cartao(completa);
-    if (faltantes.length > 0) return solicitar_cartao(completa, faltantes);
+    if (faltantes.length > 0) return solicitar_cartao(completa, faltantes, nome);
     return completa;
   }
 

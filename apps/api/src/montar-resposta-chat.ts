@@ -245,6 +245,12 @@ export async function montar_resposta_chat(
     }
 
     case "CRIAR_RECORRENCIA": {
+      if (intencao.valor == null) {
+        return "Qual é o valor?";
+      }
+      if (intencao.dia_do_mes == null) {
+        return "Em qual dia do mês?";
+      }
       const categoria = await contexto.resolvedor.resolver_categoria_nome(
         contexto.usuarioId,
         intencao.categoria_nome ?? "Assinaturas",
@@ -262,7 +268,7 @@ export async function montar_resposta_chat(
         intencao.cartao_nome,
       );
       if (!contaId && !cartaoId) {
-        return "Para criar a recorrência, diga em qual conta ou cartão (ex.: Nubank).";
+        return "Em qual conta ou cartão?";
       }
       const criada = await criar_recorrencia({
         usuarioId: contexto.usuarioId,
