@@ -146,23 +146,33 @@ export async function texto_alerta_orcamento_apos_despesa(entrada: {
   dataAtual: string;
   categoriaId: string;
 }): Promise<string | null> {
-  const status = await listar_status_orcamentos(entrada.usuarioId, entrada.dataAtual);
-  const relevantes = status.filter(
-    (s) => !s.orcamento.categoriaId || s.orcamento.categoriaId === entrada.categoriaId,
-  );
-  const alertas: string[] = [];
-  for (const item of relevantes) {
-    if (item.percentual >= 100) {
-      const rotulo = item.categoriaNome ?? "geral";
-      alertas.push(
-        `Atenção: orçamento ${rotulo} estourado (${Math.round(item.percentual)}% de ${formatarMoeda(item.limite)}).`,
-      );
-    } else if (item.percentual >= 80) {
-      const rotulo = item.categoriaNome ?? "geral";
-      alertas.push(
-        `Alerta: orçamento ${rotulo} em ${Math.round(item.percentual)}% (${formatarMoeda(item.gasto)} de ${formatarMoeda(item.limite)}).`,
-      );
+  try {
+    const status = await listar_status_orcamentos(entrada.usuarioId, entrada.dataAtual);
+    const relevantes = status.filter(
+      (s) => !s.orcamento.categoriaId || s.orcamento.categoriaId === entrada.categoriaId,
+    );
+    const alertas: string[] = [];
+    for (const item of relevantes) {
+      if (item.percentual >= 100) {
+        const rotulo = item.categoriaNome ?? "geral";
+        alertas.push(
+          `Atenção: orçamento ${rotulo} estourado (${Math.round(item.percentual)}% de ${formatarMoeda(item.limite)}).`,
+        );
+      } else if (item.percentual >= 80) {
+        const rotulo = item.categoriaNome ?? "geral";
+        alertas.push(
+          `Alerta: orçamento ${rotulo} em ${Math.round(item.percentual)}% (${formatarMoeda(item.gasto)} de ${formatarMoeda(item.limite)}).`,
+        );
+      }
     }
+    return alertas.length > 0 ? alertas.join(" ") : null;
+  } catch (erro) {
+    // Migration 0006 ainda não aplicada — não derruba o lançamento.
+    const msg = erro instanceof Error ? erro.message : String(erro);
+    if (/orcamento|recorrencia|does not exist|42P01/i.test(msg)) {
+      console.warn(`[orcamento] alerta ignorado (tabela ausente?): ${msg.slice(0, 120)}`);
+      return null;
+    }
+    throw erro;
   }
-  return alertas.length > 0 ? alertas.join(" ") : null;
 }
