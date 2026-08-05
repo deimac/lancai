@@ -186,10 +186,51 @@ describe("montar_resposta_visao", () => {
     expect(texto).toContain("Lançamentos de 14/08/2026 a 15/08/2026 (3):");
     expect(texto).toContain(`Receitas ${formatarMoeda(2500)}`);
     expect(texto).toContain("15/08/2026");
-    expect(texto).toContain("- #aaaaaaaa · Almoço · despesa ·");
-    expect(texto).toContain("C6 Bank");
-    expect(texto).toContain("cartão Nubank");
-    expect(texto).toContain('Cancela o #a1b2c3d4');
+    expect(texto).toContain(`- #aaaaaaaa · Almoço · - ${formatarMoeda(45)} · C6 Bank`);
+    expect(texto).toContain(`- #bbbbbbbb · Uber · - ${formatarMoeda(32)} · cartão Nubank`);
+    expect(texto).not.toContain("despesa");
+    expect(texto).not.toContain("pessoal");
+    expect(texto).toContain("Cancela o #a1b2c3d4");
+  });
+
+  it("histórico em modo resumo mostra só totais", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          filtroDescricao: "uber",
+          totalReceitas: 0,
+          totalDespesas: 63.53,
+          saldoPeriodo: -63.53,
+          totalItens: 2,
+          itensOmitidos: 0,
+          dias: [
+            {
+              data: "2026-08-05",
+              itens: [
+                {
+                  id: "aaaaaaaa-1111-2222-3333-444455556666",
+                  descricao: "Uber",
+                  tipo: "despesa",
+                  valor: 38.58,
+                  perfil: "pf",
+                  contaNome: null,
+                  cartaoNome: "Azul Itaú",
+                  categoriaNome: "Transporte",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { detalhado: false },
+    );
+
+    expect(texto).toContain(`Você gastou ${formatarMoeda(63.53)} com "Uber"`);
+    expect(texto).toContain("detalhado");
+    expect(texto).not.toContain("#aaaaaaaa");
+    expect(texto).not.toContain("Cancela o");
   });
 
   it("informa quando o histórico do período está vazio", () => {

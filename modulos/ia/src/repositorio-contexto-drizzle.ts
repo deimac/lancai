@@ -11,7 +11,7 @@ import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco"
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 import { normalizar_codigo_busca } from "./codigo-movimento";
-import { descricao_corresponde_busca, normalizar_descricao } from "./normalizar-descricao";
+import { chave_descricao_lancamento, descricao_corresponde_busca } from "./normalizar-descricao";
 import type {
   CriterioMovimentoSimilar,
   ReferenciaMovimentoParaCorrecao,
@@ -258,8 +258,8 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
       .orderBy(desc(movimentoTabela.dataLancamento))
       .limit(20);
 
-    const alvo = normalizar_descricao(criterio.descricao);
-    return linhas.find((movimento) => normalizar_descricao(movimento.descricao) === alvo);
+    const alvo = chave_descricao_lancamento(criterio.descricao);
+    return linhas.find((movimento) => chave_descricao_lancamento(movimento.descricao) === alvo);
   }
 
   async contarMovimentosVinculadosConta(contaId: string): Promise<number> {

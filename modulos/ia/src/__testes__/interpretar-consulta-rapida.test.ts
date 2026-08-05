@@ -24,6 +24,7 @@ describe("interpretar_consulta_rapida", () => {
     expect(interpretar_consulta_rapida("quais os lancamentos de hoje?", contexto())).toEqual({
       intencao: "CONSULTAR_VISAO",
       tipo_visao: "historico",
+      detalhado: true,
       filtros: {
         periodo: { de: "2026-08-03", ate: "2026-08-03" },
         conta_nome: null,
@@ -38,6 +39,7 @@ describe("interpretar_consulta_rapida", () => {
     ).toMatchObject({
       intencao: "CONSULTAR_VISAO",
       tipo_visao: "historico",
+      detalhado: false,
       filtros: {
         periodo: { de: "2026-08-02", ate: "2026-08-02" },
         cartao_nome: "Azul Itaú",
@@ -49,6 +51,7 @@ describe("interpretar_consulta_rapida", () => {
     expect(interpretar_consulta_rapida("Quanto gastei esse mês?", contexto())).toEqual({
       intencao: "CONSULTAR_VISAO",
       tipo_visao: "historico",
+      detalhado: false,
       filtros: {
         periodo: { de: "2026-08-01", ate: "2026-08-31" },
         conta_nome: null,
@@ -61,6 +64,7 @@ describe("interpretar_consulta_rapida", () => {
     expect(interpretar_consulta_rapida("resumo do mês", contexto())).toMatchObject({
       intencao: "CONSULTAR_VISAO",
       tipo_visao: "historico",
+      detalhado: false,
       filtros: { periodo: { de: "2026-08-01", ate: "2026-08-31" } },
     });
   });

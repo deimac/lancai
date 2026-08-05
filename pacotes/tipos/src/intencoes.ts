@@ -113,6 +113,11 @@ export const schemaIntencaoConsultarVisao = z.object({
   intencao: z.literal("CONSULTAR_VISAO"),
   tipo_visao: tipoVisaoSchema,
   filtros: schemaFiltrosVisao,
+  /**
+   * Histórico: `true` lista lançamentos; `false` só totais (perguntas "quanto gastei…").
+   * Omitido = a API decide pela mensagem.
+   */
+  detalhado: z.boolean().nullable().optional(),
 });
 export type IntencaoConsultarVisao = z.infer<typeof schemaIntencaoConsultarVisao>;
 

@@ -8,6 +8,47 @@ export function normalizar_descricao(texto: string): string {
     .trim();
 }
 
+/**
+ * Enxuga descrição de lançamento: tira fluff da IA/usuário e deixa o núcleo
+ * (ex.: "compra de um tênis para uso pessoal" → "Tênis").
+ */
+export function enxugar_descricao_lancamento(texto: string): string {
+  let s = limpar_termo_descricao(texto);
+  if (!s) return texto.trim() || "Lançamento";
+
+  // Perfil / intenção — nunca fazem parte da descrição.
+  s = s.replace(
+    /\b(para\s+)?uso\s+pessoal\b|\bgasto\s+pessoal\b|\bganho\s+pessoal\b|\bum\s+gasto\s+pessoal\b|\bda\s+empresa\b|\bpara\s+(a\s+)?empresa\b|\buso\s+(da\s+)?empresa\b|\bgasto\s+(da\s+)?empresa\b|\bpessoalmente\b|\bempresarial(?:mente)?\b/gi,
+    " ",
+  );
+
+  // Verbos / moldura de frase.
+  s = s.replace(
+    /\b(compra|comprei|gastei|paguei|pague|paguei|recebi|ganhei|debitei)\s+(de|do|da|dos|das|com|no|na|nos|nas|em|um|uma)?\b/gi,
+    " ",
+  );
+  s = s.replace(/\b(compra|comprei)\s+(de|do|da|dos|das)\b/gi, " ");
+
+  // Artigos / conectores soltos no início/meio após limpeza.
+  s = s.replace(/^[,\s]+|[,\s]+$/g, "");
+  s = s.replace(/\s*,\s*/g, " ");
+  s = s.replace(/\b(um|uma|uns|umas|o|a|os|as|de|do|da|dos|das)\b/gi, " ");
+  s = s.replace(/\s+/g, " ").trim();
+
+  // Se sobrou só lixo, cai no original limpo curto.
+  if (!s || s.length < 2) {
+    s = limpar_termo_descricao(texto).replace(/\s+/g, " ").trim() || "Lançamento";
+  }
+
+  // Capitaliza primeira letra (mantém resto).
+  return s.charAt(0).toLocaleUpperCase("pt-BR") + s.slice(1);
+}
+
+/** Chave canônica para comparar duplicatas após enxugar. */
+export function chave_descricao_lancamento(texto: string): string {
+  return normalizar_descricao(enxugar_descricao_lancamento(texto));
+}
+
 /** Mantém só letras latinas (pt-BR), números e espaços — descarta lixo da IA. */
 export function limpar_termo_descricao(texto: string): string {
   return texto

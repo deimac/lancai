@@ -15,6 +15,7 @@ export * from "./interpretar-lancamento-rapido";
 export * from "./codigo-movimento";
 export * from "./datas-relativas";
 export * from "./extrair-termo-referencia";
+export * from "./consulta-historico-detalhada";
 export * from "./interpretar-consulta-rapida";
 export * from "./interpretar-correcao-rapida";
 export * from "./normalizar-descricao";

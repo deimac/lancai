@@ -1,4 +1,5 @@
 import type { IntencaoConsultarVisao, IntencaoDetectada } from "@lancai/tipos";
+import { consulta_historico_detalhada } from "./consulta-historico-detalhada";
 import { inicio_fim_mes_iso, somar_dias_iso_local } from "./datas-relativas";
 import { inferir_origem_da_mensagem } from "./inferir-origem-movimento";
 import type { ContextoInterpretacao } from "./prompt";
@@ -60,6 +61,7 @@ export function interpretar_consulta_rapida(
   const intencao: IntencaoConsultarVisao = {
     intencao: "CONSULTAR_VISAO",
     tipo_visao: "historico",
+    detalhado: consulta_historico_detalhada(texto),
     filtros: {
       periodo,
       conta_nome: origem.conta_nome ?? null,

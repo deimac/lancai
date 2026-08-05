@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  chave_descricao_lancamento,
   descricao_corresponde_busca,
+  enxugar_descricao_lancamento,
   normalizar_descricao,
   rotulo_descricao_busca,
 } from "../normalizar-descricao";
@@ -13,6 +15,24 @@ describe("normalizar_descricao", () => {
 
   it("colapsa espaços", () => {
     expect(normalizar_descricao("  Farmácia  drogaria ")).toBe("farmacia drogaria");
+  });
+});
+
+describe("enxugar_descricao_lancamento", () => {
+  it("reduz frase longa a núcleo do bem", () => {
+    expect(enxugar_descricao_lancamento("compra de um tênis para uso pessoal, um gasto pessoal")).toBe(
+      "Tênis",
+    );
+  });
+
+  it("mantém estabelecimento curto", () => {
+    expect(enxugar_descricao_lancamento("Uber")).toBe("Uber");
+  });
+
+  it("chave canônica iguala variações com fluff", () => {
+    expect(
+      chave_descricao_lancamento("compra de um tênis para uso pessoal, um gasto pessoal"),
+    ).toBe(chave_descricao_lancamento("compra de um tênis para uso pessoal"));
   });
 });
 

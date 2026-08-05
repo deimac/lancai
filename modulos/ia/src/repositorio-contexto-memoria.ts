@@ -3,7 +3,7 @@ import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco"
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 import { codigo_curto_movimento, normalizar_codigo_busca } from "./codigo-movimento";
-import { descricao_corresponde_busca, normalizar_descricao } from "./normalizar-descricao";
+import { chave_descricao_lancamento, descricao_corresponde_busca } from "./normalizar-descricao";
 import type {
   CriterioMovimentoSimilar,
   ReferenciaMovimentoParaCorrecao,
@@ -187,14 +187,14 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
 
   async buscarMovimentoSimilar(usuarioId: string, criterio: CriterioMovimentoSimilar) {
     const valorAlvo = paraColuna(criterio.valor);
-    const descricaoAlvo = normalizar_descricao(criterio.descricao);
+    const descricaoAlvo = chave_descricao_lancamento(criterio.descricao);
     const candidatos = [...this.movimentos.values()].filter((movimento) => {
       if (movimento.usuarioId !== usuarioId || movimento.status === "cancelado") return false;
       if (movimento.dataMovimento !== criterio.dataMovimento) return false;
       if (movimento.valor !== valorAlvo) return false;
       if (criterio.cartaoId && movimento.cartaoId !== criterio.cartaoId) return false;
       if (!criterio.cartaoId && criterio.contaId && movimento.contaId !== criterio.contaId) return false;
-      return normalizar_descricao(movimento.descricao) === descricaoAlvo;
+      return chave_descricao_lancamento(movimento.descricao) === descricaoAlvo;
     });
     candidatos.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
     return candidatos[0];

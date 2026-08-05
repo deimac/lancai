@@ -6,7 +6,34 @@ import {
   resolver_nome_canonico,
 } from "./inferir-origem-movimento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
+import { enxugar_descricao_lancamento } from "./normalizar-descricao";
 import type { ContextoInterpretacao } from "./prompt";
+
+/** Perfil explícito na mensagem (tem prioridade sobre perfil da conta/cartão). */
+export function inferir_perfil_da_mensagem(mensagem: string): Perfil | null {
+  const texto = mensagem.toLocaleLowerCase("pt-BR");
+  const pf =
+    /\b(?:para\s+)?uso\s+pessoal\b/.test(texto) ||
+    /\bgasto\s+pessoal\b/.test(texto) ||
+    /\bganho\s+pessoal\b/.test(texto) ||
+    /\bpf\b/.test(texto) ||
+    /\bpessoal(?:mente)?\b/.test(texto);
+  const pj =
+    /\b(?:para\s+)?(?:a\s+)?empresa\b/.test(texto) ||
+    /\buso\s+(?:da\s+)?empresa\b/.test(texto) ||
+    /\bgasto\s+(?:da\s+)?empresa\b/.test(texto) ||
+    /\bpj\b/.test(texto) ||
+    /\bempresarial(?:mente)?\b/.test(texto);
+
+  // Ambos: frases longas de uso pessoal vs "Mercado Pago empresa" — preferir o mais específico.
+  if (pf && !pj) return "pf";
+  if (pj && !pf) return "pj";
+  if (pf && pj) {
+    if (/\b(?:para\s+)?uso\s+pessoal\b|\bgasto\s+pessoal\b/.test(texto)) return "pf";
+    if (/\b(?:para\s+)?(?:a\s+)?empresa\b|\bpj\b/.test(texto)) return "pj";
+  }
+  return null;
+}
 
 type CampoFaltante = "valor" | "conta" | "perfil";
 
@@ -190,13 +217,19 @@ export function normalizar_intencao_movimento(
 
   const completa: IntencaoRegistrarMovimento = {
     ...intencao,
+    descricao: enxugar_descricao_lancamento(intencao.descricao),
     data_movimento: resolver_data_movimento(contexto.dataAtual, intencao.data_movimento, mensagem),
     conta_nome: origem.conta_nome,
     cartao_nome: origem.cartao_nome,
   };
 
+  const perfilMensagem = inferir_perfil_da_mensagem(mensagem);
   const perfilOrigem = inferir_perfil_da_origem(contexto, completa.conta_nome, completa.cartao_nome);
-  completa.perfil = (intencao.perfil ?? perfilOrigem ?? perfilPadrao) as Perfil | null | undefined;
+  // Mensagem ("uso pessoal") > IA > conta/cartão > padrão do usuário.
+  completa.perfil = (perfilMensagem ?? intencao.perfil ?? perfilOrigem ?? perfilPadrao) as
+    | Perfil
+    | null
+    | undefined;
   completa.forma_pagamento = resolver_forma_pagamento(completa, mensagem);
 
   const faltantes: CampoFaltante[] = [];

@@ -11,12 +11,28 @@ function formatarData(dataISO: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** Sinal do valor no extrato: saída `-`, entrada `+`. */
+function sinal_valor_historico(tipo: string): "+" | "-" {
+  if (tipo === "despesa" || tipo === "retirada" || tipo === "emprestimo" || tipo === "transferencia") {
+    return "-";
+  }
+  return "+";
+}
+
+export type OpcoesRespostaVisao = {
+  /** Histórico: false = só totais; true/omit = lista lançamentos. */
+  detalhado?: boolean;
+};
+
 /**
  * Formata o resultado estruturado do `ModuloRelatorios` (Fase 5) no texto que
  * o usuário vê no chat. Mesma separação usada em `montar_resposta_chat`: o
  * módulo de domínio devolve dados, a camada de API formata a mensagem.
  */
-export function montar_resposta_visao(resultado: ResultadoVisao): string {
+export function montar_resposta_visao(
+  resultado: ResultadoVisao,
+  opcoes: OpcoesRespostaVisao = {},
+): string {
   switch (resultado.tipo) {
     case "saldos": {
       const { contas, totalGeral } = resultado.dados;
@@ -113,6 +129,25 @@ export function montar_resposta_visao(resultado: ResultadoVisao): string {
           ? formatarData(periodo.de)
           : `${formatarData(periodo.de)} a ${formatarData(periodo.ate)}`;
 
+      const rotuloDescricao = filtroDescricao
+        ? filtroDescricao.charAt(0).toLocaleUpperCase("pt-BR") + filtroDescricao.slice(1)
+        : null;
+
+      const detalhado = opcoes.detalhado !== false;
+
+      if (!detalhado) {
+        if (rotuloDescricao) {
+          return [
+            `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
+            'Para ver cada lançamento, diga "detalhado".',
+          ].join("\n");
+        }
+        return [
+          `Em ${periodoTexto}: receitas ${formatarMoeda(totalReceitas)} · despesas ${formatarMoeda(totalDespesas)} · saldo ${formatarMoeda(saldoPeriodo)} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
+          'Para ver cada lançamento, diga "detalhado".',
+        ].join("\n");
+      }
+
       const secoes = dias.map((dia) => {
         const linhas = dia.itens.map((item) => {
           const origem = item.cartaoNome
@@ -120,22 +155,18 @@ export function montar_resposta_visao(resultado: ResultadoVisao): string {
             : item.contaNome
               ? item.contaNome
               : null;
+          const valorComSinal = `${sinal_valor_historico(item.tipo)} ${formatarMoeda(item.valor)}`;
           const partes = [
             formatar_codigo_movimento(item.id),
             item.descricao,
-            item.tipo,
-            formatarMoeda(item.valor),
+            valorComSinal,
             ...(origem ? [origem] : []),
-            rotuloPerfil(item.perfil),
           ];
           return `- ${partes.join(" · ")}`;
         });
         return `${formatarData(dia.data)}\n${linhas.join("\n")}`;
       });
 
-      const rotuloDescricao = filtroDescricao
-        ? filtroDescricao.charAt(0).toLocaleUpperCase("pt-BR") + filtroDescricao.slice(1)
-        : null;
       const cabecalho = rotuloDescricao
         ? [
             `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,

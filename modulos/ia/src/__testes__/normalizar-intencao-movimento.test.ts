@@ -95,6 +95,7 @@ describe("normalizar_intencao_movimento", () => {
           { nome: "Mercado Pago", perfil: "pj" },
         ],
       }),
+      "gastei 200 de software no Mercado Pago",
     );
     expect(naEmpresa).toMatchObject({
       intencao: "REGISTRAR_MOVIMENTO",
@@ -206,5 +207,32 @@ describe("normalizar_intencao_movimento", () => {
     if (resultado.intencao !== "REGISTRAR_MOVIMENTO") return;
     expect(resultado.cartao_nome).toBe("Nubank");
     expect(resultado.perfil).toBe("pf");
+  });
+
+  it("uso pessoal na mensagem força perfil pf e enxuga a descrição", () => {
+    const resultado = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        descricao: "compra de um tênis para uso pessoal, um gasto pessoal",
+        valor: 304.7,
+        conta_nome: "Mercado Pago",
+        perfil: "pj",
+      },
+      contexto({
+        contas: [
+          { nome: "C6 Bank", perfil: "pf" },
+          { nome: "Mercado Pago", perfil: "pj" },
+        ],
+      }),
+      "comprei um tênis de 304,70 no Mercado Pago para uso pessoal",
+    );
+
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      descricao: "Tênis",
+      perfil: "pf",
+      conta_nome: "Mercado Pago",
+    });
   });
 });

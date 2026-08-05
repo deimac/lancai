@@ -3,6 +3,7 @@ import type { IntencaoCorrigirMovimento, IntencaoDetectada } from "@lancai/tipos
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import {
   ErroEntidadeJaExiste,
+  consulta_historico_detalhada,
   extrair_codigo_da_mensagem,
   preferir_termo_referencia,
   type ResolvedorIntencao,
@@ -200,7 +201,11 @@ export async function montar_resposta_chat(
     case "CONSULTAR_VISAO": {
       const filtros = await contexto.resolvedor.resolver_consultar_visao(intencao, referenciaResolucao);
       const resultado = await contexto.relatorios.consultar_visao(intencao.tipo_visao, filtros, contexto.dataAtual);
-      return montar_resposta_visao(resultado);
+      const detalhado =
+        intencao.tipo_visao === "historico"
+          ? (intencao.detalhado ?? consulta_historico_detalhada(contexto.mensagem ?? ""))
+          : true;
+      return montar_resposta_visao(resultado, { detalhado });
     }
 
     case "DEFINIR_ORCAMENTO": {
