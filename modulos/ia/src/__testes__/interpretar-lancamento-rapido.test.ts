@@ -81,4 +81,18 @@ describe("interpretar_lancamento_rapido", () => {
       interpretar_lancamento_rapido("gastei 20,00 reais com 99 dia 02 no cartao azul", contexto()),
     ).toBeNull();
   });
+
+  it("enxuga vocativo, Pix e valor na descrição do atalho", () => {
+    const resultado = interpretar_lancamento_rapido(
+      "Lançai gastei 304,00 no tênis Adidas no pix na Mercado Pago",
+      contexto(),
+    );
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      valor: 304,
+      conta_nome: "Mercado Pago",
+      forma_pagamento: "pix",
+      descricao: "Tênis Adidas",
+    });
+  });
 });

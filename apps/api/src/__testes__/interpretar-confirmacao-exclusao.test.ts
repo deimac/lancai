@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  extrair_nova_descricao_correcao,
   extrair_pendencia_exclusao,
   interpretar_resposta_confirmacao_exclusao,
 } from "../interpretar-confirmacao-exclusao";
@@ -72,7 +73,7 @@ describe("extrair_pendencia_exclusao", () => {
     });
   });
 
-  it("detecta lista de semelhantes para desambiguação", () => {
+  it("detecta lista para exclusão", () => {
     expect(
       extrair_pendencia_exclusao([
         {
@@ -82,12 +83,32 @@ describe("extrair_pendencia_exclusao", () => {
         {
           papel: "sistema",
           conteudo:
-            "Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis, um gasto pessoal · - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou \"todos\".",
+            "Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis, um gasto pessoal · - R$ 304,70\n\nQual deseja excluir (apagar)? Digite o número (1, 2…) ou \"todos\". Isso remove o lançamento.",
         },
       ]),
     ).toEqual({
-      tipo: "lançamentos_semelhantes",
+      tipo: "lançamentos_excluir",
       descricao: "Ténis",
+      quantidade: 2,
+    });
+  });
+
+  it("detecta lista para correção (alterar)", () => {
+    expect(
+      extrair_pendencia_exclusao([
+        {
+          papel: "usuario",
+          conteudo: "corrige a descrição do tênis adidas pix para tênis adidas",
+        },
+        {
+          papel: "sistema",
+          conteudo:
+            "Encontrei 2 lançamentos:\n1. Lanç í tênis Adidas Pix valor · - R$ 304,00\n2. Tênis Adidas · - R$ 304,00\n\nQual deseja corrigir (alterar — não apaga)? Digite o número do lançamento (1, 2…).",
+        },
+      ]),
+    ).toEqual({
+      tipo: "lançamentos_corrigir",
+      descricao: "Tênis adidas",
       quantidade: 2,
     });
   });
@@ -113,6 +134,16 @@ describe("extrair_pendencia_exclusao", () => {
     expect(
       extrair_pendencia_exclusao([{ papel: "sistema", conteudo: "Conta atualizada." }]),
     ).toBeNull();
+  });
+});
+
+describe("extrair_nova_descricao_correcao", () => {
+  it("pega o texto após 'para'", () => {
+    expect(
+      extrair_nova_descricao_correcao(
+        "corrige a descrição do tênis adidas pix para tênis adidas",
+      ),
+    ).toBe("Tênis adidas");
   });
 });
 
@@ -160,7 +191,7 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
     expect(interpretar_resposta_confirmacao_exclusao("sim", [])).toBeNull();
   });
 
-  it("com semelhantes, 'todos' confirma o lote e 'sim' sozinho não", () => {
+  it("com lista de exclusão, 'todos' e número cancelam", () => {
     const historico = [
       {
         papel: "usuario" as const,
@@ -169,7 +200,7 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
       {
         papel: "sistema" as const,
         conteudo:
-          'Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis · - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
+          'Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis · - R$ 304,70\n\nQual deseja excluir (apagar)? Digite o número (1, 2…) ou "todos". Isso remove o lançamento.',
       },
     ];
     expect(interpretar_resposta_confirmacao_exclusao("todos", historico)).toEqual({
@@ -177,32 +208,46 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
       referencia: { descricao: "Tênis", data_movimento: null, codigo: null, indice: null },
       campos_alterados: { status: "cancelado", confirmado: true },
     });
-    expect(interpretar_resposta_confirmacao_exclusao("sim", historico)).toBeNull();
-  });
-
-  it("com semelhantes, número escolhe o índice", () => {
-    const historico = [
-      {
-        papel: "usuario" as const,
-        conteudo: "apague o tênis",
-      },
-      {
-        papel: "sistema" as const,
-        conteudo:
-          'Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis · - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
-      },
-    ];
     expect(interpretar_resposta_confirmacao_exclusao("1", historico)).toEqual({
       intencao: "CORRIGIR_MOVIMENTO",
       referencia: { descricao: "Tênis", data_movimento: null, codigo: null, indice: 1 },
       campos_alterados: { status: "cancelado", confirmado: true },
     });
-    expect(interpretar_resposta_confirmacao_exclusao("o 2", historico)).toMatchObject({
-      referencia: { indice: 2 },
+    expect(interpretar_resposta_confirmacao_exclusao("sim", historico)).toBeNull();
+  });
+
+  it("com lista de correção, número ALTERA e não exclui", () => {
+    const historico = [
+      {
+        papel: "usuario" as const,
+        conteudo: "corrige a descrição do tênis adidas pix para tênis adidas",
+      },
+      {
+        papel: "sistema" as const,
+        conteudo:
+          "Encontrei 2 lançamentos:\n1. Lanç í tênis Adidas Pix valor · - R$ 304,00\n2. Tênis Adidas · - R$ 304,00\n\nQual deseja corrigir (alterar — não apaga)? Digite o número do lançamento (1, 2…).",
+      },
+    ];
+    const ultimaIa = {
+      intencao: "CORRIGIR_MOVIMENTO" as const,
+      referencia: { descricao: "Tênis Adidas Pix", data_movimento: null, codigo: null },
+      campos_alterados: { descricao: "Tênis Adidas" },
+    };
+
+    expect(interpretar_resposta_confirmacao_exclusao("1", historico, ultimaIa)).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Tênis adidas", data_movimento: null, codigo: null, indice: 1 },
+      campos_alterados: { descricao: "Tênis Adidas" },
     });
-    expect(interpretar_resposta_confirmacao_exclusao("3", historico)).toEqual({
-      intencao: "NAO_RECONHECIDA",
-      motivo: 'Número inválido. Escolha entre 1 e 2, ou diga "todos".',
+
+    // Sem intenção da IA, recupera "para …" da mensagem do usuário.
+    expect(interpretar_resposta_confirmacao_exclusao("2", historico, null)).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Tênis adidas", data_movimento: null, codigo: null, indice: 2 },
+      campos_alterados: { descricao: "Tênis adidas" },
     });
+
+    // Nunca cancela com "todos" na lista de correção.
+    expect(interpretar_resposta_confirmacao_exclusao("todos", historico, ultimaIa)).toBeNull();
   });
 });

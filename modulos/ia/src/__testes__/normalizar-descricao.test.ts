@@ -29,6 +29,12 @@ describe("enxugar_descricao_lancamento", () => {
     expect(enxugar_descricao_lancamento("Uber")).toBe("Uber");
   });
 
+  it("remove vocativo STT, Pix e meta — mantém marca", () => {
+    expect(enxugar_descricao_lancamento("Lanç í tênis Adidas Pix valor")).toBe("Tênis Adidas");
+    expect(enxugar_descricao_lancamento("Lançai gastei no uber no pix")).toBe("Uber");
+    expect(enxugar_descricao_lancamento("Tênis Adidas")).toBe("Tênis Adidas");
+  });
+
   it("chave canônica iguala variações com fluff", () => {
     expect(
       chave_descricao_lancamento("compra de um tênis para uso pessoal, um gasto pessoal"),

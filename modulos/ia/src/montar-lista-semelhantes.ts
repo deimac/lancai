@@ -46,8 +46,8 @@ export function montar_lista_lancamentos_semelhantes(
 
   const rodape =
     acao === "excluir"
-      ? `Qual deseja excluir? Digite o número (1, 2…) ou "todos".`
-      : `Qual deseja corrigir? Digite o número do lançamento (1, 2…).`;
+      ? `Qual deseja excluir (apagar)? Digite o número (1, 2…) ou "todos". Isso remove o lançamento.`
+      : `Qual deseja corrigir (alterar — não apaga)? Digite o número do lançamento (1, 2…).`;
 
   return [`Encontrei ${itens.length} lançamentos:`, ...linhas, "", rodape].join("\n");
 }

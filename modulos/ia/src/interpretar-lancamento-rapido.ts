@@ -1,5 +1,6 @@
 import type { IntencaoDetectada, IntencaoRegistrarMovimento, TipoMovimento } from "@lancai/tipos";
 import { inferir_origem_da_mensagem, normalizar_texto_busca } from "./inferir-origem-movimento";
+import { enxugar_descricao_lancamento } from "./normalizar-descricao";
 import { normalizar_intencao_movimento } from "./normalizar-intencao-movimento";
 import type { ContextoInterpretacao } from "./prompt";
 
@@ -7,10 +8,6 @@ const VERBOS_DESPESA = /\b(gastei|paguei|comprei|debitei)\b/i;
 const VERBOS_RECEITA = /\b(recebi|ganhei)\b/i;
 const FORA_DO_ATALHO =
   /\b(corrige|corrigir|altera|muda|exclui|apaga|remove|cadastr|mostra|quanto|qual|menu|ajuda|transfer|pix\s+pra|saldo|limite|dados\s+do\s+cart)/i;
-
-function capitalizar(texto: string): string {
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
 
 function extrair_valor_monetario(mensagem: string): number | null {
   const comCentavos =
@@ -75,13 +72,16 @@ function extrair_descricao(
     .replace(/\b\d+,\d{2}\b/g, " ")
     .replace(/\b(gastei|paguei|comprei|recebi|ganhei|debitei)\b/gi, " ")
     .replace(/\b(cart[aã]o|conta|banco)\b/gi, " ")
-    .replace(/\b(no|na|nos|nas|com|do|da|de|em|o|a|um|uma|meu|minha|pra|para|pelo|pela)\b/gi, " ")
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
   if (texto.length < 2) return null;
-  return capitalizar(texto);
+  const enxuta = enxugar_descricao_lancamento(texto);
+  if (!enxuta || enxuta.length < 2 || enxuta.toLocaleLowerCase("pt-BR") === "lançamento") {
+    return null;
+  }
+  return enxuta;
 }
 
 /**

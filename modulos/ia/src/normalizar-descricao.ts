@@ -8,13 +8,65 @@ export function normalizar_descricao(texto: string): string {
     .trim();
 }
 
+/** Tokens que nunca entram na descrição (forma de pagamento, meta, vocativo). */
+const RUIDO_DESCRICAO = new Set([
+  "pix",
+  "ted",
+  "doc",
+  "boleto",
+  "transferencia",
+  "transferencias",
+  "dinheiro",
+  "credito",
+  "debito",
+  "valor",
+  "reais",
+  "real",
+  "especie",
+  "via",
+  "lancai",
+  "lancay",
+  "lanc",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+  "o",
+  "a",
+  "os",
+  "as",
+  "de",
+  "do",
+  "da",
+  "dos",
+  "das",
+  "para",
+  "pra",
+  "com",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "em",
+  "meu",
+  "minha",
+]);
+
 /**
- * Enxuga descrição de lançamento: tira fluff da IA/usuário e deixa o núcleo
- * (ex.: "compra de um tênis para uso pessoal" → "Tênis").
+ * Enxuga descrição de lançamento: tira fluff da IA/usuário/STT e deixa o núcleo
+ * (ex.: "Lanç í tênis Adidas Pix valor" → "Tênis Adidas").
  */
 export function enxugar_descricao_lancamento(texto: string): string {
   let s = limpar_termo_descricao(texto);
   if (!s) return texto.trim() || "Lançamento";
+
+  // Vocativo do bot / STT (LançAI → "lanç í", "lancai", "oi lançai"…).
+  // Evita \b após acentos: em JS, í/ç não são \w.
+  s = s.replace(
+    /(?:^|\s)(?:(?:oi|ol[aá]|hey|e\s*a[ií])\s+)?lan[cç](?:ai|ay|a[ií]|[\s\-]+[ií])(?=\s|$)/gi,
+    " ",
+  );
+  s = s.replace(/(?:^|\s)lan\s*cai(?=\s|$)/gi, " ");
 
   // Perfil / intenção — nunca fazem parte da descrição.
   s = s.replace(
@@ -22,36 +74,30 @@ export function enxugar_descricao_lancamento(texto: string): string {
     " ",
   );
 
-  // Verbos / moldura — preposição/artigo obrigatório (evita "compra " deixar "de tênis").
+  // Forma de pagamento em locuções ("no pix", "via transferência").
   s = s.replace(
-    /\b(compra|comprei|gastei|paguei|pague|recebi|ganhei|debitei)\s+(?:de|do|da|dos|das|com|no|na|nos|nas|em|um|uma)\b/gi,
+    /\b(?:via|no|na|por|pelo|pela)?\s*(?:pix|ted|doc|boleto|transfer[eê]ncias?|dinheiro|esp[eé]cie|cr[eé]dito|d[eé]bito)\b/gi,
     " ",
   );
 
-  // Artigos / conectores por token (não \b): em JS, ç/ã não são \w e
-  // "Almoço" viraria "Almoç" com \bo\b.
-  const conectores = new Set([
-    "um",
-    "uma",
-    "uns",
-    "umas",
-    "o",
-    "a",
-    "os",
-    "as",
-    "de",
-    "do",
-    "da",
-    "dos",
-    "das",
-    "para",
-    "com",
-  ]);
+  // Meta financeira solta.
+  s = s.replace(/\b(?:valor|reais?|r\$)\b/gi, " ");
+
+  // Verbos / moldura — com ou sem preposição ("comprei tênis" / "compra de um tênis").
+  s = s.replace(
+    /\b(compra|comprei|gastei|paguei|pague|recebi|ganhei|debitei)(?:\s+(?:de|do|da|dos|das|com|no|na|nos|nas|em|um|uma))?\b/gi,
+    " ",
+  );
+
+  // Artigos / conectores / ruído por token (não \b): em JS, ç/ã não são \w.
   s = s.replace(/^[,\s]+|[,\s]+$/g, "");
   s = s.replace(/\s*,\s*/g, " ");
   s = s
     .split(/\s+/)
-    .filter((p) => p.length > 0 && !conectores.has(p.toLocaleLowerCase("pt-BR")))
+    .filter((p) => {
+      const n = normalizar_descricao(p);
+      return n.length > 1 && !RUIDO_DESCRICAO.has(n);
+    })
     .join(" ")
     .trim();
 

@@ -1,5 +1,9 @@
-import { preferir_termo_referencia, type MensagemHistorico } from "@lancai/ia";
-import type { IntencaoDetectada } from "@lancai/tipos";
+import {
+  enxugar_descricao_lancamento,
+  preferir_termo_referencia,
+  type MensagemHistorico,
+} from "@lancai/ia";
+import type { IntencaoCorrigirMovimento, IntencaoDetectada } from "@lancai/tipos";
 
 const PADRAO_CONTA_CARTAO =
   /Deseja realmente excluir (?:a|o) (conta|cartão) "([^"]+)"\?/;
@@ -11,8 +15,8 @@ const PADRAO_LANCAMENTO =
 const PADRAO_LANCAMENTOS =
   /Deseja realmente excluir os (\d+) lançamentos de "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
 
-/** Novo: "Encontrei N lançamentos:" — ou legado com "semelhantes a …". */
-const PADRAO_SEMELHANTES =
+/** Cabeçalho comum das listas numeradas. */
+const PADRAO_LISTA_NUMERADA =
   /Encontrei (\d+) lançamentos(?: semelhantes a "([^"]+)")?:/;
 
 const AFIRMATIVAS = /^(sim|confirmo|confirma|pode excluir|pode apagar|ok|quero|yes)\.?$/i;
@@ -29,13 +33,35 @@ export type PendenciaExclusao =
       codigo: string | null;
     }
   | {
-      tipo: "lançamentos_semelhantes";
+      tipo: "lançamentos_excluir";
+      descricao: string;
+      quantidade: number;
+    }
+  | {
+      tipo: "lançamentos_corrigir";
       descricao: string;
       quantidade: number;
     };
 
 function data_br_para_iso(dia: string, mes: string, ano: string): string {
   return `${ano}-${mes}-${dia}`;
+}
+
+function termo_busca_da_mensagem_usuario(mensagem: string): string | null {
+  // "corrige a descrição do X para Y" → busca por X (não por Y nem pela palavra descrição).
+  const alvoCorrecao =
+    /\bdescri[cç][aã]o\s+(?:do|da|de)\s+(.+?)\s+para\b/i.exec(mensagem) ??
+    /\b(?:corrige|corrigir|altera|alterar|muda|mudar|troca|trocar)\b[\s\S]*?\b(?:do|da|de)\s+(.+?)\s+para\b/i.exec(
+      mensagem,
+    );
+  if (alvoCorrecao?.[1]) {
+    const termo = enxugar_descricao_lancamento(alvoCorrecao[1]);
+    if (termo && termo.toLocaleLowerCase("pt-BR") !== "lançamento") return termo;
+  }
+
+  const termo = preferir_termo_referencia(mensagem);
+  if (termo && termo !== "não especificado") return termo;
+  return null;
 }
 
 function termo_busca_do_historico(
@@ -48,13 +74,68 @@ function termo_busca_do_historico(
   for (let j = indiceSistema - 1; j >= 0; j -= 1) {
     const anterior = historicoRecente[j];
     if (anterior?.papel !== "usuario") continue;
-    const termo = preferir_termo_referencia(anterior.conteudo);
-    if (termo && termo !== "não especificado") return termo;
+    const termo = termo_busca_da_mensagem_usuario(anterior.conteudo);
+    if (termo) return termo;
   }
   return "lançamento";
 }
 
-/** Extrai a pendência de exclusão da última mensagem do sistema no histórico. */
+function mensagem_usuario_antes_da_lista(
+  historicoRecente: MensagemHistorico[],
+): string | null {
+  for (let i = historicoRecente.length - 1; i >= 0; i -= 1) {
+    if (historicoRecente[i]?.papel !== "sistema") continue;
+    if (!PADRAO_LISTA_NUMERADA.test(historicoRecente[i]!.conteudo)) continue;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      if (historicoRecente[j]?.papel === "usuario") {
+        return historicoRecente[j]!.conteudo;
+      }
+    }
+  }
+  return null;
+}
+
+/** Extrai "para &lt;nova descrição&gt;" da mensagem de correção do usuário. */
+export function extrair_nova_descricao_correcao(mensagem: string): string | null {
+  const match =
+    /\b(?:corrige|corrigir|altera|alterar|muda|mudar|troca|trocar)\b[\s\S]*?\bpara\b\s+(.+)$/i.exec(
+      mensagem.trim(),
+    );
+  if (!match?.[1]) return null;
+  let bruto = match[1].trim().replace(/^["']|["']$/g, "");
+  // Corta lixo residual de data/código no fim.
+  bruto = bruto.replace(/\s+de\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s*$/i, "").trim();
+  if (bruto.length < 2) return null;
+  const enxuta = enxugar_descricao_lancamento(bruto);
+  if (!enxuta || enxuta.toLocaleLowerCase("pt-BR") === "lançamento") return null;
+  return enxuta;
+}
+
+function campos_correcao_pendente(
+  ultimaIntencaoIa: IntencaoDetectada | null | undefined,
+  historicoRecente: MensagemHistorico[],
+): IntencaoCorrigirMovimento["campos_alterados"] | null {
+  if (
+    ultimaIntencaoIa?.intencao === "CORRIGIR_MOVIMENTO" &&
+    ultimaIntencaoIa.campos_alterados.status !== "cancelado"
+  ) {
+    const campos = { ...ultimaIntencaoIa.campos_alterados };
+    // Garante que não há status cancelado residual.
+    delete (campos as { status?: unknown }).status;
+    delete (campos as { confirmado?: unknown }).confirmado;
+    if (Object.keys(campos).some((k) => campos[k as keyof typeof campos] != null)) {
+      return campos;
+    }
+  }
+
+  const mensagemUsuario = mensagem_usuario_antes_da_lista(historicoRecente);
+  if (!mensagemUsuario) return null;
+  const novaDescricao = extrair_nova_descricao_correcao(mensagemUsuario);
+  if (!novaDescricao) return null;
+  return { descricao: novaDescricao };
+}
+
+/** Extrai a pendência de exclusão/correção da última mensagem do sistema no histórico. */
 export function extrair_pendencia_exclusao(
   historicoRecente: MensagemHistorico[],
 ): PendenciaExclusao | null {
@@ -62,13 +143,18 @@ export function extrair_pendencia_exclusao(
     const mensagem = historicoRecente[i];
     if (mensagem?.papel !== "sistema") continue;
 
-    const semelhantes = PADRAO_SEMELHANTES.exec(mensagem.conteudo);
-    if (semelhantes) {
-      return {
-        tipo: "lançamentos_semelhantes",
-        descricao: termo_busca_do_historico(historicoRecente, i, semelhantes[2]),
-        quantidade: Number(semelhantes[1]),
-      };
+    const lista = PADRAO_LISTA_NUMERADA.exec(mensagem.conteudo);
+    if (lista) {
+      const descricao = termo_busca_do_historico(historicoRecente, i, lista[2]);
+      const quantidade = Number(lista[1]);
+      if (/Qual deseja corrigir\b/i.test(mensagem.conteudo)) {
+        return { tipo: "lançamentos_corrigir", descricao, quantidade };
+      }
+      if (/Qual deseja excluir\b/i.test(mensagem.conteudo)) {
+        return { tipo: "lançamentos_excluir", descricao, quantidade };
+      }
+      // Lista ambígua sem rodapé claro — não assume exclusão.
+      return null;
     }
 
     const varios = PADRAO_LANCAMENTOS.exec(mensagem.conteudo);
@@ -108,19 +194,56 @@ export function extrair_pendencia_exclusao(
 }
 
 /**
- * Atalho determinístico: se o sistema acabou de pedir confirmação de exclusão
- * e o usuário responde "sim"/"não"/número/"todos", monta a intenção sem IA.
+ * Atalho determinístico: confirmação de exclusão OU escolha numérica na
+ * desambiguação. Correção (alterar) nunca vira exclusão.
  */
 export function interpretar_resposta_confirmacao_exclusao(
   mensagem: string,
   historicoRecente: MensagemHistorico[],
+  ultimaIntencaoIa?: IntencaoDetectada | null,
 ): IntencaoDetectada | null {
   const pendencia = extrair_pendencia_exclusao(historicoRecente);
   if (!pendencia) return null;
 
   const texto = mensagem.trim();
 
-  if (pendencia.tipo === "lançamentos_semelhantes") {
+  if (pendencia.tipo === "lançamentos_corrigir") {
+    if (NEGATIVAS.test(texto)) {
+      return { intencao: "NAO_RECONHECIDA", motivo: "Correção cancelada." };
+    }
+
+    const escolha = NUMERO_ESCOLHA.exec(texto);
+    if (!escolha) return null;
+
+    const indice = Number(escolha[1]);
+    if (indice < 1 || indice > pendencia.quantidade) {
+      return {
+        intencao: "NAO_RECONHECIDA",
+        motivo: `Número inválido. Escolha entre 1 e ${pendencia.quantidade} para corrigir (alterar) o lançamento.`,
+      };
+    }
+
+    const campos = campos_correcao_pendente(ultimaIntencaoIa, historicoRecente);
+    if (!campos) {
+      return {
+        intencao: "NAO_RECONHECIDA",
+        motivo: `Ok, lançamento ${indice}. O que deseja alterar? (ex.: "descrição Tênis Adidas" ou "valor 300"). Isso não apaga o lançamento.`,
+      };
+    }
+
+    return {
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: {
+        descricao: pendencia.descricao,
+        data_movimento: null,
+        codigo: null,
+        indice,
+      },
+      campos_alterados: campos,
+    };
+  }
+
+  if (pendencia.tipo === "lançamentos_excluir") {
     if (AFIRMATIVAS_TODOS.test(texto)) {
       return {
         intencao: "CORRIGIR_MOVIMENTO",
@@ -140,7 +263,7 @@ export function interpretar_resposta_confirmacao_exclusao(
       if (indice < 1 || indice > pendencia.quantidade) {
         return {
           intencao: "NAO_RECONHECIDA",
-          motivo: `Número inválido. Escolha entre 1 e ${pendencia.quantidade}, ou diga "todos".`,
+          motivo: `Número inválido. Escolha entre 1 e ${pendencia.quantidade} para excluir, ou diga "todos".`,
         };
       }
       return {
@@ -158,7 +281,6 @@ export function interpretar_resposta_confirmacao_exclusao(
     if (NEGATIVAS.test(texto)) {
       return { intencao: "NAO_RECONHECIDA", motivo: "Exclusão cancelada." };
     }
-    // "sim" sozinho não apaga o lote.
     return null;
   }
 

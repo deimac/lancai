@@ -67,6 +67,7 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
     expect(texto).toContain("Encontrei 2 lançamentos:");
     expect(texto).toContain("1. compra de um tênis para uso pessoal, um gasto pessoal ·");
     expect(texto).toContain("2. compra de um tênis para uso pessoal ·");
+    expect(texto).toContain("Qual deseja excluir (apagar)?");
     expect(texto).toContain('Digite o número (1, 2…) ou "todos"');
     expect(texto).not.toContain("#f41e31f0");
     expect(texto).not.toContain('Responda "sim"');
@@ -95,9 +96,10 @@ describe("montar_lista_lancamentos_semelhantes", () => {
     );
     expect(texto).toContain("1. Uber ·");
     expect(texto).toContain("2. Uber ·");
-    expect(texto).toContain("Qual deseja corrigir?");
+    expect(texto).toContain("Qual deseja corrigir (alterar — não apaga)?");
     expect(texto).toContain("Digite o número do lançamento");
     expect(texto).not.toContain("todos");
+    expect(texto).not.toContain("excluir");
   });
 });
 

@@ -309,7 +309,11 @@ export async function processar_turno_conversa(
 
   const ultimaIntencaoIa = await buscar_ultima_intencao_ia(sessaoAtual.id);
   const intencaoConfirmacao =
-    interpretar_resposta_confirmacao_exclusao(entrada.mensagem, contexto.historicoRecente) ??
+    interpretar_resposta_confirmacao_exclusao(
+      entrada.mensagem,
+      contexto.historicoRecente,
+      ultimaIntencaoIa,
+    ) ??
     interpretar_resposta_confirmacao_duplicata(
       entrada.mensagem,
       contexto.historicoRecente,

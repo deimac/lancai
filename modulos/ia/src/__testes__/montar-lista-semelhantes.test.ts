@@ -66,6 +66,7 @@ describe("montar_lista_lancamentos_semelhantes", () => {
     expect(texto).toContain("1. Uber ·");
     expect(texto).toContain("12:00");
     expect(texto).toContain("2. Farmácia ·");
+    expect(texto).toContain("Qual deseja corrigir (alterar — não apaga)?");
     expect(texto).toContain("Digite o número do lançamento");
   });
 });
