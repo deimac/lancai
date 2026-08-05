@@ -8,6 +8,7 @@ import {
   avisar_falha_whatsapp,
 } from "../servicos/processar-mensagem-whatsapp";
 import { processar_midia_whatsapp } from "../servicos/processar-midia-whatsapp";
+import { mensagem_erro_para_usuario } from "../servicos/mensagem-erro-usuario";
 import { validarAssinaturaEvolution } from "../webhooks/validar-assinatura-evolution";
 
 const LOG_ARQUIVO = "/tmp/lancai-evolution-webhook.log";
@@ -214,13 +215,19 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
         `PROCESSADO processado=${resultado.processado} motivo=${resultado.motivo ?? "-"} usuario=${resultado.usuarioId ?? "-"} resposta=${JSON.stringify(resultado.resposta?.slice(0, 120) ?? null)}`,
       );
     } catch (erro) {
+      const amigavel = mensagem_erro_para_usuario(erro);
+      const detalhe = erro instanceof Error ? erro.message : String(erro);
       requisicao.log.error(
-        { err: erro, remoteJid: resumo.remoteJid },
+        { err: erro, remoteJid: resumo.remoteJid, amigavel },
         "[evolution-webhook] falha ao processar mensagem WhatsApp",
       );
-      logarArquivo(`ERRO_PROCESSAR from=${resumo.remoteJid} ${String(erro)}`);
+      logarArquivo(`ERRO_PROCESSAR from=${resumo.remoteJid} ${detalhe.slice(0, 300)}`);
       try {
-        await avisar_falha_whatsapp(resumo.remoteJid);
+        await avisar_falha_whatsapp(
+          resumo.remoteJid,
+          amigavel ??
+            "Tive uma instabilidade ao processar sua mensagem. Pode tentar de novo em instantes?",
+        );
       } catch (erroEnvio) {
         requisicao.log.warn({ err: erroEnvio }, "[evolution-webhook] falha ao avisar usuário");
       }

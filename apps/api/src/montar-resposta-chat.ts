@@ -126,11 +126,16 @@ export async function montar_resposta_chat(
       const viaForma = rotulo_forma_pagamento(entrada.formaPagamento);
 
       if (contexto.memoria) {
-        await aprender_habitos_apos_lancamento(contexto.memoria, contexto.usuarioId, entrada, {
-          contaNome: intencao.conta_nome,
-          cartaoNome: intencao.cartao_nome,
-          categoriaNome: intencao.categoria_nome,
-        });
+        try {
+          await aprender_habitos_apos_lancamento(contexto.memoria, contexto.usuarioId, entrada, {
+            contaNome: intencao.conta_nome,
+            cartaoNome: intencao.cartao_nome,
+            categoriaNome: intencao.categoria_nome,
+          });
+        } catch (erroHabito) {
+          const msg = erroHabito instanceof Error ? erroHabito.message : String(erroHabito);
+          console.warn(`[habitos] falha ao aprender (ignorada): ${msg.slice(0, 160)}`);
+        }
       }
 
       let base: string;

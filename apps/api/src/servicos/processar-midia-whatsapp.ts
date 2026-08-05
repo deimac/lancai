@@ -31,7 +31,7 @@ export async function processar_midia_whatsapp(
         base64: baixada.base64,
         mimetype,
       });
-      console.info(`[midia] áudio transcrito chars=${texto.length}`);
+      console.info(`[midia] áudio transcrito chars=${texto.length} texto=${JSON.stringify(texto.slice(0, 160))}`);
       return { ok: true, texto };
     }
 

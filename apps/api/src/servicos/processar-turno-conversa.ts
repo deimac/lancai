@@ -11,6 +11,9 @@ import {
   interpretar_consulta_rapida,
   interpretar_correcao_rapida,
   interpretar_lancamento_rapido,
+  normalizar_intencao_cadastro,
+  normalizar_intencao_movimento,
+  normalizar_intencao_plasticos,
 } from "@lancai/ia";
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
 import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
@@ -31,6 +34,7 @@ import {
   interpretar_orcamento_rapido,
   interpretar_recorrencia_rapida,
 } from "./interpretar-orcamento-recorrencia-rapido";
+import { mensagem_erro_para_usuario } from "./mensagem-erro-usuario";
 
 /** Quantas mensagens (usuário + sistema) olhar para trás para o slot-filling entre turnos. */
 const TAMANHO_HISTORICO_RECENTE = 8;
@@ -312,7 +316,7 @@ export async function processar_turno_conversa(
       ultimaIntencaoIa,
     );
 
-  const intencaoRapida =
+  const intencaoBruta =
     entrada.intencaoPrevia ??
     intencaoConfirmacao ??
     interpretar_orcamento_rapido(entrada.mensagem) ??
@@ -321,15 +325,27 @@ export async function processar_turno_conversa(
     interpretar_consulta_rapida(entrada.mensagem, contexto) ??
     interpretar_lancamento_rapido(entrada.mensagem, contexto);
 
-  const viaAtalho = Boolean(intencaoRapida);
+  const viaAtalho = Boolean(intencaoBruta);
   if (viaAtalho) {
     console.info(
-      `[ia] turno atalho=true llm=false intencao=${intencaoRapida!.intencao}${entrada.intencaoPrevia ? " (midia)" : ""} (0 créditos LLM intenção)`,
+      `[ia] turno atalho=true llm=false intencao=${intencaoBruta!.intencao}${entrada.intencaoPrevia ? " (midia)" : ""} (0 créditos LLM intenção)`,
     );
   }
 
-  const intencao =
-    intencaoRapida ?? (await interpretador.interpretar_mensagem(entrada.mensagem, contexto));
+  let intencao =
+    intencaoBruta ?? (await interpretador.interpretar_mensagem(entrada.mensagem, contexto));
+
+  // Vision/atalhos também passam pelos normalizadores (conta/data/slot-filling).
+  if (intencaoBruta) {
+    intencao = normalizar_intencao_plasticos(
+      normalizar_intencao_cadastro(
+        normalizar_intencao_movimento(intencao, contexto, entrada.mensagem),
+        contexto,
+        entrada.mensagem,
+      ),
+      entrada.mensagem,
+    );
+  }
 
   if (!viaAtalho) {
     console.info(`[ia] turno atalho=false llm=true intencao=${intencao.intencao}`);
@@ -341,18 +357,28 @@ export async function processar_turno_conversa(
     intencaoDetectada: intencao,
   });
 
-  const respostaTexto = await montar_resposta_chat(intencao, {
-    usuarioId: entrada.usuarioId,
-    criadoPor: entrada.usuarioId,
-    resolvedor,
-    motor,
-    relatorios,
-    memoria,
-    dataAtual: contexto.dataAtual,
-    totalContas: contexto.contas.length,
-    totalCartoes: contexto.cartoes.length,
-    mensagem: entrada.mensagem,
-  });
+  let respostaTexto: string;
+  try {
+    respostaTexto = await montar_resposta_chat(intencao, {
+      usuarioId: entrada.usuarioId,
+      criadoPor: entrada.usuarioId,
+      resolvedor,
+      motor,
+      relatorios,
+      memoria,
+      dataAtual: contexto.dataAtual,
+      totalContas: contexto.contas.length,
+      totalCartoes: contexto.cartoes.length,
+      mensagem: entrada.mensagem,
+    });
+  } catch (erro) {
+    const amigavel = mensagem_erro_para_usuario(erro);
+    if (!amigavel) throw erro;
+    console.warn(
+      `[turno] erro de domínio convertido em resposta: ${amigavel.slice(0, 160)}`,
+    );
+    respostaTexto = amigavel;
+  }
 
   const intencaoResposta =
     intencao.intencao === "REGISTRAR_MOVIMENTO" &&
