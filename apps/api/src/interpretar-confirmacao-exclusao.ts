@@ -1,4 +1,4 @@
-import type { MensagemHistorico } from "@lancai/ia";
+import { preferir_termo_referencia, type MensagemHistorico } from "@lancai/ia";
 import type { IntencaoDetectada } from "@lancai/tipos";
 
 const PADRAO_CONTA_CARTAO =
@@ -11,7 +11,9 @@ const PADRAO_LANCAMENTO =
 const PADRAO_LANCAMENTOS =
   /Deseja realmente excluir os (\d+) lançamentos de "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
 
-const PADRAO_SEMELHANTES = /Encontrei (\d+) lançamentos semelhantes a "([^"]+)":/;
+/** Novo: "Encontrei N lançamentos:" — ou legado com "semelhantes a …". */
+const PADRAO_SEMELHANTES =
+  /Encontrei (\d+) lançamentos(?: semelhantes a "([^"]+)")?:/;
 
 const AFIRMATIVAS = /^(sim|confirmo|confirma|pode excluir|pode apagar|ok|quero|yes)\.?$/i;
 const AFIRMATIVAS_TODOS = /^(todos|todas|ambos|ambas|os dois|as duas)\.?$/i;
@@ -36,6 +38,22 @@ function data_br_para_iso(dia: string, mes: string, ano: string): string {
   return `${ano}-${mes}-${dia}`;
 }
 
+function termo_busca_do_historico(
+  historicoRecente: MensagemHistorico[],
+  indiceSistema: number,
+  legadoEntreAspas?: string,
+): string {
+  if (legadoEntreAspas?.trim()) return legadoEntreAspas.trim();
+
+  for (let j = indiceSistema - 1; j >= 0; j -= 1) {
+    const anterior = historicoRecente[j];
+    if (anterior?.papel !== "usuario") continue;
+    const termo = preferir_termo_referencia(anterior.conteudo);
+    if (termo && termo !== "não especificado") return termo;
+  }
+  return "lançamento";
+}
+
 /** Extrai a pendência de exclusão da última mensagem do sistema no histórico. */
 export function extrair_pendencia_exclusao(
   historicoRecente: MensagemHistorico[],
@@ -48,7 +66,7 @@ export function extrair_pendencia_exclusao(
     if (semelhantes) {
       return {
         tipo: "lançamentos_semelhantes",
-        descricao: semelhantes[2]!,
+        descricao: termo_busca_do_historico(historicoRecente, i, semelhantes[2]),
         quantidade: Number(semelhantes[1]),
       };
     }

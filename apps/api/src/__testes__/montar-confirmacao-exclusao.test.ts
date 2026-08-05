@@ -49,6 +49,7 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
           descricao: "compra de um tênis para uso pessoal, um gasto pessoal",
           valor: 304.7,
           dataMovimento: "2026-08-05",
+          dataLancamento: new Date("2026-08-05T17:32:00.000Z"),
           tipo: "despesa",
           origemRotulo: "Mercado Pago",
         },
@@ -57,14 +58,15 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
           descricao: "compra de um tênis para uso pessoal",
           valor: 304.7,
           dataMovimento: "2026-08-05",
+          dataLancamento: new Date("2026-08-05T16:10:00.000Z"),
           tipo: "despesa",
           origemRotulo: "Mercado Pago",
         },
       ],
     );
-    expect(texto).toContain('Encontrei 2 lançamentos semelhantes a "Tênis":');
-    expect(texto).toMatch(/^1\. /m);
-    expect(texto).toMatch(/^2\. /m);
+    expect(texto).toContain("Encontrei 2 lançamentos:");
+    expect(texto).toContain("1. compra de um tênis para uso pessoal, um gasto pessoal ·");
+    expect(texto).toContain("2. compra de um tênis para uso pessoal ·");
     expect(texto).toContain('Digite o número (1, 2…) ou "todos"');
     expect(texto).not.toContain("#f41e31f0");
     expect(texto).not.toContain('Responda "sim"');
@@ -91,7 +93,8 @@ describe("montar_lista_lancamentos_semelhantes", () => {
       ],
       "corrigir",
     );
-    expect(texto).toContain("1. -");
+    expect(texto).toContain("1. Uber ·");
+    expect(texto).toContain("2. Uber ·");
     expect(texto).toContain("Qual deseja corrigir?");
     expect(texto).toContain("Digite o número do lançamento");
     expect(texto).not.toContain("todos");

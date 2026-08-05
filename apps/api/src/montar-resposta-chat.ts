@@ -1,4 +1,4 @@
-import { formatarMoeda } from "@lancai/tipos";
+import { formatarDataHoraBrasil, formatarMoeda } from "@lancai/tipos";
 import type { IntencaoCorrigirMovimento, IntencaoDetectada } from "@lancai/tipos";
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import {
@@ -141,16 +141,21 @@ export async function montar_resposta_chat(
         }
       }
 
+      const horarioLancamento = resultado.movimentos[0]?.dataLancamento
+        ? formatarDataHoraBrasil(resultado.movimentos[0].dataLancamento)
+        : "";
+      const quando = horarioLancamento ? ` (${horarioLancamento})` : "";
+
       let base: string;
       if (resultado.parcelas.length > 1) {
         const primeiraParcela = resultado.parcelas[0];
         base = `Compra de ${formatarMoeda(entrada.valor)} registrada em ${resultado.parcelas.length}x de ${formatarMoeda(
           primeiraParcela?.valor ?? "0",
-        )} — "${entrada.descricao}"${viaForma}.`;
+        )} — "${entrada.descricao}"${quando}${viaForma}.`;
       } else if (resultado.movimentos.length === 2) {
-        base = `Transferência de ${formatarMoeda(entrada.valor)} registrada com sucesso${viaForma}.`;
+        base = `Transferência de ${formatarMoeda(entrada.valor)} registrada com sucesso${quando}${viaForma}.`;
       } else {
-        base = `${capitalizar(entrada.tipo)} de ${formatarMoeda(entrada.valor)} registrada em "${entrada.descricao}" (${entrada.dataMovimento})${viaForma}.`;
+        base = `${capitalizar(entrada.tipo)} de ${formatarMoeda(entrada.valor)} registrada em "${entrada.descricao}"${quando}${viaForma}.`;
       }
 
       if (entrada.tipo === "despesa") {

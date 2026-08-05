@@ -3,7 +3,7 @@ import { formatarMoeda } from "@lancai/tipos";
 import { montar_lista_lancamentos_semelhantes } from "../montar-lista-semelhantes";
 
 describe("montar_lista_lancamentos_semelhantes", () => {
-  it("numera itens sem #código e pede número ou todos", () => {
+  it("numera com descrição original e horário do lançamento", () => {
     const texto = montar_lista_lancamentos_semelhantes(
       "Tênis",
       [
@@ -12,6 +12,7 @@ describe("montar_lista_lancamentos_semelhantes", () => {
           descricao: "compra de um tênis para uso pessoal",
           valor: 304.7,
           dataMovimento: "2026-08-05",
+          dataLancamento: new Date("2026-08-05T17:32:00.000Z"),
           tipo: "despesa",
           origemRotulo: "Mercado Pago",
         },
@@ -20,21 +21,26 @@ describe("montar_lista_lancamentos_semelhantes", () => {
           descricao: "compra de um tênis para uso pessoal, um gasto pessoal",
           valor: 304.7,
           dataMovimento: "2026-08-05",
+          dataLancamento: new Date("2026-08-05T16:10:00.000Z"),
           tipo: "despesa",
           origemRotulo: "Mercado Pago",
         },
       ],
       "excluir",
     );
-    expect(texto).toContain('Encontrei 2 lançamentos semelhantes a "Tênis":');
-    expect(texto).toContain(`1. - ${formatarMoeda(304.7)} · 05/08/2026 · Mercado Pago · mais recente`);
-    expect(texto).toContain(`2. - ${formatarMoeda(304.7)} · 05/08/2026 · Mercado Pago · mais antigo`);
-    expect(texto).toContain('Digite o número (1, 2…) ou "todos"');
+    expect(texto).toContain("Encontrei 2 lançamentos:");
+    expect(texto).toContain(
+      `1. compra de um tênis para uso pessoal · - ${formatarMoeda(304.7)} · 05/08/2026 14:32 · Mercado Pago`,
+    );
+    expect(texto).toContain(
+      `2. compra de um tênis para uso pessoal, um gasto pessoal · - ${formatarMoeda(304.7)} · 05/08/2026 13:10 · Mercado Pago`,
+    );
+    expect(texto).not.toContain("mais recente");
+    expect(texto).not.toContain("mais antigo");
     expect(texto).not.toContain("#f41e31f0");
-    expect(texto).not.toMatch(/\bTênis\b.*Tênis/); // não repete descrição enxugada igual nas linhas
   });
 
-  it("mostra descrição quando os núcleos diferem", () => {
+  it("mantém descrições distintas na correção", () => {
     const texto = montar_lista_lancamentos_semelhantes(
       "gasto",
       [
@@ -43,6 +49,7 @@ describe("montar_lista_lancamentos_semelhantes", () => {
           descricao: "Uber",
           valor: 38.58,
           dataMovimento: "2026-08-05",
+          dataLancamento: new Date("2026-08-05T15:00:00.000Z"),
           origemRotulo: "cartão Azul",
         },
         {
@@ -50,14 +57,15 @@ describe("montar_lista_lancamentos_semelhantes", () => {
           descricao: "Farmácia",
           valor: 24.95,
           dataMovimento: "2026-08-05",
+          dataLancamento: new Date("2026-08-05T14:00:00.000Z"),
           origemRotulo: "cartão Azul",
         },
       ],
       "corrigir",
     );
     expect(texto).toContain("1. Uber ·");
+    expect(texto).toContain("12:00");
     expect(texto).toContain("2. Farmácia ·");
     expect(texto).toContain("Digite o número do lançamento");
-    expect(texto).not.toContain("todos");
   });
 });

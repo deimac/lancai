@@ -14,6 +14,27 @@ export function hojeISO(agora: Date = new Date(), fuso = "America/Sao_Paulo"): s
   }).format(agora);
 }
 
+/** Data + hora no fuso do app (ex.: `05/08/2026 14:32`). */
+export function formatarDataHoraBrasil(
+  quando: Date | string,
+  fuso = "America/Sao_Paulo",
+): string {
+  const data = typeof quando === "string" ? new Date(quando) : quando;
+  if (Number.isNaN(data.getTime())) return "";
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: fuso,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(data);
+  const pegar = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((parte) => parte.type === tipo)?.value ?? "";
+  return `${pegar("day")}/${pegar("month")}/${pegar("year")} ${pegar("hour")}:${pegar("minute")}`;
+}
+
 export function paraDataISO(data: Date): string {
   return data.toISOString().slice(0, 10);
 }

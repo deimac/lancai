@@ -76,14 +76,18 @@ describe("extrair_pendencia_exclusao", () => {
     expect(
       extrair_pendencia_exclusao([
         {
+          papel: "usuario",
+          conteudo: "Apague lançamento compra de ténis para uso pessoal",
+        },
+        {
           papel: "sistema",
           conteudo:
-            'Encontrei 2 lançamentos semelhantes a "Tênis":\n1. - R$ 304,70 · 05/08/2026 · Mercado Pago\n2. - R$ 304,70 · 05/08/2026 · Mercado Pago\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
+            "Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis, um gasto pessoal · - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou \"todos\".",
         },
       ]),
     ).toEqual({
       tipo: "lançamentos_semelhantes",
-      descricao: "Tênis",
+      descricao: "Ténis",
       quantidade: 2,
     });
   });
@@ -159,9 +163,13 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
   it("com semelhantes, 'todos' confirma o lote e 'sim' sozinho não", () => {
     const historico = [
       {
+        papel: "usuario" as const,
+        conteudo: "apague o tênis",
+      },
+      {
         papel: "sistema" as const,
         conteudo:
-          'Encontrei 2 lançamentos semelhantes a "Tênis":\n1. - R$ 304,70\n2. - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
+          'Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis · - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
       },
     ];
     expect(interpretar_resposta_confirmacao_exclusao("todos", historico)).toEqual({
@@ -175,9 +183,13 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
   it("com semelhantes, número escolhe o índice", () => {
     const historico = [
       {
+        papel: "usuario" as const,
+        conteudo: "apague o tênis",
+      },
+      {
         papel: "sistema" as const,
         conteudo:
-          'Encontrei 2 lançamentos semelhantes a "Tênis":\n1. - R$ 304,70\n2. - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
+          'Encontrei 2 lançamentos:\n1. compra de um tênis · - R$ 304,70\n2. compra de um tênis · - R$ 304,70\n\nQual deseja excluir? Digite o número (1, 2…) ou "todos".',
       },
     ];
     expect(interpretar_resposta_confirmacao_exclusao("1", historico)).toEqual({

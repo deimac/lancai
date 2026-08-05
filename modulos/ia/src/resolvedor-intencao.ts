@@ -547,6 +547,7 @@ export class ResolvedorIntencao {
         descricao: item.descricao,
         valor: Number(item.valor),
         dataMovimento: item.dataMovimento,
+        dataLancamento: item.dataLancamento,
         tipo: item.tipo,
         origemRotulo,
       };
