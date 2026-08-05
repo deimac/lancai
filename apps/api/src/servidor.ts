@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { resumir_config_provedores_ia } from "@lancai/ia";
 import { registrar_rotas_usuario } from "./rotas/usuarios";
 import { registrar_rotas_conta } from "./rotas/contas";
 import { registrar_rotas_cartao } from "./rotas/cartoes";
@@ -16,6 +17,14 @@ export function criar_servidor() {
   app.register(cors, { origin: process.env.URL_WEB ?? "http://localhost:5173" });
 
   app.get("/saude", async () => ({ status: "ok", servico: "lancai-api" }));
+  app.get("/health", async () => {
+    const llm = resumir_config_provedores_ia();
+    return {
+      status: "ok",
+      servico: "lancai-api",
+      llm: { ordem: llm.ordem, disponiveis: llm.disponiveis, chaves: llm.chaves },
+    };
+  });
 
   app.register(registrar_rotas_usuario, { prefix: "/usuarios" });
   app.register(registrar_rotas_conta, { prefix: "/contas" });

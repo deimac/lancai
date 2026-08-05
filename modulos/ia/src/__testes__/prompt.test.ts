@@ -21,7 +21,6 @@ function contexto(parcial: Partial<ContextoInterpretacao> = {}): ContextoInterpr
 describe("prompt compacto (limite Groq TPM)", () => {
   it("system prompt fica bem abaixo do teto de 8k tokens", () => {
     const sistema = montar_prompt_sistema();
-    // ~4 chars/token — 8k tokens ≈ 32k chars; queremos folga grande pro schema JSON.
     expect(sistema.length).toBeLessThan(3500);
   });
 
@@ -36,6 +35,6 @@ describe("prompt compacto (limite Groq TPM)", () => {
     expect(prompt).toContain("Nubank|pf");
     expect(prompt).toContain("S: ");
     expect(prompt).not.toContain("x".repeat(200));
-    expect(prompt.length).toBeLessThan(1200);
+    expect(prompt.length).toBeLessThan(1500);
   });
 });

@@ -5,7 +5,10 @@ import type { ContextoInterpretacao } from "../prompt";
 function contexto(parcial: Partial<ContextoInterpretacao> = {}): ContextoInterpretacao {
   return {
     dataAtual: "2026-08-03",
-    contas: [{ nome: "C6 Bank", perfil: "pf" }],
+    contas: [
+      { nome: "C6 Bank", perfil: "pf" },
+      { nome: "Nubank", perfil: "pf" },
+    ],
     cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
     categorias: [],
     pessoas: [],
@@ -42,10 +45,35 @@ describe("interpretar_consulta_rapida", () => {
     });
   });
 
-  it("consulta saldo", () => {
+  it("consulta gasto do mês sem IA", () => {
+    expect(interpretar_consulta_rapida("Quanto gastei esse mês?", contexto())).toEqual({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      filtros: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        conta_nome: null,
+        cartao_nome: null,
+      },
+    });
+  });
+
+  it("resumo do mês sem IA", () => {
+    expect(interpretar_consulta_rapida("resumo do mês", contexto())).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      filtros: { periodo: { de: "2026-08-01", ate: "2026-08-31" } },
+    });
+  });
+
+  it("consulta saldo e saldo de conta", () => {
     expect(interpretar_consulta_rapida("qual o saldo total?", contexto())).toMatchObject({
       intencao: "CONSULTAR_VISAO",
       tipo_visao: "saldos",
+    });
+    expect(interpretar_consulta_rapida("saldo do Nubank", contexto())).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "saldos",
+      filtros: { conta_nome: "Nubank" },
     });
   });
 

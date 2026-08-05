@@ -178,8 +178,12 @@ export function resumir_config_provedores_ia(): {
   };
 }
 
-function obter_modelo(provedor: ProvedorIA) {
-  const modeloId = process.env[`${provedor.toUpperCase()}_MODEL`] ?? MODELOS_PADRAO[provedor];
+function obter_modelo(provedor: ProvedorIA, modeloOverride?: string) {
+  // Override só vale para Groq (classificar com 20b); outros provedores ignoram.
+  const modeloId =
+    (provedor === "groq" ? modeloOverride?.trim() : undefined) ||
+    process.env[`${provedor.toUpperCase()}_MODEL`] ||
+    MODELOS_PADRAO[provedor];
 
   switch (provedor) {
     case "gemini":
@@ -201,6 +205,14 @@ function obter_modelo(provedor: ProvedorIA) {
   }
 }
 
+/** Modelo leve para classificação (menos tokens/custo). */
+export function modelo_classificar_do_ambiente(provedor: ProvedorIA = "groq"): string | undefined {
+  if (provedor === "groq") {
+    return process.env.GROQ_MODEL_CLASSIFICAR?.trim() || "openai/gpt-oss-20b";
+  }
+  return undefined;
+}
+
 export interface EntradaGerarObjetoEstruturado<T> {
   // Input relaxado para `any`: alguns campos do schema usam `z.preprocess` (ex.: recuperação
   // de números degenerados em CRIAR_CARTAO), o que faz o tipo de entrada do Zod divergir do
@@ -208,6 +220,10 @@ export interface EntradaGerarObjetoEstruturado<T> {
   schema: z.ZodType<T, z.ZodTypeDef, any>;
   prompt: string;
   system?: string;
+  /** Sobrescreve o modelo do provedor (ex.: gpt-oss-20b no classificar). */
+  modeloOverride?: string;
+  /** Rótulo de log: classificar | extrair | … */
+  estagio?: string;
 }
 
 /** Tentativas no mesmo provedor (glitches de geração / JSON inválido). */
@@ -284,12 +300,16 @@ export class OrquestradorIA {
         continue;
       }
 
-      const modelo = obter_modelo(provedor);
+      const modelo = obter_modelo(provedor, entrada.modeloOverride);
       let ultimoErro: unknown;
+      const rotulo = entrada.estagio ? `${entrada.estagio}/` : "";
+      const modeloLog = entrada.modeloOverride?.trim() || process.env[`${provedor.toUpperCase()}_MODEL`] || MODELOS_PADRAO[provedor];
 
       for (let tentativa = 1; tentativa <= TENTATIVAS_POR_PROVEDOR; tentativa++) {
         try {
-          console.info(`[ia] chamando ${provedor} (tentativa ${tentativa}/${TENTATIVAS_POR_PROVEDOR})`);
+          console.info(
+            `[ia] chamando ${rotulo}${provedor} modelo=${modeloLog} (tentativa ${tentativa}/${TENTATIVAS_POR_PROVEDOR})`,
+          );
           const abortSignal = AbortSignal.timeout(timeout_por_tentativa_ms(provedor));
 
           // Ollama 3B em CPU: JSON Schema enorme (anyOf) derruba o runner.

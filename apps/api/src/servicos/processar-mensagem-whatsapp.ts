@@ -93,3 +93,16 @@ export async function processar_e_responder_whatsapp(
 
   return resultado;
 }
+
+const MSG_FALHA_WHATSAPP =
+  "Tive uma instabilidade ao processar sua mensagem. Pode tentar de novo em instantes?";
+
+/** Aviso fixo ao usuário após falha de turno (sem chamar LLM). */
+export async function avisar_falha_whatsapp(remoteJid: string): Promise<void> {
+  const numero = extrair_telefone_whatsapp(remoteJid);
+  if (!numero) return;
+  await obter_evolution().enviarMensagemWhatsApp({
+    numero,
+    texto: MSG_FALHA_WHATSAPP,
+  });
+}

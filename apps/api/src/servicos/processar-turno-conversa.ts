@@ -312,9 +312,19 @@ export async function processar_turno_conversa(
     interpretar_consulta_rapida(entrada.mensagem, contexto) ??
     interpretar_lancamento_rapido(entrada.mensagem, contexto);
 
+  const viaAtalho = Boolean(intencaoRapida);
+  if (viaAtalho) {
+    console.info(
+      `[ia] turno atalho=true llm=false intencao=${intencaoRapida!.intencao} (0 créditos LLM)`,
+    );
+  }
+
   const intencao =
     intencaoRapida ?? (await interpretador.interpretar_mensagem(entrada.mensagem, contexto));
 
+  if (!viaAtalho) {
+    console.info(`[ia] turno atalho=false llm=true intencao=${intencao.intencao}`);
+  }
   await banco.insert(chatTabela).values({
     sessaoId: sessaoAtual.id,
     papel: "ia",

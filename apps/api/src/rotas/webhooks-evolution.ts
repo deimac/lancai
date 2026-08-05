@@ -2,7 +2,7 @@ import { appendFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { evolutionEvento, obter_banco } from "@lancai/banco";
 import { schemaWebhookEvolution } from "../dtos/webhook-evolution";
-import { processar_e_responder_whatsapp } from "../servicos/processar-mensagem-whatsapp";
+import { processar_e_responder_whatsapp, avisar_falha_whatsapp } from "../servicos/processar-mensagem-whatsapp";
 import { validarAssinaturaEvolution } from "../webhooks/validar-assinatura-evolution";
 
 const LOG_ARQUIVO = "/tmp/lancai-evolution-webhook.log";
@@ -183,6 +183,11 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
         "[evolution-webhook] falha ao processar mensagem WhatsApp",
       );
       logarArquivo(`ERRO_PROCESSAR from=${resumo.remoteJid} ${String(erro)}`);
+      try {
+        await avisar_falha_whatsapp(resumo.remoteJid);
+      } catch (erroEnvio) {
+        requisicao.log.warn({ err: erroEnvio }, "[evolution-webhook] falha ao avisar usuário");
+      }
     }
   });
 }
