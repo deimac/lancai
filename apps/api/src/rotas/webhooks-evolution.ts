@@ -156,6 +156,15 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
         fromMe: resumo.fromMe,
       });
 
+      if (!resultado.processado && resultado.motivo === "nao_autorizado") {
+        requisicao.log.warn(
+          { remoteJid: resumo.remoteJid },
+          "[evolution-webhook] número não autorizado — sem resposta",
+        );
+        logarArquivo(`NAO_AUTORIZADO from=${resumo.remoteJid} (silêncio)`);
+        return;
+      }
+
       requisicao.log.info(
         {
           processado: resultado.processado,

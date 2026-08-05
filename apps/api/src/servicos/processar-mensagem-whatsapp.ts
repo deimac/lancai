@@ -3,9 +3,6 @@ import { buscar_usuario_por_whatsapp } from "./identificar-usuario-whatsapp";
 import { processar_turno_conversa } from "./processar-turno-conversa";
 import { eh_jid_grupo, extrair_telefone_whatsapp } from "./telefone-whatsapp";
 
-const MENSAGEM_NAO_VINCULADO =
-  "Olá! Seu número WhatsApp ainda não está vinculado a uma conta LançAI. Peça ao administrador para configurar WHATSAPP_NUMERO_DONO ou o campo whatsapp_numero do usuário.";
-
 let evolutionSingleton: EvolutionService | null = null;
 
 function obter_evolution(): EvolutionService {
@@ -13,6 +10,10 @@ function obter_evolution(): EvolutionService {
     evolutionSingleton = new EvolutionService();
   }
   return evolutionSingleton;
+}
+
+function numero_bot_lancai(): string {
+  return (process.env.WHATSAPP_NUMERO_LANCAI ?? "").replace(/\D/g, "");
 }
 
 export type EntradaMensagemWhatsApp = {
@@ -30,8 +31,8 @@ export type ResultadoMensagemWhatsApp = {
 };
 
 /**
- * Adaptador de canal WhatsApp: identifica usuário, processa o turno e devolve texto.
- * O envio via Evolution fica a cargo do caller (webhook).
+ * Adaptador de canal WhatsApp: só processa números em usuario.whatsapp_numero.
+ * Números não autorizados: silêncio (sem resposta).
  */
 export async function processar_mensagem_whatsapp(
   entrada: EntradaMensagemWhatsApp,
@@ -49,13 +50,16 @@ export async function processar_mensagem_whatsapp(
   }
 
   const numero = extrair_telefone_whatsapp(entrada.remoteJid);
+  const bot = numero_bot_lancai();
+  if (bot && numero === bot) {
+    console.info(`[whatsapp] ignorado remetente=bot ${numero}`);
+    return { processado: false, motivo: "remetente_bot" };
+  }
+
   const usuario = await buscar_usuario_por_whatsapp(numero);
   if (!usuario) {
-    return {
-      processado: true,
-      motivo: "nao_vinculado",
-      resposta: MENSAGEM_NAO_VINCULADO,
-    };
+    console.info(`[whatsapp] número não autorizado (silêncio): ${numero}`);
+    return { processado: false, motivo: "nao_autorizado" };
   }
 
   const turno = await processar_turno_conversa({
@@ -72,7 +76,7 @@ export async function processar_mensagem_whatsapp(
   };
 }
 
-/** Processa e já envia a resposta pelo EvolutionService. */
+/** Processa e já envia a resposta pelo EvolutionService (só se houver resposta). */
 export async function processar_e_responder_whatsapp(
   entrada: EntradaMensagemWhatsApp,
 ): Promise<ResultadoMensagemWhatsApp> {
