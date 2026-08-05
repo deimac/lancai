@@ -111,22 +111,35 @@ function normalizar_nome_provedor(valor: string | undefined): ProvedorIA | null 
   return (PROVEDORES_IA as readonly string[]).includes(nome) ? (nome as ProvedorIA) : null;
 }
 
+/** Gemini só entra no fallback se `LLM_FALLBACK_GEMINI=true` (cota free costuma estar zerada). */
+export function gemini_no_fallback(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const bruto = (env.LLM_FALLBACK_GEMINI ?? "").trim().toLowerCase();
+  return bruto === "true" || bruto === "1" || bruto === "yes" || bruto === "on";
+}
+
 export function obter_ordem_fallback_do_ambiente(): ProvedorIA[] {
   const bruto = process.env.LLM_ORDEM_FALLBACK;
 
-  const ordem = bruto
+  let ordem = bruto
     ? bruto
         .split(",")
         .map((item) => normalizar_nome_provedor(item))
         .filter((item): item is ProvedorIA => item !== null)
-    : [...PROVEDORES_IA];
+    : (["groq", "ollama", "openrouter", "openai"] as ProvedorIA[]);
+
+  // Com Groq configurado, Gemini fica fora por padrão (evita 429 free tier após falha do Groq).
+  const groqDisponivel = chave_provedor_presente(process.env.GROQ_API_KEY);
+  if (groqDisponivel && !gemini_no_fallback()) {
+    ordem = ordem.filter((provedor) => provedor !== "gemini");
+  }
 
   // Groq é sempre o primeiro provedor (WhatsApp / produção).
-  // LLM_PROVEDOR_PADRAO não pode mais promover Gemini/outros na frente.
   if (ordem.includes("groq")) {
     return ["groq", ...ordem.filter((provedor) => provedor !== "groq")];
   }
-  return ordem.length > 0 ? ordem : ["groq", ...PROVEDORES_IA.filter((p) => p !== "groq")];
+  return ordem.length > 0 ? ordem : ["groq"];
 }
 
 function chave_provedor_presente(valor: string | undefined): boolean {

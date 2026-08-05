@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  gemini_no_fallback,
   obter_ordem_fallback_do_ambiente,
   ollama_habilitado,
   PROVEDORES_IA,
@@ -14,22 +15,35 @@ describe("obter_ordem_fallback_do_ambiente", () => {
     resetar_circuitos_provedores();
   });
 
-  it("usa ordem padrão com groq → gemini → ollama primeiro", () => {
+  it("usa ordem padrão com groq primeiro (sem gemini por padrão)", () => {
     delete process.env.LLM_ORDEM_FALLBACK;
     delete process.env.LLM_PROVEDOR_PADRAO;
+    delete process.env.LLM_FALLBACK_GEMINI;
+    process.env.GROQ_API_KEY = "gsk_test";
     expect(PROVEDORES_IA.slice(0, 3)).toEqual(["groq", "gemini", "ollama"]);
     expect(obter_ordem_fallback_do_ambiente()[0]).toBe("groq");
+    expect(obter_ordem_fallback_do_ambiente()).not.toContain("gemini");
   });
 
-  it("força groq como primeiro mesmo com LLM_PROVEDOR_PADRAO=gemini", () => {
+  it("com GROQ_API_KEY, remove gemini mesmo se estiver em LLM_ORDEM_FALLBACK", () => {
+    process.env.GROQ_API_KEY = "gsk_test";
     process.env.LLM_ORDEM_FALLBACK = "groq,gemini,ollama";
-    process.env.LLM_PROVEDOR_PADRAO = "gemini";
-    expect(obter_ordem_fallback_do_ambiente()).toEqual(["groq", "gemini", "ollama"]);
+    delete process.env.LLM_FALLBACK_GEMINI;
+    expect(obter_ordem_fallback_do_ambiente()).toEqual(["groq", "ollama"]);
+  });
+
+  it("inclui gemini só com LLM_FALLBACK_GEMINI=true", () => {
+    process.env.GROQ_API_KEY = "gsk_test";
+    process.env.LLM_ORDEM_FALLBACK = "groq,gemini";
+    process.env.LLM_FALLBACK_GEMINI = "true";
+    expect(obter_ordem_fallback_do_ambiente()).toEqual(["groq", "gemini"]);
+    expect(gemini_no_fallback()).toBe(true);
   });
 
   it("normaliza maiúsculas e espaços e mantém groq na frente", () => {
+    process.env.GROQ_API_KEY = "gsk_test";
     process.env.LLM_ORDEM_FALLBACK = " Gemini , Groq ";
-    process.env.LLM_PROVEDOR_PADRAO = "gemini";
+    process.env.LLM_FALLBACK_GEMINI = "true";
     expect(obter_ordem_fallback_do_ambiente()).toEqual(["groq", "gemini"]);
   });
 });
