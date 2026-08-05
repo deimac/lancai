@@ -176,6 +176,7 @@ export async function montar_resposta_chat(
           previa.valorTotal,
           previa.quantidade,
           previa.codigo,
+          previa.itens,
         );
       }
 

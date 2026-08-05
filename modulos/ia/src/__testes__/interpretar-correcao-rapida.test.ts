@@ -23,7 +23,7 @@ describe("interpretar_correcao_rapida", () => {
       interpretar_correcao_rapida("apague o lancamento de farmacia de hoje", "2026-08-03"),
     ).toMatchObject({
       intencao: "CORRIGIR_MOVIMENTO",
-      referencia: { descricao: "farmacia", data_movimento: "2026-08-03" },
+      referencia: { descricao: "Farmacia", data_movimento: "2026-08-03" },
       campos_alterados: { status: "cancelado", confirmado: false },
     });
   });

@@ -23,6 +23,17 @@ export class ErroReferenciaNaoEncontrada extends Error {
 }
 
 /**
+ * Vários lançamentos batem com a mesma busca (ex.: dois "Tênis").
+ * A mensagem já traz a lista com códigos para o usuário escolher.
+ */
+export class ErroReferenciaAmbiguo extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = "ErroReferenciaAmbiguo";
+  }
+}
+
+/**
  * Rede de segurança contra duplicação acidental: a IA tentou CRIAR_CONTA/CRIAR_CARTAO com um
  * nome que já existe para o usuário. Sem essa checagem, uma mensagem ambígua (ex.: um pedido de
  * correção de saldo que a IA não soube classificar) poderia virar silenciosamente uma conta/

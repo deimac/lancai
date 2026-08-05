@@ -22,18 +22,38 @@ export function enxugar_descricao_lancamento(texto: string): string {
     " ",
   );
 
-  // Verbos / moldura de frase.
+  // Verbos / moldura — preposição/artigo obrigatório (evita "compra " deixar "de tênis").
   s = s.replace(
-    /\b(compra|comprei|gastei|paguei|pague|paguei|recebi|ganhei|debitei)\s+(de|do|da|dos|das|com|no|na|nos|nas|em|um|uma)?\b/gi,
+    /\b(compra|comprei|gastei|paguei|pague|recebi|ganhei|debitei)\s+(?:de|do|da|dos|das|com|no|na|nos|nas|em|um|uma)\b/gi,
     " ",
   );
-  s = s.replace(/\b(compra|comprei)\s+(de|do|da|dos|das)\b/gi, " ");
 
-  // Artigos / conectores soltos no início/meio após limpeza.
+  // Artigos / conectores por token (não \b): em JS, ç/ã não são \w e
+  // "Almoço" viraria "Almoç" com \bo\b.
+  const conectores = new Set([
+    "um",
+    "uma",
+    "uns",
+    "umas",
+    "o",
+    "a",
+    "os",
+    "as",
+    "de",
+    "do",
+    "da",
+    "dos",
+    "das",
+    "para",
+    "com",
+  ]);
   s = s.replace(/^[,\s]+|[,\s]+$/g, "");
   s = s.replace(/\s*,\s*/g, " ");
-  s = s.replace(/\b(um|uma|uns|umas|o|a|os|as|de|do|da|dos|das)\b/gi, " ");
-  s = s.replace(/\s+/g, " ").trim();
+  s = s
+    .split(/\s+/)
+    .filter((p) => p.length > 0 && !conectores.has(p.toLocaleLowerCase("pt-BR")))
+    .join(" ")
+    .trim();
 
   // Se sobrou só lixo, cai no original limpo curto.
   if (!s || s.length < 2) {
@@ -72,31 +92,83 @@ function dedupe_palavras_rotulo(texto: string): string {
 /** Extrai um rótulo legível quando a IA manda alternativas ("Farmácia/Farmacia"). */
 export function rotulo_descricao_busca(texto?: string | null): string {
   if (!texto?.trim()) return "não especificado";
+  const enxuto = enxugar_descricao_lancamento(texto);
+  if (enxuto && enxuto.toLocaleLowerCase("pt-BR") !== "lançamento") return enxuto;
+
   const partes = texto
     .split(/[\/|,;]+|\bou\b/i)
     .map((parte) => dedupe_palavras_rotulo(limpar_termo_descricao(parte)))
     .filter((parte) => parte.length >= 2)
-    // Prefere o termo mais curto e natural ("farmacia" > "farmaciarole").
     .sort((a, b) => a.length - b.length || a.localeCompare(b, "pt-BR"));
   return partes[0] ?? (dedupe_palavras_rotulo(limpar_termo_descricao(texto)) || texto.trim() || "não especificado");
 }
 
+const STOPWORDS_BUSCA = new Set([
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+  "o",
+  "a",
+  "os",
+  "as",
+  "para",
+  "com",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "em",
+  "uso",
+  "pessoal",
+  "empresa",
+  "compra",
+  "comprei",
+  "gastei",
+  "paguei",
+  "lancamento",
+  "lancamentos",
+  "despesa",
+  "despesas",
+  "gasto",
+  "gastos",
+]);
+
+function tokens_significativos(texto: string): string[] {
+  const base = normalizar_descricao(enxugar_descricao_lancamento(texto));
+  return base
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !STOPWORDS_BUSCA.has(t));
+}
+
 /**
  * Compara descrição cadastrada com o termo citado pelo usuário/IA.
- * Aceita "Farmácia" ≈ "farmacia" e alternativas tipo "Farmácia/Farmacia".
+ * Aceita "Farmácia" ≈ "farmacia", fluff ("compra de um tênis…") ≈ "tênis",
+ * e alternativas tipo "Farmácia/Farmacia".
  */
 export function descricao_corresponde_busca(cadastrada: string, citada: string): boolean {
-  const alvo = normalizar_descricao(cadastrada);
-  if (!alvo) return false;
+  const chaveCad = chave_descricao_lancamento(cadastrada);
+  const chaveCit = chave_descricao_lancamento(citada);
+  if (chaveCad && chaveCit) {
+    if (chaveCad === chaveCit || chaveCad.includes(chaveCit) || chaveCit.includes(chaveCad)) {
+      return true;
+    }
+  }
 
-  const partes = citada
-    .split(/[\/|,;]+/)
-    .map((parte) => normalizar_descricao(limpar_termo_descricao(parte)))
-    .filter((parte) => parte.length >= 2);
+  const tokensCit = tokens_significativos(citada);
+  const tokensCad = new Set(tokens_significativos(cadastrada));
+  if (tokensCit.length === 0) {
+    // Fallback antigo (sem enxugar) para termos curtos tipo "99".
+    const alvo = normalizar_descricao(cadastrada);
+    const termo = normalizar_descricao(limpar_termo_descricao(citada));
+    return Boolean(alvo && termo && (alvo === termo || alvo.includes(termo) || termo.includes(alvo)));
+  }
 
-  const candidatos =
-    partes.length > 0 ? partes : [normalizar_descricao(limpar_termo_descricao(citada))].filter(Boolean);
-  return candidatos.some(
-    (termo) => alvo === termo || alvo.includes(termo) || termo.includes(alvo),
-  );
+  // Basta um token significativo da citação aparecer no cadastro (ex.: "tênis").
+  return tokensCit.some((token) => tokensCad.has(token) || chaveCad.includes(token));
 }

@@ -41,6 +41,22 @@ describe("descricao_corresponde_busca", () => {
     expect(descricao_corresponde_busca("Farmácia", "farmacia")).toBe(true);
     expect(descricao_corresponde_busca("farmacia", "Farmácia漂/Farmacia/farmacia")).toBe(true);
   });
+
+  it("casa cadastro longo com termo curto do usuário", () => {
+    expect(
+      descricao_corresponde_busca(
+        "compra de um tênis para uso pessoal, um gasto pessoal",
+        "Ténis",
+      ),
+    ).toBe(true);
+    expect(
+      descricao_corresponde_busca(
+        "compra de um tênis para uso pessoal",
+        "compra de ténis para uso pessoal",
+      ),
+    ).toBe(true);
+    expect(descricao_corresponde_busca("Tênis", "Apague o tênis")).toBe(true);
+  });
 });
 
 describe("rotulo_descricao_busca", () => {

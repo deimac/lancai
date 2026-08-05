@@ -7,10 +7,14 @@ const PADRAO_CONTA_CARTAO =
 const PADRAO_LANCAMENTO =
   /Deseja realmente excluir o lançamento "([^"]+)"(?:\s+#([a-f0-9]{6,12}))?(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
 
+/** Formato antigo (antes da desambiguação): "excluir os N lançamentos…". */
 const PADRAO_LANCAMENTOS =
   /Deseja realmente excluir os (\d+) lançamentos de "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
 
+const PADRAO_SEMELHANTES = /Encontrei (\d+) lançamentos semelhantes a "([^"]+)":/;
+
 const AFIRMATIVAS = /^(sim|confirmo|confirma|pode excluir|pode apagar|ok|quero|yes)\.?$/i;
+const AFIRMATIVAS_TODOS = /^(todos|todas|ambos|ambas|os dois|as duas)\.?$/i;
 const NEGATIVAS = /^(não|nao|cancela|cancelar|não quero|nao quero|no)\.?$/i;
 
 export type PendenciaExclusao =
@@ -20,6 +24,10 @@ export type PendenciaExclusao =
       descricao: string;
       dataMovimento: string | null;
       codigo: string | null;
+    }
+  | {
+      tipo: "lançamentos_semelhantes";
+      descricao: string;
     };
 
 function data_br_para_iso(dia: string, mes: string, ano: string): string {
@@ -33,6 +41,14 @@ export function extrair_pendencia_exclusao(
   for (let i = historicoRecente.length - 1; i >= 0; i -= 1) {
     const mensagem = historicoRecente[i];
     if (mensagem?.papel !== "sistema") continue;
+
+    const semelhantes = PADRAO_SEMELHANTES.exec(mensagem.conteudo);
+    if (semelhantes) {
+      return {
+        tipo: "lançamentos_semelhantes",
+        descricao: semelhantes[2]!,
+      };
+    }
 
     const varios = PADRAO_LANCAMENTOS.exec(mensagem.conteudo);
     if (varios) {
@@ -82,6 +98,25 @@ export function interpretar_resposta_confirmacao_exclusao(
   if (!pendencia) return null;
 
   const texto = mensagem.trim();
+
+  if (pendencia.tipo === "lançamentos_semelhantes") {
+    if (AFIRMATIVAS_TODOS.test(texto)) {
+      return {
+        intencao: "CORRIGIR_MOVIMENTO",
+        referencia: {
+          descricao: pendencia.descricao,
+          data_movimento: null,
+          codigo: null,
+        },
+        campos_alterados: { status: "cancelado", confirmado: true },
+      };
+    }
+    if (NEGATIVAS.test(texto)) {
+      return { intencao: "NAO_RECONHECIDA", motivo: "Exclusão cancelada." };
+    }
+    // "sim" sozinho não apaga o lote — usuário precisa do código ou "todos".
+    return null;
+  }
 
   if (AFIRMATIVAS.test(texto)) {
     if (pendencia.tipo === "lançamento") {

@@ -55,7 +55,7 @@ describe("extrair_pendencia_exclusao", () => {
     });
   });
 
-  it("detecta exclusão em lote", () => {
+  it("detecta exclusão em lote (formato antigo)", () => {
     expect(
       extrair_pendencia_exclusao([
         {
@@ -69,6 +69,21 @@ describe("extrair_pendencia_exclusao", () => {
       descricao: "farmacia",
       dataMovimento: "2026-08-02",
       codigo: null,
+    });
+  });
+
+  it("detecta lista de semelhantes para desambiguação", () => {
+    expect(
+      extrair_pendencia_exclusao([
+        {
+          papel: "sistema",
+          conteudo:
+            'Encontrei 2 lançamentos semelhantes a "Tênis":\n- #f41e31f0 · Tênis · - R$ 304,70 · 05/08/2026\n\nQual deseja excluir? Use o código ou diga "todos".',
+        },
+      ]),
+    ).toEqual({
+      tipo: "lançamentos_semelhantes",
+      descricao: "Tênis",
     });
   });
 
@@ -138,5 +153,21 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
 
   it("ignora quando não há pendência", () => {
     expect(interpretar_resposta_confirmacao_exclusao("sim", [])).toBeNull();
+  });
+
+  it("com semelhantes, 'todos' confirma o lote e 'sim' sozinho não", () => {
+    const historico = [
+      {
+        papel: "sistema" as const,
+        conteudo:
+          'Encontrei 2 lançamentos semelhantes a "Tênis":\n- #f41e31f0 · Tênis\n\nQual deseja excluir? Use o código ou diga "todos".',
+      },
+    ];
+    expect(interpretar_resposta_confirmacao_exclusao("todos", historico)).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Tênis", data_movimento: null, codigo: null },
+      campos_alterados: { status: "cancelado", confirmado: true },
+    });
+    expect(interpretar_resposta_confirmacao_exclusao("sim", historico)).toBeNull();
   });
 });

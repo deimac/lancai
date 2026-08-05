@@ -4,6 +4,7 @@ import {
   montar_confirmacao_duplicata_lancamento,
   montar_confirmacao_exclusao,
   montar_confirmacao_exclusao_lancamento,
+  montar_lista_lancamentos_semelhantes,
 } from "../montar-confirmacao-exclusao";
 
 describe("montar_confirmacao_exclusao", () => {
@@ -35,10 +36,61 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
     );
   });
 
-  it("usa plural quando há vários lançamentos", () => {
-    expect(montar_confirmacao_exclusao_lancamento("farmacia", "2026-08-02", 37.96, 2)).toBe(
-      `Deseja realmente excluir os 2 lançamentos de "farmacia" de 02/08/2026 (total ${formatarMoeda(37.96)})? Responda "sim" para confirmar ou "não" para cancelar.`,
+  it("lista códigos quando há vários semelhantes (não apaga o lote no sim)", () => {
+    const texto = montar_confirmacao_exclusao_lancamento(
+      "Tênis",
+      "2026-08-05",
+      609.4,
+      2,
+      null,
+      [
+        {
+          id: "f41e31f0-1111-2222-3333-444455556666",
+          descricao: "compra de um tênis para uso pessoal, um gasto pessoal",
+          valor: 304.7,
+          dataMovimento: "2026-08-05",
+          tipo: "despesa",
+        },
+        {
+          id: "b30d16ce-1111-2222-3333-444455556666",
+          descricao: "compra de um tênis para uso pessoal",
+          valor: 304.7,
+          dataMovimento: "2026-08-05",
+          tipo: "despesa",
+        },
+      ],
     );
+    expect(texto).toContain('Encontrei 2 lançamentos semelhantes a "Tênis":');
+    expect(texto).toContain("#f41e31f0");
+    expect(texto).toContain("#b30d16ce");
+    expect(texto).toContain("Use o código");
+    expect(texto).toContain('ou diga "todos"');
+    expect(texto).not.toContain("Responda \"sim\"");
+  });
+});
+
+describe("montar_lista_lancamentos_semelhantes", () => {
+  it("usa verbo corrigir quando a ação é correção", () => {
+    const texto = montar_lista_lancamentos_semelhantes(
+      "Uber",
+      [
+        {
+          id: "aaaaaaaa-1111-2222-3333-444455556666",
+          descricao: "Uber",
+          valor: 38.58,
+          dataMovimento: "2026-08-05",
+        },
+        {
+          id: "bbbbbbbb-1111-2222-3333-444455556666",
+          descricao: "Uber",
+          valor: 24.95,
+          dataMovimento: "2026-08-05",
+        },
+      ],
+      "corrigir",
+    );
+    expect(texto).toContain("Qual deseja corrigir?");
+    expect(texto).not.toContain("todos");
   });
 });
 

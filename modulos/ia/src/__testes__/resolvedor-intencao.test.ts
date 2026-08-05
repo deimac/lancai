@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Conta, Movimento } from "@lancai/banco";
 import { ResolvedorIntencao } from "../resolvedor-intencao";
 import { RepositorioContextoEmMemoria } from "../repositorio-contexto-memoria";
-import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada } from "../erros";
+import {
+  ErroDadosIncompletos,
+  ErroEntidadeJaExiste,
+  ErroReferenciaAmbiguo,
+  ErroReferenciaNaoEncontrada,
+} from "../erros";
 
 function criarConta(sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -240,6 +245,32 @@ describe("ResolvedorIntencao", () => {
           { usuarioId, criadoPor: usuarioId },
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
+    });
+
+    it("lança ErroReferenciaAmbiguo quando há vários semelhantes sem código", async () => {
+      const a = criarMovimento({
+        usuarioId,
+        descricao: "compra de um tênis para uso pessoal",
+        dataMovimento: "2026-08-05",
+      });
+      const b = criarMovimento({
+        usuarioId,
+        descricao: "compra de um tênis para uso pessoal, um gasto pessoal",
+        dataMovimento: "2026-08-05",
+      });
+      repositorio.movimentos.set(a.id, a);
+      repositorio.movimentos.set(b.id, b);
+
+      await expect(
+        resolvedor.resolver_corrigir_movimento(
+          {
+            intencao: "CORRIGIR_MOVIMENTO",
+            referencia: { descricao: "Tênis" },
+            campos_alterados: { valor: 300 },
+          },
+          { usuarioId, criadoPor: usuarioId },
+        ),
+      ).rejects.toThrow(ErroReferenciaAmbiguo);
     });
   });
 

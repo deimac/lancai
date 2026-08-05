@@ -12,6 +12,7 @@ import {
   ErroDadosIncompletos,
   ErroDadosPlasticosInvalidos,
   ErroEntidadeJaExiste,
+  ErroReferenciaAmbiguo,
   ErroReferenciaNaoEncontrada,
   ErroTodosProvedoresFalharam,
 } from "@lancai/ia";
@@ -40,6 +41,7 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     erro instanceof ErroLimiteCartaoExcedido ||
     erro instanceof ErroTipoMovimentoNaoImplementado ||
     erro instanceof ErroReferenciaNaoEncontrada ||
+    erro instanceof ErroReferenciaAmbiguo ||
     erro instanceof ErroDadosIncompletos ||
     erro instanceof ErroEntidadeJaExiste ||
     erro instanceof ErroDadosPlasticosInvalidos ||

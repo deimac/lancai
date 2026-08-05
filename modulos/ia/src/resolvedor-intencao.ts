@@ -17,8 +17,14 @@ import {
   ErroDadosPlasticosInvalidos,
   preparar_persistencia_plasticos,
 } from "./cifragem-cartao";
-import { ErroDadosIncompletos, ErroEntidadeJaExiste, ErroReferenciaNaoEncontrada } from "./erros";
-import { rotulo_descricao_busca } from "./normalizar-descricao";
+import {
+  ErroDadosIncompletos,
+  ErroEntidadeJaExiste,
+  ErroReferenciaAmbiguo,
+  ErroReferenciaNaoEncontrada,
+} from "./erros";
+import { formatar_codigo_movimento } from "./codigo-movimento";
+import { enxugar_descricao_lancamento, rotulo_descricao_busca } from "./normalizar-descricao";
 import type { RepositorioContexto } from "./repositorio-contexto";
 
 const NOME_CATEGORIA_PADRAO = "Outros";
@@ -99,12 +105,12 @@ export class ResolvedorIntencao {
   ): Promise<EntradaCorrigirMovimento> {
     const { usuarioId, criadoPor } = contexto;
 
-    const movimentoAlvo = await this.repositorio.buscarMovimentoParaCorrecao(usuarioId, {
+    const candidatos = await this.repositorio.listarMovimentosParaCorrecao(usuarioId, {
       descricao: intencao.referencia.descricao ?? undefined,
       dataMovimento: intencao.referencia.data_movimento ?? undefined,
       codigo: intencao.referencia.codigo ?? undefined,
     });
-    if (!movimentoAlvo) {
+    if (candidatos.length === 0) {
       throw new ErroReferenciaNaoEncontrada(
         "lançamento",
         intencao.referencia.codigo
@@ -112,6 +118,26 @@ export class ResolvedorIntencao {
           : nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
       );
     }
+    if (candidatos.length > 1 && !intencao.referencia.codigo) {
+      const rotulo = nome_busca_lancamento(
+        intencao.referencia.descricao,
+        intencao.referencia.data_movimento,
+      );
+      const linhas = candidatos.map((item) => {
+        const data = item.dataMovimento.split("-").reverse().join("/");
+        return `- ${formatar_codigo_movimento(item.id)} · ${enxugar_descricao_lancamento(item.descricao)} · ${data}`;
+      });
+      const exemplo = formatar_codigo_movimento(candidatos[0]!.id);
+      throw new ErroReferenciaAmbiguo(
+        [
+          `Encontrei ${candidatos.length} lançamentos semelhantes a "${rotulo}":`,
+          ...linhas,
+          "",
+          `Qual deseja corrigir? Use o código (ex.: "Corrige o ${exemplo}").`,
+        ].join("\n"),
+      );
+    }
+    const movimentoAlvo = candidatos[0]!;
 
     const camposAlterados = intencao.campos_alterados;
     const campos: EntradaCorrigirMovimento["campos"] = {};
@@ -359,6 +385,13 @@ export class ResolvedorIntencao {
     valorTotal: number;
     movimentoIds: string[];
     codigo: string | null;
+    itens: Array<{
+      id: string;
+      descricao: string;
+      valor: number;
+      dataMovimento: string;
+      tipo: string;
+    }>;
   }> {
     const movimentos = await this.repositorio.listarMovimentosParaCorrecao(usuarioId, {
       descricao: referencia.descricao ?? undefined,
@@ -385,6 +418,13 @@ export class ResolvedorIntencao {
       valorTotal,
       movimentoIds: movimentos.map((item) => item.id),
       codigo: movimentos.length === 1 ? movimentos[0]!.id : null,
+      itens: movimentos.map((item) => ({
+        id: item.id,
+        descricao: item.descricao,
+        valor: Number(item.valor),
+        dataMovimento: item.dataMovimento,
+        tipo: item.tipo,
+      })),
     };
   }
 

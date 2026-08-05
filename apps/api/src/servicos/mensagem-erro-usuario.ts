@@ -9,6 +9,7 @@ import {
   ErroDadosIncompletos,
   ErroDadosPlasticosInvalidos,
   ErroEntidadeJaExiste,
+  ErroReferenciaAmbiguo,
   ErroReferenciaNaoEncontrada,
   ErroTodosProvedoresFalharam,
 } from "@lancai/ia";
@@ -20,6 +21,7 @@ import {
 export function mensagem_erro_para_usuario(erro: unknown): string | null {
   if (
     erro instanceof ErroReferenciaNaoEncontrada ||
+    erro instanceof ErroReferenciaAmbiguo ||
     erro instanceof ErroDadosIncompletos ||
     erro instanceof ErroEntidadeJaExiste ||
     erro instanceof ErroDadosPlasticosInvalidos ||
