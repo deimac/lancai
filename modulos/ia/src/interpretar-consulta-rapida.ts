@@ -10,6 +10,10 @@ const ACAO_ESCRITA =
 const VERBO_LANCAMENTO = /\b(gastei|paguei|comprei|recebi|ganhei|debitei)\b/i;
 const PERGUNTA = /\b(quais|quanto|mostra|mostre|liste|listar|ver|veja|tiv[eé]|teve|resumo|extrato)\b/i;
 
+/** Follow-up curto após um total: "detalhado", "mostra detalhado", etc. */
+const PEDIDO_SO_DETALHE =
+  /^(?:(?:mostra|mostre|ver|veja|liste|listar|quero)\s+)?(?:o\s+)?(?:detalhad[oa]s?|um\s+a\s+um|item\s+a\s+item)\??\.?$/i;
+
 const PEDIDO_HISTORICO =
   /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|gastos?|despesas?|gastei|paguei|resumo)\b/i;
 
@@ -21,6 +25,24 @@ const PEDIDO_MES =
 
 const ESTABELECIMENTO_SEM_PERIODO =
   /\b(uber|99|ifood|rappi|netflix|spotify|farm[aá]cia|mercado|posto)\b/i;
+
+/**
+ * Reaproveita a última consulta de histórico quando o usuário só pede "detalhado".
+ */
+export function interpretar_pedido_detalhe_historico(
+  mensagem: string,
+  ultimaIntencaoIa: IntencaoDetectada | null | undefined,
+): IntencaoDetectada | null {
+  const texto = mensagem.trim();
+  if (!texto || !PEDIDO_SO_DETALHE.test(texto)) return null;
+  if (!ultimaIntencaoIa || ultimaIntencaoIa.intencao !== "CONSULTAR_VISAO") return null;
+  if (ultimaIntencaoIa.tipo_visao !== "historico") return null;
+
+  return {
+    ...ultimaIntencaoIa,
+    detalhado: true,
+  };
+}
 
 /**
  * Consultas óbvias sem LLM (economia de créditos).

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { interpretar_consulta_rapida } from "../interpretar-consulta-rapida";
+import {
+  interpretar_consulta_rapida,
+  interpretar_pedido_detalhe_historico,
+} from "../interpretar-consulta-rapida";
 import type { ContextoInterpretacao } from "../prompt";
 
 function contexto(parcial: Partial<ContextoInterpretacao> = {}): ContextoInterpretacao {
@@ -89,5 +92,40 @@ describe("interpretar_consulta_rapida", () => {
   it("não intercepta lançamento nem exclusão", () => {
     expect(interpretar_consulta_rapida("gastei 18 na farmacia no cartao azul", contexto())).toBeNull();
     expect(interpretar_consulta_rapida("apague o lancamento de farmacia", contexto())).toBeNull();
+  });
+});
+
+describe("interpretar_pedido_detalhe_historico", () => {
+  const ultimaConsulta = {
+    intencao: "CONSULTAR_VISAO" as const,
+    tipo_visao: "historico" as const,
+    detalhado: false,
+    filtros: {
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+      descricao: "uber",
+    },
+  };
+
+  it("reaproveita filtros da última consulta ao pedir detalhado", () => {
+    expect(interpretar_pedido_detalhe_historico("detalhado", ultimaConsulta)).toEqual({
+      ...ultimaConsulta,
+      detalhado: true,
+    });
+    expect(interpretar_pedido_detalhe_historico("mostra detalhado", ultimaConsulta)).toMatchObject({
+      detalhado: true,
+      filtros: { descricao: "uber" },
+    });
+  });
+
+  it("ignora se não houver consulta de histórico anterior", () => {
+    expect(interpretar_pedido_detalhe_historico("detalhado", null)).toBeNull();
+    expect(
+      interpretar_pedido_detalhe_historico("detalhado", {
+        intencao: "CONSULTAR_VISAO",
+        tipo_visao: "saldos",
+        filtros: {},
+      }),
+    ).toBeNull();
+    expect(interpretar_pedido_detalhe_historico("quanto gastei esse mês?", ultimaConsulta)).toBeNull();
   });
 });

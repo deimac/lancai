@@ -11,6 +11,7 @@ import {
   interpretar_consulta_rapida,
   interpretar_correcao_rapida,
   interpretar_lancamento_rapido,
+  interpretar_pedido_detalhe_historico,
   normalizar_intencao_cadastro,
   normalizar_intencao_movimento,
   normalizar_intencao_plasticos,
@@ -342,6 +343,7 @@ export async function processar_turno_conversa(
   const intencaoBruta =
     entrada.intencaoPrevia ??
     intencaoConfirmacao ??
+    interpretar_pedido_detalhe_historico(entrada.mensagem, ultimaIntencaoIa) ??
     interpretar_orcamento_rapido(entrada.mensagem) ??
     interpretar_recorrencia_rapida(entrada.mensagem, contexto) ??
     interpretar_correcao_rapida(entrada.mensagem, contexto.dataAtual) ??
