@@ -51,6 +51,7 @@ describe("extrair_pendencia_exclusao", () => {
       tipo: "lançamento",
       descricao: "Almoço",
       dataMovimento: "2026-08-02",
+      codigo: null,
     });
   });
 
@@ -67,6 +68,24 @@ describe("extrair_pendencia_exclusao", () => {
       tipo: "lançamento",
       descricao: "farmacia",
       dataMovimento: "2026-08-02",
+      codigo: null,
+    });
+  });
+
+  it("detecta código curto no lançamento único", () => {
+    expect(
+      extrair_pendencia_exclusao([
+        {
+          papel: "sistema",
+          conteudo:
+            'Deseja realmente excluir o lançamento "farmacia" #a1b2c3d4 de 03/08/2026 (R$\u00a018,98)? Responda "sim" para confirmar ou "não" para cancelar.',
+        },
+      ]),
+    ).toEqual({
+      tipo: "lançamento",
+      descricao: "farmacia",
+      dataMovimento: "2026-08-03",
+      codigo: "a1b2c3d4",
     });
   });
 
@@ -99,7 +118,7 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
   it("confirma exclusão de lançamento com sim", () => {
     expect(interpretar_resposta_confirmacao_exclusao("sim", historicoLancamento)).toEqual({
       intencao: "CORRIGIR_MOVIMENTO",
-      referencia: { descricao: "Almoço", data_movimento: "2026-08-02" },
+      referencia: { descricao: "Almoço", data_movimento: "2026-08-02", codigo: null },
       campos_alterados: { status: "cancelado", confirmado: true },
     });
   });

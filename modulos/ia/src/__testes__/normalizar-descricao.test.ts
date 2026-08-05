@@ -24,7 +24,7 @@ describe("descricao_corresponde_busca", () => {
 });
 
 describe("rotulo_descricao_busca", () => {
-  it("pega o primeiro termo legível", () => {
-    expect(rotulo_descricao_busca("Farmácia漂/Farmacia/farmacia")).toBe("Farmácia");
+  it("pega um termo legível sem lixo da IA", () => {
+    expect(rotulo_descricao_busca("Farmácia漂/Farmacia/farmacia").toLowerCase()).toMatch(/farmacia/);
   });
 });

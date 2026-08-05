@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
+import { codigo_curto_movimento, normalizar_codigo_busca } from "./codigo-movimento";
 import { descricao_corresponde_busca, normalizar_descricao } from "./normalizar-descricao";
 import type {
   CriterioMovimentoSimilar,
@@ -154,6 +155,19 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
   }
 
   async listarMovimentosParaCorrecao(usuarioId: string, referencia: ReferenciaMovimentoParaCorrecao) {
+    if (referencia.codigo) {
+      const codigo = normalizar_codigo_busca(referencia.codigo);
+      if (codigo.length >= 6) {
+        const porCodigo = [...this.movimentos.values()].filter((movimento) => {
+          if (movimento.usuarioId !== usuarioId || movimento.status === "cancelado") return false;
+          return codigo_curto_movimento(movimento.id).startsWith(codigo) ||
+            movimento.id.replace(/-/g, "").toLowerCase().startsWith(codigo);
+        });
+        porCodigo.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
+        return porCodigo;
+      }
+    }
+
     const candidatos = [...this.movimentos.values()].filter((movimento) => {
       if (movimento.usuarioId !== usuarioId || movimento.status === "cancelado") return false;
       if (referencia.dataMovimento && movimento.dataMovimento !== referencia.dataMovimento) return false;

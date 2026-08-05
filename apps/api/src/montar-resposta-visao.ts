@@ -1,3 +1,4 @@
+import { formatar_codigo_movimento } from "@lancai/ia";
 import { formatarMoeda } from "@lancai/tipos";
 import type { ResultadoVisao } from "@lancai/relatorios";
 
@@ -91,8 +92,21 @@ export function montar_resposta_visao(resultado: ResultadoVisao): string {
     }
 
     case "historico": {
-      const { periodo, totalReceitas, totalDespesas, saldoPeriodo, totalItens, itensOmitidos, dias } = resultado.dados;
-      if (totalItens === 0) return "Não encontrei lançamentos nesse período.";
+      const {
+        periodo,
+        filtroDescricao,
+        totalReceitas,
+        totalDespesas,
+        saldoPeriodo,
+        totalItens,
+        itensOmitidos,
+        dias,
+      } = resultado.dados;
+      if (totalItens === 0) {
+        return filtroDescricao
+          ? `Não encontrei lançamentos de "${filtroDescricao}" nesse período.`
+          : "Não encontrei lançamentos nesse período.";
+      }
 
       const periodoTexto =
         periodo.de === periodo.ate
@@ -107,6 +121,7 @@ export function montar_resposta_visao(resultado: ResultadoVisao): string {
               ? item.contaNome
               : null;
           const partes = [
+            formatar_codigo_movimento(item.id),
             item.descricao,
             item.tipo,
             formatarMoeda(item.valor),
@@ -118,14 +133,21 @@ export function montar_resposta_visao(resultado: ResultadoVisao): string {
         return `${formatarData(dia.data)}\n${linhas.join("\n")}`;
       });
 
-      const cabecalho = [
-        `Lançamentos de ${periodoTexto} (${totalItens}):`,
-        `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
-      ];
+      const rotuloDescricao = filtroDescricao
+        ? filtroDescricao.charAt(0).toLocaleUpperCase("pt-BR") + filtroDescricao.slice(1)
+        : null;
+      const cabecalho = rotuloDescricao
+        ? [
+            `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
+          ]
+        : [
+            `Lançamentos de ${periodoTexto} (${totalItens}):`,
+            `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
+          ];
 
       const rodape = [
         ...(itensOmitidos > 0 ? [`… e mais ${itensOmitidos} lançamento(s). Peça um intervalo menor para ver todos.`] : []),
-        `Para corrigir ou cancelar, diga por exemplo: "Cancela o almoço de ${formatarData(periodo.ate)}" ou "Corrige o mercado de hoje para R$ 150".`,
+        `Para corrigir ou cancelar, use o código (ex.: "Cancela o #a1b2c3d4") ou diga "Cancela o almoço de ${formatarData(periodo.ate)}".`,
       ];
 
       return [...cabecalho, "", ...secoes, "", ...rodape].join("\n");

@@ -18,6 +18,22 @@ const QUANTIDADE_MESES_EVOLUCAO = 6;
 const QUANTIDADE_ITENS_RANKING_CATEGORIA = 5;
 const LIMITE_ITENS_HISTORICO = 40;
 
+/** Normaliza para filtro por descrição/estabelecimento (ex.: Uber ≈ uber). */
+function normalizar_termo_descricao(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+}
+
+function descricao_corresponde(cadastrada: string, termo: string): boolean {
+  const alvo = normalizar_termo_descricao(cadastrada);
+  const busca = normalizar_termo_descricao(termo);
+  if (!alvo || !busca) return false;
+  return alvo === busca || alvo.includes(busca) || busca.includes(alvo);
+}
+
 /**
  * Responde `CONSULTAR_VISAO` — a Fase 5 do roadmap. Recebe filtros já
  * resolvidos (nomes -> IDs, feito pelo `ResolvedorIntencao`) e devolve dados
@@ -305,7 +321,7 @@ export class ModuloRelatorios {
   private async consultar_historico(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
     const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
 
-    const [movimentos, contas, cartoes, categorias] = await Promise.all([
+    const [movimentosBrutos, contas, cartoes, categorias] = await Promise.all([
       this.repositorio.listarMovimentos(filtros.usuarioId, {
         perfil: filtros.perfil,
         contaId: filtros.contaId,
@@ -318,6 +334,10 @@ export class ModuloRelatorios {
       this.repositorio.listarCartoes(filtros.usuarioId),
       this.repositorio.listarCategorias(filtros.usuarioId),
     ]);
+
+    const movimentos = filtros.descricao
+      ? movimentosBrutos.filter((movimento) => descricao_corresponde(movimento.descricao, filtros.descricao!))
+      : movimentosBrutos;
 
     const mapaContas = new Map(contas.map((conta) => [conta.id, conta.nome]));
     const mapaCartoes = new Map(cartoes.map((cartao) => [cartao.id, cartao.nome]));
@@ -343,6 +363,7 @@ export class ModuloRelatorios {
     const porDia = new Map<string, ItemHistorico[]>();
     for (const movimento of exibidos) {
       const item: ItemHistorico = {
+        id: movimento.id,
         descricao: movimento.descricao,
         tipo: movimento.tipo,
         valor: paraNumero(movimento.valor),
@@ -362,6 +383,7 @@ export class ModuloRelatorios {
 
     return {
       periodo,
+      filtroDescricao: filtros.descricao ?? null,
       totalReceitas,
       totalDespesas,
       saldoPeriodo: somar(totalReceitas, -totalDespesas),

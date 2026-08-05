@@ -1,23 +1,7 @@
 import { eq } from "drizzle-orm";
+import { CATEGORIAS_PADRAO } from "./categorias-padrao";
 import { obter_banco } from "./cliente";
 import { usuario, categoria } from "./schema";
-
-const CATEGORIAS_PADRAO: Array<{ nome: string; tipo: "receita" | "despesa" | "ambos" }> = [
-  { nome: "Alimentação", tipo: "despesa" },
-  { nome: "Combustível", tipo: "despesa" },
-  { nome: "Transporte", tipo: "despesa" },
-  { nome: "Moradia", tipo: "despesa" },
-  { nome: "Saúde", tipo: "despesa" },
-  { nome: "Lazer", tipo: "despesa" },
-  { nome: "Assinaturas", tipo: "despesa" },
-  { nome: "Viagens", tipo: "despesa" },
-  { nome: "Educação", tipo: "despesa" },
-  { nome: "Impostos", tipo: "despesa" },
-  { nome: "Salário", tipo: "receita" },
-  { nome: "Vendas", tipo: "receita" },
-  { nome: "Serviços prestados", tipo: "receita" },
-  { nome: "Outros", tipo: "ambos" },
-];
 
 async function semear() {
   const banco = obter_banco();
@@ -58,10 +42,12 @@ async function semear() {
     .from(categoria)
     .where(eq(categoria.usuarioId, usuarioAtual.id));
 
-  const nomesExistentes = new Set(categoriasExistentes.map((c) => c.nome));
+  const nomesExistentes = new Set(
+    categoriasExistentes.map((item) => item.nome.toLocaleLowerCase("pt-BR")),
+  );
 
   const categoriasFaltantes = CATEGORIAS_PADRAO.filter(
-    (categoriaPadrao) => !nomesExistentes.has(categoriaPadrao.nome),
+    (categoriaPadrao) => !nomesExistentes.has(categoriaPadrao.nome.toLocaleLowerCase("pt-BR")),
   );
 
   if (categoriasFaltantes.length > 0) {

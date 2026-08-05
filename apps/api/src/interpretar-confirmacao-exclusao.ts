@@ -5,7 +5,7 @@ const PADRAO_CONTA_CARTAO =
   /Deseja realmente excluir (?:a|o) (conta|cartão) "([^"]+)"\?/;
 
 const PADRAO_LANCAMENTO =
-  /Deseja realmente excluir o lançamento "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
+  /Deseja realmente excluir o lançamento "([^"]+)"(?:\s+#([a-f0-9]{6,12}))?(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
 
 const PADRAO_LANCAMENTOS =
   /Deseja realmente excluir os (\d+) lançamentos de "([^"]+)"(?: de (\d{2})\/(\d{2})\/(\d{4}))?(?:\s*\([^)]*\))?\?/;
@@ -15,7 +15,12 @@ const NEGATIVAS = /^(não|nao|cancela|cancelar|não quero|nao quero|no)\.?$/i;
 
 export type PendenciaExclusao =
   | { tipo: "conta" | "cartão"; nome: string }
-  | { tipo: "lançamento"; descricao: string; dataMovimento: string | null };
+  | {
+      tipo: "lançamento";
+      descricao: string;
+      dataMovimento: string | null;
+      codigo: string | null;
+    };
 
 function data_br_para_iso(dia: string, mes: string, ano: string): string {
   return `${ano}-${mes}-${dia}`;
@@ -38,6 +43,7 @@ export function extrair_pendencia_exclusao(
           varios[3] && varios[4] && varios[5]
             ? data_br_para_iso(varios[3], varios[4], varios[5])
             : null,
+        codigo: null,
       };
     }
 
@@ -46,9 +52,10 @@ export function extrair_pendencia_exclusao(
       return {
         tipo: "lançamento",
         descricao: lancamento[1]!,
+        codigo: lancamento[2] ?? null,
         dataMovimento:
-          lancamento[2] && lancamento[3] && lancamento[4]
-            ? data_br_para_iso(lancamento[2], lancamento[3], lancamento[4])
+          lancamento[3] && lancamento[4] && lancamento[5]
+            ? data_br_para_iso(lancamento[3], lancamento[4], lancamento[5])
             : null,
       };
     }
@@ -83,6 +90,7 @@ export function interpretar_resposta_confirmacao_exclusao(
         referencia: {
           descricao: pendencia.descricao,
           data_movimento: pendencia.dataMovimento,
+          codigo: pendencia.codigo,
         },
         campos_alterados: { status: "cancelado", confirmado: true },
       };

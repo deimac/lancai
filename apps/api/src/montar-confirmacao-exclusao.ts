@@ -1,3 +1,4 @@
+import { formatar_codigo_movimento } from "@lancai/ia";
 import { formatarMoeda } from "@lancai/tipos";
 
 function formatarData(dataISO: string): string {
@@ -35,10 +36,12 @@ export function montar_confirmacao_exclusao_lancamento(
   dataMovimento: string | null,
   valorTotal: number,
   quantidade = 1,
+  movimentoId: string | null = null,
 ): string {
   const data = dataMovimento ? ` de ${formatarData(dataMovimento)}` : "";
   if (quantidade <= 1) {
-    return `Deseja realmente excluir o lançamento "${descricao}"${data} (${formatarMoeda(valorTotal)})? Responda "sim" para confirmar ou "não" para cancelar.`;
+    const codigo = movimentoId ? ` ${formatar_codigo_movimento(movimentoId)}` : "";
+    return `Deseja realmente excluir o lançamento "${descricao}"${codigo}${data} (${formatarMoeda(valorTotal)})? Responda "sim" para confirmar ou "não" para cancelar.`;
   }
   return `Deseja realmente excluir os ${quantidade} lançamentos de "${descricao}"${data} (total ${formatarMoeda(valorTotal)})? Responda "sim" para confirmar ou "não" para cancelar.`;
 }

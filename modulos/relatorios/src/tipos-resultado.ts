@@ -86,6 +86,8 @@ export interface ResultadoEvolucao {
 }
 
 export interface ItemHistorico {
+  /** UUID do movimento — usado para montar o código curto no chat. */
+  id: string;
   descricao: string;
   tipo: string;
   valor: number;
@@ -104,6 +106,8 @@ export interface DiaHistorico {
 
 export interface ResultadoHistorico {
   periodo: { de: string; ate: string };
+  /** Quando a consulta filtrou por estabelecimento/descrição (ex.: Uber). */
+  filtroDescricao?: string | null;
   totalReceitas: number;
   totalDespesas: number;
   saldoPeriodo: number;

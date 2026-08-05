@@ -75,4 +75,10 @@ describe("interpretar_lancamento_rapido", () => {
       expect(resultado.descricao.toLowerCase()).toBe("farmacia");
     }
   });
+
+  it("deixa a IA interpretar mensagens com 'reais' ou 'dia N'", () => {
+    expect(
+      interpretar_lancamento_rapido("gastei 20,00 reais com 99 dia 02 no cartao azul", contexto()),
+    ).toBeNull();
+  });
 });

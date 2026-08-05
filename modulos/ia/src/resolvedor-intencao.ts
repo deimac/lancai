@@ -65,7 +65,11 @@ export class ResolvedorIntencao {
     const contaId = await this.resolver_conta_opcional(usuarioId, intencao.conta_nome);
     const cartaoId = await this.resolver_cartao_opcional(usuarioId, intencao.cartao_nome);
     const contaDestinoId = await this.resolver_conta_opcional(usuarioId, intencao.conta_destino_nome, "conta de destino");
-    const categoriaId = await this.resolver_ou_criar_categoria(usuarioId, intencao.categoria_nome, intencao.tipo_movimento);
+    const categoriaId = await this.resolver_ou_criar_categoria(
+      usuarioId,
+      intencao.categoria_nome,
+      intencao.tipo_movimento,
+    );
     const pessoaId = await this.resolver_ou_criar_pessoa(usuarioId, intencao.pessoa_nome);
 
     return {
@@ -98,11 +102,14 @@ export class ResolvedorIntencao {
     const movimentoAlvo = await this.repositorio.buscarMovimentoParaCorrecao(usuarioId, {
       descricao: intencao.referencia.descricao ?? undefined,
       dataMovimento: intencao.referencia.data_movimento ?? undefined,
+      codigo: intencao.referencia.codigo ?? undefined,
     });
     if (!movimentoAlvo) {
       throw new ErroReferenciaNaoEncontrada(
         "lançamento",
-        nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
+        intencao.referencia.codigo
+          ? `#${intencao.referencia.codigo.replace(/^#/, "")}`
+          : nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
       );
     }
 
@@ -171,6 +178,7 @@ export class ResolvedorIntencao {
       cartaoId,
       categoriaId,
       pessoaId,
+      descricao: filtros.descricao?.trim() || undefined,
       periodo: filtros.periodo ?? undefined,
     };
   }
@@ -339,22 +347,30 @@ export class ResolvedorIntencao {
    */
   async preparar_confirmacao_exclusao_movimento(
     usuarioId: string,
-    referencia: { descricao?: string | null; data_movimento?: string | null },
+    referencia: {
+      descricao?: string | null;
+      data_movimento?: string | null;
+      codigo?: string | null;
+    },
   ): Promise<{
     descricao: string;
     dataMovimento: string | null;
     quantidade: number;
     valorTotal: number;
     movimentoIds: string[];
+    codigo: string | null;
   }> {
     const movimentos = await this.repositorio.listarMovimentosParaCorrecao(usuarioId, {
       descricao: referencia.descricao ?? undefined,
       dataMovimento: referencia.data_movimento ?? undefined,
+      codigo: referencia.codigo ?? undefined,
     });
     if (movimentos.length === 0) {
       throw new ErroReferenciaNaoEncontrada(
         "lançamento",
-        nome_busca_lancamento(referencia.descricao, referencia.data_movimento),
+        referencia.codigo
+          ? `#${referencia.codigo.replace(/^#/, "")}`
+          : nome_busca_lancamento(referencia.descricao, referencia.data_movimento),
       );
     }
 
@@ -368,6 +384,7 @@ export class ResolvedorIntencao {
       quantidade: movimentos.length,
       valorTotal,
       movimentoIds: movimentos.map((item) => item.id),
+      codigo: movimentos.length === 1 ? movimentos[0]!.id : null,
     };
   }
 
@@ -379,11 +396,14 @@ export class ResolvedorIntencao {
     const movimentos = await this.repositorio.listarMovimentosParaCorrecao(contexto.usuarioId, {
       descricao: intencao.referencia.descricao ?? undefined,
       dataMovimento: intencao.referencia.data_movimento ?? undefined,
+      codigo: intencao.referencia.codigo ?? undefined,
     });
     if (movimentos.length === 0) {
       throw new ErroReferenciaNaoEncontrada(
         "lançamento",
-        nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
+        intencao.referencia.codigo
+          ? `#${intencao.referencia.codigo.replace(/^#/, "")}`
+          : nome_busca_lancamento(intencao.referencia.descricao, intencao.referencia.data_movimento),
       );
     }
 

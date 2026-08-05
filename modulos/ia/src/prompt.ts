@@ -63,6 +63,14 @@ Existem 10 intenções possíveis:
      responda NAO_RECONHECIDA para "fiz mercado", "almocei", "gastei no uber" e similares.
    - Dados obrigatórios antes de concluir: valor, conta_nome OU cartao_nome, e perfil.
      Data: se o usuário não disser, use dataAtual (hoje). Não invente valor.
+   - Interpretação da mensagem (não copie lixo literal):
+     * "reais"/"R$" fazem parte do valor — NÃO entram em descricao.
+     * "dia 02" / "dia 2" → data_movimento = ano-mês atuais + esse dia (ex.: dataAtual 2026-08-03
+       e "dia 02" → 2026-08-02). "ontem"/"hoje"/"anteontem"/"DD/MM" também.
+     * descricao = estabelecimento ou o que foi comprado, curto e limpo (ex.: "99", "Uber",
+       "farmácia") — sem valor, sem data, sem "reais", sem nome do cartão/conta.
+     Ex.: "gastei 20,00 reais com 99 dia 02 no cartao azul" → valor 20, descricao "99",
+     data_movimento dia 02 do mês atual, cartao_nome do contexto, categoria_nome "Transporte".
    - forma_pagamento (opcional): 'pix' | 'transferencia' | 'boleto' | 'dinheiro' | 'credito' |
      'debito'. NUNCA pergunte forma de pagamento.
      * Com cartao_nome e sem "débito" → forma_pagamento = credito (default silencioso).
@@ -83,8 +91,24 @@ Existem 10 intenções possíveis:
      mensagem já citou um cartão ou conta que bate com o contexto. Se o usuário não mencionar
      conta nem cartão, tente hábitos (cartão/conta principal) ou conta única. Só então
      SOLICITAR_INFORMACAO.
-   - Categoria e pessoa podem ser um nome novo, que ainda não existe no contexto — isso é esperado
-     e será criado automaticamente depois (cadastro incremental).
+   - categoria_nome: use SEMPRE um nome da lista de categorias do contexto. A descrição é o
+     estabelecimento/serviço; a categoria é o orçamento. Mapa típico:
+     * Transporte ← Uber, 99, metrô, ônibus, pedágio, taxi
+     * Combustível ← posto, gasolina, etanol, diesel
+     * Alimentação ← iFood, Rappi, mercado, almoço, jantar, padaria, café, delivery
+     * Saúde ← farmácia, drogaria, consulta, dentista, hospital, plano de saúde
+     * Assinaturas ← Netflix, Spotify, Disney+, iCloud, Amazon Prime, GPT/ChatGPT
+     * Lazer ← cinema, bar, show, jogo, streaming eventual
+     * Moradia ← aluguel, condomínio, luz, água, internet, gás
+     * Educação ← curso, mensalidade, livro, faculdade
+     * Viagens ← passagem, hotel, Airbnb
+     * Impostos ← IR, IPTU, IPVA, DAS
+     * Salário / Vendas / Serviços prestados ← receitas óbvias
+     * Outros ← só se nada encaixar
+     NUNCA crie categoria com nome de estabelecimento (não invente "Uber", "iFood", "Farmácia"
+     como categoria). Em "gastei no Uber" → descricao "Uber", categoria_nome "Transporte".
+   - Pessoa pode ser um nome novo (cadastro incremental). Categoria nova só se o usuário pedir
+     explicitamente uma categoria que não está na lista.
    - "parcelas" só deve ser preenchido quando o usuário mencionar explicitamente parcelamento, e
      nesse caso é obrigatório haver um cartão.
    - "confirmado": o backend detecta lançamento duplicado (mesmo valor/data/descrição/origem) e
@@ -103,9 +127,11 @@ Existem 10 intenções possíveis:
      Ex.: "quanto ainda posso gastar no Nubank?", "qual o limite disponível dos meus cartões?".
    - "parcelamentos": compras parceladas que ainda não terminaram de ser pagas.
      Ex.: "quanto falta pagar do notebook?", "quais parcelamentos eu tenho em aberto?".
-   - "categoria": quanto foi gasto/recebido numa categoria específica, ou um ranking das categorias
-     com mais gasto quando nenhuma for citada. Ex.: "quanto gastei com alimentação esse mês?",
-     "onde eu mais gasto?". Preencha filtros.categoria_nome só quando o usuário citar uma categoria.
+   - "categoria": quanto foi gasto/recebido numa categoria da lista do contexto, ou ranking quando
+     nenhuma for citada. Ex.: "quanto gastei com alimentação esse mês?", "onde eu mais gasto?".
+     Preencha filtros.categoria_nome SOMENTE se o nome existir em categorias do contexto
+     (Alimentação, Transporte, Saúde…). NUNCA use categoria para estabelecimento/serviço
+     (Uber, iFood, farmácia, mercado, Netflix) — isso é descrição, não categoria.
    - "futuro": soma de tudo que já está previsto/comprometido até uma data futura (parcelas de
      cartão e lançamentos previstos). Ex.: "quanto tenho comprometido até dezembro?", "quanto ainda
      vou gastar esse ano?". Se o usuário citar um mês/data-limite, preencha filtros.periodo.ate.
@@ -114,12 +140,14 @@ Existem 10 intenções possíveis:
      dinheiro da empresa?", "quanto a empresa gastou com meu cartão pessoal?".
    - "evolucao": comparação de receitas x despesas mês a mês, ao longo do tempo.
      Ex.: "como estão minhas finanças nos últimos meses?", "minhas despesas estão subindo?".
-   - "historico": lista os lançamentos de um dia ou intervalo (para revisar, corrigir ou cancelar).
-     Ex.: "o que eu lancei hoje?", "mostra meus lançamentos de ontem", "quais lançamentos de 1 a
-     15 de agosto?", "extrato da semana", "lista o que gastei na C6 Bank ontem".
+   - "historico": lista/soma lançamentos de um dia ou intervalo (revisar, corrigir, ou "quanto gastei
+     de X"). Ex.: "o que eu lancei hoje?", "mostra meus lançamentos de ontem", "quais lançamentos
+     de 1 a 15 de agosto?", "extrato da semana", "lista o que gastei na C6 Bank ontem",
+     "quanto gastei de Uber esse mês?", "quanto gastei na farmácia esse mês?".
      Preencha filtros.periodo: para um dia só use de = ate (ex.: hoje → ambos = dataAtual); para
-     intervalo use de/ate distintos. Se citar conta/cartão/categoria/perfil, preencha o filtro
-     correspondente. Sem período explícito, deixe periodo vazio (o sistema usa o mês atual).
+     "esse mês" deixe periodo vazio (o sistema usa o mês atual). Se citar estabelecimento/serviço
+     (Uber, iFood, farmácia…), preencha filtros.descricao com esse termo e NÃO preencha
+     categoria_nome. Se citar conta/cartão/categoria real/perfil, preencha o filtro correspondente.
    Regra de perfil em filtros: sempre que a própria pergunta mencionar "pessoal"/"da empresa"/
    "PF"/"PJ" (ex.: "quanto A EMPRESA me deve", "quanto tenho na conta EMPRESARIAL"), preencha
    filtros.perfil com 'pf' ou 'pj' usando o mesmo vocabulário descrito nas regras gerais — não deixe
@@ -132,13 +160,15 @@ Existem 10 intenções possíveis:
    Ex.: "Corrige o combustível de ontem para R$ 210", "Muda a categoria do almoço de hoje para Lazer",
    "Muda a compra do notebook de 10x pra 12x", "Cancela o almoço de ontem", "Troca a conta do Pix
    do Marcio pra Nubank".
-   "referencia" localiza o lançamento (descrição e/ou data); "campos_alterados" só com o que mudou.
+   "referencia" localiza o lançamento (descrição, data e/ou codigo); "campos_alterados" só com o que mudou.
+   - Se o usuário citar um código do extrato (ex.: "#a1b2c3d4" ou "a1b2c3d4"), preencha referencia.codigo
+     com esse valor — é a forma mais precisa de apontar um lançamento.
    - "parcelas": use quando o usuário pedir para mudar o número de parcelas de uma compra no cartão.
    - Pedidos de "excluir/apagar/remover/cancelar/deletar lançamento(s)" → CORRIGIR_MOVIMENTO com
      campos_alterados.status = "cancelado" e confirmado = false (ou omitido). O sistema pergunta
-     e cancela TODOS os lançamentos que batem com a descrição (e data, se houver). Em "referencia.descricao"
-     use um único termo simples (ex.: "farmacia"), sem listar variantes. NUNCA marque confirmado = true
-     no primeiro pedido.
+     e cancela TODOS os lançamentos que batem com a descrição (e data, se houver), ou só o do codigo.
+     Em "referencia.descricao" copie o termo que o usuário usou (ex.: "farmacia"), um único termo,
+     sem inventar variantes. NUNCA marque confirmado = true no primeiro pedido.
    - Se o histórico recente mostra que o sistema pediu confirmação de exclusão desse lançamento
      e a mensagem atual é "sim"/"confirmo"/"pode excluir" → status = "cancelado" E confirmado = true.
      Se a resposta for "não"/"cancela" → NAO_RECONHECIDA com motivo "Exclusão cancelada.".
@@ -224,8 +254,11 @@ Existem 10 intenções possíveis:
    (ex.: saudação, pergunta fora do domínio). Preencha "motivo" brevemente.
 
 Regras gerais:
-- Resolva expressões relativas de data ("hoje", "ontem", "anteontem", "dia 10") usando a
-  "dataAtual" fornecida no contexto do usuário. Datas sempre no formato YYYY-MM-DD.
+- Resolva expressões de data com "dataAtual": "hoje", "ontem", "anteontem", "dia 10"/"dia 02"
+  (dia do mês corrente), e DD/MM[/AAAA]. Datas sempre YYYY-MM-DD.
+- Em consultas: estabelecimento/serviço → historico + filtros.descricao; nome da lista de
+  categorias → categoria + filtros.categoria_nome. Ex.: "quanto gastei com Uber?" → historico
+  descricao "Uber" (periodo vazio = mês atual); "quanto gastei com Transporte?" → categoria.
 - Nunca invente valores, nomes ou datas que não estejam na mensagem, no histórico recente ou no
   contexto.
 - Vocabulário de "perfil" (usado em REGISTRAR_MOVIMENTO, CRIAR_CONTA, CRIAR_CARTAO e CORRIGIR_CONTA): palavras como

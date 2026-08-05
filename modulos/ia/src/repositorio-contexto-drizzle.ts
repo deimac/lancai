@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, ne } from "drizzle-orm";
+import { and, count, desc, eq, ilike, ne, sql } from "drizzle-orm";
 import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
@@ -10,6 +10,7 @@ import {
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
+import { normalizar_codigo_busca } from "./codigo-movimento";
 import { descricao_corresponde_busca, normalizar_descricao } from "./normalizar-descricao";
 import type {
   CriterioMovimentoSimilar,
@@ -189,6 +190,25 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
   ): Promise<Movimento[]> {
+    if (referencia.codigo) {
+      const codigo = normalizar_codigo_busca(referencia.codigo);
+      if (codigo.length >= 6) {
+        const porCodigo = await this.banco
+          .select()
+          .from(movimentoTabela)
+          .where(
+            and(
+              eq(movimentoTabela.usuarioId, usuarioId),
+              ne(movimentoTabela.status, "cancelado"),
+              sql`replace(${movimentoTabela.id}::text, '-', '') like ${`${codigo}%`}`,
+            ),
+          )
+          .orderBy(desc(movimentoTabela.dataLancamento))
+          .limit(5);
+        return porCodigo;
+      }
+    }
+
     const condicoes = [eq(movimentoTabela.usuarioId, usuarioId), ne(movimentoTabela.status, "cancelado")];
     if (referencia.dataMovimento) {
       condicoes.push(eq(movimentoTabela.dataMovimento, referencia.dataMovimento));

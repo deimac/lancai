@@ -96,6 +96,10 @@ export function interpretar_lancamento_rapido(
   const texto = mensagem.trim();
   if (!texto || FORA_DO_ATALHO.test(texto)) return null;
 
+  // Ambíguo demais para atalho — a IA interpreta descrição/data/categoria.
+  if (/\bdia\s+\d{1,2}\b/i.test(texto) && !/\d{1,2}\/\d{1,2}/.test(texto)) return null;
+  if (/\breais?\b/i.test(texto)) return null;
+
   const tipo = inferir_tipo_movimento(texto);
   if (!tipo) return null;
 

@@ -479,10 +479,55 @@ describe("ModuloRelatorios", () => {
       expect(dados.dias.map((dia) => dia.data)).toEqual(["2026-08-15", "2026-08-14"]);
       expect(dados.dias[1]?.itens.map((item) => item.descricao)).toEqual(["Uber", "Pix João"]);
       expect(dados.dias[0]?.itens[0]).toMatchObject({
+        id: expect.any(String),
         descricao: "Almoço",
         contaNome: "C6 Bank",
         cartaoNome: null,
       });
+    });
+
+    it("filtra por descrição/estabelecimento (ex.: Uber)", async () => {
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Uber",
+          valor: "32.00",
+          dataMovimento: "2026-08-10",
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Uber Trip",
+          valor: "18.50",
+          dataMovimento: "2026-08-12",
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Almoço",
+          valor: "45.00",
+          dataMovimento: "2026-08-11",
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, {
+          descricao: "uber",
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+
+      expect(dados.totalItens).toBe(2);
+      expect(dados.totalDespesas).toBe(50.5);
+      expect(dados.dias.flatMap((dia) => dia.itens.map((item) => item.descricao)).sort()).toEqual([
+        "Uber",
+        "Uber Trip",
+      ]);
     });
 
     it("usa o mês atual quando o período não é informado e corta em 40 itens", async () => {

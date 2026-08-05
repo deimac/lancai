@@ -153,6 +153,7 @@ describe("montar_resposta_visao", () => {
             data: "2026-08-15",
             itens: [
               {
+                id: "aaaaaaaa-1111-2222-3333-444455556666",
                 descricao: "Almoço",
                 tipo: "despesa",
                 valor: 45,
@@ -167,6 +168,7 @@ describe("montar_resposta_visao", () => {
             data: "2026-08-14",
             itens: [
               {
+                id: "bbbbbbbb-1111-2222-3333-444455556666",
                 descricao: "Uber",
                 tipo: "despesa",
                 valor: 32,
@@ -184,10 +186,10 @@ describe("montar_resposta_visao", () => {
     expect(texto).toContain("Lançamentos de 14/08/2026 a 15/08/2026 (3):");
     expect(texto).toContain(`Receitas ${formatarMoeda(2500)}`);
     expect(texto).toContain("15/08/2026");
-    expect(texto).toContain("- Almoço · despesa ·");
+    expect(texto).toContain("- #aaaaaaaa · Almoço · despesa ·");
     expect(texto).toContain("C6 Bank");
     expect(texto).toContain("cartão Nubank");
-    expect(texto).toContain("Cancela o almoço");
+    expect(texto).toContain('Cancela o #a1b2c3d4');
   });
 
   it("informa quando o histórico do período está vazio", () => {

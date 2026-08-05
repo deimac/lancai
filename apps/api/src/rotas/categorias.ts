@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
 import { categoria, obter_banco } from "@lancai/banco";
+import { garantir_categorias_padrao, RepositorioContextoDrizzle } from "@lancai/ia";
 import { schemaCriarCategoria } from "@lancai/tipos";
 
 export async function registrar_rotas_categoria(app: FastifyInstance) {
@@ -15,7 +15,7 @@ export async function registrar_rotas_categoria(app: FastifyInstance) {
     const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
     if (usuarioId) {
-      return banco.select().from(categoria).where(eq(categoria.usuarioId, usuarioId));
+      return garantir_categorias_padrao(usuarioId, new RepositorioContextoDrizzle());
     }
     return banco.select().from(categoria);
   });

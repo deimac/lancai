@@ -12,6 +12,8 @@
     "dev:api": "pnpm --filter @lancai/api dev",
     "dev:web": "pnpm --filter @lancai/web dev",
     "build": "pnpm -r build",
+    "build:api": "pnpm --filter @lancai/api build",
+    "start:api": "pnpm --filter @lancai/api start",
     "test": "pnpm -r test",
     "lint": "eslint .",
     "format": "prettier --write .",

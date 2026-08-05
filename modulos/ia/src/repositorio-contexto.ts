@@ -4,6 +4,8 @@ import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao,
 export interface ReferenciaMovimentoParaCorrecao {
   descricao?: string;
   dataMovimento?: string;
+  /** Código curto do lançamento (`#a1b2c3d4` ou hex). */
+  codigo?: string;
 }
 
 export interface CriterioMovimentoSimilar {

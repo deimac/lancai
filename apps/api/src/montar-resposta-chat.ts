@@ -1,7 +1,12 @@
 import { formatarMoeda } from "@lancai/tipos";
-import type { IntencaoDetectada } from "@lancai/tipos";
+import type { IntencaoCorrigirMovimento, IntencaoDetectada } from "@lancai/tipos";
 import type { MotorFinanceiro } from "@lancai/financeiro";
-import { ErroEntidadeJaExiste, type ResolvedorIntencao } from "@lancai/ia";
+import {
+  ErroEntidadeJaExiste,
+  extrair_codigo_da_mensagem,
+  preferir_termo_referencia,
+  type ResolvedorIntencao,
+} from "@lancai/ia";
 import type { ModuloRelatorios } from "@lancai/relatorios";
 import {
   montar_confirmacao_duplicata_lancamento,
@@ -22,6 +27,33 @@ interface ContextoResposta {
   /** Contagens ANTES deste turno — usadas para saber se é a 1ª conta/cartão (onboarding). */
   totalContas: number;
   totalCartoes: number;
+  /** Mensagem original do usuário — usada para extrair termo/código da referência. */
+  mensagem?: string;
+}
+
+function ajustar_referencia_correcao(
+  intencao: IntencaoCorrigirMovimento,
+  mensagem?: string,
+): IntencaoCorrigirMovimento {
+  if (!mensagem?.trim()) return intencao;
+
+  const codigo = extrair_codigo_da_mensagem(mensagem) ?? intencao.referencia.codigo ?? null;
+  // Com código, a descrição do usuário não importa para a busca — e pode ser o próprio hex.
+  const termo = codigo ? null : preferir_termo_referencia(mensagem, intencao.referencia.descricao);
+  const descricaoBruta = codigo
+    ? null
+    : termo && termo !== "não especificado"
+      ? termo
+      : (intencao.referencia.descricao ?? null);
+
+  return {
+    ...intencao,
+    referencia: {
+      ...intencao.referencia,
+      codigo,
+      descricao: descricaoBruta,
+    },
+  };
 }
 
 function capitalizar(texto: string): string {
@@ -94,21 +126,24 @@ export async function montar_resposta_chat(
     }
 
     case "CORRIGIR_MOVIMENTO": {
-      if (intencao.campos_alterados.status === "cancelado" && intencao.campos_alterados.confirmado !== true) {
+      const correcao = ajustar_referencia_correcao(intencao, contexto.mensagem);
+
+      if (correcao.campos_alterados.status === "cancelado" && correcao.campos_alterados.confirmado !== true) {
         const previa = await contexto.resolvedor.preparar_confirmacao_exclusao_movimento(
           contexto.usuarioId,
-          intencao.referencia,
+          correcao.referencia,
         );
         return montar_confirmacao_exclusao_lancamento(
           previa.descricao,
           previa.dataMovimento,
           previa.valorTotal,
           previa.quantidade,
+          previa.codigo,
         );
       }
 
-      if (intencao.campos_alterados.status === "cancelado" && intencao.campos_alterados.confirmado === true) {
-        const lote = await contexto.resolvedor.resolver_cancelar_movimentos(intencao, referenciaResolucao);
+      if (correcao.campos_alterados.status === "cancelado" && correcao.campos_alterados.confirmado === true) {
+        const lote = await contexto.resolvedor.resolver_cancelar_movimentos(correcao, referenciaResolucao);
         for (const entrada of lote.entradas) {
           await contexto.motor.corrigir_movimento(entrada);
         }
@@ -118,10 +153,10 @@ export async function montar_resposta_chat(
         return `${lote.entradas.length} lançamentos de "${lote.descricao}" cancelados.`;
       }
 
-      const entrada = await contexto.resolvedor.resolver_corrigir_movimento(intencao, referenciaResolucao);
+      const entrada = await contexto.resolvedor.resolver_corrigir_movimento(correcao, referenciaResolucao);
       const movimentoAtualizado = await contexto.motor.corrigir_movimento(entrada);
-      if (intencao.campos_alterados.parcelas != null) {
-        return `Lançamento "${movimentoAtualizado.descricao}" atualizado — agora em ${intencao.campos_alterados.parcelas}x (total ${formatarMoeda(movimentoAtualizado.valor)}).`;
+      if (correcao.campos_alterados.parcelas != null) {
+        return `Lançamento "${movimentoAtualizado.descricao}" atualizado — agora em ${correcao.campos_alterados.parcelas}x (total ${formatarMoeda(movimentoAtualizado.valor)}).`;
       }
       return `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
     }

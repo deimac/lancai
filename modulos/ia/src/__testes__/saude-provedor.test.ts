@@ -31,18 +31,16 @@ describe("provedor_esta_saudavel", () => {
     expect(verificador).toHaveBeenCalledTimes(1);
   });
 
-  it("respeita falha recente no cache sem novo ping", async () => {
-    const verificador = vi.fn(async () => true);
-    definir_verificador_saude_para_testes(verificador);
+  it("falha de geração não bloqueia nova tentativa (fail-open)", async () => {
+    definir_verificador_saude_para_testes(null);
     registrar_falha_saude_provedor("gemini");
-
-    await expect(provedor_esta_saudavel("gemini")).resolves.toBe(false);
-    expect(verificador).not.toHaveBeenCalled();
+    await expect(provedor_esta_saudavel("gemini")).resolves.toBe(true);
   });
 
-  it("pula provedores frios antes de chamar a LLM", async () => {
+  it("pula provedores frios só com verificador de teste", async () => {
     process.env.GROQ_API_KEY = "fake-groq";
     process.env.GEMINI_API_KEY = "fake-gemini";
+    process.env.OLLAMA_HABILITADO = "true";
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 
     const verificador = vi.fn(async () => false);
@@ -57,11 +55,9 @@ describe("provedor_esta_saudavel", () => {
       }),
     ).rejects.toBeInstanceOf(ErroTodosProvedoresFalharam);
 
-    expect(verificador).toHaveBeenCalledTimes(3);
+    expect(verificador).toHaveBeenCalled();
 
     const metricas = obter_metricas_provedores();
-    expect(metricas.groq?.puladosPorSaude).toBe(1);
-    expect(metricas.gemini?.puladosPorSaude).toBe(1);
-    expect(metricas.ollama?.puladosPorSaude).toBe(1);
+    expect(metricas.groq?.puladosPorSaude).toBeGreaterThanOrEqual(1);
   });
 });

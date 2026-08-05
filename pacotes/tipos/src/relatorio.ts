@@ -19,6 +19,8 @@ export const schemaFiltrosVisaoResolvidos = z.object({
   cartaoId: z.string().uuid().optional(),
   categoriaId: z.string().uuid().optional(),
   pessoaId: z.string().uuid().optional(),
+  /** Filtro por descrição/estabelecimento (substring normalizada). */
+  descricao: z.string().min(1).optional(),
   periodo: z.object({ de: dataISOSchema, ate: dataISOSchema }).optional(),
 });
 export type FiltrosVisaoResolvidos = z.infer<typeof schemaFiltrosVisaoResolvidos>;

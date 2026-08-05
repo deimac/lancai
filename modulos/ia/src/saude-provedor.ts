@@ -3,6 +3,8 @@ import type { ProvedorIA } from "./provedores-ia";
 interface EntradaCacheSaude {
   saudavel: boolean;
   verificadoEm: number;
+  /** `falha` = geração real falhou; `ping` = health-check proativo. */
+  origem: "falha" | "ping" | "sucesso";
 }
 
 interface MetricasProvedor {
@@ -14,7 +16,7 @@ interface MetricasProvedor {
 const cacheSaude = new Map<ProvedorIA, EntradaCacheSaude>();
 const metricas = new Map<ProvedorIA, MetricasProvedor>();
 
-/** Injetável nos testes — evita rede. */
+/** Injetável nos testes — evita rede. Só este caminho pode forçar skip. */
 type VerificadorSaude = (provedor: ProvedorIA) => Promise<boolean>;
 let verificadorParaTestes: VerificadorSaude | null = null;
 
@@ -52,12 +54,12 @@ export function obter_metricas_provedores(): Record<string, MetricasProvedor> {
 
 export function registrar_atendimento_provedor(provedor: ProvedorIA): void {
   metricas_de(provedor).atendimentos += 1;
-  cacheSaude.set(provedor, { saudavel: true, verificadoEm: Date.now() });
+  cacheSaude.set(provedor, { saudavel: true, verificadoEm: Date.now(), origem: "sucesso" });
 }
 
 export function registrar_falha_saude_provedor(provedor: ProvedorIA): void {
   metricas_de(provedor).falhas += 1;
-  cacheSaude.set(provedor, { saudavel: false, verificadoEm: Date.now() });
+  cacheSaude.set(provedor, { saudavel: false, verificadoEm: Date.now(), origem: "falha" });
 }
 
 export function registrar_pulado_por_saude(provedor: ProvedorIA): void {
@@ -66,21 +68,43 @@ export function registrar_pulado_por_saude(provedor: ProvedorIA): void {
 
 /**
  * Health-check leve com cache TTL.
- * Evita gastar timeout completo da request quando o provedor já está morto.
+ *
+ * Em produção é fail-open: ping/falha recente NÃO bloqueiam a tentativa real
+ * (o circuit breaker cuida de instabilidade). Bloquear aqui causava 503 em
+ * cascata depois de um timeout.
+ *
+ * Só o verificador de testes pode forçar "frio".
  */
 export async function provedor_esta_saudavel(provedor: ProvedorIA): Promise<boolean> {
-  const agora = Date.now();
-  const cached = cacheSaude.get(provedor);
-  if (cached && agora - cached.verificadoEm < ttl_saude_ms()) {
-    return cached.saudavel;
+  if (verificadorParaTestes) {
+    const agora = Date.now();
+    const cached = cacheSaude.get(provedor);
+    if (cached && agora - cached.verificadoEm < ttl_saude_ms()) {
+      return cached.saudavel;
+    }
+    const saudavel = await verificadorParaTestes(provedor);
+    cacheSaude.set(provedor, {
+      saudavel,
+      verificadoEm: agora,
+      origem: saudavel ? "ping" : "falha",
+    });
+    return saudavel;
   }
 
-  const saudavel = verificadorParaTestes
-    ? await verificadorParaTestes(provedor)
-    : await ping_provedor(provedor);
+  const agora = Date.now();
+  const cached = cacheSaude.get(provedor);
+  if (cached?.saudavel && agora - cached.verificadoEm < ttl_saude_ms()) {
+    return true;
+  }
 
-  cacheSaude.set(provedor, { saudavel, verificadoEm: agora });
-  return saudavel;
+  const pingOk = await ping_provedor(provedor);
+  cacheSaude.set(provedor, {
+    saudavel: pingOk,
+    verificadoEm: agora,
+    origem: pingOk ? "sucesso" : "ping",
+  });
+  // Fail-open: mesmo com ping ruim, tenta a chamada (timeout/circuit decidem).
+  return true;
 }
 
 async function ping_provedor(provedor: ProvedorIA): Promise<boolean> {

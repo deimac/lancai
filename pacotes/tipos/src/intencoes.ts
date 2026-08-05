@@ -96,6 +96,8 @@ export type TipoVisao = z.infer<typeof tipoVisaoSchema>;
 
 export const schemaFiltrosVisao = z.object({
   categoria_nome: z.string().min(1).nullable().optional(),
+  /** Termo de descrição/estabelecimento (ex.: "Uber", "farmácia") — não é categoria. */
+  descricao: z.string().min(1).nullable().optional(),
   conta_nome: z.string().min(1).nullable().optional(),
   cartao_nome: z.string().min(1).nullable().optional(),
   pessoa_nome: z.string().min(1).nullable().optional(),
@@ -119,6 +121,8 @@ export const schemaIntencaoCorrigirMovimento = z.object({
   referencia: z.object({
     descricao: z.string().min(1).nullable().optional(),
     data_movimento: dataISOSchema.nullable().optional(),
+    /** Código curto do lançamento (ex.: "a1b2c3d4" ou "#a1b2c3d4"). */
+    codigo: z.string().min(4).max(36).nullable().optional(),
   }),
   campos_alterados: z.object({
     valor: z.number().positive().nullable().optional(),

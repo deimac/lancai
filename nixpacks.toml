@@ -1,0 +1,15 @@
+# Coolify / Nixpacks: monorepo LançAI — sobe só a API.
+# O `build` raiz também compila o web; no VPS da API isso não é necessário
+# e o start precisa de `tsx` (código TypeScript nos workspaces).
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm"]
+
+[phases.install]
+cmds = ["pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["pnpm build:api"]
+
+[start]
+cmd = "pnpm start:api"
