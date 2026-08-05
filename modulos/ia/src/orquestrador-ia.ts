@@ -106,36 +106,63 @@ function registrar_falha_circuito(provedor: ProvedorIA): void {
   circuitos.set(provedor, { falhasSeguidas, abertoAte });
 }
 
+function normalizar_nome_provedor(valor: string | undefined): ProvedorIA | null {
+  const nome = (valor ?? "").trim().toLowerCase();
+  return (PROVEDORES_IA as readonly string[]).includes(nome) ? (nome as ProvedorIA) : null;
+}
+
 export function obter_ordem_fallback_do_ambiente(): ProvedorIA[] {
   const bruto = process.env.LLM_ORDEM_FALLBACK;
-  const provedorPadrao = process.env.LLM_PROVEDOR_PADRAO as ProvedorIA | undefined;
 
   const ordem = bruto
     ? bruto
         .split(",")
-        .map((item) => item.trim())
-        .filter((item): item is ProvedorIA => (PROVEDORES_IA as readonly string[]).includes(item))
+        .map((item) => normalizar_nome_provedor(item))
+        .filter((item): item is ProvedorIA => item !== null)
     : [...PROVEDORES_IA];
 
-  if (provedorPadrao && ordem.includes(provedorPadrao)) {
-    return [provedorPadrao, ...ordem.filter((provedor) => provedor !== provedorPadrao)];
+  // Groq é sempre o primeiro provedor (WhatsApp / produção).
+  // LLM_PROVEDOR_PADRAO não pode mais promover Gemini/outros na frente.
+  if (ordem.includes("groq")) {
+    return ["groq", ...ordem.filter((provedor) => provedor !== "groq")];
   }
-  return ordem;
+  return ordem.length > 0 ? ordem : ["groq", ...PROVEDORES_IA.filter((p) => p !== "groq")];
+}
+
+function chave_provedor_presente(valor: string | undefined): boolean {
+  return Boolean(valor?.trim());
 }
 
 function provedor_disponivel(provedor: ProvedorIA): boolean {
   switch (provedor) {
     case "gemini":
-      return Boolean(process.env.GEMINI_API_KEY);
+      return chave_provedor_presente(process.env.GEMINI_API_KEY);
     case "groq":
-      return Boolean(process.env.GROQ_API_KEY);
+      return chave_provedor_presente(process.env.GROQ_API_KEY);
     case "openrouter":
-      return Boolean(process.env.OPENROUTER_API_KEY);
+      return chave_provedor_presente(process.env.OPENROUTER_API_KEY);
     case "openai":
-      return Boolean(process.env.OPENAI_API_KEY);
+      return chave_provedor_presente(process.env.OPENAI_API_KEY);
     case "ollama":
-      return ollama_habilitado() && Boolean(process.env.OLLAMA_BASE_URL);
+      return ollama_habilitado() && chave_provedor_presente(process.env.OLLAMA_BASE_URL);
   }
+}
+
+/** Resumo seguro (sem chaves) para logs de boot / diagnóstico no Coolify. */
+export function resumir_config_provedores_ia(): {
+  ordem: ProvedorIA[];
+  disponiveis: ProvedorIA[];
+  chaves: Record<ProvedorIA, boolean>;
+} {
+  const ordem = obter_ordem_fallback_do_ambiente();
+  const chaves = Object.fromEntries(
+    PROVEDORES_IA.map((provedor) => [provedor, provedor_disponivel(provedor)]),
+  ) as Record<ProvedorIA, boolean>;
+  return {
+    ordem,
+    disponiveis: ordem.filter(provedor_disponivel),
+    chaves,
+  };
 }
 
 function obter_modelo(provedor: ProvedorIA) {
@@ -198,22 +225,34 @@ function eh_erro_transitorio_de_geracao(erro: unknown): boolean {
  * Só gera objetos estruturados — a IA nunca tem acesso de escrita ao banco (ADR-003).
  */
 export class OrquestradorIA {
-  private readonly ordemFallback: ProvedorIA[];
+  /** Se definido no construtor (testes), fixa a ordem; senão lê o env a cada chamada. */
+  private readonly ordemFixa: ProvedorIA[] | null;
 
   constructor(ordemFallback?: ProvedorIA[]) {
-    this.ordemFallback = ordemFallback ?? obter_ordem_fallback_do_ambiente();
+    this.ordemFixa = ordemFallback ?? null;
+  }
+
+  private ordem_atual(): ProvedorIA[] {
+    return this.ordemFixa ?? obter_ordem_fallback_do_ambiente();
   }
 
   async gerar_objeto_estruturado<T>(entrada: EntradaGerarObjetoEstruturado<T>): Promise<T> {
-    const provedoresDisponiveis = this.ordemFallback.filter(provedor_disponivel);
+    const ordem = this.ordem_atual();
+    const provedoresDisponiveis = ordem.filter(provedor_disponivel);
     const detalhesFalha: Array<{ provedor: string; erro: unknown }> = [];
 
     if (provedoresDisponiveis.length === 0) {
+      console.error("[ia] nenhum provedor com chave configurada", resumir_config_provedores_ia());
       throw new ErroTodosProvedoresFalharam(detalhesFalha);
     }
 
+    console.info(
+      `[ia] tentando provedores: ${provedoresDisponiveis.join(" → ")} (ordem: ${ordem.join(",")})`,
+    );
+
     for (const provedor of provedoresDisponiveis) {
       if (circuito_esta_aberto(provedor)) {
+        console.warn(`[ia] pulando ${provedor}: circuito aberto`);
         detalhesFalha.push({
           provedor,
           erro: new Error(`Circuito aberto — pulando ${provedor} temporariamente`),
@@ -224,6 +263,7 @@ export class OrquestradorIA {
       const saudavel = await provedor_esta_saudavel(provedor);
       if (!saudavel) {
         registrar_pulado_por_saude(provedor);
+        console.warn(`[ia] pulando ${provedor}: health-check`);
         detalhesFalha.push({
           provedor,
           erro: new Error(`Health-check falhou — pulando ${provedor}`),
@@ -236,6 +276,7 @@ export class OrquestradorIA {
 
       for (let tentativa = 1; tentativa <= TENTATIVAS_POR_PROVEDOR; tentativa++) {
         try {
+          console.info(`[ia] chamando ${provedor} (tentativa ${tentativa}/${TENTATIVAS_POR_PROVEDOR})`);
           const abortSignal = AbortSignal.timeout(timeout_por_tentativa_ms(provedor));
 
           // Ollama 3B em CPU: JSON Schema enorme (anyOf) derruba o runner.
@@ -253,6 +294,7 @@ Responda com UM único objeto JSON válido. Sem markdown, sem texto fora do JSON
             const objeto = entrada.schema.parse(bruto);
             registrar_sucesso_circuito(provedor);
             registrar_atendimento_provedor(provedor);
+            console.info(`[ia] sucesso com ${provedor}`);
             return objeto;
           }
 
@@ -267,9 +309,12 @@ Responda com UM único objeto JSON válido. Sem markdown, sem texto fora do JSON
           });
           registrar_sucesso_circuito(provedor);
           registrar_atendimento_provedor(provedor);
+          console.info(`[ia] sucesso com ${provedor}`);
           return resultado.object;
         } catch (erro) {
           ultimoErro = erro;
+          const msg = erro instanceof Error ? erro.message : String(erro);
+          console.warn(`[ia] falha ${provedor} tentativa ${tentativa}: ${msg.slice(0, 240)}`);
           if (tentativa < TENTATIVAS_POR_PROVEDOR && eh_erro_transitorio_de_geracao(erro)) {
             continue;
           }
@@ -282,6 +327,13 @@ Responda com UM único objeto JSON válido. Sem markdown, sem texto fora do JSON
       detalhesFalha.push({ provedor, erro: ultimoErro });
     }
 
+    console.error(
+      "[ia] todos falharam:",
+      detalhesFalha.map((item) => ({
+        provedor: item.provedor,
+        erro: item.erro instanceof Error ? item.erro.message.slice(0, 200) : String(item.erro).slice(0, 200),
+      })),
+    );
     throw new ErroTodosProvedoresFalharam(detalhesFalha);
   }
 }

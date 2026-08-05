@@ -1,8 +1,21 @@
 import "./ambiente";
+import { resumir_config_provedores_ia } from "@lancai/ia";
 import { criar_servidor } from "./servidor";
 
 const app = criar_servidor();
 const porta = Number(process.env.PORTA_API ?? 3333);
+const llm = resumir_config_provedores_ia();
+app.log.info(
+  {
+    ordem: llm.ordem,
+    disponiveis: llm.disponiveis,
+    chaves: llm.chaves,
+  },
+  "[ia] configuração de provedores no boot",
+);
+if (!llm.chaves.groq) {
+  app.log.warn("[ia] GROQ_API_KEY ausente neste processo — o Coolify precisa expor a var em Runtime");
+}
 
 app
   .listen({ port: porta, host: "0.0.0.0" })
