@@ -544,4 +544,33 @@ export class ResolvedorIntencao {
     const pessoa = existente ?? (await this.repositorio.criarPessoa(usuarioId, nome, "cliente"));
     return pessoa.id;
   }
+
+  /** Resolve categoria por nome (cria se não existir) — orçamento / recorrência. */
+  async resolver_categoria_nome(
+    usuarioId: string,
+    nome: string | null | undefined,
+    tipoSugerido: "receita" | "despesa" | "ambos" = "despesa",
+  ): Promise<{ id: string; nome: string } | null> {
+    if (!nome?.trim()) return null;
+    const categoria = await this.buscar_ou_criar_categoria(usuarioId, nome.trim(), tipoSugerido);
+    return { id: categoria.id, nome: categoria.nome };
+  }
+
+  /** Só busca categoria existente (consulta de orçamento). */
+  async buscar_categoria_nome(
+    usuarioId: string,
+    nome: string | null | undefined,
+  ): Promise<{ id: string; nome: string } | null> {
+    if (!nome?.trim()) return null;
+    const categoria = await this.repositorio.buscarCategoriaPorNome(usuarioId, nome.trim());
+    return categoria ? { id: categoria.id, nome: categoria.nome } : null;
+  }
+
+  async resolver_conta_nome(usuarioId: string, nome: string | null | undefined): Promise<string | undefined> {
+    return this.resolver_conta_opcional(usuarioId, nome);
+  }
+
+  async resolver_cartao_nome(usuarioId: string, nome: string | null | undefined): Promise<string | undefined> {
+    return this.resolver_cartao_opcional(usuarioId, nome);
+  }
 }

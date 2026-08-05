@@ -1,4 +1,5 @@
 import { EvolutionService } from "@lancai/evolution";
+import type { IntencaoDetectada } from "@lancai/tipos";
 import { buscar_usuario_por_whatsapp } from "./identificar-usuario-whatsapp";
 import { processar_turno_conversa } from "./processar-turno-conversa";
 import { eh_jid_grupo, extrair_telefone_whatsapp } from "./telefone-whatsapp";
@@ -20,6 +21,8 @@ export type EntradaMensagemWhatsApp = {
   remoteJid: string;
   texto: string;
   fromMe?: boolean;
+  /** Visão já extraiu a intenção (foto/PDF). */
+  intencaoPrevia?: IntencaoDetectada;
 };
 
 export type ResultadoMensagemWhatsApp = {
@@ -45,7 +48,7 @@ export async function processar_mensagem_whatsapp(
   }
 
   const texto = entrada.texto.trim();
-  if (!texto) {
+  if (!texto && !entrada.intencaoPrevia) {
     return { processado: false, motivo: "sem_texto" };
   }
 
@@ -64,8 +67,9 @@ export async function processar_mensagem_whatsapp(
 
   const turno = await processar_turno_conversa({
     usuarioId: usuario.id,
-    mensagem: texto,
+    mensagem: texto || "(mídia)",
     reutilizarSessaoAtiva: true,
+    intencaoPrevia: entrada.intencaoPrevia,
   });
 
   return {
@@ -98,11 +102,14 @@ const MSG_FALHA_WHATSAPP =
   "Tive uma instabilidade ao processar sua mensagem. Pode tentar de novo em instantes?";
 
 /** Aviso fixo ao usuário após falha de turno (sem chamar LLM). */
-export async function avisar_falha_whatsapp(remoteJid: string): Promise<void> {
+export async function avisar_falha_whatsapp(
+  remoteJid: string,
+  texto = MSG_FALHA_WHATSAPP,
+): Promise<void> {
   const numero = extrair_telefone_whatsapp(remoteJid);
   if (!numero) return;
   await obter_evolution().enviarMensagemWhatsApp({
     numero,
-    texto: MSG_FALHA_WHATSAPP,
+    texto,
   });
 }

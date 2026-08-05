@@ -40,5 +40,16 @@ describe("ramos-intencao", () => {
         intencao_detectada: { intencao: "CONSULTAR_VISAO", tipo_visao: "saldos", filtros: {} },
       }).success,
     ).toBe(false);
+
+    const orcamento = schema_por_ramo("orcamento");
+    expect(
+      orcamento.safeParse({
+        intencao_detectada: {
+          intencao: "DEFINIR_ORCAMENTO",
+          valor_limite: 500,
+          categoria_nome: "alimentação",
+        },
+      }).success,
+    ).toBe(true);
   });
 });

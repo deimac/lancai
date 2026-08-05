@@ -7,6 +7,7 @@ import {
   preferir_termo_referencia,
   type ResolvedorIntencao,
 } from "@lancai/ia";
+import type { Memoria } from "@lancai/memoria";
 import type { ModuloRelatorios } from "@lancai/relatorios";
 import {
   montar_confirmacao_duplicata_lancamento,
@@ -15,6 +16,19 @@ import {
 } from "./montar-confirmacao-exclusao";
 import { montar_pedido_senha_cartao } from "./montar-pedido-senha-cartao";
 import { montar_resposta_visao } from "./montar-resposta-visao";
+import { aprender_habitos_apos_lancamento } from "./servicos/aprender-habitos-lancamento";
+import {
+  definir_orcamento,
+  formatar_status_orcamentos,
+  listar_status_orcamentos,
+  texto_alerta_orcamento_apos_despesa,
+} from "./servicos/orcamento-servico";
+import {
+  cancelar_recorrencia,
+  criar_recorrencia,
+  formatar_lista_recorrencias,
+  listar_recorrencias,
+} from "./servicos/recorrencia-servico";
 
 interface ContextoResposta {
   usuarioId: string;
@@ -22,6 +36,7 @@ interface ContextoResposta {
   resolvedor: ResolvedorIntencao;
   motor: MotorFinanceiro;
   relatorios: ModuloRelatorios;
+  memoria?: Memoria;
   /** Data de hoje (YYYY-MM-DD) — usada pelo ModuloRelatorios para períodos padrão (mês atual, últimos meses etc.). */
   dataAtual: string;
   /** Contagens ANTES deste turno — usadas para saber se é a 1ª conta/cartão (onboarding). */
@@ -38,7 +53,6 @@ function ajustar_referencia_correcao(
   if (!mensagem?.trim()) return intencao;
 
   const codigo = extrair_codigo_da_mensagem(mensagem) ?? intencao.referencia.codigo ?? null;
-  // Com código, a descrição do usuário não importa para a busca — e pode ser o próprio hex.
   const termo = codigo ? null : preferir_termo_referencia(mensagem, intencao.referencia.descricao);
   const descricaoBruta = codigo
     ? null
@@ -111,18 +125,35 @@ export async function montar_resposta_chat(
       const resultado = await contexto.motor.criar_movimento(entrada);
       const viaForma = rotulo_forma_pagamento(entrada.formaPagamento);
 
+      if (contexto.memoria) {
+        await aprender_habitos_apos_lancamento(contexto.memoria, contexto.usuarioId, entrada, {
+          contaNome: intencao.conta_nome,
+          cartaoNome: intencao.cartao_nome,
+          categoriaNome: intencao.categoria_nome,
+        });
+      }
+
+      let base: string;
       if (resultado.parcelas.length > 1) {
         const primeiraParcela = resultado.parcelas[0];
-        return `Compra de ${formatarMoeda(entrada.valor)} registrada em ${resultado.parcelas.length}x de ${formatarMoeda(
+        base = `Compra de ${formatarMoeda(entrada.valor)} registrada em ${resultado.parcelas.length}x de ${formatarMoeda(
           primeiraParcela?.valor ?? "0",
         )} — "${entrada.descricao}"${viaForma}.`;
+      } else if (resultado.movimentos.length === 2) {
+        base = `Transferência de ${formatarMoeda(entrada.valor)} registrada com sucesso${viaForma}.`;
+      } else {
+        base = `${capitalizar(entrada.tipo)} de ${formatarMoeda(entrada.valor)} registrada em "${entrada.descricao}" (${entrada.dataMovimento})${viaForma}.`;
       }
 
-      if (resultado.movimentos.length === 2) {
-        return `Transferência de ${formatarMoeda(entrada.valor)} registrada com sucesso${viaForma}.`;
+      if (entrada.tipo === "despesa") {
+        const alerta = await texto_alerta_orcamento_apos_despesa({
+          usuarioId: contexto.usuarioId,
+          dataAtual: contexto.dataAtual,
+          categoriaId: entrada.categoriaId,
+        });
+        if (alerta) return `${base}\n\n${alerta}`;
       }
-
-      return `${capitalizar(entrada.tipo)} de ${formatarMoeda(entrada.valor)} registrada em "${entrada.descricao}" (${entrada.dataMovimento})${viaForma}.`;
+      return base;
     }
 
     case "CORRIGIR_MOVIMENTO": {
@@ -167,6 +198,80 @@ export async function montar_resposta_chat(
       return montar_resposta_visao(resultado);
     }
 
+    case "DEFINIR_ORCAMENTO": {
+      const categoria = await contexto.resolvedor.resolver_categoria_nome(
+        contexto.usuarioId,
+        intencao.categoria_nome,
+        "despesa",
+      );
+      await definir_orcamento({
+        usuarioId: contexto.usuarioId,
+        valorLimite: intencao.valor_limite,
+        categoriaId: categoria?.id ?? null,
+      });
+      const rotulo = categoria?.nome ?? "geral (todas as despesas)";
+      return `Orçamento definido: ${formatarMoeda(intencao.valor_limite)} por mês para ${rotulo}.`;
+    }
+
+    case "CONSULTAR_ORCAMENTO": {
+      const categoria = await contexto.resolvedor.buscar_categoria_nome(
+        contexto.usuarioId,
+        intencao.categoria_nome,
+      );
+      const status = await listar_status_orcamentos(
+        contexto.usuarioId,
+        contexto.dataAtual,
+        categoria?.id ?? null,
+      );
+      return formatar_status_orcamentos(status);
+    }
+
+    case "CRIAR_RECORRENCIA": {
+      const categoria = await contexto.resolvedor.resolver_categoria_nome(
+        contexto.usuarioId,
+        intencao.categoria_nome ?? "Assinaturas",
+        "despesa",
+      );
+      if (!categoria) {
+        return "Não consegui definir a categoria da recorrência.";
+      }
+      const contaId = await contexto.resolvedor.resolver_conta_nome(
+        contexto.usuarioId,
+        intencao.conta_nome,
+      );
+      const cartaoId = await contexto.resolvedor.resolver_cartao_nome(
+        contexto.usuarioId,
+        intencao.cartao_nome,
+      );
+      if (!contaId && !cartaoId) {
+        return "Para criar a recorrência, diga em qual conta ou cartão (ex.: Nubank).";
+      }
+      const criada = await criar_recorrencia({
+        usuarioId: contexto.usuarioId,
+        descricao: intencao.descricao,
+        valor: intencao.valor,
+        diaDoMes: intencao.dia_do_mes,
+        tipo: intencao.tipo_movimento === "receita" ? "receita" : "despesa",
+        categoriaId: categoria.id,
+        contaId,
+        cartaoId,
+      });
+      return `Recorrência "${criada.descricao}" de ${formatarMoeda(criada.valor)} todo dia ${criada.diaDoMes} criada.`;
+    }
+
+    case "LISTAR_RECORRENCIAS": {
+      const lista = await listar_recorrencias(contexto.usuarioId);
+      return formatar_lista_recorrencias(lista);
+    }
+
+    case "CANCELAR_RECORRENCIA": {
+      const cancelada = await cancelar_recorrencia(contexto.usuarioId, intencao.descricao);
+      if (!cancelada) {
+        return `Não encontrei recorrência com "${intencao.descricao}".`;
+      }
+      return `Recorrência "${cancelada.descricao}" cancelada.`;
+    }
+
     case "CRIAR_CONTA": {
       const eraPrimeiraConta = contexto.totalContas === 0;
       try {
@@ -180,9 +285,6 @@ export async function montar_resposta_chat(
         }
         return confirmacao;
       } catch (erro) {
-        // Rede de segurança: se a IA classificou um pedido de ajuste como CRIAR_CONTA
-        // (ex.: "corrija o saldo da conta C6 pra 4,03"), atualiza a conta existente em
-        // vez de falhar ou duplicar.
         if (!(erro instanceof ErroEntidadeJaExiste) || !intencao.nome || intencao.saldo_inicial == null) {
           throw erro;
         }

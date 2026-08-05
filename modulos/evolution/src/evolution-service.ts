@@ -9,6 +9,7 @@ import type {
   EvolutionButton,
   EvolutionListSection,
   EvolutionMessageKey,
+  MidiaBase64Evolution,
 } from "./tipos";
 
 const TIMEOUT_MS = 30_000;
@@ -227,6 +228,56 @@ export class EvolutionService {
         number,
       });
       return data;
+    });
+  }
+
+  /**
+   * Baixa mídia inbound (áudio/imagem/documento) em base64.
+   * Evolution: POST /chat/getBase64FromMediaMessage/{instance}
+   */
+  async obterBase64Midia(entrada: {
+    key: EvolutionMessageKey;
+    message: Record<string, unknown>;
+  }): Promise<MidiaBase64Evolution> {
+    return this.executar("obterBase64Midia", async () => {
+      const { data } = await this.http.post(
+        `/chat/getBase64FromMediaMessage/${this.instance}`,
+        {
+          message: {
+            key: entrada.key,
+            message: entrada.message,
+          },
+          convertToMp4: false,
+        },
+      );
+
+      const base64 =
+        typeof data === "string"
+          ? data
+          : typeof data?.base64 === "string"
+            ? data.base64
+            : typeof data?.data === "string"
+              ? data.data
+              : null;
+
+      if (!base64) {
+        throw new ErroEvolution(
+          "obterBase64Midia",
+          "Evolution API (obterBase64Midia): resposta sem base64",
+          undefined,
+          data,
+        );
+      }
+
+      const limpo = base64.replace(/^data:[^;]+;base64,/, "");
+      const mimetype =
+        typeof data?.mimetype === "string"
+          ? data.mimetype
+          : typeof data?.mimeType === "string"
+            ? data.mimeType
+            : undefined;
+
+      return { base64: limpo, mimetype };
     });
   }
 

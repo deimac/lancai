@@ -25,3 +25,5 @@ export * from "./repositorio-contexto";
 export * from "./repositorio-contexto-drizzle";
 export * from "./repositorio-contexto-memoria";
 export * from "./resolvedor-intencao";
+export * from "./transcrever-audio";
+export * from "./extrair-comprovante-visao";

@@ -2,7 +2,12 @@ import { appendFileSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { evolutionEvento, obter_banco } from "@lancai/banco";
 import { schemaWebhookEvolution } from "../dtos/webhook-evolution";
-import { processar_e_responder_whatsapp, avisar_falha_whatsapp } from "../servicos/processar-mensagem-whatsapp";
+import { extrair_midia_mensagem } from "../servicos/extrair-midia-mensagem";
+import {
+  processar_e_responder_whatsapp,
+  avisar_falha_whatsapp,
+} from "../servicos/processar-mensagem-whatsapp";
+import { processar_midia_whatsapp } from "../servicos/processar-midia-whatsapp";
 import { validarAssinaturaEvolution } from "../webhooks/validar-assinatura-evolution";
 
 const LOG_ARQUIVO = "/tmp/lancai-evolution-webhook.log";
@@ -96,6 +101,8 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
     const nomeEvento = normalizarNomeEvento(evento.event);
     const resumo =
       nomeEvento === "MESSAGES_UPSERT" ? extrairResumoMensagem(evento.data) : undefined;
+    const midia =
+      nomeEvento === "MESSAGES_UPSERT" ? extrair_midia_mensagem(evento.data) : null;
 
     requisicao.log.info(
       {
@@ -103,6 +110,7 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
         eventNormalized: nomeEvento,
         instance: evento.instance,
         ...(resumo ?? {}),
+        midiaTipo: midia?.tipo,
       },
       nomeEvento === "MESSAGES_UPSERT"
         ? "[evolution-webhook] MENSAGEM RECEBIDA (MESSAGES_UPSERT)"
@@ -110,7 +118,7 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
     );
 
     if (nomeEvento === "MESSAGES_UPSERT") {
-      const linha = `MESSAGES_UPSERT instance=${evento.instance} from=${resumo?.remoteJid ?? "?"} pushName=${resumo?.pushName ?? "?"} fromMe=${String(resumo?.fromMe)} texto=${JSON.stringify(resumo?.texto ?? null)}`;
+      const linha = `MESSAGES_UPSERT instance=${evento.instance} from=${resumo?.remoteJid ?? "?"} pushName=${resumo?.pushName ?? "?"} fromMe=${String(resumo?.fromMe)} texto=${JSON.stringify(resumo?.texto ?? null)} midia=${midia?.tipo ?? "-"}`;
       console.info(`[evolution-webhook] ${linha}`);
       logarArquivo(linha);
     }
@@ -143,17 +151,45 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
     }
 
     if (nomeEvento !== "MESSAGES_UPSERT") return;
-    if (!resumo?.remoteJid || !resumo.texto) return;
+    if (!resumo?.remoteJid) return;
     if (resumo.fromMe) {
       logarArquivo(`IGNORADO fromMe id=${resumo.messageId ?? "?"}`);
       return;
     }
+    if (!resumo.texto && !midia) {
+      logarArquivo(`IGNORADO sem_texto_nem_midia id=${resumo.messageId ?? "?"}`);
+      return;
+    }
 
     try {
+      let texto = resumo.texto ?? "";
+      let intencaoPrevia = undefined;
+
+      if (midia) {
+        const processada = await processar_midia_whatsapp(midia);
+        if (!processada.ok) {
+          await avisar_falha_whatsapp(resumo.remoteJid, processada.mensagemUsuario);
+          logarArquivo(`MIDIA_FALHA from=${resumo.remoteJid} tipo=${midia.tipo}`);
+          return;
+        }
+        if (midia.tipo === "audio") {
+          texto = processada.texto;
+        } else {
+          texto = processada.texto;
+          intencaoPrevia = processada.intencaoPrevia;
+        }
+      }
+
+      if (!texto.trim() && !intencaoPrevia) {
+        logarArquivo(`IGNORADO sem_conteudo id=${resumo.messageId ?? "?"}`);
+        return;
+      }
+
       const resultado = await processar_e_responder_whatsapp({
         remoteJid: resumo.remoteJid,
-        texto: resumo.texto,
+        texto,
         fromMe: resumo.fromMe,
+        intencaoPrevia,
       });
 
       if (!resultado.processado && resultado.motivo === "nao_autorizado") {

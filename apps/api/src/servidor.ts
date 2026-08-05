@@ -9,6 +9,7 @@ import { registrar_rotas_pessoa } from "./rotas/pessoas";
 import { registrar_rotas_movimento } from "./rotas/movimentos";
 import { registrar_rotas_chat } from "./rotas/chat";
 import { registrar_rotas_webhooks_evolution } from "./rotas/webhooks-evolution";
+import { registrar_rotas_cron } from "./rotas/cron";
 import { tratar_erro } from "./tratar-erro";
 
 export function criar_servidor() {
@@ -34,6 +35,7 @@ export function criar_servidor() {
   app.register(registrar_rotas_movimento, { prefix: "/movimentos" });
   app.register(registrar_rotas_chat, { prefix: "/chat" });
   app.register(registrar_rotas_webhooks_evolution, { prefix: "/api/webhooks" });
+  app.register(registrar_rotas_cron, { prefix: "/cron" });
 
   app.setErrorHandler(tratar_erro);
 

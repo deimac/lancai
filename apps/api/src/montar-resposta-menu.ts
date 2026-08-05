@@ -51,5 +51,16 @@ ${resumoCadastro}
 "O que eu lancei hoje?"
 "Mostra os dados do cartão Nubank" — pede a senha da conta LançAI antes de revelar
 
+💰 Orçamento
+"Orçamento de alimentação 800"
+"Como está meu orçamento?"
+
+🔁 Recorrências
+"Todo mês dia 10 Netflix 55 na Nubank"
+"Listar recorrências"
+
+📎 WhatsApp
+Áudio (transcreve), foto ou PDF de comprovante → lança a despesa
+
 Digite "menu" ou "ajuda" a qualquer momento para ver essas opções de novo.`;
 }

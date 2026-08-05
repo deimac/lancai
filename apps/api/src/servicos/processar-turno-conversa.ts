@@ -27,6 +27,10 @@ import { montar_dados_cartao_protegidos } from "../montar-dados-cartao";
 import { montar_resposta_chat } from "../montar-resposta-chat";
 import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
 import { verificar_senha_usuario } from "../verificar-senha-usuario";
+import {
+  interpretar_orcamento_rapido,
+  interpretar_recorrencia_rapida,
+} from "./interpretar-orcamento-recorrencia-rapido";
 
 /** Quantas mensagens (usuário + sistema) olhar para trás para o slot-filling entre turnos. */
 const TAMANHO_HISTORICO_RECENTE = 8;
@@ -45,6 +49,8 @@ export type EntradaTurnoConversa = {
   sessaoId?: string;
   /** WhatsApp: reutiliza sessão ativa. Web (default): cria nova se não houver sessaoId. */
   reutilizarSessaoAtiva?: boolean;
+  /** Vision/comprovante: intenção já extraída (pula atalho/LLM). */
+  intencaoPrevia?: IntencaoDetectada;
 };
 
 export type ResultadoTurnoConversa = {
@@ -307,7 +313,10 @@ export async function processar_turno_conversa(
     );
 
   const intencaoRapida =
+    entrada.intencaoPrevia ??
     intencaoConfirmacao ??
+    interpretar_orcamento_rapido(entrada.mensagem) ??
+    interpretar_recorrencia_rapida(entrada.mensagem) ??
     interpretar_correcao_rapida(entrada.mensagem, contexto.dataAtual) ??
     interpretar_consulta_rapida(entrada.mensagem, contexto) ??
     interpretar_lancamento_rapido(entrada.mensagem, contexto);
@@ -315,7 +324,7 @@ export async function processar_turno_conversa(
   const viaAtalho = Boolean(intencaoRapida);
   if (viaAtalho) {
     console.info(
-      `[ia] turno atalho=true llm=false intencao=${intencaoRapida!.intencao} (0 créditos LLM)`,
+      `[ia] turno atalho=true llm=false intencao=${intencaoRapida!.intencao}${entrada.intencaoPrevia ? " (midia)" : ""} (0 créditos LLM intenção)`,
     );
   }
 
@@ -338,6 +347,7 @@ export async function processar_turno_conversa(
     resolvedor,
     motor,
     relatorios,
+    memoria,
     dataAtual: contexto.dataAtual,
     totalContas: contexto.contas.length,
     totalCartoes: contexto.cartoes.length,

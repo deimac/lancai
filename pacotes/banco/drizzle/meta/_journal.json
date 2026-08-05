@@ -43,6 +43,13 @@
       "when": 1785840000000,
       "tag": "0005_usuario_whatsapp_numero",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786000000000,
+      "tag": "0006_orcamento_recorrencia",
+      "breakpoints": true
     }
   ]
 }

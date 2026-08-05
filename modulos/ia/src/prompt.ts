@@ -64,9 +64,11 @@ Datas via dataAtual. Números BR: "12.889,00"=12889. Use nomes do contexto. JSON
 export function montar_prompt_sistema_classificar(): string {
   return `Classifique a mensagem financeira em UM ramo. Responda só o JSON do schema.
 - registrar: gasto, receita, pagamento, compra, "gastei", "recebi", "paguei"
-- consultar: perguntas de saldo, extrato, quanto gastei, resumo, limite, dados do cartão
+- consultar: perguntas de saldo, extrato, quanto gastei, resumo, limite do cartão, dados do cartão
 - corrigir: corrigir, cancelar, apagar, excluir, mudar valor/categoria de lançamento/conta/cartão
 - cadastro: criar/cadastrar conta ou cartão novo
+- orcamento: definir ou consultar orçamento/limite de gasto mensal por categoria
+- recorrencia: criar/listar/cancelar despesa recorrente (assinatura Netflix etc.)
 - outro: saudação, fora de finanças, não entendi`;
 }
 

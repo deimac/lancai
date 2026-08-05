@@ -11,3 +11,4 @@ export * from "./auditoria";
 export * from "./sessao";
 export * from "./chat";
 export * from "./evolution-evento";
+export * from "./orcamento";

@@ -285,6 +285,45 @@ export const schemaIntencaoMenu = z.object({
 });
 export type IntencaoMenu = z.infer<typeof schemaIntencaoMenu>;
 
+/** Define limite de gasto mensal (geral ou por categoria). */
+export const schemaIntencaoDefinirOrcamento = z.object({
+  intencao: z.literal("DEFINIR_ORCAMENTO"),
+  valor_limite: z.number().positive(),
+  categoria_nome: z.string().min(1).nullable().optional(),
+});
+export type IntencaoDefinirOrcamento = z.infer<typeof schemaIntencaoDefinirOrcamento>;
+
+/** Consulta status do(s) orçamento(s). */
+export const schemaIntencaoConsultarOrcamento = z.object({
+  intencao: z.literal("CONSULTAR_ORCAMENTO"),
+  categoria_nome: z.string().min(1).nullable().optional(),
+});
+export type IntencaoConsultarOrcamento = z.infer<typeof schemaIntencaoConsultarOrcamento>;
+
+/** Cria despesa/receita recorrente mensal. */
+export const schemaIntencaoCriarRecorrencia = z.object({
+  intencao: z.literal("CRIAR_RECORRENCIA"),
+  descricao: z.string().min(1),
+  valor: z.number().positive(),
+  dia_do_mes: diaDoMesSchema,
+  tipo_movimento: tipoMovimentoSchema.nullable().optional(),
+  categoria_nome: z.string().min(1).nullable().optional(),
+  conta_nome: z.string().min(1).nullable().optional(),
+  cartao_nome: z.string().min(1).nullable().optional(),
+});
+export type IntencaoCriarRecorrencia = z.infer<typeof schemaIntencaoCriarRecorrencia>;
+
+export const schemaIntencaoListarRecorrencias = z.object({
+  intencao: z.literal("LISTAR_RECORRENCIAS"),
+});
+export type IntencaoListarRecorrencias = z.infer<typeof schemaIntencaoListarRecorrencias>;
+
+export const schemaIntencaoCancelarRecorrencia = z.object({
+  intencao: z.literal("CANCELAR_RECORRENCIA"),
+  descricao: z.string().min(1),
+});
+export type IntencaoCancelarRecorrencia = z.infer<typeof schemaIntencaoCancelarRecorrencia>;
+
 export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoRegistrarMovimento,
   schemaIntencaoConsultarVisao,
@@ -294,6 +333,11 @@ export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoCorrigirConta,
   schemaIntencaoCorrigirCartao,
   schemaIntencaoConsultarDadosCartao,
+  schemaIntencaoDefinirOrcamento,
+  schemaIntencaoConsultarOrcamento,
+  schemaIntencaoCriarRecorrencia,
+  schemaIntencaoListarRecorrencias,
+  schemaIntencaoCancelarRecorrencia,
   schemaIntencaoSolicitarInformacao,
   schemaIntencaoMenu,
   schemaIntencaoNaoReconhecida,
