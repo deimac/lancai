@@ -84,6 +84,10 @@ export async function processar_mensagem_whatsapp(
 export async function processar_e_responder_whatsapp(
   entrada: EntradaMensagemWhatsApp,
 ): Promise<ResultadoMensagemWhatsApp> {
+  if (eh_jid_grupo(entrada.remoteJid)) {
+    return { processado: false, motivo: "grupo" };
+  }
+
   const resultado = await processar_mensagem_whatsapp(entrada);
   if (!resultado.processado || !resultado.resposta) {
     return resultado;
@@ -106,6 +110,7 @@ export async function avisar_falha_whatsapp(
   remoteJid: string,
   texto = MSG_FALHA_WHATSAPP,
 ): Promise<void> {
+  if (eh_jid_grupo(remoteJid)) return;
   const numero = extrair_telefone_whatsapp(remoteJid);
   if (!numero) return;
   await obter_evolution().enviarMensagemWhatsApp({

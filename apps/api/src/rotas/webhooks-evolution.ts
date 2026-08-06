@@ -9,6 +9,7 @@ import {
 } from "../servicos/processar-mensagem-whatsapp";
 import { processar_midia_whatsapp } from "../servicos/processar-midia-whatsapp";
 import { mensagem_erro_para_usuario } from "../servicos/mensagem-erro-usuario";
+import { eh_jid_grupo } from "../servicos/telefone-whatsapp";
 import { validarAssinaturaEvolution } from "../webhooks/validar-assinatura-evolution";
 
 const LOG_ARQUIVO = "/tmp/lancai-evolution-webhook.log";
@@ -155,6 +156,11 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
     if (!resumo?.remoteJid) return;
     if (resumo.fromMe) {
       logarArquivo(`IGNORADO fromMe id=${resumo.messageId ?? "?"}`);
+      return;
+    }
+    // Nunca processar nem responder em grupos (evita o bot postar no grupo).
+    if (eh_jid_grupo(resumo.remoteJid)) {
+      logarArquivo(`IGNORADO grupo from=${resumo.remoteJid}`);
       return;
     }
     if (!resumo.texto && !midia) {
