@@ -230,8 +230,17 @@ async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise
   });
 
   if (!resposta.ok) {
-    const corpo = await resposta.json().catch(() => ({ erro: resposta.statusText }));
-    throw new ErroApi(corpo.erro ?? "Erro inesperado na API.", resposta.status);
+    const corpo = (await resposta.json().catch(() => ({}))) as {
+      erro?: string;
+      message?: string;
+    };
+    const mensagem =
+      corpo.erro ??
+      corpo.message ??
+      (resposta.status === 404
+        ? "Rota não encontrada na API — confira se a API foi redeployada."
+        : "Erro inesperado na API.");
+    throw new ErroApi(mensagem, resposta.status);
   }
 
   if (resposta.status === 204) return undefined as T;

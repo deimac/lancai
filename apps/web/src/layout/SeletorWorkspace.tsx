@@ -29,11 +29,17 @@ export function SeletorWorkspace({ aoMudar }: Props) {
       setWorkspaces(await clienteApi.listar_workspaces(usuario.id));
     } catch (e) {
       setWorkspaces([]);
-      setErro(
-        e instanceof ErroApi
-          ? e.message
-          : "Não foi possível carregar os workspaces. Confira se a API está atualizada e a migration 0017 aplicada.",
-      );
+      if (e instanceof ErroApi && e.status === 404) {
+        setErro(
+          "A API em produção ainda não tem /workspaces. Faça redeploy da API (commit f4390e7 ou mais recente).",
+        );
+      } else {
+        setErro(
+          e instanceof ErroApi
+            ? e.message
+            : "Não foi possível carregar os workspaces. Confira se a API está atualizada e a migration 0017 aplicada.",
+        );
+      }
     } finally {
       setCarregando(false);
     }
