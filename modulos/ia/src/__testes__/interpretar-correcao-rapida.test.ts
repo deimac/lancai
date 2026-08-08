@@ -63,4 +63,20 @@ describe("interpretar_correcao_rapida", () => {
       campos_alterados: { descricao: "Jantar" },
     });
   });
+
+  it("exclui conta sem tratar como lançamento", () => {
+    expect(interpretar_correcao_rapida("excluir conta nubank", "2026-08-03")).toEqual({
+      intencao: "CORRIGIR_CONTA",
+      conta_nome: "nubank",
+      campos_alterados: { ativo: false, confirmado: false },
+    });
+  });
+
+  it("exclui cartão sem tratar como lançamento", () => {
+    expect(interpretar_correcao_rapida("apagar o cartão Azul Itaú", "2026-08-03")).toEqual({
+      intencao: "CORRIGIR_CARTAO",
+      cartao_nome: "Azul Itaú",
+      campos_alterados: { ativo: false, confirmado: false },
+    });
+  });
 });

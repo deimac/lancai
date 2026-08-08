@@ -137,8 +137,44 @@ function normalizar_igual(a: string, b: string): boolean {
 }
 
 /**
+ * "excluir conta Nubank" / "apagar o cartão Azul" — não é cancelamento de lançamento.
+ */
+function interpretar_exclusao_conta_ou_cartao(texto: string): IntencaoDetectada | null {
+  const conta = texto.match(
+    /\b(?:apague|apaga|apagar|exclua|exclui|excluir|remova|remove|remover|delete|deletar)\b(?:\s+(?:a|o))?\s+conta(?:\s+(?:banc[aá]ria|corrente))?\s+(.+?)\s*[.!]?\s*$/i,
+  );
+  if (conta?.[1]) {
+    const nome = limpar_termo_descricao(conta[1].replace(/^(?:a|o|as|os)\s+/i, ""));
+    if (nome.length >= 2) {
+      return {
+        intencao: "CORRIGIR_CONTA",
+        conta_nome: nome,
+        campos_alterados: { ativo: false, confirmado: false },
+      };
+    }
+  }
+
+  const cartao = texto.match(
+    /\b(?:apague|apaga|apagar|exclua|exclui|excluir|remova|remove|remover|delete|deletar)\b(?:\s+(?:a|o))?\s+cart[aã]o\s+(.+?)\s*[.!]?\s*$/i,
+  );
+  if (cartao?.[1]) {
+    const nome = limpar_termo_descricao(cartao[1].replace(/^(?:a|o|as|os)\s+/i, ""));
+    if (nome.length >= 2) {
+      return {
+        intencao: "CORRIGIR_CARTAO",
+        cartao_nome: nome,
+        campos_alterados: { ativo: false, confirmado: false },
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Atalhos sem IA:
- * - cancelar: "cancela o #a1b2c3d4" / "apague o lançamento de farmacia de hoje"
+ * - excluir conta/cartão: "excluir conta Nubank" / "apagar cartão Azul"
+ * - cancelar lançamento: "cancela o #a1b2c3d4" / "apague o lançamento de farmacia de hoje"
  * - corrigir: "corrige o almoço para 20" / "muda a descrição do uber para Uber Trip"
  */
 export function interpretar_correcao_rapida(
@@ -152,6 +188,9 @@ export function interpretar_correcao_rapida(
   if (alteracao) return alteracao;
 
   if (FORA_DO_CANCELAR.test(texto) || !VERBO_CANCELAR.test(texto)) return null;
+
+  const exclusaoCadastro = interpretar_exclusao_conta_ou_cartao(texto);
+  if (exclusaoCadastro) return exclusaoCadastro;
 
   const codigo = extrair_codigo_da_mensagem(texto);
   if (codigo) {
