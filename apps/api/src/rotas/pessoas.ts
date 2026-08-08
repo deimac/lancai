@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { garantir_workspace_do_usuario, obter_banco, pessoa } from "@lancai/banco";
 import { schemaCriarPessoa } from "@lancai/tipos";
 
@@ -19,7 +19,11 @@ export async function registrar_rotas_pessoa(app: FastifyInstance) {
     const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
     if (usuarioId) {
-      return banco.select().from(pessoa).where(eq(pessoa.usuarioId, usuarioId));
+      const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
+      return banco
+        .select()
+        .from(pessoa)
+        .where(and(eq(pessoa.usuarioId, usuarioId), eq(pessoa.workspaceId, workspaceId)));
     }
     return banco.select().from(pessoa);
   });

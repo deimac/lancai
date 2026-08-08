@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Link2, Plus, RefreshCw, Wallet } from "lucide-react";
+import { Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
 import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type ContaResumo } from "../lib/api";
@@ -24,10 +24,12 @@ export function TelaContas() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [mostrandoForm, setMostrandoForm] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
   const [perfil, setPerfil] = useState<Perfil>("pf");
   const [saldoInicial, setSaldoInicial] = useState("0");
+  const [saldoEdicao, setSaldoEdicao] = useState("0");
   const depsDados = chave_dependencia(contexto?.versoes, "contas");
 
   const carregar = useCallback(async () => {
@@ -52,6 +54,23 @@ export function TelaContas() {
     [contas],
   );
 
+  function limpar_form() {
+    setNome("");
+    setSaldoInicial("0");
+    setPerfil("pf");
+    setMostrandoForm(false);
+    setEditandoId(null);
+  }
+
+  function iniciar_edicao(conta: ContaResumo) {
+    setMostrandoForm(false);
+    setEditandoId(conta.id);
+    setNome(conta.nome);
+    setPerfil(conta.perfil);
+    setSaldoEdicao(String(para_numero(conta.saldoAtual)));
+    setErro(null);
+  }
+
   async function criar(evento: FormEvent) {
     evento.preventDefault();
     if (!usuario || !nome.trim()) return;
@@ -65,10 +84,7 @@ export function TelaContas() {
         perfil,
         saldoInicial: Number.isFinite(saldo) ? saldo : 0,
       });
-      setNome("");
-      setSaldoInicial("0");
-      setPerfil("pf");
-      setMostrandoForm(false);
+      limpar_form();
       await carregar();
       contexto?.invalidar("contas", "dashboard");
     } catch (e) {
@@ -78,7 +94,65 @@ export function TelaContas() {
     }
   }
 
+  async function salvar_edicao(evento: FormEvent) {
+    evento.preventDefault();
+    if (!usuario || !editandoId || !nome.trim()) return;
+    const conta = contas.find((item) => item.id === editandoId);
+    if (!conta) return;
+
+    setSalvando(true);
+    setErro(null);
+    try {
+      const payload: {
+        usuarioId: string;
+        nome: string;
+        perfil: Perfil;
+        saldoAtual?: number;
+      } = {
+        usuarioId: usuario.id,
+        nome: nome.trim(),
+        perfil,
+      };
+      if (!conta.sincronizada) {
+        const saldo = Number(saldoEdicao.replace(",", "."));
+        if (!Number.isFinite(saldo)) {
+          setErro("Informe um saldo válido.");
+          setSalvando(false);
+          return;
+        }
+        payload.saldoAtual = saldo;
+      }
+      await clienteApi.atualizar_conta(editandoId, payload);
+      limpar_form();
+      await carregar();
+      contexto?.invalidar("contas", "dashboard");
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : "Não foi possível atualizar a conta.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluir(conta: ContaResumo) {
+    if (!usuario) return;
+    const ok = window.confirm(
+      `Excluir a conta "${conta.nome}"? O histórico permanece; ela some das listagens.`,
+    );
+    if (!ok) return;
+    setErro(null);
+    try {
+      await clienteApi.excluir_conta(conta.id, usuario.id);
+      if (editandoId === conta.id) limpar_form();
+      await carregar();
+      contexto?.invalidar("contas", "dashboard");
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : "Não foi possível excluir a conta.");
+    }
+  }
+
   if (!usuario) return null;
+
+  const contaEditando = editandoId ? contas.find((c) => c.id === editandoId) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
@@ -94,7 +168,12 @@ export function TelaContas() {
             <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
             Atualizar
           </Botao>
-          <Botao onClick={() => setMostrandoForm((v) => !v)}>
+          <Botao
+            onClick={() => {
+              setEditandoId(null);
+              setMostrandoForm((v) => !v);
+            }}
+          >
             <Plus size={14} />
             Nova conta
           </Botao>
@@ -159,11 +238,65 @@ export function TelaContas() {
             </label>
           </div>
           <div className="flex justify-end gap-2">
-            <Botao type="button" variante="fantasma" onClick={() => setMostrandoForm(false)}>
+            <Botao type="button" variante="fantasma" onClick={limpar_form}>
               Cancelar
             </Botao>
             <Botao type="submit" disabled={salvando || !nome.trim()}>
               {salvando ? "Salvando..." : "Criar conta"}
+            </Botao>
+          </div>
+        </motion.form>
+      )}
+
+      {contaEditando && (
+        <motion.form
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          onSubmit={(e) => void salvar_edicao(e)}
+          className="flex flex-col gap-3 rounded-2xl border border-borda bg-superficie/80 p-4"
+        >
+          <p className="text-sm font-medium text-texto">Editar conta</p>
+          <Campo
+            placeholder="Nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            required
+            autoFocus
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs text-texto-suave">
+              Perfil
+              <select
+                value={perfil}
+                onChange={(e) => setPerfil(e.target.value as Perfil)}
+                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
+              >
+                <option value="pf">Pessoal (PF)</option>
+                <option value="pj">Empresa (PJ)</option>
+              </select>
+            </label>
+            {!contaEditando.sincronizada && (
+              <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                Saldo atual
+                <Campo
+                  inputMode="decimal"
+                  value={saldoEdicao}
+                  onChange={(e) => setSaldoEdicao(e.target.value)}
+                />
+              </label>
+            )}
+          </div>
+          {contaEditando.sincronizada && (
+            <p className="text-xs text-texto-suave">
+              Conta sincronizada: o saldo vem do banco e não pode ser alterado manualmente.
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Botao type="button" variante="fantasma" onClick={limpar_form}>
+              Cancelar
+            </Botao>
+            <Botao type="submit" disabled={salvando || !nome.trim()}>
+              {salvando ? "Salvando..." : "Salvar"}
             </Botao>
           </div>
         </motion.form>
@@ -209,7 +342,7 @@ export function TelaContas() {
                 transition={{ delay: indice * 0.03 }}
                 className="flex items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-medium text-texto">{conta.nome}</p>
                     <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
@@ -230,14 +363,34 @@ export function TelaContas() {
                       : "Conta manual — você pode lançar pelo assistente"}
                   </p>
                 </div>
-                <p
-                  className={unir_classes(
-                    "shrink-0 text-base font-semibold tabular-nums",
-                    saldo < 0 ? "text-despesa" : "text-texto",
-                  )}
-                >
-                  {formatar_moeda(saldo)}
-                </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <p
+                    className={unir_classes(
+                      "text-base font-semibold tabular-nums",
+                      saldo < 0 ? "text-despesa" : "text-texto",
+                    )}
+                  >
+                    {formatar_moeda(saldo)}
+                  </p>
+                  <Botao
+                    variante="fantasma"
+                    className="px-2"
+                    title="Editar conta"
+                    aria-label={`Editar ${conta.nome}`}
+                    onClick={() => iniciar_edicao(conta)}
+                  >
+                    <Pencil size={14} />
+                  </Botao>
+                  <Botao
+                    variante="fantasma"
+                    className="px-2 text-despesa hover:text-despesa"
+                    title="Excluir conta"
+                    aria-label={`Excluir ${conta.nome}`}
+                    onClick={() => void excluir(conta)}
+                  >
+                    <Trash2 size={14} />
+                  </Botao>
+                </div>
               </motion.li>
             );
           })}

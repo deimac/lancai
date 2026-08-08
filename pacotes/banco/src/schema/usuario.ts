@@ -9,6 +9,11 @@ export const usuario = pgTable("usuario", {
   whatsappNumero: text("whatsapp_numero").unique(),
   /** Posição do painel do assistente no cockpit — acompanha o usuário entre dispositivos. */
   posicaoPainel: posicaoPainelEnum("posicao_painel").notNull().default("lateral"),
+  /**
+   * Workspace em uso no cockpit/chat. Null = usa o primeiro do usuário (ou cria Pessoal).
+   * FK em `0017_workspace_ativo.sql` (evita import circular com `workspace`).
+   */
+  workspaceAtivoId: uuid("workspace_ativo_id"),
   ativo: boolean("ativo").notNull().default(true),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),

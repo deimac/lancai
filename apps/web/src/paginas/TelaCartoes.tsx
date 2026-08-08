@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CreditCard, Link2, Plus, RefreshCw } from "lucide-react";
+import { CreditCard, Link2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
@@ -31,6 +31,7 @@ export function TelaCartoes() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [mostrandoForm, setMostrandoForm] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
   const [perfil, setPerfil] = useState<Perfil>("pf");
@@ -75,6 +76,29 @@ export function TelaCartoes() {
     [contas],
   );
 
+  function limpar_form() {
+    setNome("");
+    setLimite("5000");
+    setFechamento("10");
+    setVencimento("17");
+    setPerfil("pf");
+    setContaId("");
+    setMostrandoForm(false);
+    setEditandoId(null);
+  }
+
+  function iniciar_edicao(cartao: CartaoResumo) {
+    setMostrandoForm(false);
+    setEditandoId(cartao.id);
+    setNome(cartao.nome);
+    setPerfil(cartao.perfil);
+    setLimite(String(para_numero(cartao.limite)));
+    setFechamento(String(cartao.fechamento ?? 10));
+    setVencimento(String(cartao.vencimento));
+    setContaId(cartao.contaId ?? "");
+    setErro(null);
+  }
+
   async function criar(evento: FormEvent) {
     evento.preventDefault();
     if (!usuario || !nome.trim()) return;
@@ -102,13 +126,7 @@ export function TelaCartoes() {
         perfil,
         ...(contaId ? { contaId } : {}),
       });
-      setNome("");
-      setLimite("5000");
-      setFechamento("10");
-      setVencimento("17");
-      setPerfil("pf");
-      setContaId("");
-      setMostrandoForm(false);
+      limpar_form();
       await carregar();
       contexto?.invalidar("cartoes", "dashboard");
     } catch (e) {
@@ -118,7 +136,70 @@ export function TelaCartoes() {
     }
   }
 
+  async function salvar_edicao(evento: FormEvent) {
+    evento.preventDefault();
+    if (!usuario || !editandoId || !nome.trim()) return;
+    const cartao = cartoes.find((item) => item.id === editandoId);
+    if (!cartao) return;
+
+    const diaFechamento = dia_valido(fechamento);
+    const diaVencimento = dia_valido(vencimento);
+    const limiteNum = Number(limite.replace(",", "."));
+    if (diaFechamento == null || diaVencimento == null) {
+      setErro("Fechamento e vencimento precisam ser dias entre 1 e 31.");
+      return;
+    }
+    if (!Number.isFinite(limiteNum) || limiteNum < 0) {
+      setErro("Informe um limite válido.");
+      return;
+    }
+
+    setSalvando(true);
+    setErro(null);
+    try {
+      await clienteApi.atualizar_cartao(editandoId, {
+        usuarioId: usuario.id,
+        nome: nome.trim(),
+        perfil,
+        ...(cartao.sincronizada
+          ? {}
+          : {
+              limite: limiteNum,
+              fechamento: diaFechamento,
+              vencimento: diaVencimento,
+              contaId: contaId || null,
+            }),
+      });
+      limpar_form();
+      await carregar();
+      contexto?.invalidar("cartoes", "dashboard");
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : "Não foi possível atualizar o cartão.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function excluir(cartao: CartaoResumo) {
+    if (!usuario) return;
+    const ok = window.confirm(
+      `Excluir o cartão "${cartao.nome}"? O histórico permanece; ele some das listagens.`,
+    );
+    if (!ok) return;
+    setErro(null);
+    try {
+      await clienteApi.excluir_cartao(cartao.id, usuario.id);
+      if (editandoId === cartao.id) limpar_form();
+      await carregar();
+      contexto?.invalidar("cartoes", "dashboard");
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : "Não foi possível excluir o cartão.");
+    }
+  }
+
   if (!usuario) return null;
+
+  const cartaoEditando = editandoId ? cartoes.find((c) => c.id === editandoId) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
@@ -134,7 +215,12 @@ export function TelaCartoes() {
             <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
             Atualizar
           </Botao>
-          <Botao onClick={() => setMostrandoForm((v) => !v)}>
+          <Botao
+            onClick={() => {
+              setEditandoId(null);
+              setMostrandoForm((v) => !v);
+            }}
+          >
             <Plus size={14} />
             Novo cartão
           </Botao>
@@ -235,11 +321,103 @@ export function TelaCartoes() {
             </select>
           </label>
           <div className="flex justify-end gap-2">
-            <Botao type="button" variante="fantasma" onClick={() => setMostrandoForm(false)}>
+            <Botao type="button" variante="fantasma" onClick={limpar_form}>
               Cancelar
             </Botao>
             <Botao type="submit" disabled={salvando || !nome.trim()}>
               {salvando ? "Salvando..." : "Criar cartão"}
+            </Botao>
+          </div>
+        </motion.form>
+      )}
+
+      {cartaoEditando && (
+        <motion.form
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          onSubmit={(e) => void salvar_edicao(e)}
+          className="flex flex-col gap-3 rounded-2xl border border-borda bg-superficie/80 p-4"
+        >
+          <p className="text-sm font-medium text-texto">Editar cartão</p>
+          <Campo
+            placeholder="Nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            required
+            autoFocus
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs text-texto-suave">
+              Perfil
+              <select
+                value={perfil}
+                onChange={(e) => setPerfil(e.target.value as Perfil)}
+                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
+              >
+                <option value="pf">Pessoal (PF)</option>
+                <option value="pj">Empresa (PJ)</option>
+              </select>
+            </label>
+            {!cartaoEditando.sincronizada && (
+              <>
+                <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                  Limite
+                  <Campo
+                    inputMode="decimal"
+                    value={limite}
+                    onChange={(e) => setLimite(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                  Dia de fechamento
+                  <Campo
+                    inputMode="numeric"
+                    value={fechamento}
+                    onChange={(e) => setFechamento(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                  Dia de vencimento
+                  <Campo
+                    inputMode="numeric"
+                    value={vencimento}
+                    onChange={(e) => setVencimento(e.target.value)}
+                    required
+                  />
+                </label>
+              </>
+            )}
+          </div>
+          {!cartaoEditando.sincronizada && (
+            <label className="flex flex-col gap-1 text-xs text-texto-suave">
+              Conta vinculada (opcional)
+              <select
+                value={contaId}
+                onChange={(e) => setContaId(e.target.value)}
+                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
+              >
+                <option value="">Nenhuma</option>
+                {contas.map((conta) => (
+                  <option key={conta.id} value={conta.id}>
+                    {conta.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {cartaoEditando.sincronizada && (
+            <p className="text-xs text-texto-suave">
+              Cartão sincronizado: limite e datas vêm do banco — só o nome e o perfil podem mudar.
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Botao type="button" variante="fantasma" onClick={limpar_form}>
+              Cancelar
+            </Botao>
+            <Botao type="submit" disabled={salvando || !nome.trim()}>
+              {salvando ? "Salvando..." : "Salvar"}
             </Botao>
           </div>
         </motion.form>
@@ -285,7 +463,7 @@ export function TelaCartoes() {
                 transition={{ delay: indice * 0.03 }}
                 className="flex items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-medium text-texto">
                       {cartao.nome}
@@ -316,9 +494,29 @@ export function TelaCartoes() {
                       : " · Lançamentos pelo assistente"}
                   </p>
                 </div>
-                <p className={unir_classes("shrink-0 text-base font-semibold tabular-nums text-texto")}>
-                  {formatar_moeda(para_numero(cartao.limite))}
-                </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <p className={unir_classes("text-base font-semibold tabular-nums text-texto")}>
+                    {formatar_moeda(para_numero(cartao.limite))}
+                  </p>
+                  <Botao
+                    variante="fantasma"
+                    className="px-2"
+                    title="Editar cartão"
+                    aria-label={`Editar ${cartao.nome}`}
+                    onClick={() => iniciar_edicao(cartao)}
+                  >
+                    <Pencil size={14} />
+                  </Botao>
+                  <Botao
+                    variante="fantasma"
+                    className="px-2 text-despesa hover:text-despesa"
+                    title="Excluir cartão"
+                    aria-label={`Excluir ${cartao.nome}`}
+                    onClick={() => void excluir(cartao)}
+                  >
+                    <Trash2 size={14} />
+                  </Botao>
+                </div>
               </motion.li>
             );
           })}

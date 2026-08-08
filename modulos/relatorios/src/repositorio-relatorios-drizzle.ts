@@ -3,6 +3,7 @@ import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
   conta as contaTabela,
+  garantir_workspace_do_usuario,
   movimento as movimentoTabela,
   obter_banco,
   parcela as parcelaTabela,
@@ -22,7 +23,12 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarContas(usuarioId: string, perfil?: Perfil) {
-    const condicoes = [eq(contaTabela.usuarioId, usuarioId), eq(contaTabela.ativo, true)];
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const condicoes = [
+      eq(contaTabela.usuarioId, usuarioId),
+      eq(contaTabela.workspaceId, workspaceId),
+      eq(contaTabela.ativo, true),
+    ];
     if (perfil) condicoes.push(eq(contaTabela.perfil, perfil));
     return this.banco
       .select()
@@ -31,7 +37,12 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarCartoes(usuarioId: string, perfil?: Perfil) {
-    const condicoes = [eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true)];
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const condicoes = [
+      eq(cartaoTabela.usuarioId, usuarioId),
+      eq(cartaoTabela.workspaceId, workspaceId),
+      eq(cartaoTabela.ativo, true),
+    ];
     if (perfil) condicoes.push(eq(cartaoTabela.perfil, perfil));
     return this.banco
       .select()
@@ -40,7 +51,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarCategorias(usuarioId: string) {
-    return this.banco.select().from(categoriaTabela).where(eq(categoriaTabela.usuarioId, usuarioId));
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    return this.banco
+      .select()
+      .from(categoriaTabela)
+      .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.workspaceId, workspaceId)));
   }
 
   async obterCategoria(id: string) {
@@ -49,7 +64,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarMovimentos(usuarioId: string, filtro: FiltroMovimentos) {
-    const condicoes = [eq(movimentoTabela.usuarioId, usuarioId)];
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const condicoes = [
+      eq(movimentoTabela.usuarioId, usuarioId),
+      eq(movimentoTabela.workspaceId, workspaceId),
+    ];
     condicoes.push(notInArray(movimentoTabela.status, filtro.statusExcluir ?? ["cancelado"]));
     if (filtro.perfil) condicoes.push(eq(movimentoTabela.perfil, filtro.perfil));
     if (filtro.contaId) condicoes.push(eq(movimentoTabela.contaId, filtro.contaId));
@@ -69,7 +88,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarParcelas(usuarioId: string, filtro: FiltroParcelas): Promise<ParcelaComMovimento[]> {
-    const condicoes = [eq(movimentoTabela.usuarioId, usuarioId)];
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const condicoes = [
+      eq(movimentoTabela.usuarioId, usuarioId),
+      eq(movimentoTabela.workspaceId, workspaceId),
+    ];
     condicoes.push(notInArray(parcelaTabela.status, filtro.statusExcluir ?? ["cancelado"]));
     if (filtro.cartaoId) condicoes.push(eq(movimentoTabela.cartaoId, filtro.cartaoId));
     if (filtro.periodo) {

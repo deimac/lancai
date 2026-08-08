@@ -25,69 +25,123 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async listarContas(usuarioId: string): Promise<Conta[]> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     return this.banco
       .select()
       .from(contaTabela)
-      .where(and(eq(contaTabela.usuarioId, usuarioId), eq(contaTabela.ativo, true)));
+      .where(
+        and(
+          eq(contaTabela.usuarioId, usuarioId),
+          eq(contaTabela.workspaceId, workspaceId),
+          eq(contaTabela.ativo, true),
+        ),
+      );
   }
 
   async listarCartoes(usuarioId: string): Promise<Cartao[]> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     return this.banco
       .select()
       .from(cartaoTabela)
-      .where(and(eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true)));
+      .where(
+        and(
+          eq(cartaoTabela.usuarioId, usuarioId),
+          eq(cartaoTabela.workspaceId, workspaceId),
+          eq(cartaoTabela.ativo, true),
+        ),
+      );
   }
 
   async listarCategorias(usuarioId: string): Promise<Categoria[]> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     return this.banco
       .select()
       .from(categoriaTabela)
-      .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.ativo, true)));
+      .where(
+        and(
+          eq(categoriaTabela.usuarioId, usuarioId),
+          eq(categoriaTabela.workspaceId, workspaceId),
+          eq(categoriaTabela.ativo, true),
+        ),
+      );
   }
 
   async listarPessoas(usuarioId: string): Promise<Pessoa[]> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     return this.banco
       .select()
       .from(pessoaTabela)
-      .where(and(eq(pessoaTabela.usuarioId, usuarioId), eq(pessoaTabela.ativo, true)));
+      .where(
+        and(
+          eq(pessoaTabela.usuarioId, usuarioId),
+          eq(pessoaTabela.workspaceId, workspaceId),
+          eq(pessoaTabela.ativo, true),
+        ),
+      );
   }
 
   async buscarContaPorNome(usuarioId: string, nome: string): Promise<Conta | undefined> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .select()
       .from(contaTabela)
       .where(
-        and(eq(contaTabela.usuarioId, usuarioId), eq(contaTabela.ativo, true), ilike(contaTabela.nome, `%${nome}%`)),
+        and(
+          eq(contaTabela.usuarioId, usuarioId),
+          eq(contaTabela.workspaceId, workspaceId),
+          eq(contaTabela.ativo, true),
+          ilike(contaTabela.nome, `%${nome}%`),
+        ),
       )
       .limit(1);
     return linhas[0];
   }
 
   async buscarCartaoPorNome(usuarioId: string, nome: string): Promise<Cartao | undefined> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .select()
       .from(cartaoTabela)
       .where(
-        and(eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true), ilike(cartaoTabela.nome, `%${nome}%`)),
+        and(
+          eq(cartaoTabela.usuarioId, usuarioId),
+          eq(cartaoTabela.workspaceId, workspaceId),
+          eq(cartaoTabela.ativo, true),
+          ilike(cartaoTabela.nome, `%${nome}%`),
+        ),
       )
       .limit(1);
     return linhas[0];
   }
 
   async buscarCategoriaPorNome(usuarioId: string, nome: string): Promise<Categoria | undefined> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .select()
       .from(categoriaTabela)
-      .where(and(eq(categoriaTabela.usuarioId, usuarioId), ilike(categoriaTabela.nome, nome)))
+      .where(
+        and(
+          eq(categoriaTabela.usuarioId, usuarioId),
+          eq(categoriaTabela.workspaceId, workspaceId),
+          ilike(categoriaTabela.nome, nome),
+        ),
+      )
       .limit(1);
     return linhas[0];
   }
 
   async buscarPessoaPorNome(usuarioId: string, nome: string): Promise<Pessoa | undefined> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .select()
       .from(pessoaTabela)
-      .where(and(eq(pessoaTabela.usuarioId, usuarioId), ilike(pessoaTabela.nome, nome)))
+      .where(
+        and(
+          eq(pessoaTabela.usuarioId, usuarioId),
+          eq(pessoaTabela.workspaceId, workspaceId),
+          ilike(pessoaTabela.nome, nome),
+        ),
+      )
       .limit(1);
     return linhas[0];
   }
@@ -155,6 +209,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async atualizarConta(usuarioId: string, contaId: string, dados: EntradaAtualizarConta): Promise<Conta> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const valores: Partial<typeof contaTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.saldoAtual != null) valores.saldoAtual = String(dados.saldoAtual);
@@ -164,7 +219,13 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const linhas = await this.banco
       .update(contaTabela)
       .set(valores)
-      .where(and(eq(contaTabela.id, contaId), eq(contaTabela.usuarioId, usuarioId)))
+      .where(
+        and(
+          eq(contaTabela.id, contaId),
+          eq(contaTabela.usuarioId, usuarioId),
+          eq(contaTabela.workspaceId, workspaceId),
+        ),
+      )
       .returning();
     const conta = linhas[0];
     if (!conta) throw new Error("Falha ao atualizar conta — conta não encontrada.");
@@ -172,6 +233,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async atualizarCartao(usuarioId: string, cartaoId: string, dados: EntradaAtualizarCartao): Promise<Cartao> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const valores: Partial<typeof cartaoTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.limite != null) valores.limite = String(dados.limite);
@@ -190,7 +252,13 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const linhas = await this.banco
       .update(cartaoTabela)
       .set(valores)
-      .where(and(eq(cartaoTabela.id, cartaoId), eq(cartaoTabela.usuarioId, usuarioId)))
+      .where(
+        and(
+          eq(cartaoTabela.id, cartaoId),
+          eq(cartaoTabela.usuarioId, usuarioId),
+          eq(cartaoTabela.workspaceId, workspaceId),
+        ),
+      )
       .returning();
     const cartao = linhas[0];
     if (!cartao) throw new Error("Falha ao atualizar cartão — cartão não encontrado.");
@@ -201,6 +269,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
   ): Promise<Movimento[]> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     if (referencia.codigo) {
       const codigo = normalizar_codigo_busca(referencia.codigo);
       if (codigo.length >= 6) {
@@ -210,6 +279,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
           .where(
             and(
               eq(movimentoTabela.usuarioId, usuarioId),
+              eq(movimentoTabela.workspaceId, workspaceId),
               ne(movimentoTabela.status, "cancelado"),
               sql`replace(${movimentoTabela.id}::text, '-', '') like ${`${codigo}%`}`,
             ),
@@ -220,7 +290,11 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
       }
     }
 
-    const condicoes = [eq(movimentoTabela.usuarioId, usuarioId), ne(movimentoTabela.status, "cancelado")];
+    const condicoes = [
+      eq(movimentoTabela.usuarioId, usuarioId),
+      eq(movimentoTabela.workspaceId, workspaceId),
+      ne(movimentoTabela.status, "cancelado"),
+    ];
     if (referencia.dataMovimento) {
       condicoes.push(eq(movimentoTabela.dataMovimento, referencia.dataMovimento));
     }
@@ -250,8 +324,10 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     usuarioId: string,
     criterio: CriterioMovimentoSimilar,
   ): Promise<Movimento | undefined> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const condicoes = [
       eq(movimentoTabela.usuarioId, usuarioId),
+      eq(movimentoTabela.workspaceId, workspaceId),
       ne(movimentoTabela.status, "cancelado"),
       eq(movimentoTabela.dataMovimento, criterio.dataMovimento),
       eq(movimentoTabela.valor, paraColuna(criterio.valor)),

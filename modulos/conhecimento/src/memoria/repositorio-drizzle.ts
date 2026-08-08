@@ -8,27 +8,42 @@ export class RepositorioMemoriaDrizzle implements RepositorioMemoria {
   }
 
   async listarHabitos(usuarioId: string): Promise<HabitoMemoria[]> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .select({ chave: memoriaTabela.chave, valor: memoriaTabela.valor })
       .from(memoriaTabela)
-      .where(eq(memoriaTabela.usuarioId, usuarioId));
+      .where(and(eq(memoriaTabela.usuarioId, usuarioId), eq(memoriaTabela.workspaceId, workspaceId)));
     return linhas;
   }
 
   async buscarHabito(usuarioId: string, chave: string): Promise<string | undefined> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .select({ valor: memoriaTabela.valor })
       .from(memoriaTabela)
-      .where(and(eq(memoriaTabela.usuarioId, usuarioId), eq(memoriaTabela.chave, chave)))
+      .where(
+        and(
+          eq(memoriaTabela.usuarioId, usuarioId),
+          eq(memoriaTabela.workspaceId, workspaceId),
+          eq(memoriaTabela.chave, chave),
+        ),
+      )
       .limit(1);
     return linhas[0]?.valor;
   }
 
   async salvarHabito(usuarioId: string, chave: string, valor: string): Promise<void> {
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const existente = await this.banco
       .select({ id: memoriaTabela.id })
       .from(memoriaTabela)
-      .where(and(eq(memoriaTabela.usuarioId, usuarioId), eq(memoriaTabela.chave, chave)))
+      .where(
+        and(
+          eq(memoriaTabela.usuarioId, usuarioId),
+          eq(memoriaTabela.workspaceId, workspaceId),
+          eq(memoriaTabela.chave, chave),
+        ),
+      )
       .limit(1);
 
     if (existente[0]) {
@@ -39,7 +54,6 @@ export class RepositorioMemoriaDrizzle implements RepositorioMemoria {
       return;
     }
 
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     await this.banco.insert(memoriaTabela).values({ usuarioId, workspaceId, chave, valor });
   }
 }

@@ -1,6 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { desc, eq } from "drizzle-orm";
-import { categoria, movimento, obter_banco, regra } from "@lancai/banco";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  categoria,
+  garantir_workspace_do_usuario,
+  movimento,
+  obter_banco,
+  regra,
+} from "@lancai/banco";
 import { schemaCriarMovimento } from "@lancai/tipos";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 
@@ -54,7 +60,12 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
       .orderBy(desc(movimento.dataMovimento));
 
     const linhas = usuarioId
-      ? await consulta.where(eq(movimento.usuarioId, usuarioId))
+      ? await consulta.where(
+          and(
+            eq(movimento.usuarioId, usuarioId),
+            eq(movimento.workspaceId, await garantir_workspace_do_usuario(banco, usuarioId)),
+          ),
+        )
       : await consulta;
 
     return linhas.map((linha) => ({

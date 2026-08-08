@@ -22,6 +22,7 @@ import {
 import { Botao } from "../componentes/ui/Botao";
 import { unir_classes } from "../lib/unir-classes";
 import { PainelAssistente } from "./PainelAssistente";
+import { SeletorWorkspace } from "./SeletorWorkspace";
 import {
   ler_painel_expandido,
   resolver_posicao_painel,
@@ -121,6 +122,12 @@ export function LayoutAutenticado() {
           <p className="text-lg font-semibold tracking-tight text-texto">LançAI</p>
           <p className="truncate text-xs text-texto-suave">{usuario.nome}</p>
         </div>
+        <SeletorWorkspace
+          aoMudar={() => {
+            invalidar("tudo");
+            void recarregar_contexto();
+          }}
+        />
         <nav className="flex flex-1 flex-col gap-1 p-3" aria-label="Principal">
           {LINKS.map((link) => (
             <NavLink
@@ -156,26 +163,34 @@ export function LayoutAutenticado() {
         )}
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between gap-2 border-b border-borda px-3 py-2 md:hidden">
-            <p className="font-semibold">LançAI</p>
-            <nav className="flex gap-1" aria-label="Principal">
-              {LINKS.map((link) => (
-                <NavLink
-                  key={link.para}
-                  to={link.para}
-                  end={link.fim}
-                  aria-label={link.rotulo}
-                  className={({ isActive }) =>
-                    unir_classes(
-                      "rounded-lg p-2",
-                      isActive ? "bg-primaria/15 text-primaria" : "text-texto-suave",
-                    )
-                  }
-                >
-                  <link.icone size={18} aria-hidden />
-                </NavLink>
-              ))}
-            </nav>
+          <header className="flex flex-col gap-1 border-b border-borda px-1 py-2 md:hidden">
+            <div className="flex items-center justify-between gap-2 px-2">
+              <p className="font-semibold">LançAI</p>
+              <nav className="flex gap-1" aria-label="Principal">
+                {LINKS.map((link) => (
+                  <NavLink
+                    key={link.para}
+                    to={link.para}
+                    end={link.fim}
+                    aria-label={link.rotulo}
+                    className={({ isActive }) =>
+                      unir_classes(
+                        "rounded-lg p-2",
+                        isActive ? "bg-primaria/15 text-primaria" : "text-texto-suave",
+                      )
+                    }
+                  >
+                    <link.icone size={18} aria-hidden />
+                  </NavLink>
+                ))}
+              </nav>
+            </div>
+            <SeletorWorkspace
+              aoMudar={() => {
+                invalidar("tudo");
+                void recarregar_contexto();
+              }}
+            />
           </header>
 
           <main className="min-h-0 flex-1 overflow-y-auto">

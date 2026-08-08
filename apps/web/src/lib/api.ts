@@ -59,7 +59,17 @@ export interface Usuario {
   whatsappNumero: string | null;
   /** Preferência do painel do assistente — sincronizada no backend. */
   posicaoPainel?: "lateral" | "inferior";
+  workspaceAtivoId?: string | null;
   ativo?: boolean;
+}
+
+export type TipoWorkspace = "pessoal" | "empresa";
+
+export interface WorkspaceResumo {
+  id: string;
+  nome: string;
+  tipo: TipoWorkspace;
+  ativo: boolean;
 }
 
 export interface MensagemChat {
@@ -241,6 +251,38 @@ export const clienteApi = {
     });
   },
 
+  listar_workspaces(usuarioId: string): Promise<WorkspaceResumo[]> {
+    return requisitar<WorkspaceResumo[]>(`/workspaces?usuarioId=${usuarioId}`);
+  },
+
+  criar_workspace(dados: {
+    usuarioId: string;
+    nome: string;
+    tipo: TipoWorkspace;
+  }): Promise<WorkspaceResumo> {
+    return requisitar<WorkspaceResumo>("/workspaces", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  definir_workspace_ativo(usuarioId: string, workspaceId: string): Promise<WorkspaceResumo> {
+    return requisitar<WorkspaceResumo>("/workspaces/ativo", {
+      method: "POST",
+      body: JSON.stringify({ usuarioId, workspaceId }),
+    });
+  },
+
+  atualizar_workspace(
+    workspaceId: string,
+    dados: { usuarioId: string; nome?: string; tipo?: TipoWorkspace },
+  ): Promise<WorkspaceResumo> {
+    return requisitar<WorkspaceResumo>(`/workspaces/${workspaceId}`, {
+      method: "PATCH",
+      body: JSON.stringify(dados),
+    });
+  },
+
   listar_contas(usuarioId: string): Promise<ContaResumo[]> {
     return requisitar<ContaResumo[]>(`/contas?usuarioId=${usuarioId}`);
   },
@@ -262,6 +304,28 @@ export const clienteApi = {
     });
   },
 
+  atualizar_conta(
+    contaId: string,
+    dados: {
+      usuarioId: string;
+      nome?: string;
+      perfil?: Perfil;
+      saldoAtual?: number;
+    },
+  ): Promise<ContaResumo> {
+    return requisitar<ContaResumo>(`/contas/${contaId}`, {
+      method: "PATCH",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  excluir_conta(contaId: string, usuarioId: string): Promise<ContaResumo> {
+    return requisitar<ContaResumo>(`/contas/${contaId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
   listar_cartoes(usuarioId: string): Promise<CartaoResumo[]> {
     return requisitar<CartaoResumo[]>(`/cartoes?usuarioId=${usuarioId}`);
   },
@@ -278,6 +342,31 @@ export const clienteApi = {
     return requisitar<CartaoResumo>("/cartoes", {
       method: "POST",
       body: JSON.stringify(dados),
+    });
+  },
+
+  atualizar_cartao(
+    cartaoId: string,
+    dados: {
+      usuarioId: string;
+      nome?: string;
+      perfil?: Perfil;
+      limite?: number;
+      fechamento?: number;
+      vencimento?: number;
+      contaId?: string | null;
+    },
+  ): Promise<CartaoResumo> {
+    return requisitar<CartaoResumo>(`/cartoes/${cartaoId}`, {
+      method: "PATCH",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  excluir_cartao(cartaoId: string, usuarioId: string): Promise<CartaoResumo> {
+    return requisitar<CartaoResumo>(`/cartoes/${cartaoId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ usuarioId }),
     });
   },
 

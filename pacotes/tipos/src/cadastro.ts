@@ -61,6 +61,54 @@ export const schemaCriarConta = z.object({
 });
 export type EntradaCriarConta = z.infer<typeof schemaCriarConta>;
 
+/** PATCH /contas/:id — body da API web. */
+export const schemaPatchContaApi = z.object({
+  usuarioId: z.string().uuid(),
+  nome: z.string().min(1).optional(),
+  saldoAtual: z.number().optional(),
+  perfil: perfilSchema.optional(),
+});
+export type EntradaPatchContaApi = z.infer<typeof schemaPatchContaApi>;
+
+export const schemaExcluirContaApi = z.object({
+  usuarioId: z.string().uuid(),
+});
+
+/** PATCH /cartoes/:id — body da API web. */
+export const schemaPatchCartaoApi = z.object({
+  usuarioId: z.string().uuid(),
+  nome: z.string().min(1).optional(),
+  limite: z.number().nonnegative().optional(),
+  fechamento: z.number().int().min(1).max(31).optional(),
+  vencimento: z.number().int().min(1).max(31).optional(),
+  perfil: perfilSchema.optional(),
+  contaId: z.string().uuid().nullable().optional(),
+});
+export type EntradaPatchCartaoApi = z.infer<typeof schemaPatchCartaoApi>;
+
+export const schemaExcluirCartaoApi = z.object({
+  usuarioId: z.string().uuid(),
+});
+
+export const tipoWorkspaceSchema = z.enum(["pessoal", "empresa"]);
+
+export const schemaCriarWorkspace = z.object({
+  usuarioId: z.string().uuid(),
+  nome: z.string().min(1),
+  tipo: tipoWorkspaceSchema.default("pessoal"),
+});
+
+export const schemaDefinirWorkspaceAtivo = z.object({
+  usuarioId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+});
+
+export const schemaAtualizarWorkspace = z.object({
+  usuarioId: z.string().uuid(),
+  nome: z.string().min(1).optional(),
+  tipo: tipoWorkspaceSchema.optional(),
+});
+
 export const schemaCriarCartao = z.object({
   nome: z.string().min(1),
   limite: z.number().nonnegative(),
