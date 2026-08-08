@@ -16,7 +16,7 @@ import type {
   RepositorioFinanceiro,
   ResultadoOperacaoPersistencia,
 } from "./repositorio";
-import type { Movimento } from "@lancai/banco";
+import type { Cartao, Conta, Movimento } from "@lancai/banco";
 
 /** Implementação real do RepositorioFinanceiro, sobre Supabase Postgres via Drizzle. */
 export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
@@ -212,5 +212,59 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       .update(cartaoTabela)
       .set({ sincronizada, dataAtualizacao: new Date() })
       .where(eq(cartaoTabela.id, cartaoId));
+  }
+
+  async criarContaSincronizada(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Conta["perfil"];
+    saldoAtual?: number;
+  }) {
+    const saldo = String(entrada.saldoAtual ?? 0);
+    const [criada] = await this.banco
+      .insert(contaTabela)
+      .values({
+        workspaceId: entrada.workspaceId,
+        usuarioId: entrada.usuarioId,
+        nome: entrada.nome,
+        perfil: entrada.perfil,
+        saldoInicial: saldo,
+        saldoAtual: saldo,
+        sincronizada: true,
+      })
+      .returning();
+    if (!criada) throw new Error("Falha ao criar conta sincronizada.");
+    return criada;
+  }
+
+  async criarCartaoSincronizado(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Cartao["perfil"];
+    limite?: number;
+    fechamento?: number;
+    vencimento?: number;
+  }) {
+    const fechamento = entrada.fechamento ?? 1;
+    const vencimento = entrada.vencimento ?? 10;
+    const [criado] = await this.banco
+      .insert(cartaoTabela)
+      .values({
+        workspaceId: entrada.workspaceId,
+        usuarioId: entrada.usuarioId,
+        nome: entrada.nome,
+        perfil: entrada.perfil,
+        limite: String(entrada.limite ?? 0),
+        fechamento,
+        vencimento,
+        melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,
+        modalidade: "credito",
+        sincronizada: true,
+      })
+      .returning();
+    if (!criado) throw new Error("Falha ao criar cartão sincronizado.");
+    return criado;
   }
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
-  CreditCard,
   Home,
   Link2,
   List,
@@ -33,8 +32,7 @@ import {
 
 const LINKS = [
   { para: "/", rotulo: "Início", icone: Home, fim: true },
-  { para: "/contas", rotulo: "Contas", icone: Wallet, fim: false },
-  { para: "/cartoes", rotulo: "Cartões", icone: CreditCard, fim: false },
+  { para: "/contas", rotulo: "Contas e cartões", icone: Wallet, fim: false },
   { para: "/categorias", rotulo: "Categorias", icone: Tags, fim: false },
   { para: "/regras", rotulo: "Regras", icone: Workflow, fim: false },
   { para: "/extrato", rotulo: "Extrato", icone: List, fim: false },

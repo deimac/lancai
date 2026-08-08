@@ -279,4 +279,65 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     if (!cartao) return;
     this.cartoes.set(cartaoId, { ...cartao, sincronizada, dataAtualizacao: new Date() });
   }
+
+  async criarContaSincronizada(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Conta["perfil"];
+    saldoAtual?: number;
+  }): Promise<Conta> {
+    const agora = new Date();
+    const saldo = String(entrada.saldoAtual ?? 0);
+    const criada: Conta = {
+      id: randomUUID(),
+      workspaceId: entrada.workspaceId,
+      usuarioId: entrada.usuarioId,
+      nome: entrada.nome,
+      perfil: entrada.perfil,
+      saldoInicial: saldo,
+      saldoAtual: saldo,
+      ativo: true,
+      sincronizada: true,
+      dataCriacao: agora,
+      dataAtualizacao: agora,
+    };
+    this.contas.set(criada.id, criada);
+    return criada;
+  }
+
+  async criarCartaoSincronizado(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Cartao["perfil"];
+    limite?: number;
+    fechamento?: number;
+    vencimento?: number;
+  }): Promise<Cartao> {
+    const agora = new Date();
+    const fechamento = entrada.fechamento ?? 1;
+    const vencimento = entrada.vencimento ?? 10;
+    const criado: Cartao = {
+      id: randomUUID(),
+      workspaceId: entrada.workspaceId,
+      usuarioId: entrada.usuarioId,
+      nome: entrada.nome,
+      perfil: entrada.perfil,
+      limite: String(entrada.limite ?? 0),
+      fechamento,
+      vencimento,
+      melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,
+      modalidade: "credito",
+      ativo: true,
+      sincronizada: true,
+      final4: null,
+      dadosPlasticosCifrados: null,
+      contaId: null,
+      dataCriacao: agora,
+      dataAtualizacao: agora,
+    };
+    this.cartoes.set(criado.id, criado);
+    return criado;
+  }
 }

@@ -10,6 +10,7 @@ import type {
   ContaExternaRegistrada,
   RepositorioOpenFinance,
 } from "./repositorio";
+import { recurso_externo_eh_cartao } from "./tipo-recurso";
 
 /**
  * O que o Web precisa saber para abrir o widget, sem saber qual provedor é.
@@ -66,11 +67,11 @@ export class ServicoConexaoOpenFinance {
 
   /**
    * Passo 5: o widget terminou e devolveu o identificador da conexão. Grava a
-   * conexão e traz as contas encontradas, ainda **sem associação** — nenhuma
-   * conta local é criada nem marcada como sincronizada aqui.
+   * conexão, traz os recursos encontrados e materializa Conta/Cartão no Core
+   * para cada recurso ainda sem destino local.
    *
    * É idempotente: reabrir o widget na mesma instituição atualiza a conexão que
-   * já existe em vez de criar outra.
+   * já existe em vez de criar outra; associações existentes são preservadas.
    */
   async registrar_conexao(entrada: {
     workspaceId: string;
@@ -98,6 +99,15 @@ export class ServicoConexaoOpenFinance {
         tipo: conta.tipo,
       })),
     );
+
+    await this.materializar_recursos_sem_destino({
+      conexaoId: conexao.id,
+      workspaceId: entrada.workspaceId,
+      usuarioId: entrada.usuarioId,
+      perfil: conexao.perfilPadrao,
+      encontradas,
+      instituicao: estado.instituicao ?? null,
+    });
 
     return this.detalhar(conexao.id);
   }
@@ -199,6 +209,91 @@ export class ServicoConexaoOpenFinance {
     });
 
     return this.detalhar(entrada.conexaoId);
+  }
+
+  /**
+   * Desconecta a instituição: marca a conexão como removida e desliga sync
+   * das contas/cartões. Histórico e entidades locais permanecem.
+   */
+  async desconectar(conexaoId: string): Promise<ConexaoComContas> {
+    const conexao = await this.exigir_conexao(conexaoId);
+    if (conexao.status === "removida") {
+      return this.detalhar(conexaoId);
+    }
+
+    const contas = await this.repositorio.listarContasExternas(conexaoId);
+    for (const conta of contas) {
+      if (conta.contaId || conta.cartaoId) {
+        await this.motor.definir_sincronizacao(
+          { contaId: conta.contaId ?? undefined, cartaoId: conta.cartaoId ?? undefined },
+          false,
+        );
+        await this.repositorio.definirAssociacao(conexaoId, conta.contaExternaId, {
+          contaId: null,
+          cartaoId: null,
+        });
+      }
+    }
+
+    await this.repositorio.atualizarEstadoConexao(conexaoId, {
+      status: "removida",
+      motivoAtencao: null,
+    });
+
+    return this.detalhar(conexaoId);
+  }
+
+  /**
+   * Para cada recurso externo sem destino, cria Conta ou Cartão no Core e associa.
+   */
+  private async materializar_recursos_sem_destino(entrada: {
+    conexaoId: string;
+    workspaceId: string;
+    usuarioId: string;
+    perfil: "pf" | "pj";
+    encontradas: ContaExterna[];
+    instituicao: string | null;
+  }): Promise<void> {
+    const registradas = await this.repositorio.listarContasExternas(entrada.conexaoId);
+    const saldoPorExterno = new Map(
+      entrada.encontradas.map((item) => [item.idExterno, item.saldo] as const),
+    );
+
+    for (const recurso of registradas) {
+      if (recurso.contaId || recurso.cartaoId) continue;
+
+      const nome =
+        recurso.nome.trim() ||
+        entrada.instituicao?.trim() ||
+        (recurso_externo_eh_cartao(recurso.tipo) ? "Cartão sincronizado" : "Conta sincronizada");
+
+      if (recurso_externo_eh_cartao(recurso.tipo)) {
+        const cartao = await this.motor.criar_cartao_sincronizado({
+          workspaceId: entrada.workspaceId,
+          usuarioId: entrada.usuarioId,
+          nome,
+          perfil: entrada.perfil,
+        });
+        await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
+          contaId: null,
+          cartaoId: cartao.id,
+        });
+        continue;
+      }
+
+      const saldo = saldoPorExterno.get(recurso.contaExternaId);
+      const conta = await this.motor.criar_conta_sincronizada({
+        workspaceId: entrada.workspaceId,
+        usuarioId: entrada.usuarioId,
+        nome,
+        perfil: entrada.perfil,
+        saldoAtual: typeof saldo === "number" && Number.isFinite(saldo) ? saldo : 0,
+      });
+      await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
+        contaId: conta.id,
+        cartaoId: null,
+      });
+    }
   }
 
   private traduzir_estado(estado: EstadoConexao) {

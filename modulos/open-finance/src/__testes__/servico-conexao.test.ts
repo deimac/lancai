@@ -114,12 +114,19 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(contas.map((c) => c.contaExternaId)).toEqual(["acc-1", "card-1"]);
     });
 
-    /** Nada é marcado como sincronizado até o usuário associar. */
-    it("não associa nem sincroniza nada sozinho", async () => {
+    it("materializa conta e cartão locais a partir dos recursos da Fonte", async () => {
       const { contas } = await registrar();
 
-      expect(contas.every((c) => c.contaId === null && c.cartaoId === null)).toBe(true);
-      expect(financeiro.contas.size).toBe(0);
+      const conta = contas.find((c) => c.contaExternaId === "acc-1");
+      const cartao = contas.find((c) => c.contaExternaId === "card-1");
+      expect(conta?.contaId).toBeTruthy();
+      expect(conta?.cartaoId).toBeNull();
+      expect(cartao?.cartaoId).toBeTruthy();
+      expect(cartao?.contaId).toBeNull();
+      expect(financeiro.contas.size).toBe(1);
+      expect(financeiro.cartoes.size).toBe(1);
+      expect([...financeiro.contas.values()][0]?.sincronizada).toBe(true);
+      expect([...financeiro.cartoes.values()][0]?.sincronizada).toBe(true);
     });
 
     it("é idempotente: reabrir o widget não cria conexão nova", async () => {
@@ -132,27 +139,23 @@ describe("ServicoConexaoOpenFinance", () => {
     });
 
     it("preserva a associação já feita quando o provedor relista as contas", async () => {
-      const conta = criarConta();
-      financeiro.contas.set(conta.id, conta);
-
-      const { conexao } = await registrar();
-      await servico.associar({
-        conexaoId: conexao.id,
-        contaExternaId: "acc-1",
-        contaId: conta.id,
-      });
+      const { contas: primeira } = await registrar();
+      const contaId = primeira.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      expect(contaId).toBeTruthy();
 
       const { contas } = await registrar();
 
-      expect(contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(conta.id);
+      expect(contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaId);
     });
   });
 
   describe("associação", () => {
-    it("liga a conta do banco à conta local e marca como sincronizada", async () => {
+    it("permite reassociar a outra conta local após desassociar", async () => {
+      const { conexao } = await registrar();
+      await servico.desassociar({ conexaoId: conexao.id, contaExternaId: "acc-1" });
+
       const conta = criarConta();
       financeiro.contas.set(conta.id, conta);
-      const { conexao } = await registrar();
 
       const { contas } = await servico.associar({
         conexaoId: conexao.id,
@@ -164,10 +167,12 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(financeiro.contas.get(conta.id)?.sincronizada).toBe(true);
     });
 
-    it("associa cartão do banco a cartão local", async () => {
+    it("permite reassociar cartão local após desassociar", async () => {
+      const { conexao } = await registrar();
+      await servico.desassociar({ conexaoId: conexao.id, contaExternaId: "card-1" });
+
       const cartao = criarCartao();
       financeiro.cartoes.set(cartao.id, cartao);
-      const { conexao } = await registrar();
 
       await servico.associar({
         conexaoId: conexao.id,
@@ -183,8 +188,6 @@ describe("ServicoConexaoOpenFinance", () => {
      * fecha o lançamento manual dela em qualquer canal.
      */
     it("faz a conta passar a recusar lançamento manual", async () => {
-      const conta = criarConta();
-      financeiro.contas.set(conta.id, conta);
       const categoria = {
         id: randomUUID(),
         nome: "Alimentação",
@@ -197,12 +200,9 @@ describe("ServicoConexaoOpenFinance", () => {
       };
       financeiro.categorias.set(categoria.id, categoria);
 
-      const { conexao } = await registrar();
-      await servico.associar({
-        conexaoId: conexao.id,
-        contaExternaId: "acc-1",
-        contaId: conta.id,
-      });
+      const { contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      expect(contaId).toBeTruthy();
 
       await expect(
         motor.criar_movimento({
@@ -214,7 +214,7 @@ describe("ServicoConexaoOpenFinance", () => {
           status: "realizado",
           perfil: "pf",
           dataMovimento: "2026-08-01",
-          contaId: conta.id,
+          contaId: contaId!,
           categoriaId: categoria.id,
           usuarioId,
           criadoPor: usuarioId,
@@ -253,6 +253,7 @@ describe("ServicoConexaoOpenFinance", () => {
     /** Se a conta local não existe, nada é gravado: o Core valida antes do mapa. */
     it("não grava associação quando a conta local não existe", async () => {
       const { conexao } = await registrar();
+      await servico.desassociar({ conexaoId: conexao.id, contaExternaId: "acc-1" });
 
       await expect(
         servico.associar({
@@ -269,11 +270,11 @@ describe("ServicoConexaoOpenFinance", () => {
     it("recusa associar conta externa que não é desta conexão", async () => {
       const conta = criarConta();
       financeiro.contas.set(conta.id, conta);
-      const { conexao } = await registrar();
+      await registrar();
 
       await expect(
         servico.associar({
-          conexaoId: conexao.id,
+          conexaoId: (await servico.listar_conexoes(WORKSPACE))[0]!.id,
           contaExternaId: "acc-de-outro-banco",
           contaId: conta.id,
         }),
@@ -310,16 +311,26 @@ describe("ServicoConexaoOpenFinance", () => {
     });
   });
 
+  describe("desconexão", () => {
+    it("marca a conexão como removida e desliga sync sem apagar entidades", async () => {
+      const { conexao, contas: antes } = await registrar();
+      const contaId = antes.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      expect(contaId).toBeTruthy();
+
+      const detalhe = await servico.desconectar(conexao.id);
+
+      expect(detalhe.conexao.status).toBe("removida");
+      expect(detalhe.contas.every((c) => c.contaId === null && c.cartaoId === null)).toBe(true);
+      expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(false);
+      expect(financeiro.contas.has(contaId!)).toBe(true);
+    });
+  });
+
   describe("desassociação", () => {
     it("devolve a conta ao uso manual", async () => {
-      const conta = criarConta();
-      financeiro.contas.set(conta.id, conta);
-      const { conexao } = await registrar();
-      await servico.associar({
-        conexaoId: conexao.id,
-        contaExternaId: "acc-1",
-        contaId: conta.id,
-      });
+      const { conexao, contas: descobertas } = await registrar();
+      const contaId = descobertas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      expect(contaId).toBeTruthy();
 
       const { contas } = await servico.desassociar({
         conexaoId: conexao.id,
@@ -327,18 +338,13 @@ describe("ServicoConexaoOpenFinance", () => {
       });
 
       expect(contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBeNull();
-      expect(financeiro.contas.get(conta.id)?.sincronizada).toBe(false);
+      expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(false);
     });
 
     it("não reabre para edição o que já veio da instituição", async () => {
-      const conta = criarConta();
-      financeiro.contas.set(conta.id, conta);
-      const { conexao } = await registrar();
-      await servico.associar({
-        conexaoId: conexao.id,
-        contaExternaId: "acc-1",
-        contaId: conta.id,
-      });
+      const { conexao, contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      expect(contaId).toBeTruthy();
       await servico.desassociar({ conexaoId: conexao.id, contaExternaId: "acc-1" });
 
       /**
@@ -346,7 +352,7 @@ describe("ServicoConexaoOpenFinance", () => {
        * segue protegido por si só — desconectar não é caminho para editar
        * extrato. Ver `fato_protegido`.
        */
-      expect(financeiro.contas.get(conta.id)?.sincronizada).toBe(false);
+      expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(false);
     });
   });
 });

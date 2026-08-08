@@ -344,6 +344,29 @@ export function TelaConexoes() {
     }
   }
 
+  async function desconectar(conexaoId: string) {
+    if (!usuario) return;
+    const confirmado = window.confirm(
+      "Desconectar a instituição? Contas, cartões e histórico permanecem; a sincronização para.",
+    );
+    if (!confirmado) return;
+
+    setOcupado(true);
+    setErro(null);
+    setOk(null);
+    try {
+      await clienteApi.desconectar_conexao(conexaoId, usuario.id);
+      setDetalhe(null);
+      await carregar();
+      contexto?.invalidar("conexoes", "contas", "cartoes", "dashboard");
+      setOk("Instituição desconectada. O histórico financeiro foi preservado.");
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : "Não foi possível desconectar.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   if (!usuario) {
     return (
       <div className="flex h-full items-center justify-center text-texto-suave">Carregando...</div>
@@ -362,7 +385,7 @@ export function TelaConexoes() {
               ? "Fonte desligada neste ambiente"
               : fonte?.id === "duble"
                 ? "Dublê ativo: conecte um banco de mentira e sincronize um lote de teste"
-                : "Extrato entra sozinho depois que você associar as contas"}
+                : "Ao conectar, o LancAI cria contas e cartões neste workspace"}
           </p>
         </div>
         <Botao
@@ -401,6 +424,7 @@ export function TelaConexoes() {
           aoSincronizarDuble={() => void sincronizar_duble()}
           aoAssociar={associar}
           aoDesassociar={desassociar}
+          aoDesconectar={() => void desconectar(detalhe.conexao.id)}
         />
       ) : (
         <ListaConexoes
@@ -410,6 +434,7 @@ export function TelaConexoes() {
           aoAbrir={(id) => void abrir_detalhe(id)}
           aoReconectar={(conexao) => void conectar(conexao)}
           aoAtualizar={(id) => void atualizar_agora(id)}
+          aoDesconectar={(id) => void desconectar(id)}
         />
       )}
     </div>
@@ -423,6 +448,7 @@ function ListaConexoes({
   aoAbrir,
   aoReconectar,
   aoAtualizar,
+  aoDesconectar,
 }: {
   conexoes: ConexaoDetalhada[];
   ocupado: boolean;
@@ -430,13 +456,14 @@ function ListaConexoes({
   aoAbrir: (id: string) => void;
   aoReconectar: (conexao: ConexaoDetalhada) => void;
   aoAtualizar: (id: string) => void;
+  aoDesconectar: (id: string) => void;
 }) {
   if (conexoes.length === 0) {
     return (
       <Cartao>
         <p className="text-sm text-texto">Nenhum banco conectado ainda.</p>
         <p className="mt-1 text-xs text-texto-suave">
-          Conecte uma instituição e associe cada conta do extrato a uma conta ou cartão daqui.
+          Conecte uma instituição — contas e cartões são criados neste workspace automaticamente.
         </p>
       </Cartao>
     );
@@ -482,6 +509,15 @@ function ListaConexoes({
               <Botao variante="fantasma" disabled={ocupado} onClick={() => aoAbrir(conexao.id)}>
                 Contas
               </Botao>
+              {conexao.status !== "removida" && (
+                <Botao
+                  variante="fantasma"
+                  disabled={ocupado}
+                  onClick={() => aoDesconectar(conexao.id)}
+                >
+                  Desconectar
+                </Botao>
+              )}
             </div>
           </Cartao>
         </li>
@@ -502,6 +538,7 @@ function DetalheConexao({
   aoSincronizarDuble,
   aoAssociar,
   aoDesassociar,
+  aoDesconectar,
 }: {
   detalhe: ConexaoComContas;
   contas: ContaResumo[];
@@ -514,6 +551,7 @@ function DetalheConexao({
   aoSincronizarDuble: () => void;
   aoAssociar: (conta: ContaExternaRegistrada, destino: string) => void;
   aoDesassociar: (conta: ContaExternaRegistrada) => void;
+  aoDesconectar: () => void;
 }) {
   const { conexao } = detalhe;
   const semDestinoLocal = contas.length === 0 && cartoes.length === 0;
@@ -559,6 +597,11 @@ function DetalheConexao({
               Reconectar
             </Botao>
           )}
+          {conexao.status !== "removida" && (
+            <Botao variante="fantasma" disabled={ocupado} onClick={aoDesconectar}>
+              Desconectar
+            </Botao>
+          )}
         </div>
       </div>
 
@@ -575,8 +618,8 @@ function DetalheConexao({
 
       {semDestinoLocal && (
         <p className="text-xs text-texto-suave">
-          Crie uma conta ou cartão pelo chat antes de associar. Sem destino local, o extrato
-          chega e fica parado.
+          Nenhum recurso materializado ainda. Reconecte o banco ou volte a Contas e cartões
+          para conectar de novo.
         </p>
       )}
 

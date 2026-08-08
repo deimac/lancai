@@ -6,6 +6,20 @@ import {
   schemaExcluirContaApi,
   schemaPatchContaApi,
 } from "@lancai/tipos";
+import { mapear_origem_contas, type MetaOrigem } from "../servicos/origem-conta-cartao";
+
+function com_origem<T extends { id: string; sincronizada: boolean }>(
+  linha: T,
+  meta: MetaOrigem | undefined,
+) {
+  const origem = meta ?? {
+    origem: linha.sincronizada ? ("open_finance" as const) : ("manual" as const),
+    conexaoId: null,
+    instituicao: null,
+    idExterno: null,
+  };
+  return { ...linha, ...origem };
+}
 
 export async function registrar_rotas_conta(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
@@ -23,7 +37,14 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
         saldoAtual: String(dados.saldoInicial),
       })
       .returning();
-    return resposta.status(201).send(criada);
+    return resposta.status(201).send(
+      com_origem(criada!, {
+        origem: "manual",
+        conexaoId: null,
+        instituicao: null,
+        idExterno: null,
+      }),
+    );
   });
 
   app.get("/", async (requisicao) => {
@@ -33,12 +54,14 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
       return banco.select().from(conta).where(eq(conta.ativo, true));
     }
     const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
-    return banco
+    const linhas = await banco
       .select()
       .from(conta)
       .where(
         and(eq(conta.usuarioId, usuarioId), eq(conta.workspaceId, workspaceId), eq(conta.ativo, true)),
       );
+    const origem = await mapear_origem_contas(linhas.map((item) => item.id));
+    return linhas.map((linha) => com_origem(linha, origem.get(linha.id)));
   });
 
   app.get("/:id", async (requisicao, resposta) => {
@@ -48,7 +71,8 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
     if (!encontrada || !encontrada.ativo) {
       return resposta.status(404).send({ erro: "Conta não encontrada." });
     }
-    return encontrada;
+    const origem = await mapear_origem_contas([encontrada.id]);
+    return com_origem(encontrada, origem.get(encontrada.id));
   });
 
   app.patch("/:id", async (requisicao, resposta) => {

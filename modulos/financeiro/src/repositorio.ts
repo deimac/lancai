@@ -97,6 +97,26 @@ export interface RepositorioFinanceiro {
    */
   definirSincronizacaoConta(contaId: string, sincronizada: boolean): Promise<void>;
   definirSincronizacaoCartao(cartaoId: string, sincronizada: boolean): Promise<void>;
+  /**
+   * Cria conta local já marcada como sincronizada (origem Open Finance).
+   * Usado na materialização pós-conexão — o Core permanece dono da entidade.
+   */
+  criarContaSincronizada(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Conta["perfil"];
+    saldoAtual?: number;
+  }): Promise<Conta>;
+  criarCartaoSincronizado(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Cartao["perfil"];
+    limite?: number;
+    fechamento?: number;
+    vencimento?: number;
+  }): Promise<Cartao>;
 }
 
 export type { Auditoria, Cartao, Categoria, Conta, Movimento, NovoMovimento, Parcela, Pessoa };

@@ -2,6 +2,8 @@ import type { IntencaoDetectada, Perfil } from "@lancai/tipos";
 
 const URL_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
 
+export type OrigemFinanceira = "manual" | "open_finance";
+
 export interface ContaResumo {
   id: string;
   nome: string;
@@ -10,6 +12,11 @@ export interface ContaResumo {
   perfil: Perfil;
   /** Conta ligada ao Open Finance — Fato imutável. */
   sincronizada?: boolean;
+  /** Derivado do mapa Open Finance — `manual` ou `open_finance`. */
+  origem?: OrigemFinanceira;
+  conexaoId?: string | null;
+  instituicao?: string | null;
+  idExterno?: string | null;
   ativo?: boolean;
 }
 
@@ -24,6 +31,10 @@ export interface CartaoResumo {
   melhorDiaCompra?: number;
   /** Cartão ligado ao Open Finance — Fato imutável. */
   sincronizada?: boolean;
+  origem?: OrigemFinanceira;
+  conexaoId?: string | null;
+  instituicao?: string | null;
+  idExterno?: string | null;
   contaId?: string | null;
   /** Últimos 4 dígitos quando o plástico foi cadastrado. */
   final4?: string | null;
@@ -487,6 +498,13 @@ export const clienteApi = {
   /** Pede sync pontual ao provedor; o extrato chega depois no webhook. */
   atualizar_conexao(conexaoId: string, usuarioId: string): Promise<ConexaoComContas> {
     return requisitar<ConexaoComContas>(`/open-finance/conexoes/${conexaoId}/atualizar`, {
+      method: "POST",
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  desconectar_conexao(conexaoId: string, usuarioId: string): Promise<ConexaoComContas> {
+    return requisitar<ConexaoComContas>(`/open-finance/conexoes/${conexaoId}/desconectar`, {
       method: "POST",
       body: JSON.stringify({ usuarioId }),
     });

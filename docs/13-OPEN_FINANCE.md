@@ -84,7 +84,7 @@ As rotas correspondentes vivem sob `/open-finance`:
 | `PUT /conexoes/:id/contas/:contaExternaId` | 6 e 7 | Associa a uma conta ou cartão local |
 | `DELETE /conexoes/:id/contas/:contaExternaId` | — | Desfaz a associação |
 
-Duas propriedades valem nota. `POST /conexoes` é idempotente por `(provedor, idExterno)`: reabrir o widget na mesma instituição atualiza a conexão que já existe em vez de criar outra, e as associações já feitas sobrevivem à relistagem das contas. E o registro **não associa nem sincroniza nada sozinho** — as contas chegam soltas e esperam a escolha do usuário, porque adivinhar qual conta do banco é qual conta daqui erraria em silêncio.
+Duas propriedades valem nota. `POST /conexoes` é idempotente por `(provedor, idExterno)`: reabrir o widget na mesma instituição atualiza a conexão que já existe em vez de criar outra, e as associações já feitas sobrevivem à relistagem das contas. O registro **materializa Conta/Cartão no Core** para cada recurso externo ainda sem destino (idempotente por `id_externo` da Fonte). Conta e Cartão continuam entidades do LancAI; a Fonte só dispara a criação. Reassociação manual permanece disponível em Bancos.
 
 Cada rota que toca uma conexão confirma que ela pertence ao workspace de quem pediu, e responde 404 quando não pertence — o mesmo que responderia para conexão inexistente, para não confirmar identificadores a quem os sonda.
 

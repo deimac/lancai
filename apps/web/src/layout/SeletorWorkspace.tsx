@@ -13,6 +13,7 @@ type Props = {
 export function SeletorWorkspace({ aoMudar }: Props) {
   const { usuario } = useAutenticacao();
   const [workspaces, setWorkspaces] = useState<WorkspaceResumo[]>([]);
+  const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState(false);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
@@ -22,10 +23,19 @@ export function SeletorWorkspace({ aoMudar }: Props) {
 
   const carregar = useCallback(async () => {
     if (!usuario) return;
+    setCarregando(true);
+    setErro(null);
     try {
       setWorkspaces(await clienteApi.listar_workspaces(usuario.id));
-    } catch {
-      /* seletor some silenciosamente se a API antiga ainda não tiver a rota */
+    } catch (e) {
+      setWorkspaces([]);
+      setErro(
+        e instanceof ErroApi
+          ? e.message
+          : "Não foi possível carregar os workspaces. Confira se a API está atualizada e a migration 0017 aplicada.",
+      );
+    } finally {
+      setCarregando(false);
     }
   }, [usuario]);
 
@@ -78,7 +88,34 @@ export function SeletorWorkspace({ aoMudar }: Props) {
     }
   }
 
-  if (!usuario || !ativo) return null;
+  if (!usuario) return null;
+
+  if (carregando && !ativo) {
+    return (
+      <div className="px-3 pb-2">
+        <div className="rounded-lg border border-borda bg-superficie px-3 py-2 text-xs text-texto-suave">
+          Carregando workspace...
+        </div>
+      </div>
+    );
+  }
+
+  if (!ativo) {
+    return (
+      <div className="px-3 pb-2">
+        <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-xs text-texto">
+          {erro ?? "Nenhum workspace disponível."}
+          <button
+            type="button"
+            className="mt-1 block text-primaria hover:underline"
+            onClick={() => void carregar()}
+          >
+            Tentar de novo
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative px-3 pb-2">

@@ -166,6 +166,23 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
   });
 
   /**
+   * Desconecta a instituição: status removida + desliga sync.
+   * Contas, cartões e histórico permanecem no workspace.
+   */
+  app.post("/conexoes/:id/desconectar", async (requisicao, resposta) => {
+    const servico = obter_servico_conexao();
+    if (!servico) return fonte_desativada(resposta);
+
+    const { id } = requisicao.params as { id: string };
+    const { usuarioId } = schemaUsuarioDaRequisicao.parse(requisicao.body);
+
+    const acesso = await exigir_conexao_do_usuario(servico, id, usuarioId);
+    if ("erro" in acesso) return resposta.status(404).send(acesso);
+
+    return resposta.send(await servico.desconectar(id));
+  });
+
+  /**
    * Atalhos só do dublê: a tela `/conexoes` usa isto quando não há widget.
    * Com Pluggy (ou Fonte desligada) respondem 404 — não anunciam o caminho.
    */

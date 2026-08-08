@@ -16,7 +16,7 @@ import type {
   ParcelamentoFonte,
   TipoFonte,
 } from "@lancai/tipos";
-import type { Movimento, NovaAuditoria, NovaParcela, NovoMovimento } from "@lancai/banco";
+import type { Cartao, Conta, Movimento, NovaAuditoria, NovaParcela, NovoMovimento } from "@lancai/banco";
 import { calcular_saldo, obter_direcao_padrao, tipo_movimento_implementado } from "./calcular-saldo";
 import { eh_fluxo_cruzado } from "./fluxo-cruzado";
 import { registrar_parcelamento } from "./registrar-parcelamento";
@@ -210,6 +210,32 @@ export class MotorFinanceiro {
       if (!cartao) throw new ErroRecursoNaoEncontrado("cartao", origem.cartaoId);
       await this.repositorio.definirSincronizacaoCartao(origem.cartaoId, sincronizada);
     }
+  }
+
+  /**
+   * Materializa conta/cartão do Core a partir de um recurso descoberto na Fonte.
+   * A Fonte não é dona da entidade — só dispara a criação no Core.
+   */
+  async criar_conta_sincronizada(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Conta["perfil"];
+    saldoAtual?: number;
+  }): Promise<Conta> {
+    return this.repositorio.criarContaSincronizada(entrada);
+  }
+
+  async criar_cartao_sincronizado(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    nome: string;
+    perfil: Cartao["perfil"];
+    limite?: number;
+    fechamento?: number;
+    vencimento?: number;
+  }): Promise<Cartao> {
+    return this.repositorio.criarCartaoSincronizado(entrada);
   }
 
   /**

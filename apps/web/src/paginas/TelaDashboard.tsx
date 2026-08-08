@@ -332,10 +332,7 @@ export function TelaDashboard() {
             <h2 className="text-sm font-medium text-texto">Contas e cartões</h2>
             <div className="flex gap-3 text-xs">
               <Link to="/contas" className="text-primaria hover:underline">
-                Contas
-              </Link>
-              <Link to="/cartoes" className="text-primaria hover:underline">
-                Cartões
+                Contas e cartões
               </Link>
             </div>
           </div>

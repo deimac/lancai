@@ -7,11 +7,21 @@ import {
   schemaExcluirCartaoApi,
   schemaPatchCartaoApi,
 } from "@lancai/tipos";
+import { mapear_origem_cartoes, type MetaOrigem } from "../servicos/origem-conta-cartao";
 
 /** Remove o payload cifrado das respostas públicas de listagem. */
-function cartao_publico<T extends { dadosPlasticosCifrados?: string | null }>(linha: T) {
+function cartao_publico<T extends { dadosPlasticosCifrados?: string | null; id: string; sincronizada: boolean }>(
+  linha: T,
+  meta?: MetaOrigem,
+) {
   const { dadosPlasticosCifrados: _omitido, ...publico } = linha;
-  return publico;
+  const origem = meta ?? {
+    origem: linha.sincronizada ? ("open_finance" as const) : ("manual" as const),
+    conexaoId: null,
+    instituicao: null,
+    idExterno: null,
+  };
+  return { ...publico, ...origem };
 }
 
 export async function registrar_rotas_cartao(app: FastifyInstance) {
@@ -35,7 +45,14 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
         dadosPlasticosCifrados: dados.dadosPlasticosCifrados,
       })
       .returning();
-    return resposta.status(201).send(cartao_publico(criado!));
+    return resposta.status(201).send(
+      cartao_publico(criado!, {
+        origem: "manual",
+        conexaoId: null,
+        instituicao: null,
+        idExterno: null,
+      }),
+    );
   });
 
   app.get("/", async (requisicao) => {
@@ -43,7 +60,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const banco = obter_banco();
     if (!usuarioId) {
       const linhas = await banco.select().from(cartao).where(eq(cartao.ativo, true));
-      return linhas.map(cartao_publico);
+      return linhas.map((linha) => cartao_publico(linha));
     }
     const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
     const linhas = await banco
@@ -56,7 +73,8 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
           eq(cartao.ativo, true),
         ),
       );
-    return linhas.map(cartao_publico);
+    const origem = await mapear_origem_cartoes(linhas.map((item) => item.id));
+    return linhas.map((linha) => cartao_publico(linha, origem.get(linha.id)));
   });
 
   app.get("/:id", async (requisicao, resposta) => {
@@ -66,7 +84,8 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     if (!encontrado || !encontrado.ativo) {
       return resposta.status(404).send({ erro: "Cartão não encontrado." });
     }
-    return cartao_publico(encontrado);
+    const origem = await mapear_origem_cartoes([encontrado.id]);
+    return cartao_publico(encontrado, origem.get(encontrado.id));
   });
 
   app.patch("/:id", async (requisicao, resposta) => {
