@@ -6,7 +6,11 @@ export interface ContaResumo {
   id: string;
   nome: string;
   saldoAtual: string;
+  saldoInicial?: string;
   perfil: Perfil;
+  /** Conta ligada ao Open Finance — Fato imutável. */
+  sincronizada?: boolean;
+  ativo?: boolean;
 }
 
 export interface CartaoResumo {
@@ -15,15 +19,47 @@ export interface CartaoResumo {
   limite: string;
   perfil: Perfil;
   modalidade: "credito" | "debito" | "multiplo";
+  fechamento?: number;
   vencimento: number;
+  melhorDiaCompra?: number;
+  /** Cartão ligado ao Open Finance — Fato imutável. */
+  sincronizada?: boolean;
+  contaId?: string | null;
   /** Últimos 4 dígitos quando o plástico foi cadastrado. */
   final4?: string | null;
+}
+
+export type TipoCategoria = "receita" | "despesa" | "ambos";
+
+export interface CategoriaResumo {
+  id: string;
+  nome: string;
+  tipo: TipoCategoria;
+  ativo?: boolean;
+}
+
+export type OrigemRegra = "manual" | "aprendizado_conversa";
+
+export interface RegraResumo {
+  id: string;
+  origem: OrigemRegra;
+  ativa: boolean;
+  condicaoTipo: "descricao_contem";
+  condicaoValor: string;
+  categoriaId: string;
+  categoriaNome: string;
+  perfil: Perfil | null;
+  dataCriacao: string;
 }
 
 export interface Usuario {
   id: string;
   nome: string;
   email: string;
+  whatsappNumero: string | null;
+  /** Preferência do painel do assistente — sincronizada no backend. */
+  posicaoPainel?: "lateral" | "inferior";
+  ativo?: boolean;
 }
 
 export interface MensagemChat {
@@ -37,6 +73,123 @@ export interface RespostaChat {
   sessaoId: string;
   intencao: IntencaoDetectada;
   resposta: string;
+}
+
+/**
+ * O que a tela sabe sobre a Fonte. `id` é rótulo opaco: serve só para escolher
+ * qual widget carregar, e nenhuma linha do web decide nada olhando o valor dele.
+ */
+export interface DescritorFonte {
+  id?: string;
+  disponivel: boolean;
+}
+
+export interface TokenConexao {
+  token: string;
+  expiraEm: string;
+}
+
+export type StatusConexao = "ativa" | "sincronizando" | "precisa_atencao" | "removida";
+
+export type MotivoAtencao =
+  | "credencial_invalida"
+  | "consentimento_revogado"
+  | "aguardando_usuario"
+  | "erro_no_provedor";
+
+export interface ResumoIngestaoUi {
+  criados: number;
+  duplicados: number;
+  atualizados: number;
+  removidos: number;
+  semDestino: number;
+  paginas: number;
+}
+
+export interface ConexaoDetalhada {
+  id: string;
+  idExterno: string;
+  status: StatusConexao;
+  instituicao: string | null;
+  motivoAtencao: MotivoAtencao | null;
+  ultimoSyncEm: string | null;
+  consentimentoExpiraEm: string | null;
+  ultimoResumoIngestao: ResumoIngestaoUi | null;
+}
+
+export interface ContaExternaRegistrada {
+  contaExternaId: string;
+  nome: string;
+  tipo: string;
+  contaId: string | null;
+  cartaoId: string | null;
+}
+
+export interface ConexaoComContas {
+  conexao: ConexaoDetalhada;
+  contas: ContaExternaRegistrada[];
+}
+
+export interface DashboardResposta {
+  mes: string;
+  periodo: { de: string; ate: string };
+  resumo: {
+    saldoTotal: number;
+    receitasMes: number;
+    despesasMes: number;
+    saldoPeriodo: number;
+    taxaEconomia: number | null;
+  };
+  naoClassificado: { quantidade: number; total: number };
+  gastosPorCategoria: Array<{ categoriaNome: string; total: number }>;
+  fluxoSaldo: Array<{ data: string; saldo: number }>;
+  recentes: Array<{
+    id: string;
+    data: string;
+    descricao: string;
+    valor: number;
+    tipo: string;
+    categoriaNome: string | null;
+    origemNome: string | null;
+  }>;
+  contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
+  cartoes: Array<{
+    nome: string;
+    perfil: string;
+    limite: number;
+    comprometido: number;
+    disponivel: number;
+  }>;
+}
+
+export type ClassificadoPor = "regra" | "ia" | "usuario";
+
+/** Linha do extrato com Conhecimento para classificação na UI. */
+export interface MovimentoResumo {
+  id: string;
+  descricao: string;
+  descricaoFonte: string;
+  valor: string;
+  tipo: string;
+  status: "previsto" | "realizado" | "cancelado";
+  fonte: string;
+  dataMovimento: string;
+  contaId: string | null;
+  cartaoId: string | null;
+  statusFonte: string;
+  parcelaNumero: number | null;
+  parcelaTotal: number | null;
+  ignoradoEmRelatorio: boolean;
+  categoriaId: string;
+  categoriaNome: string;
+  classificadoPor: ClassificadoPor;
+  /** Trecho da regra que classificou, quando `classificadoPor = regra`. */
+  regraId: string | null;
+  regraTrecho: string | null;
+  /** ISO — quando a origem da classificação mudou pela última vez. */
+  classificadoEm: string | null;
+  confiancaIa: number | null;
+  perfil: Perfil | null;
 }
 
 class ErroApi extends Error {
@@ -70,12 +223,139 @@ export const clienteApi = {
     return requisitar<Usuario>("/usuarios/sincronizar", { method: "POST", body: JSON.stringify(dados) });
   },
 
+  obter_usuario(usuarioId: string): Promise<Usuario> {
+    return requisitar<Usuario>(`/usuarios/${usuarioId}`);
+  },
+
+  atualizar_usuario(
+    usuarioId: string,
+    dados: {
+      nome?: string;
+      whatsappNumero?: string | null;
+      posicaoPainel?: "lateral" | "inferior";
+    },
+  ): Promise<Usuario> {
+    return requisitar<Usuario>(`/usuarios/${usuarioId}`, {
+      method: "PATCH",
+      body: JSON.stringify(dados),
+    });
+  },
+
   listar_contas(usuarioId: string): Promise<ContaResumo[]> {
     return requisitar<ContaResumo[]>(`/contas?usuarioId=${usuarioId}`);
   },
 
+  criar_conta(dados: {
+    usuarioId: string;
+    nome: string;
+    perfil: Perfil;
+    saldoInicial?: number;
+  }): Promise<ContaResumo> {
+    return requisitar<ContaResumo>("/contas", {
+      method: "POST",
+      body: JSON.stringify({
+        usuarioId: dados.usuarioId,
+        nome: dados.nome,
+        perfil: dados.perfil,
+        saldoInicial: dados.saldoInicial ?? 0,
+      }),
+    });
+  },
+
   listar_cartoes(usuarioId: string): Promise<CartaoResumo[]> {
     return requisitar<CartaoResumo[]>(`/cartoes?usuarioId=${usuarioId}`);
+  },
+
+  criar_cartao(dados: {
+    usuarioId: string;
+    nome: string;
+    limite: number;
+    fechamento: number;
+    vencimento: number;
+    perfil: Perfil;
+    contaId?: string;
+  }): Promise<CartaoResumo> {
+    return requisitar<CartaoResumo>("/cartoes", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  listar_categorias(usuarioId: string): Promise<CategoriaResumo[]> {
+    return requisitar<CategoriaResumo[]>(`/categorias?usuarioId=${usuarioId}`);
+  },
+
+  criar_categoria(dados: {
+    usuarioId: string;
+    nome: string;
+    tipo: TipoCategoria;
+  }): Promise<CategoriaResumo> {
+    return requisitar<CategoriaResumo>("/categorias", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  listar_regras(usuarioId: string): Promise<RegraResumo[]> {
+    return requisitar<RegraResumo[]>(`/regras?usuarioId=${usuarioId}`);
+  },
+
+  criar_regra(dados: {
+    usuarioId: string;
+    condicaoValor: string;
+    categoriaId: string;
+    perfil?: Perfil;
+  }): Promise<RegraResumo> {
+    return requisitar<RegraResumo>("/regras", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  definir_ativa_regra(dados: {
+    regraId: string;
+    usuarioId: string;
+    ativa: boolean;
+  }): Promise<RegraResumo> {
+    return requisitar<RegraResumo>(`/regras/${dados.regraId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ usuarioId: dados.usuarioId, ativa: dados.ativa }),
+    });
+  },
+
+  listar_movimentos(usuarioId: string): Promise<MovimentoResumo[]> {
+    return requisitar<MovimentoResumo[]>(`/movimentos?usuarioId=${usuarioId}`);
+  },
+
+  /** Escrita explícita de Conhecimento — nunca envia Fato. */
+  atualizar_conhecimento(dados: {
+    usuarioId: string;
+    movimentoId: string;
+    categoriaId?: string;
+    perfil?: Perfil;
+    ignoradoEmRelatorio?: boolean;
+  }): Promise<{
+    id: string;
+    descricao: string;
+    categoriaId: string;
+    categoriaNome: string;
+    classificadoPor: ClassificadoPor;
+    regraId: string | null;
+    classificadoEm: string | null;
+    confiancaIa: number | null;
+    perfil: Perfil | null;
+    ignoradoEmRelatorio: boolean;
+  }> {
+    return requisitar("/conhecimento", {
+      method: "PATCH",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  obter_dashboard(usuarioId: string, data?: string): Promise<DashboardResposta> {
+    const query = new URLSearchParams({ usuarioId });
+    if (data) query.set("data", data);
+    return requisitar<DashboardResposta>(`/dashboard?${query.toString()}`);
   },
 
   enviar_mensagem_chat(dados: { usuarioId: string; mensagem: string; sessaoId?: string }): Promise<RespostaChat> {
@@ -84,6 +364,89 @@ export const clienteApi = {
 
   buscar_historico_chat(sessaoId: string): Promise<MensagemChat[]> {
     return requisitar<MensagemChat[]>(`/chat/${sessaoId}/mensagens`);
+  },
+
+  descrever_fonte(): Promise<DescritorFonte> {
+    return requisitar<DescritorFonte>("/open-finance/fonte");
+  },
+
+  /** Token de curta duração que abre o widget. Com `conexaoId`, é reconexão. */
+  criar_token_conexao(dados: { usuarioId: string; conexaoId?: string }): Promise<TokenConexao> {
+    return requisitar<TokenConexao>("/open-finance/conexoes/token", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  registrar_conexao(dados: { usuarioId: string; conexaoExterna: string }): Promise<ConexaoComContas> {
+    return requisitar<ConexaoComContas>("/open-finance/conexoes", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  listar_conexoes(usuarioId: string): Promise<ConexaoDetalhada[]> {
+    return requisitar<ConexaoDetalhada[]>(`/open-finance/conexoes?usuarioId=${usuarioId}`);
+  },
+
+  detalhar_conexao(conexaoId: string, usuarioId: string): Promise<ConexaoComContas> {
+    return requisitar<ConexaoComContas>(
+      `/open-finance/conexoes/${conexaoId}?usuarioId=${usuarioId}`,
+    );
+  },
+
+  /** Pede sync pontual ao provedor; o extrato chega depois no webhook. */
+  atualizar_conexao(conexaoId: string, usuarioId: string): Promise<ConexaoComContas> {
+    return requisitar<ConexaoComContas>(`/open-finance/conexoes/${conexaoId}/atualizar`, {
+      method: "POST",
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /** Fecha a conta local para lançamento manual. A tela avisa antes de chamar. */
+  associar_conta_externa(dados: {
+    conexaoId: string;
+    contaExternaId: string;
+    usuarioId: string;
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<ConexaoComContas> {
+    const { conexaoId, contaExternaId, ...corpo } = dados;
+    return requisitar<ConexaoComContas>(
+      `/open-finance/conexoes/${conexaoId}/contas/${encodeURIComponent(contaExternaId)}`,
+      { method: "PUT", body: JSON.stringify(corpo) },
+    );
+  },
+
+  desassociar_conta_externa(dados: {
+    conexaoId: string;
+    contaExternaId: string;
+    usuarioId: string;
+  }): Promise<ConexaoComContas> {
+    const { conexaoId, contaExternaId, usuarioId } = dados;
+    return requisitar<ConexaoComContas>(
+      `/open-finance/conexoes/${conexaoId}/contas/${encodeURIComponent(contaExternaId)}`,
+      { method: "DELETE", body: JSON.stringify({ usuarioId }) },
+    );
+  },
+
+  /** Só com `OPEN_FINANCE_PROVEDOR=duble`: conexão sem widget. */
+  criar_conexao_duble(usuarioId: string): Promise<ConexaoComContas> {
+    return requisitar<ConexaoComContas>("/open-finance/duble/conexoes", {
+      method: "POST",
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /** Seméia lote de mentira e roda ingestão + classificação. */
+  sincronizar_duble(
+    conexaoId: string,
+    usuarioId: string,
+  ): Promise<ResumoIngestaoUi & { eventoId: string; movimentoIdsCriados?: string[] }> {
+    return requisitar(`/open-finance/duble/conexoes/${conexaoId}/sincronizar`, {
+      method: "POST",
+      body: JSON.stringify({ usuarioId }),
+    });
   },
 };
 

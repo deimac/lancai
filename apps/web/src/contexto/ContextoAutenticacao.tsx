@@ -12,6 +12,8 @@ interface ContextoAutenticacaoValor {
   entrar: (email: string, senha: string) => Promise<void>;
   cadastrar: (nome: string, email: string, senha: string) => Promise<void>;
   sair: () => Promise<void>;
+  /** Atualiza o usuário em memória após PATCH de Configurações. */
+  definir_usuario: (usuario: Usuario) => void;
 }
 
 const ContextoAutenticacao = createContext<ContextoAutenticacaoValor | undefined>(undefined);
@@ -70,8 +72,14 @@ export function AutenticacaoProvedor({ children }: { children: ReactNode }) {
     await clienteSupabase.auth.signOut();
   }
 
+  function definir_usuario(proximo: Usuario) {
+    setUsuario(proximo);
+  }
+
   return (
-    <ContextoAutenticacao.Provider value={{ sessao, usuario, carregando, entrar, cadastrar, sair }}>
+    <ContextoAutenticacao.Provider
+      value={{ sessao, usuario, carregando, entrar, cadastrar, sair, definir_usuario }}
+    >
       {children}
     </ContextoAutenticacao.Provider>
   );

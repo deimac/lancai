@@ -151,6 +151,27 @@ describe("normalizar_intencao_movimento", () => {
     });
   });
 
+  it("resolve 'dia N' pelo mês de dataAtual", () => {
+    const resultado = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        valor: 20,
+        descricao: "99",
+        cartao_nome: "Azul Itaú",
+      },
+      contexto({
+        dataAtual: "2026-08-03",
+        cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
+      }),
+      "gastei 20 reais com 99 dia 02 no cartao azul",
+    );
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      data_movimento: "2026-08-02",
+    });
+  });
+
   it("resolve ontem e data explícita pela mensagem", () => {
     const ontem = normalizar_intencao_movimento(
       {
@@ -233,6 +254,71 @@ describe("normalizar_intencao_movimento", () => {
       descricao: "Tênis",
       perfil: "pf",
       conta_nome: "Mercado Pago",
+    });
+  });
+
+  it("mescla valor da resposta curta com dados_parciais pendentes", () => {
+    const resultado = normalizar_intencao_movimento(
+      {
+        intencao: "REGISTRAR_MOVIMENTO",
+        tipo_movimento: "despesa",
+        descricao: "50",
+        valor: 50,
+      },
+      contexto({
+        dataAtual: "2026-08-03",
+        cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
+        intencaoPendente: {
+          intencao_pendente: "REGISTRAR_MOVIMENTO",
+          dados_parciais: {
+            tipo_movimento: "despesa",
+            descricao: "Farmácia",
+            cartao_nome: "Azul Itaú",
+            perfil: "pf",
+          },
+        },
+      }),
+      "50",
+    );
+
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      descricao: "Farmácia",
+      valor: 50,
+      cartao_nome: "Azul Itaú",
+      perfil: "pf",
+    });
+  });
+
+  it("mescla SOLICITAR_INFORMACAO da IA com a pendente do turno anterior", () => {
+    const resultado = normalizar_intencao_movimento(
+      {
+        intencao: "SOLICITAR_INFORMACAO",
+        intencao_pendente: "REGISTRAR_MOVIMENTO",
+        pergunta: "Em qual conta ou cartão?",
+        dados_parciais: { valor: 80, tipo_movimento: "despesa", descricao: "Uber" },
+      },
+      contexto({
+        dataAtual: "2026-08-03",
+        contas: [{ nome: "C6 Bank", perfil: "pf" }],
+        intencaoPendente: {
+          intencao_pendente: "REGISTRAR_MOVIMENTO",
+          dados_parciais: {
+            tipo_movimento: "despesa",
+            descricao: "Uber",
+            valor: 80,
+          },
+        },
+      }),
+      "na C6",
+    );
+
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      descricao: "Uber",
+      valor: 80,
+      conta_nome: "C6 Bank",
+      perfil: "pf",
     });
   });
 });

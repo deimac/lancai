@@ -76,10 +76,81 @@ describe("interpretar_lancamento_rapido", () => {
     }
   });
 
-  it("deixa a IA interpretar mensagens com 'reais' ou 'dia N'", () => {
-    expect(
-      interpretar_lancamento_rapido("gastei 20,00 reais com 99 dia 02 no cartao azul", contexto()),
-    ).toBeNull();
+  it("aceita 'reais' e 'dia N' sem chamar a IA", () => {
+    const resultado = interpretar_lancamento_rapido(
+      "gastei 20,00 reais com 99 dia 02 no cartao azul",
+      contexto(),
+    );
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      tipo_movimento: "despesa",
+      valor: 20,
+      cartao_nome: "Azul Itaú",
+      data_movimento: "2026-08-02",
+      descricao: "99",
+    });
+  });
+
+  it("aceita valor inteiro seguido de reais", () => {
+    const resultado = interpretar_lancamento_rapido(
+      "gastei 45 reais de uber na C6",
+      contexto(),
+    );
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      valor: 45,
+      conta_nome: "C6 Bank",
+    });
+    if (resultado?.intencao === "REGISTRAR_MOVIMENTO") {
+      expect(resultado.descricao.toLowerCase()).toContain("uber");
+    }
+  });
+
+  it("completa slot com valor solto sem chamar a IA", () => {
+    const resultado = interpretar_lancamento_rapido(
+      "50",
+      contexto({
+        intencaoPendente: {
+          intencao_pendente: "REGISTRAR_MOVIMENTO",
+          dados_parciais: {
+            tipo_movimento: "despesa",
+            descricao: "Farmácia",
+            cartao_nome: "Azul Itaú",
+            perfil: "pf",
+          },
+        },
+      }),
+    );
+
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      descricao: "Farmácia",
+      valor: 50,
+      cartao_nome: "Azul Itaú",
+    });
+  });
+
+  it("completa slot com conta citada", () => {
+    const resultado = interpretar_lancamento_rapido(
+      "na C6",
+      contexto({
+        intencaoPendente: {
+          intencao_pendente: "REGISTRAR_MOVIMENTO",
+          dados_parciais: {
+            tipo_movimento: "despesa",
+            descricao: "Uber",
+            valor: 35,
+          },
+        },
+      }),
+    );
+
+    expect(resultado).toMatchObject({
+      intencao: "REGISTRAR_MOVIMENTO",
+      descricao: "Uber",
+      valor: 35,
+      conta_nome: "C6 Bank",
+    });
   });
 
   it("enxuga vocativo, Pix e valor na descrição do atalho", () => {

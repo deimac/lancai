@@ -9,6 +9,8 @@ export type ItemLancamentoSemelhante = {
   dataLancamento?: Date | string | null;
   tipo?: string;
   origemRotulo?: string | null;
+  /** Fato vindo do banco ou em conta sincronizada: não aceita correção nem exclusão. */
+  protegido?: boolean;
 };
 
 function sinal_valor(tipo?: string): "+" | "-" {

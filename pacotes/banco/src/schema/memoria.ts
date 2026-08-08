@@ -1,9 +1,13 @@
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { usuario } from "./usuario";
+import { workspace } from "./workspace";
 
 /** Conhecimento permanente e hábitos aprendidos do usuário. Pertence ao sistema, nunca à IA. */
 export const memoria = pgTable("memoria", {
   id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspace.id),
   chave: text("chave").notNull(),
   valor: text("valor").notNull(),
   usuarioId: uuid("usuario_id")

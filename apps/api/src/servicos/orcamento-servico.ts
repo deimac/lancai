@@ -1,6 +1,7 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import {
   categoria as categoriaTabela,
+  garantir_workspace_do_usuario,
   movimento as movimentoTabela,
   obter_banco,
   orcamento as orcamentoTabela,
@@ -46,6 +47,7 @@ export async function definir_orcamento(entrada: {
     .insert(orcamentoTabela)
     .values({
       usuarioId: entrada.usuarioId,
+      workspaceId: await garantir_workspace_do_usuario(banco, entrada.usuarioId),
       categoriaId: entrada.categoriaId ?? null,
       valorLimite: entrada.valorLimite.toFixed(2),
       recorrenteMensal: true,
@@ -140,6 +142,34 @@ export function formatar_status_orcamentos(lista: StatusOrcamento[]): string {
   return `Orçamento deste mês:\n${linhas.join("\n")}`;
 }
 
+export type AlertaOrcamento = {
+  orcamentoId: string;
+  faixa: 80 | 100;
+  texto: string;
+};
+
+/** Deriva alertas 80%/100% a partir do status — compartilhado chat e Open Finance. */
+export function alertas_de_status_orcamento(status: StatusOrcamento[]): AlertaOrcamento[] {
+  const alertas: AlertaOrcamento[] = [];
+  for (const item of status) {
+    const rotulo = item.categoriaNome ?? "geral";
+    if (item.percentual >= 100) {
+      alertas.push({
+        orcamentoId: item.orcamento.id,
+        faixa: 100,
+        texto: `Atenção: orçamento ${rotulo} estourado (${Math.round(item.percentual)}% de ${formatarMoeda(item.limite)}).`,
+      });
+    } else if (item.percentual >= 80) {
+      alertas.push({
+        orcamentoId: item.orcamento.id,
+        faixa: 80,
+        texto: `Alerta: orçamento ${rotulo} em ${Math.round(item.percentual)}% (${formatarMoeda(item.gasto)} de ${formatarMoeda(item.limite)}).`,
+      });
+    }
+  }
+  return alertas;
+}
+
 /** Texto de alerta após lançamento (0 LLM). */
 export async function texto_alerta_orcamento_apos_despesa(entrada: {
   usuarioId: string;
@@ -151,21 +181,8 @@ export async function texto_alerta_orcamento_apos_despesa(entrada: {
     const relevantes = status.filter(
       (s) => !s.orcamento.categoriaId || s.orcamento.categoriaId === entrada.categoriaId,
     );
-    const alertas: string[] = [];
-    for (const item of relevantes) {
-      if (item.percentual >= 100) {
-        const rotulo = item.categoriaNome ?? "geral";
-        alertas.push(
-          `Atenção: orçamento ${rotulo} estourado (${Math.round(item.percentual)}% de ${formatarMoeda(item.limite)}).`,
-        );
-      } else if (item.percentual >= 80) {
-        const rotulo = item.categoriaNome ?? "geral";
-        alertas.push(
-          `Alerta: orçamento ${rotulo} em ${Math.round(item.percentual)}% (${formatarMoeda(item.gasto)} de ${formatarMoeda(item.limite)}).`,
-        );
-      }
-    }
-    return alertas.length > 0 ? alertas.join(" ") : null;
+    const alertas = alertas_de_status_orcamento(relevantes);
+    return alertas.length > 0 ? alertas.map((a) => a.texto).join(" ") : null;
   } catch (erro) {
     // Migration 0006 ainda não aplicada — não derruba o lançamento.
     const msg = erro instanceof Error ? erro.message : String(erro);

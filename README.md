@@ -4,7 +4,7 @@ Plataforma conversacional de inteligência financeira. O usuário controla toda 
 
 > A IA nunca é o sistema financeiro. Ela é só o interpretador de linguagem. Toda a inteligência financeira mora no `MotorFinanceiro`, no backend.
 
-Leia o [documento mestre](docs/documento-mestre.md) para a especificação completa (PRD, filosofia, modelo de dados, ADRs e roadmap).
+Comece pela [visão da arquitetura](docs/00-VISAO_DA_ARQUITETURA.md), que é a porta de entrada da documentação e leva a todos os outros documentos.
 
 ## Estrutura do monorepo
 
@@ -16,10 +16,11 @@ lancai/
 │   └── api/                # Backend (Fastify + TypeScript)
 ├── modulos/                # Regras de negócio isoladas
 │   ├── financeiro/         # MotorFinanceiro: cálculos, saldos, parcelamento
+│   ├── conhecimento/       # Enriquecimento, regras, hábitos (Memoria)
+│   ├── open-finance/       # Fonte bancária isolada
 │   ├── ia/                 # OrquestradorIA + InterpretadorIntencoes
-│   ├── memoria/            # Hábitos e preferências aprendidas do usuário
 │   ├── relatorios/         # Consultas e visões de dados
-│   └── auditoria/          # Log imutável de alterações
+│   └── evolution/          # Transporte WhatsApp
 ├── pacotes/                # Código compartilhado
 │   ├── banco/              # Schema Drizzle + migrations + client Postgres/Supabase
 │   └── tipos/              # Schemas Zod / DTOs / contratos IA <-> Motor Financeiro
@@ -55,7 +56,7 @@ Ordem padrão: **Groq → Gemini 2.0 Flash → Ollama** (`qwen2.5:3b-instruct`).
 - Ollama é **último fallback** (evita 503 se as APIs caírem). Em VPS sem GPU (ex.: Hostinger KVM2, 2 vCPU / 8 GB) o modelo 3B cabe, mas fica lento — não use como padrão.
 - Circuito: após 3 falhas seguidas num provedor, ele fica pausado ~2 minutos.
 - Health-check com cache TTL pula provedor morto antes do timeout da mensagem.
-- Redis/BullMQ **não** entram no caminho do `/chat` neste estágio (chat síncrono; fila não evita 503 e custa RAM). Detalhes em [`docs/ia-hibrida-ollama.md`](docs/ia-hibrida-ollama.md).
+- Redis/BullMQ **não** entram no caminho do `/chat` neste estágio (chat síncrono; fila não evita 503 e custa RAM). Detalhes em [`docs/10-IA.md`](docs/10-IA.md) e [`docs/15-OPERACAO.md`](docs/15-OPERACAO.md).
 
 ```bash
 # Fallback local no Mac (dev) ou na VPS
@@ -75,7 +76,7 @@ ollama pull qwen2.5:3b-instruct
 
 ## Filosofia do projeto
 
-Ver seção 2 do [documento mestre](docs/documento-mestre.md). Resumo:
+Ver [`docs/05-PRD.md`](docs/05-PRD.md). Resumo:
 
 1. O usuário conversa, nunca preenche formulário.
 2. Toda informação pode ser corrigida por conversa.

@@ -1,4 +1,6 @@
 import {
+  ErroContaSincronizada,
+  ErroFatoImutavel,
   ErroLimiteCartaoExcedido,
   ErroRecursoNaoEncontrado,
   ErroTipoMovimentoNaoImplementado,
@@ -19,6 +21,15 @@ import {
  * Retorna null se for erro inesperado (aí cabe a mensagem genérica).
  */
 export function mensagem_erro_para_usuario(erro: unknown): string | null {
+  /**
+   * Recusa da fronteira Fato/Conhecimento. Chega aqui como exceção por ser a
+   * forma de o Core interromper a operação, mas para o usuário é uma resposta
+   * normal: a mensagem já vem escrita para ele e diz o que dá para fazer.
+   */
+  if (erro instanceof ErroContaSincronizada || erro instanceof ErroFatoImutavel) {
+    return erro.message;
+  }
+
   if (
     erro instanceof ErroReferenciaNaoEncontrada ||
     erro instanceof ErroReferenciaAmbiguo ||

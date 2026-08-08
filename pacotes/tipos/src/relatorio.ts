@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { perfilSchema } from "./cadastro";
 
+/** Máximo de lançamentos por página no extrato conversacional (`historico`). */
+export const LIMITE_ITENS_HISTORICO = 40;
+
 const dataISOSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");

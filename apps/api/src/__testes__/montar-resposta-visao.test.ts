@@ -148,6 +148,7 @@ describe("montar_resposta_visao", () => {
         saldoPeriodo: 2423,
         totalItens: 3,
         itensOmitidos: 0,
+        deslocamento: 0,
         dias: [
           {
             data: "2026-08-15",
@@ -205,6 +206,7 @@ describe("montar_resposta_visao", () => {
           saldoPeriodo: -63.53,
           totalItens: 2,
           itensOmitidos: 0,
+          deslocamento: 0,
           dias: [
             {
               data: "2026-08-05",
@@ -243,9 +245,81 @@ describe("montar_resposta_visao", () => {
         saldoPeriodo: 0,
         totalItens: 0,
         itensOmitidos: 0,
+        deslocamento: 0,
         dias: [],
       },
     });
     expect(texto).toBe("Não encontrei lançamentos nesse período.");
+  });
+
+  it("oferece paginação com mais quando há itens omitidos", () => {
+    const texto = montar_resposta_visao({
+      tipo: "historico",
+      dados: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        totalReceitas: 0,
+        totalDespesas: 400,
+        saldoPeriodo: -400,
+        totalItens: 45,
+        itensOmitidos: 5,
+        deslocamento: 0,
+        dias: [
+          {
+            data: "2026-08-15",
+            itens: [
+              {
+                id: "aaaaaaaa-1111-2222-3333-444455556666",
+                descricao: "Almoço",
+                tipo: "despesa",
+                valor: 45,
+                perfil: "pf",
+                contaNome: "C6 Bank",
+                cartaoNome: null,
+                categoriaNome: "Alimentação",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(texto).toContain("mostrando 1–1 de 45");
+    expect(texto).toContain('Diga "mais" para ver os próximos');
+    expect(texto).not.toContain("Peça um intervalo menor para ver todos");
+  });
+
+  it("marca continuação quando há deslocamento", () => {
+    const texto = montar_resposta_visao({
+      tipo: "historico",
+      dados: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        totalReceitas: 0,
+        totalDespesas: 400,
+        saldoPeriodo: -400,
+        totalItens: 45,
+        itensOmitidos: 0,
+        deslocamento: 40,
+        dias: [
+          {
+            data: "2026-08-01",
+            itens: [
+              {
+                id: "bbbbbbbb-1111-2222-3333-444455556666",
+                descricao: "Café",
+                tipo: "despesa",
+                valor: 10,
+                perfil: "pf",
+                contaNome: "C6 Bank",
+                cartaoNome: null,
+                categoriaNome: "Alimentação",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(texto).toContain("Próximos lançamentos");
+    expect(texto).toContain("mostrando 41–41 de 45");
   });
 });

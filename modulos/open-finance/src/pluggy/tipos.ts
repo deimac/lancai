@@ -1,0 +1,64 @@
+/**
+ * As formas que a Pluggy devolve, só nos campos que usamos. A API evolui
+ * acrescentando campo sem versionar, então tudo aqui é parcial de propósito:
+ * exigir o formato inteiro faria um campo novo do provedor quebrar a ingestão.
+ */
+
+export interface RespostaPaginada<T> {
+  results: T[];
+  /** Query string relativa (`?accountId=...&after=...`). Ausente no fim. */
+  next?: string | null;
+}
+
+export interface ContaPluggy {
+  id: string;
+  type?: string;
+  subtype?: string;
+  name?: string;
+  marketingName?: string | null;
+  number?: string | null;
+  balance?: number | null;
+}
+
+export interface TransacaoPluggy {
+  id: string;
+  accountId: string;
+  description?: string | null;
+  descriptionRaw?: string | null;
+  amount: number;
+  date: string;
+  type?: "DEBIT" | "CREDIT" | string;
+  status?: "POSTED" | "PENDING" | string;
+  merchant?: { name?: string | null } | null;
+  paymentData?: { receiver?: { name?: string | null } | null } | null;
+  /** Presente só em compra parcelada no cartão. */
+  creditCardMetadata?: {
+    installmentNumber?: number | null;
+    totalInstallments?: number | null;
+    totalAmount?: number | null;
+    purchaseDate?: string | null;
+  } | null;
+}
+
+export interface ItemPluggy {
+  id: string;
+  status?: string;
+  executionStatus?: string;
+  error?: { code?: string | null } | null;
+  connector?: { name?: string | null } | null;
+  lastUpdatedAt?: string | null;
+  nextAutoSyncAt?: string | null;
+  consentExpiresAt?: string | null;
+}
+
+/** O envelope comum a todo webhook. Os campos extras dependem do evento. */
+export interface WebhookPluggy {
+  event?: string;
+  eventId?: string;
+  itemId?: string;
+  accountId?: string;
+  transactionIds?: string[];
+  createdTransactionsLink?: string;
+  createdTransactionsLinkV2?: string;
+  error?: { code?: string | null } | null;
+}

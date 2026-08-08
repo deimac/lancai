@@ -8,10 +8,9 @@ build/
 .turbo/
 *.tsbuildinfo
 
-# Ambiente
-.env
-.env.local
-.env.*.local
+# Ambiente — pega também as cópias que o Finder cria (".env 2")
+.env*
+!.env.example
 
 # Editor / SO
 .DS_Store

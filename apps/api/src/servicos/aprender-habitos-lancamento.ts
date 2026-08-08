@@ -1,4 +1,4 @@
-import type { Memoria } from "@lancai/memoria";
+import type { Memoria } from "@lancai/conhecimento";
 import type { EntradaCriarMovimento } from "@lancai/tipos";
 
 function slug_estabelecimento(descricao: string): string {

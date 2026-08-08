@@ -1,18 +1,36 @@
-import type { IntencaoConsultarVisao, IntencaoDetectada } from "@lancai/tipos";
+import { LIMITE_ITENS_HISTORICO } from "@lancai/tipos";
+import type { IntencaoConsultarVisao, IntencaoDetectada, Perfil, TipoVisao } from "@lancai/tipos";
 import { consulta_historico_detalhada } from "./consulta-historico-detalhada";
 import { inicio_fim_mes_iso, somar_dias_iso_local } from "./datas-relativas";
 import { inferir_origem_da_mensagem } from "./inferir-origem-movimento";
+import { inferir_perfil_da_mensagem } from "./normalizar-intencao-movimento";
 import type { ContextoInterpretacao } from "./prompt";
 
 const ACAO_ESCRITA =
   /\b(corrige|corrigir|apague|apaga|apagar|cancela|cancelar|cadastr|exclui|excluir|muda o saldo)\b/i;
 
 const VERBO_LANCAMENTO = /\b(gastei|paguei|comprei|recebi|ganhei|debitei)\b/i;
-const PERGUNTA = /\b(quais|quanto|mostra|mostre|liste|listar|ver|veja|tiv[eé]|teve|resumo|extrato)\b/i;
+const PERGUNTA = /\b(quais|quanto|mostra|mostre|liste|listar|ver|veja|tiv[eé]|teve|resumo|extrato|como)\b/i;
+
+const PEDIDO_PARCELAMENTOS =
+  /\b(parcelamentos?|compras?\s+parcelad|quanto\s+falta\s+(?:pagar|das?\s+parcelas?)|parcelas?\s+(?:abertas?|restantes?))\b/i;
+
+const PEDIDO_FUTURO =
+  /\b(comprometido|compromissos?|lan[cç]amentos?\s+futuros?|vencimentos?\s+futuros?|a\s+pagar\s+at[eé]|quanto\s+(?:tenho\s+)?compromet|previsto\s+at[eé])\b/i;
+
+const PEDIDO_FLUXO =
+  /\b(fluxo\s+cruzado)\b|\b(pessoal)\b[\s\S]{0,40}\b(empresa)\b|\b(empresa)\b[\s\S]{0,40}\b(pessoal)\b|\bcom\s+dinheiro\s+da\s+empresa\b|\bcom\s+dinheiro\s+pessoal\b/i;
+
+const PEDIDO_EVOLUCAO =
+  /\b(evolu[cç][aã]o|últimos?\s+\d*\s*meses|ultimos?\s+\d*\s*meses|ao\s+longo\s+dos?\s+meses|como\s+est[aã]o\s+(?:as\s+)?(?:minhas\s+)?finan)/i;
 
 /** Follow-up curto após um total: "detalhado", "mostra detalhado", etc. */
 const PEDIDO_SO_DETALHE =
   /^(?:(?:mostra|mostre|ver|veja|liste|listar|quero)\s+)?(?:o\s+)?(?:detalhad[oa]s?|um\s+a\s+um|item\s+a\s+item)\??\.?$/i;
+
+/** Follow-up de paginação do extrato: "mais", "continuar", "próximos". */
+const PEDIDO_MAIS_HISTORICO =
+  /^(?:(?:mostra|mostre|ver|veja|liste|listar|quero)\s+)?(?:mais|continuar|continua|pr[oó]ximos?)\??\.?$/i;
 
 const PEDIDO_HISTORICO =
   /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|gastos?|despesas?|gastei|paguei|resumo)\b/i;
@@ -23,8 +41,9 @@ const PEDIDO_SALDO =
 const PEDIDO_MES =
   /\b(esse\s+m[eê]s|neste\s+m[eê]s|m[eê]s\s+atual|do\s+m[eê]s|no\s+m[eê]s)\b/i;
 
-const ESTABELECIMENTO_SEM_PERIODO =
-  /\b(uber|99|ifood|rappi|netflix|spotify|farm[aá]cia|mercado|posto)\b/i;
+/** Estabelecimentos frequentes — filtro por `descricao`, não por categoria. */
+const ESTABELECIMENTO =
+  /\b(uber|99|ifood|i\s*food|rappi|netflix|spotify|amazon|magazine\s*luiza|magalu|farm[aá]cia|mercado|posto|shell|ipiranga)\b/i;
 
 /**
  * Reaproveita a última consulta de histórico quando o usuário só pede "detalhado".
@@ -41,12 +60,103 @@ export function interpretar_pedido_detalhe_historico(
   return {
     ...ultimaIntencaoIa,
     detalhado: true,
+    deslocamento: 0,
   };
 }
 
 /**
+ * Avança a página do extrato quando o usuário diz "mais" / "continuar".
+ */
+export function interpretar_pedido_mais_historico(
+  mensagem: string,
+  ultimaIntencaoIa: IntencaoDetectada | null | undefined,
+): IntencaoDetectada | null {
+  const texto = mensagem.trim();
+  if (!texto || !PEDIDO_MAIS_HISTORICO.test(texto)) return null;
+  if (!ultimaIntencaoIa || ultimaIntencaoIa.intencao !== "CONSULTAR_VISAO") return null;
+  if (ultimaIntencaoIa.tipo_visao !== "historico") return null;
+
+  const deslocamentoAtual = ultimaIntencaoIa.deslocamento ?? 0;
+  return {
+    ...ultimaIntencaoIa,
+    detalhado: true,
+    deslocamento: deslocamentoAtual + LIMITE_ITENS_HISTORICO,
+  };
+}
+
+function extrair_estabelecimento(texto: string): string | null {
+  const m = ESTABELECIMENTO.exec(texto);
+  if (!m?.[1]) return null;
+  const bruto = m[1].replace(/\s+/g, "").toLocaleLowerCase("pt-BR");
+  if (bruto === "ifood") return "ifood";
+  if (bruto.startsWith("magazine") || bruto === "magalu") return "magalu";
+  if (bruto.startsWith("farm")) return "farmacia";
+  return bruto.normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+function montar_consulta(
+  tipo: TipoVisao,
+  texto: string,
+  contexto: ContextoInterpretacao,
+  opcoes: { perfil?: Perfil | null; forcarPerfilNulo?: boolean } = {},
+): IntencaoConsultarVisao {
+  const origem = inferir_origem_da_mensagem(texto, contexto);
+  const perfil = opcoes.forcarPerfilNulo
+    ? null
+    : (opcoes.perfil !== undefined ? opcoes.perfil : inferir_perfil_da_mensagem(texto));
+  return {
+    intencao: "CONSULTAR_VISAO",
+    tipo_visao: tipo,
+    filtros: {
+      conta_nome: origem.conta_nome ?? null,
+      cartao_nome: origem.cartao_nome ?? null,
+      perfil,
+    },
+  };
+}
+
+/**
+ * Visões nomeadas (fluxo, futuro, evolução, parcelamentos) — período padrão
+ * fica a cargo do ModuloRelatorios quando omitido.
+ */
+function interpretar_visao_nomeada(
+  texto: string,
+  contexto: ContextoInterpretacao,
+): IntencaoConsultarVisao | null {
+  if (
+    !PERGUNTA.test(texto) &&
+    !PEDIDO_PARCELAMENTOS.test(texto) &&
+    !PEDIDO_FUTURO.test(texto) &&
+    !PEDIDO_EVOLUCAO.test(texto) &&
+    !PEDIDO_FLUXO.test(texto)
+  ) {
+    return null;
+  }
+
+  // Fluxo cruzado antes de histórico: "gastei de pessoal com dinheiro da empresa".
+  if (PEDIDO_FLUXO.test(texto)) {
+    return montar_consulta("fluxo", texto, contexto, { forcarPerfilNulo: true });
+  }
+
+  if (PEDIDO_EVOLUCAO.test(texto)) {
+    return montar_consulta("evolucao", texto, contexto);
+  }
+
+  if (PEDIDO_FUTURO.test(texto)) {
+    return montar_consulta("futuro", texto, contexto);
+  }
+
+  if (PEDIDO_PARCELAMENTOS.test(texto)) {
+    return montar_consulta("parcelamentos", texto, contexto);
+  }
+
+  return null;
+}
+
+/**
  * Consultas óbvias sem LLM (economia de créditos).
- * Estabelecimento/categoria sem período explícito fica para a IA.
+ * Estabelecimento conhecido → histórico + descricao (mês atual se não houver período).
+ * Categoria sem período continua na IA.
  */
 export function interpretar_consulta_rapida(
   mensagem: string,
@@ -58,7 +168,13 @@ export function interpretar_consulta_rapida(
 
   const lower = texto.toLocaleLowerCase("pt-BR");
 
-  if (PEDIDO_SALDO.test(texto) && !/\b(cart[aã]o|limite|fatura)\b/i.test(texto)) {
+  const visaoNomeada = interpretar_visao_nomeada(texto, contexto);
+  if (visaoNomeada) return visaoNomeada;
+
+  if (
+    PEDIDO_SALDO.test(texto) &&
+    !/\b(cart[aã]o|limite|fatura|comprometido|compromissos?)\b/i.test(texto)
+  ) {
     const origem = inferir_origem_da_mensagem(texto, contexto);
     return {
       intencao: "CONSULTAR_VISAO",
@@ -71,12 +187,10 @@ export function interpretar_consulta_rapida(
 
   if (!PEDIDO_HISTORICO.test(texto) || !PERGUNTA.test(texto)) return null;
 
-  // "quanto gastei de uber?" sem dia/mês → IA (precisa descricao)
-  if (ESTABELECIMENTO_SEM_PERIODO.test(lower) && !tem_periodo_explicito(lower)) {
-    return null;
-  }
-
-  const periodo = resolver_periodo_consulta(lower, contexto.dataAtual);
+  const estabelecimento = extrair_estabelecimento(lower);
+  const periodo =
+    resolver_periodo_consulta(lower, contexto.dataAtual) ??
+    (estabelecimento ? inicio_fim_mes_iso(contexto.dataAtual) : null);
   if (!periodo) return null;
 
   const origem = inferir_origem_da_mensagem(texto, contexto);
@@ -88,16 +202,10 @@ export function interpretar_consulta_rapida(
       periodo,
       conta_nome: origem.conta_nome ?? null,
       cartao_nome: origem.cartao_nome ?? null,
+      ...(estabelecimento ? { descricao: estabelecimento } : {}),
     },
   };
   return intencao;
-}
-
-function tem_periodo_explicito(texto: string): boolean {
-  return (
-    PEDIDO_MES.test(texto) ||
-    /\b(hoje|ontem|anteontem|\d{1,2}\/\d{1,2})\b/.test(texto)
-  );
 }
 
 /** `null` no periodo = mês atual no ModuloRelatorios; objeto = dia ou intervalo. */

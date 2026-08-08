@@ -1,5 +1,10 @@
 import { eh_fluxo_cruzado } from "@lancai/financeiro";
-import { paraNumero, schemaFiltrosVisaoResolvidos, somar } from "@lancai/tipos";
+import {
+  LIMITE_ITENS_HISTORICO,
+  paraNumero,
+  schemaFiltrosVisaoResolvidos,
+  somar,
+} from "@lancai/tipos";
 import type { FiltrosVisaoResolvidos, TipoVisao } from "@lancai/tipos";
 import { fimDoAno, inicioFimMesAtual, listarMesesEntre, ultimosMeses } from "./datas-relatorio";
 import type { RepositorioRelatorios } from "./repositorio-relatorios";
@@ -16,7 +21,14 @@ import type {
 
 const QUANTIDADE_MESES_EVOLUCAO = 6;
 const QUANTIDADE_ITENS_RANKING_CATEGORIA = 5;
-const LIMITE_ITENS_HISTORICO = 40;
+
+/** Reexportado para consumidores do módulo de relatórios. */
+export { LIMITE_ITENS_HISTORICO };
+
+export type OpcoesConsultaVisao = {
+  /** Histórico: quantos itens pular (paginação via “mais”). */
+  deslocamento?: number;
+};
 
 /** Normaliza para filtro por descrição/estabelecimento (ex.: Uber ≈ uber). */
 function normalizar_termo_descricao(texto: string): string {
@@ -51,6 +63,7 @@ export class ModuloRelatorios {
     tipoVisao: TipoVisao,
     filtrosBrutos: FiltrosVisaoResolvidos,
     dataAtual: string,
+    opcoes: OpcoesConsultaVisao = {},
   ): Promise<ResultadoVisao> {
     const filtros = schemaFiltrosVisaoResolvidos.parse(filtrosBrutos);
 
@@ -70,7 +83,10 @@ export class ModuloRelatorios {
       case "evolucao":
         return { tipo: "evolucao", dados: await this.consultar_evolucao(filtros, dataAtual) };
       case "historico":
-        return { tipo: "historico", dados: await this.consultar_historico(filtros, dataAtual) };
+        return {
+          tipo: "historico",
+          dados: await this.consultar_historico(filtros, dataAtual, opcoes.deslocamento ?? 0),
+        };
     }
   }
 
@@ -315,11 +331,15 @@ export class ModuloRelatorios {
   /**
    * Extrato conversacional: lista lançamentos do período agrupados por dia,
    * com totais de receitas/despesas. Limitado a `LIMITE_ITENS_HISTORICO` itens
-   * na resposta (os mais recentes), mantendo `totalItens`/`itensOmitidos` para
-   * a formatação avisar quando houve corte.
+   * por página (os mais recentes primeiro); `deslocamento` avança a página.
    */
-  private async consultar_historico(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
+  private async consultar_historico(
+    filtros: FiltrosVisaoResolvidos,
+    dataAtual: string,
+    deslocamentoBruto = 0,
+  ) {
     const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
+    const deslocamento = Math.max(0, Math.floor(deslocamentoBruto));
 
     const [movimentosBrutos, contas, cartoes, categorias] = await Promise.all([
       this.repositorio.listarMovimentos(filtros.usuarioId, {
@@ -357,8 +377,9 @@ export class ModuloRelatorios {
       .reduce((acumulado, movimento) => somar(acumulado, movimento.valor), 0);
 
     const totalItens = ordenados.length;
-    const itensOmitidos = Math.max(0, totalItens - LIMITE_ITENS_HISTORICO);
-    const exibidos = ordenados.slice(0, LIMITE_ITENS_HISTORICO);
+    const deslocamentoEfetivo = Math.min(deslocamento, totalItens);
+    const exibidos = ordenados.slice(deslocamentoEfetivo, deslocamentoEfetivo + LIMITE_ITENS_HISTORICO);
+    const itensOmitidos = Math.max(0, totalItens - deslocamentoEfetivo - exibidos.length);
 
     const porDia = new Map<string, ItemHistorico[]>();
     for (const movimento of exibidos) {
@@ -389,6 +410,7 @@ export class ModuloRelatorios {
       saldoPeriodo: somar(totalReceitas, -totalDespesas),
       totalItens,
       itensOmitidos,
+      deslocamento: deslocamentoEfetivo,
       dias,
     };
   }

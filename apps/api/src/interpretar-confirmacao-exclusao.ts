@@ -209,7 +209,7 @@ export function interpretar_resposta_confirmacao_exclusao(
 
   if (pendencia.tipo === "lançamentos_corrigir") {
     if (NEGATIVAS.test(texto)) {
-      return { intencao: "NAO_RECONHECIDA", motivo: "Correção cancelada." };
+      return { intencao: "MENSAGEM_INFO", motivo: "Correção cancelada." };
     }
 
     const escolha = NUMERO_ESCOLHA.exec(texto);
@@ -218,7 +218,7 @@ export function interpretar_resposta_confirmacao_exclusao(
     const indice = Number(escolha[1]);
     if (indice < 1 || indice > pendencia.quantidade) {
       return {
-        intencao: "NAO_RECONHECIDA",
+        intencao: "MENSAGEM_INFO",
         motivo: `Número inválido. Escolha entre 1 e ${pendencia.quantidade} para corrigir (alterar) o lançamento.`,
       };
     }
@@ -226,7 +226,7 @@ export function interpretar_resposta_confirmacao_exclusao(
     const campos = campos_correcao_pendente(ultimaIntencaoIa, historicoRecente);
     if (!campos) {
       return {
-        intencao: "NAO_RECONHECIDA",
+        intencao: "MENSAGEM_INFO",
         motivo: `Ok, lançamento ${indice}. O que deseja alterar? (ex.: "descrição Tênis Adidas" ou "valor 300"). Isso não apaga o lançamento.`,
       };
     }
@@ -262,7 +262,7 @@ export function interpretar_resposta_confirmacao_exclusao(
       const indice = Number(escolha[1]);
       if (indice < 1 || indice > pendencia.quantidade) {
         return {
-          intencao: "NAO_RECONHECIDA",
+          intencao: "MENSAGEM_INFO",
           motivo: `Número inválido. Escolha entre 1 e ${pendencia.quantidade} para excluir, ou diga "todos".`,
         };
       }
@@ -279,7 +279,7 @@ export function interpretar_resposta_confirmacao_exclusao(
     }
 
     if (NEGATIVAS.test(texto)) {
-      return { intencao: "NAO_RECONHECIDA", motivo: "Exclusão cancelada." };
+      return { intencao: "MENSAGEM_INFO", motivo: "Exclusão cancelada." };
     }
     return null;
   }
@@ -311,7 +311,7 @@ export function interpretar_resposta_confirmacao_exclusao(
   }
 
   if (NEGATIVAS.test(texto)) {
-    return { intencao: "NAO_RECONHECIDA", motivo: "Exclusão cancelada." };
+    return { intencao: "MENSAGEM_INFO", motivo: "Exclusão cancelada." };
   }
 
   return null;

@@ -16,6 +16,7 @@ import type {
 } from "../tipos-resultado";
 
 const DATA_ATUAL = "2026-08-15";
+const WORKSPACE = "00000000-0000-4000-8000-000000000001";
 
 function criarConta(usuarioId: string, sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -26,7 +27,9 @@ function criarConta(usuarioId: string, sobrepor: Partial<Conta> = {}): Conta {
     saldoAtual: "1000.00",
     perfil: "pf",
     ativo: true,
+    sincronizada: false,
     usuarioId,
+    workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
     ...sobrepor,
@@ -45,10 +48,12 @@ function criarCartao(usuarioId: string, contaId: string, sobrepor: Partial<Carta
     perfil: "pf",
     modalidade: "multiplo",
     ativo: true,
+    sincronizada: false,
     final4: null,
     dadosPlasticosCifrados: null,
     contaId,
     usuarioId,
+    workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
     ...sobrepor,
@@ -63,6 +68,7 @@ function criarCategoria(usuarioId: string, sobrepor: Partial<Categoria> = {}): C
     tipo: "despesa",
     ativo: true,
     usuarioId,
+    workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
     ...sobrepor,
@@ -73,6 +79,17 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
   const agora = new Date();
   return {
     id: randomUUID(),
+    workspaceId: WORKSPACE,
+    fonte: "manual",
+    provedor: null,
+    idExterno: null,
+    descricaoFonte: "Movimento de teste",
+    favorecidoFonte: null,
+    statusFonte: "confirmado",
+    parcelaNumero: null,
+    parcelaTotal: null,
+    parcelaCompraEm: null,
+    parcelaCompraValor: null,
     descricao: "Movimento de teste",
     valor: "100.00",
     tipo: "despesa",
@@ -85,6 +102,13 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     cartaoId: null,
     categoriaId,
     pessoaId: null,
+    tags: [],
+    observacoes: null,
+    classificadoPor: "usuario",
+    regraId: null,
+    classificadoEm: null,
+    confiancaIa: null,
+    ignoradoEmRelatorio: false,
     usuarioId,
     dataCriacao: agora,
     dataAtualizacao: agora,
@@ -554,7 +578,19 @@ describe("ModuloRelatorios", () => {
       expect(dados.periodo).toEqual({ de: "2026-08-01", ate: "2026-08-31" });
       expect(dados.totalItens).toBe(41);
       expect(dados.itensOmitidos).toBe(1);
+      expect(dados.deslocamento).toBe(0);
       expect(dados.dias.reduce((total, dia) => total + dia.itens.length, 0)).toBe(40);
+
+      const pagina2 = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId),
+        DATA_ATUAL,
+        { deslocamento: 40 },
+      );
+      const dados2 = pagina2.dados as ResultadoHistorico;
+      expect(dados2.deslocamento).toBe(40);
+      expect(dados2.itensOmitidos).toBe(0);
+      expect(dados2.dias.reduce((total, dia) => total + dia.itens.length, 0)).toBe(1);
     });
 
     it("retorna vazio quando não há lançamentos no período", async () => {

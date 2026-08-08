@@ -1,18 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq } from "drizzle-orm";
-import { conta, obter_banco } from "@lancai/banco";
+import { conta, garantir_workspace_do_usuario, obter_banco } from "@lancai/banco";
 import { schemaCriarConta } from "@lancai/tipos";
 
 export async function registrar_rotas_conta(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaCriarConta.parse(requisicao.body);
     const banco = obter_banco();
+    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
     const [criada] = await banco
       .insert(conta)
       .values({
         nome: dados.nome,
         perfil: dados.perfil,
         usuarioId: dados.usuarioId,
+        workspaceId,
         saldoInicial: String(dados.saldoInicial),
         saldoAtual: String(dados.saldoInicial),
       })

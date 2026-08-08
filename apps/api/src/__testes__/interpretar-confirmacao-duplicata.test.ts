@@ -48,7 +48,7 @@ describe("interpretar_resposta_confirmacao_duplicata", () => {
     expect(
       interpretar_resposta_confirmacao_duplicata("não", historicoDuplicata, lancamento),
     ).toEqual({
-      intencao: "NAO_RECONHECIDA",
+      intencao: "MENSAGEM_INFO",
       motivo: "Lançamento não registrado — já existia um igual.",
     });
   });

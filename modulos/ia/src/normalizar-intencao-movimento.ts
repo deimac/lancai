@@ -1,4 +1,11 @@
-import type { FormaPagamento, IntencaoDetectada, IntencaoRegistrarMovimento, Perfil } from "@lancai/tipos";
+import type {
+  FormaPagamento,
+  IntencaoDetectada,
+  IntencaoRegistrarMovimento,
+  IntencaoSolicitarInformacao,
+  Perfil,
+  TipoMovimento,
+} from "@lancai/tipos";
 import { inferir_forma_pagamento_da_mensagem } from "./inferir-forma-pagamento";
 import {
   inferir_origem_da_mensagem,
@@ -7,8 +14,8 @@ import {
 } from "./inferir-origem-movimento";
 import { inferir_perfil_padrao } from "./inferir-perfil-padrao";
 import { enxugar_descricao_lancamento } from "./normalizar-descricao";
-import { perguntar_campo } from "./personalizar-pergunta";
-import type { ContextoInterpretacao } from "./prompt";
+import { personalizar_pergunta, perguntar_campo } from "./personalizar-pergunta";
+import type { ContextoInterpretacao, IntencaoPendenteSlot } from "./prompt";
 
 /** Perfil explícito na mensagem (tem prioridade sobre perfil da conta/cartão). */
 export function inferir_perfil_da_mensagem(mensagem: string): Perfil | null {
@@ -37,6 +44,136 @@ export function inferir_perfil_da_mensagem(mensagem: string): Perfil | null {
 }
 
 type CampoFaltante = "valor" | "conta" | "perfil";
+
+function dados_de_parcial(parciais: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!parciais || typeof parciais !== "object") return {};
+  return { ...parciais };
+}
+
+function parciais_da_pendente(pendente: IntencaoPendenteSlot | null | undefined): Record<string, unknown> {
+  if (!pendente || pendente.intencao_pendente !== "REGISTRAR_MOVIMENTO") return {};
+  return dados_de_parcial(pendente.dados_parciais);
+}
+
+/** Valor na mensagem de slot — ignora "dia N" para não confundir com quantia. */
+function extrair_valor_mensagem(mensagem: string): number | null {
+  const texto = mensagem
+    .trim()
+    .replace(/\bdia\s+\d{1,2}\b/gi, " ")
+    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ");
+  if (!texto.trim()) return null;
+
+  const comCentavos =
+    /R\$?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/.exec(texto) ??
+    /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/.exec(texto) ??
+    /\b(\d+,\d{2})\b/.exec(texto);
+  if (comCentavos?.[1]) {
+    const numero = Number(comCentavos[1].replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(numero) && numero > 0 ? numero : null;
+  }
+
+  const comReais = /\b(\d{1,3}(?:\.\d{3})*|\d{1,6})\s*reais?\b/i.exec(texto);
+  if (comReais?.[1]) {
+    const numero = Number(comReais[1].replace(/\./g, ""));
+    return Number.isFinite(numero) && numero > 0 ? numero : null;
+  }
+
+  // Resposta curta só com número ("50", "120").
+  const soNumero = /^\s*(?:r\$\s*)?(\d{1,6}(?:[.,]\d{1,2})?)\s*$/i.exec(texto);
+  if (soNumero?.[1]) {
+    const bruto = soNumero[1];
+    const numero = bruto.includes(",")
+      ? Number(bruto.replace(/\./g, "").replace(",", "."))
+      : Number(bruto.replace(",", "."));
+    return Number.isFinite(numero) && numero > 0 ? numero : null;
+  }
+
+  const aposVerbo =
+    /\b(?:gastei|paguei|comprei|recebi|ganhei|debitei)\s+(?:r\$\s*)?(\d{1,6})(?:\s|$|,)/i.exec(
+      texto,
+    );
+  if (aposVerbo?.[1]) {
+    const numero = Number(aposVerbo[1]);
+    return Number.isFinite(numero) && numero > 0 ? numero : null;
+  }
+
+  return null;
+}
+
+function tipo_de_parcial(parciais: Record<string, unknown>): TipoMovimento {
+  return parciais.tipo_movimento === "receita" ? "receita" : "despesa";
+}
+
+function descricao_util(atual: string | undefined, pendente: string): string {
+  const descAtual = atual?.trim() ?? "";
+  const enxuta = descAtual ? enxugar_descricao_lancamento(descAtual) : "";
+  // Placeholder ou eco da resposta de slot ("50", "pessoal") não substitui o que já tínhamos.
+  if (
+    !enxuta ||
+    enxuta === "Lançamento" ||
+    /^\d+([.,]\d+)?$/.test(enxuta) ||
+    /^(pessoal|empresa|pf|pj)$/i.test(enxuta)
+  ) {
+    return pendente || enxuta || "Lançamento";
+  }
+  return enxuta;
+}
+
+function mesclar_registrar_movimento(
+  atual: Partial<IntencaoRegistrarMovimento>,
+  pendentes: Record<string, unknown>,
+  mensagem: string,
+  contexto: ContextoInterpretacao,
+): IntencaoRegistrarMovimento {
+  const valorMensagem = extrair_valor_mensagem(mensagem);
+  const origemMensagem = inferir_origem_da_mensagem(mensagem, contexto);
+  const perfilMensagem = inferir_perfil_da_mensagem(mensagem);
+
+  const descPendente = typeof pendentes.descricao === "string" ? pendentes.descricao.trim() : "";
+
+  const cartao =
+    atual.cartao_nome ??
+    origemMensagem.cartao_nome ??
+    (typeof pendentes.cartao_nome === "string" ? pendentes.cartao_nome : null);
+  const conta =
+    atual.conta_nome ??
+    origemMensagem.conta_nome ??
+    (typeof pendentes.conta_nome === "string" ? pendentes.conta_nome : null);
+
+  return {
+    intencao: "REGISTRAR_MOVIMENTO",
+    tipo_movimento: atual.tipo_movimento ?? tipo_de_parcial(pendentes),
+    descricao: descricao_util(atual.descricao, descPendente),
+    valor:
+      atual.valor ??
+      (typeof pendentes.valor === "number" ? pendentes.valor : null) ??
+      valorMensagem,
+    data_movimento:
+      atual.data_movimento ??
+      (typeof pendentes.data_movimento === "string" ? pendentes.data_movimento : null),
+    perfil:
+      perfilMensagem ??
+      atual.perfil ??
+      (pendentes.perfil === "pf" || pendentes.perfil === "pj" ? pendentes.perfil : null),
+    conta_nome: cartao ? null : conta,
+    cartao_nome: cartao,
+    categoria_nome:
+      atual.categoria_nome ??
+      (typeof pendentes.categoria_nome === "string" ? pendentes.categoria_nome : null),
+    pessoa_nome:
+      atual.pessoa_nome ??
+      (typeof pendentes.pessoa_nome === "string" ? pendentes.pessoa_nome : null),
+    parcelas:
+      atual.parcelas ??
+      (typeof pendentes.parcelas === "number" ? pendentes.parcelas : null),
+    forma_pagamento:
+      atual.forma_pagamento ??
+      (typeof pendentes.forma_pagamento === "string"
+        ? (pendentes.forma_pagamento as FormaPagamento)
+        : null),
+    confirmado: atual.confirmado ?? null,
+  };
+}
 
 function montar_pergunta_faltantes(
   faltantes: CampoFaltante[],
@@ -131,7 +268,7 @@ function somar_dias_iso(dataISO: string, dias: number): string {
   return data.toISOString().slice(0, 10);
 }
 
-/** Extrai data explícita DD/MM[/AAAA] da mensagem. */
+/** Extrai data explícita DD/MM[/AAAA] ou "dia N" (mês/ano de dataAtual). */
 function extrair_data_explicita(mensagem: string, dataAtual: string): string | null {
   const comAno = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/.exec(mensagem);
   if (comAno) {
@@ -153,10 +290,20 @@ function extrair_data_explicita(mensagem: string, dataAtual: string): string | n
     }
   }
 
+  const soDia = /\bdia\s+(\d{1,2})\b/i.exec(mensagem);
+  if (soDia) {
+    const dia = Number(soDia[1]);
+    const ano = Number(dataAtual.slice(0, 4));
+    const mes = Number(dataAtual.slice(5, 7));
+    if (dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12 && Number.isFinite(ano)) {
+      return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+    }
+  }
+
   return null;
 }
 
-/** Corrige "ontem"/"hoje"/data explícita se a IA errou ou omitiu a data. */
+/** Corrige "ontem"/"hoje"/data explícita/"dia N" se a IA errou ou omitiu a data. */
 function resolver_data_movimento(
   dataAtual: string,
   dataDaIa: string | null | undefined,
@@ -204,32 +351,30 @@ function resolver_origem(
   };
 }
 
-/**
- * Completa defaults seguros (data, origem da mensagem, perfil, forma_pagamento)
- * e, se ainda faltar dado obrigatório, converte para SOLICITAR_INFORMACAO.
- */
-export function normalizar_intencao_movimento(
-  intencao: IntencaoDetectada,
+function completar_e_validar(
+  mesclada: IntencaoRegistrarMovimento,
   contexto: ContextoInterpretacao,
-  mensagem = "",
+  mensagem: string,
 ): IntencaoDetectada {
-  if (intencao.intencao !== "REGISTRAR_MOVIMENTO") return intencao;
-
   const perfilPadrao = inferir_perfil_padrao(contexto.contas, contexto.cartoes);
-  const origem = resolver_origem(intencao, contexto, mensagem);
+  const origem = resolver_origem(mesclada, contexto, mensagem);
 
   const completa: IntencaoRegistrarMovimento = {
-    ...intencao,
-    descricao: enxugar_descricao_lancamento(intencao.descricao),
-    data_movimento: resolver_data_movimento(contexto.dataAtual, intencao.data_movimento, mensagem),
+    ...mesclada,
+    descricao: enxugar_descricao_lancamento(mesclada.descricao),
+    data_movimento: resolver_data_movimento(
+      contexto.dataAtual,
+      mesclada.data_movimento,
+      mensagem,
+    ),
     conta_nome: origem.conta_nome,
     cartao_nome: origem.cartao_nome,
   };
 
   const perfilMensagem = inferir_perfil_da_mensagem(mensagem);
   const perfilOrigem = inferir_perfil_da_origem(contexto, completa.conta_nome, completa.cartao_nome);
-  // Mensagem ("uso pessoal") > IA > conta/cartão > padrão do usuário.
-  completa.perfil = (perfilMensagem ?? intencao.perfil ?? perfilOrigem ?? perfilPadrao) as
+  // Mensagem ("uso pessoal") > já mesclado > conta/cartão > padrão do usuário.
+  completa.perfil = (perfilMensagem ?? completa.perfil ?? perfilOrigem ?? perfilPadrao) as
     | Perfil
     | null
     | undefined;
@@ -243,12 +388,7 @@ export function normalizar_intencao_movimento(
   }
 
   if (faltantes.length > 0) {
-    return {
-      intencao: "SOLICITAR_INFORMACAO",
-      intencao_pendente: "REGISTRAR_MOVIMENTO",
-      pergunta: montar_pergunta_faltantes(faltantes, contexto.nomeUsuario),
-      dados_parciais: dados_parciais_de(completa),
-    };
+    return solicitar(completa, faltantes, contexto.nomeUsuario);
   }
 
   return {
@@ -257,4 +397,57 @@ export function normalizar_intencao_movimento(
     data_movimento: completa.data_movimento!,
     perfil: completa.perfil!,
   };
+}
+
+function solicitar(
+  completa: IntencaoRegistrarMovimento,
+  faltantes: CampoFaltante[],
+  nomeUsuario?: string | null,
+): IntencaoSolicitarInformacao {
+  return {
+    intencao: "SOLICITAR_INFORMACAO",
+    intencao_pendente: "REGISTRAR_MOVIMENTO",
+    pergunta: montar_pergunta_faltantes(faltantes, nomeUsuario),
+    dados_parciais: dados_parciais_de(completa),
+  };
+}
+
+/**
+ * Completa defaults seguros e mescla `dados_parciais` da intenção pendente
+ * (slot-filling entre turnos). Cadastro e recorrência já faziam isso; movimento
+ * também — senão a resposta "50" apagava descrição/conta do turno anterior.
+ */
+export function normalizar_intencao_movimento(
+  intencao: IntencaoDetectada,
+  contexto: ContextoInterpretacao,
+  mensagem = "",
+): IntencaoDetectada {
+  const pendentes = parciais_da_pendente(contexto.intencaoPendente);
+  const nome = contexto.nomeUsuario;
+
+  if (intencao.intencao === "SOLICITAR_INFORMACAO") {
+    if (intencao.intencao_pendente !== "REGISTRAR_MOVIMENTO") return intencao;
+
+    const mesclada = mesclar_registrar_movimento(
+      dados_de_parcial(intencao.dados_parciais) as Partial<IntencaoRegistrarMovimento>,
+      pendentes,
+      mensagem,
+      contexto,
+    );
+    const resultado = completar_e_validar(mesclada, contexto, mensagem);
+    if (resultado.intencao === "SOLICITAR_INFORMACAO") {
+      return {
+        ...resultado,
+        pergunta: intencao.pergunta
+          ? personalizar_pergunta(intencao.pergunta, nome)
+          : resultado.pergunta,
+      };
+    }
+    return resultado;
+  }
+
+  if (intencao.intencao !== "REGISTRAR_MOVIMENTO") return intencao;
+
+  const mesclada = mesclar_registrar_movimento(intencao, pendentes, mensagem, contexto);
+  return completar_e_validar(mesclada, contexto, mensagem);
 }

@@ -27,7 +27,7 @@ export interface ContextoInterpretacao {
   cartoes: Array<{ nome: string; perfil: string; modalidade: string; temConta: boolean }>;
   categorias: Array<{ nome: string; tipo: string }>;
   pessoas: Array<{ nome: string; tipo: string }>;
-  /** Hábitos aprendidos (modulos/memoria), ex.: { chave: "cartao_principal", valor: "Nubank" }. */
+  /** Hábitos aprendidos (Conhecimento/Memoria), ex.: { chave: "cartao_principal", valor: "Nubank" }. */
   habitos: Array<{ chave: string; valor: string }>;
   /**
    * Últimas mensagens da sessão atual (mais antiga primeiro), usadas para
@@ -66,26 +66,28 @@ Intenções do ramo pedido:
    historico: "quanto gastei/total/resumo" → detalhado=false; "extrato/liste/quais/detalhado/mostra lançamentos" → detalhado=true.
 3) CORRIGIR_* — ALTERAR dados OU excluir. São ações distintas:
    - corrige/altera/muda/troca descrição/valor/categoria → campos_alterados com o novo valor; NUNCA status cancelado.
+   - "não considera nos relatórios"/"esconde dos totais" → ignorado_em_relatorio=true (não cancela).
+   - "tag X no Y"/"marca Y como X" → tags=["X"] na referência Y.
    - apaga/exclui/cancela/deleta lançamento → status cancelado, confirmado false até o usuário confirmar.
-   Nunca trate "corrigir descrição" como exclusão.
+   Nunca trate "corrigir descrição" nem "esconder dos relatórios" como exclusão.
 4) CRIAR_* — só se nome NÃO existe no contexto. Senão CORRIGIR_*.
 5) CONSULTAR_DADOS_CARTAO — ver número/CVV.
 6) SOLICITAR_INFORMACAO — falta dado (valor, conta, dia…); copie intencaoPendente.dados_parciais. Nunca invente valor nem diga "valor não informado".
 7) CRIAR_RECORRENCIA — "todo mês dia N …"; se faltar valor/conta/dia use SOLICITAR_INFORMACAO (pergunte "qual é o valor?").
-8) NAO_RECONHECIDA — fora do domínio; motivo curto.
+8) NAO_RECONHECIDA — só fora do domínio (saudação, pergunta genérica); motivo curto. Nunca para “não” em confirmação.
 
 Datas via dataAtual. Números BR: "12.889,00"=12889. Use nomes do contexto. JSON do schema apenas.`;
 }
 
 export function montar_prompt_sistema_classificar(): string {
   return `Classifique a mensagem financeira em UM ramo. Responda só o JSON do schema.
-- registrar: gasto, receita, pagamento, compra, "gastei", "recebi", "paguei"
+- registrar: gasto, receita, pagamento, compra ("gastei", "recebi", "paguei"). Inclui vago sem valor: "fiz mercado", "gastei no uber", "foi no ifood", "paguei a farmácia". NUNCA use outro nesses casos.
 - consultar: perguntas de saldo, extrato, quanto gastei, resumo, limite do cartão, dados do cartão
-- corrigir: corrigir, cancelar, apagar, excluir, mudar valor/categoria de lançamento/conta/cartão
+- corrigir: corrigir, cancelar, apagar, excluir, esconder dos relatórios, tag, mudar valor/categoria de lançamento/conta/cartão
 - cadastro: criar/cadastrar conta ou cartão novo
 - orcamento: definir ou consultar orçamento/limite de gasto mensal por categoria
 - recorrencia: criar/listar/cancelar despesa recorrente (assinatura Netflix etc.)
-- outro: saudação, fora de finanças, não entendi`;
+- outro: só saudação ou assunto claramente fora de finanças`;
 }
 
 const MAX_CHARS_HISTORICO_ITEM = 120;

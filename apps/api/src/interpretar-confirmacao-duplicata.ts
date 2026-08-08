@@ -39,7 +39,7 @@ export function interpretar_resposta_confirmacao_duplicata(
 
   if (NEGATIVAS.test(texto)) {
     return {
-      intencao: "NAO_RECONHECIDA",
+      intencao: "MENSAGEM_INFO",
       motivo: "Lançamento não registrado — já existia um igual.",
     };
   }

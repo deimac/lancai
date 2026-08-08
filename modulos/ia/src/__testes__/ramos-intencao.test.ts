@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mensagem_parece_resposta_slot,
   ramo_de_intencao_pendente,
+  ramo_heuristico_mensagem,
   schema_por_ramo,
 } from "../ramos-intencao";
 
@@ -22,6 +23,16 @@ describe("ramos-intencao", () => {
         "gastei 45 no ifood ontem no cartao azul itaú com a conta da empresa pessoal",
       ),
     ).toBe(false);
+  });
+
+  it("força registrar em gasto vago e não em consulta/saudação", () => {
+    expect(ramo_heuristico_mensagem("fiz mercado")).toBe("registrar");
+    expect(ramo_heuristico_mensagem("gastei no uber")).toBe("registrar");
+    expect(ramo_heuristico_mensagem("foi no ifood")).toBe("registrar");
+    expect(ramo_heuristico_mensagem("paguei a farmácia")).toBe("registrar");
+    expect(ramo_heuristico_mensagem("quanto gastei de uber?")).toBeNull();
+    expect(ramo_heuristico_mensagem("oi")).toBeNull();
+    expect(ramo_heuristico_mensagem("cadastra meu cartão")).toBeNull();
   });
 
   it("schema por ramo só inclui intenções do ramo", () => {

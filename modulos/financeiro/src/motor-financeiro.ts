@@ -4,23 +4,115 @@ import {
   deISOParaData,
   paraColuna,
   paraNumero,
-  schemaCorrigirMovimento,
+  schemaCorrigirFatoManual,
   schemaCriarMovimento,
+  schemaEventoFinanceiroNormalizado,
 } from "@lancai/tipos";
-import type { EntradaCorrigirMovimento, EntradaCriarMovimento } from "@lancai/tipos";
+import type {
+  CamposFatoManual,
+  EntradaCorrigirFatoManual,
+  EntradaCriarMovimento,
+  EventoFinanceiroNormalizado,
+  ParcelamentoFonte,
+  TipoFonte,
+} from "@lancai/tipos";
 import type { Movimento, NovaAuditoria, NovaParcela, NovoMovimento } from "@lancai/banco";
 import { calcular_saldo, obter_direcao_padrao, tipo_movimento_implementado } from "./calcular-saldo";
 import { eh_fluxo_cruzado } from "./fluxo-cruzado";
 import { registrar_parcelamento } from "./registrar-parcelamento";
 import {
+  ErroContaSincronizada,
+  ErroFatoImutavel,
   ErroLimiteCartaoExcedido,
   ErroRecursoNaoEncontrado,
   ErroTipoMovimentoNaoImplementado,
   ErroValidacaoFinanceira,
 } from "./erros";
-import type { OperacaoCorrecao, RepositorioFinanceiro, ResultadoOperacaoPersistencia } from "./repositorio";
+import type {
+  OperacaoAtualizacaoFonte,
+  OperacaoCorrecao,
+  RepositorioFinanceiro,
+  ResultadoOperacaoPersistencia,
+} from "./repositorio";
 
 export type ResultadoCriarMovimento = ResultadoOperacaoPersistencia;
+
+/**
+ * O que a ingestão precisa saber e que o evento não carrega, porque não é Fato.
+ * Uma transação recém-chegada da instituição ainda não tem categoria nem perfil
+ * — quem define isso é o Conhecimento, depois. Até lá ela pousa na categoria
+ * indicada aqui e fica visível para classificação.
+ */
+export interface ContextoIngestao {
+  usuarioId: string;
+  criadoPor: string;
+  categoriaIdNaoClassificado: string;
+  perfilPadrao: "pf" | "pj";
+}
+
+export interface ResultadoIngestao {
+  criados: Movimento[];
+  /** Eventos que já estavam registrados. Reprocessar um lote é seguro. */
+  duplicados: number;
+}
+
+export interface ResultadoAtualizacaoFonte {
+  atualizados: Movimento[];
+  /**
+   * A fonte anunciou alteração de algo que nunca ingerimos — conta que não estava
+   * associada quando o Fato original passou, por exemplo. Quem chamou decide se
+   * cria; o Core não inventa Fato dentro de uma operação de alteração.
+   */
+  desconhecidos: EventoFinanceiroNormalizado[];
+  /** Chegaram idênticos ao que já está gravado. A janela de recoleta gera muitos. */
+  inalterados: number;
+}
+
+export interface ResultadoRemocaoFonte {
+  removidos: Movimento[];
+  /** Nunca foram ingeridos aqui. Nada a fazer: a remoção já é o estado. */
+  desconhecidos: number;
+  /** Já estavam marcados como removidos. Reprocessar o evento é seguro. */
+  jaRemovidos: number;
+}
+
+/**
+ * Quanto um movimento pesa no saldo da conta agora. Zero quando não está
+ * realizado, o que faz a diferença entre dois estados cobrir de uma vez mudança
+ * de valor, inversão de tipo e pendente virando confirmada.
+ */
+/**
+ * O parcelamento que a instituição informou, achatado nas colunas de Fato. As
+ * quatro andam juntas: gravar número sem total, ou total sem valor, deixaria o
+ * Conhecimento sem como agrupar as parcelas de uma mesma compra.
+ */
+function parcelamento_em_colunas(
+  parcelamento: ParcelamentoFonte | undefined,
+): Pick<
+  NovoMovimento,
+  "parcelaNumero" | "parcelaTotal" | "parcelaCompraEm" | "parcelaCompraValor"
+> {
+  return {
+    parcelaNumero: parcelamento?.numero ?? null,
+    parcelaTotal: parcelamento?.total ?? null,
+    parcelaCompraEm: parcelamento?.compraEm ?? null,
+    parcelaCompraValor:
+      parcelamento?.valorTotal !== undefined ? paraColuna(parcelamento.valorTotal) : null,
+  };
+}
+
+function efeito_no_saldo(movimento: {
+  tipo: Movimento["tipo"];
+  status: Movimento["status"];
+  valor: string | number;
+}): number {
+  if (movimento.status !== "realizado") return 0;
+
+  const direcao = obter_direcao_padrao(movimento.tipo);
+  if (direcao === undefined) throw new ErroTipoMovimentoNaoImplementado(movimento.tipo);
+
+  return direcao * paraNumero(movimento.valor);
+}
 
 /**
  * Coração do sistema: valida informações, aplica regras, cria lançamentos,
@@ -32,6 +124,432 @@ export type ResultadoCriarMovimento = ResultadoOperacaoPersistencia;
  */
 export class MotorFinanceiro {
   constructor(private readonly repositorio: RepositorioFinanceiro) {}
+
+  /**
+   * Colunas do grupo Fato que acompanham todo lançamento criado. `descricaoFonte`
+   * cai para `descricao` quando a fonte não trouxe um original — é o caso de
+   * tudo que uma pessoa digita.
+   */
+  private campos_de_fato(
+    entrada: EntradaCriarMovimento,
+    descricao: string,
+    sufixoIdExterno?: string,
+  ): Pick<
+    NovoMovimento,
+    | "workspaceId"
+    | "fonte"
+    | "provedor"
+    | "idExterno"
+    | "descricaoFonte"
+    | "favorecidoFonte"
+    | "statusFonte"
+  > {
+    return {
+      workspaceId: entrada.workspaceId,
+      fonte: entrada.fonte,
+      provedor: entrada.provedor,
+      idExterno:
+        entrada.idExterno && sufixoIdExterno
+          ? `${entrada.idExterno}:${sufixoIdExterno}`
+          : entrada.idExterno,
+      descricaoFonte: entrada.descricaoFonte ?? descricao,
+      favorecidoFonte: entrada.favorecidoFonte,
+      statusFonte: entrada.statusFonte,
+    };
+  }
+
+  /**
+   * Conta ou cartão conectado ao Open Finance só ganha Fato pelo sync. Vale para
+   * qualquer chamador — chat, WhatsApp, Web, recorrência —, e é por isso que a
+   * checagem mora aqui e não na montagem da resposta: uma política que vive na
+   * borda protege apenas a borda que se lembrou dela.
+   *
+   * A exceção é a própria ingestão, que entra por `ingerir_eventos` e não passa
+   * por aqui. A conciliação com lançamentos manuais do passado (ADR-010,
+   * casamento na primeira sincronização) vai precisar da sua própria porta no
+   * Core, pelo mesmo motivo: cancelar um manual em conta sincronizada é operação
+   * do sistema, não do usuário.
+   */
+  private garantir_nao_sincronizada(
+    origem: { nome: string; sincronizada: boolean },
+    acao: "criar" | "corrigir" | "cancelar",
+  ): void {
+    if (origem.sincronizada) {
+      throw new ErroContaSincronizada(origem.nome, acao);
+    }
+  }
+
+  /**
+   * Liga e desliga a marca de conta sincronizada. Mora aqui, ao lado da regra que
+   * a lê, porque a marca muda o que o Core permite: deixar a Fonte escrever
+   * direto na coluna espalharia por dois módulos a autoridade sobre a mesma
+   * invariante.
+   *
+   * Ligar é decisão de peso — a conta passa a recusar lançamento manual, e os
+   * lançamentos que já existiam nela ficam protegidos. Desligar devolve a conta
+   * ao uso manual, mas **não** libera o que veio da instituição: Fato com fonte
+   * `open_finance` continua imutável por si só, e é isso que impede desconectar
+   * o banco de virar caminho para editar extrato.
+   */
+  async definir_sincronizacao(
+    origem: { contaId?: string; cartaoId?: string },
+    sincronizada: boolean,
+  ): Promise<void> {
+    if (!origem.contaId && !origem.cartaoId) {
+      throw new ErroValidacaoFinanceira("Informe a conta ou o cartão a sincronizar.");
+    }
+
+    if (origem.contaId) {
+      const conta = await this.repositorio.obterConta(origem.contaId);
+      if (!conta) throw new ErroRecursoNaoEncontrado("conta", origem.contaId);
+      await this.repositorio.definirSincronizacaoConta(origem.contaId, sincronizada);
+    }
+
+    if (origem.cartaoId) {
+      const cartao = await this.repositorio.obterCartao(origem.cartaoId);
+      if (!cartao) throw new ErroRecursoNaoEncontrado("cartao", origem.cartaoId);
+      await this.repositorio.definirSincronizacaoCartao(origem.cartaoId, sincronizada);
+    }
+  }
+
+  /**
+   * Entrada de movimentações vindas de uma Fonte Financeira (ADR-010). O Core
+   * não sabe qual fonte é nem o que é "pluggy" — recebe eventos já normalizados
+   * e obedece ao `fatoImutavel` que a fonte declarou.
+   *
+   * Idempotente por `idExterno`: reprocessar o mesmo lote não duplica nada.
+   */
+  async ingerir_eventos(
+    eventos: EventoFinanceiroNormalizado[],
+    contexto: ContextoIngestao,
+  ): Promise<ResultadoIngestao> {
+    const novosMovimentos: NovoMovimento[] = [];
+    const auditorias: NovaAuditoria[] = [];
+    const saldosPorConta = new Map<string, number>();
+    let duplicados = 0;
+
+    for (const eventoBruto of eventos) {
+      const evento = schemaEventoFinanceiroNormalizado.parse(eventoBruto);
+
+      if (!evento.contaId && !evento.cartaoId) {
+        throw new ErroValidacaoFinanceira(
+          `Evento ${evento.idExterno ?? "sem identificador"} não indica conta nem cartão. ` +
+            `A fonte precisa resolver a conta antes de entregar o evento ao Core.`,
+        );
+      }
+
+      if (evento.idExterno) {
+        const jaExiste = await this.repositorio.obterMovimentoPorIdExterno({
+          workspaceId: evento.workspaceId,
+          fonte: evento.fonte,
+          provedor: evento.provedor,
+          idExterno: evento.idExterno,
+        });
+        if (jaExiste) {
+          duplicados += 1;
+          continue;
+        }
+      }
+
+      const movimentoId = randomUUID();
+      const novoMovimento: NovoMovimento = {
+        id: movimentoId,
+        workspaceId: evento.workspaceId,
+        fonte: evento.fonte,
+        provedor: evento.provedor,
+        idExterno: evento.idExterno,
+        descricaoFonte: evento.descricaoFonte,
+        favorecidoFonte: evento.favorecidoFonte,
+        statusFonte: evento.statusFonte,
+        descricao: evento.descricaoFonte,
+        valor: paraColuna(evento.valor),
+        tipo: evento.tipo,
+        status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
+        ...parcelamento_em_colunas(evento.parcelamento),
+        perfil: contexto.perfilPadrao,
+        dataMovimento: evento.ocorridoEm,
+        contaId: evento.contaId,
+        cartaoId: evento.cartaoId,
+        categoriaId: contexto.categoriaIdNaoClassificado,
+        classificadoPor: "regra",
+        usuarioId: contexto.usuarioId,
+        criadoPor: contexto.criadoPor,
+      };
+      novosMovimentos.push(novoMovimento);
+
+      // Mesma regra de saldo dos lançamentos manuais, para não existirem duas
+      // verdades sobre saldo no motor. Em conta sincronizada isso é provisório:
+      // o saldo que a instituição informa é Fato e passa a ser atribuído em vez
+      // de acumulado, quando o adaptador do provedor existir (13-OPEN_FINANCE,
+      // seção 4).
+      if (novoMovimento.status === "realizado" && evento.contaId) {
+        const saldoBase =
+          saldosPorConta.get(evento.contaId) ?? (await this.obter_saldo_atual(evento.contaId));
+        saldosPorConta.set(evento.contaId, calcular_saldo(saldoBase, evento.tipo, evento.valor));
+      }
+
+      auditorias.push({
+        tabela: "movimento",
+        registroId: movimentoId,
+        acao: "INSERCAO",
+        estadoAnterior: null,
+        estadoAtual: novoMovimento,
+        alteradoPor: contexto.criadoPor,
+      });
+    }
+
+    if (novosMovimentos.length === 0) {
+      return { criados: [], duplicados };
+    }
+
+    const resultado = await this.repositorio.persistirOperacao({
+      movimentos: novosMovimentos,
+      parcelas: [],
+      atualizacoesSaldoConta: [...saldosPorConta.entries()].map(([contaId, saldoAtual]) => ({
+        contaId,
+        saldoAtual,
+      })),
+      auditorias,
+    });
+
+    return { criados: resultado.movimentos, duplicados };
+  }
+
+  /**
+   * Alteração anunciada pela instituição sobre Fato que já ingerimos — pendente
+   * que virou confirmada, valor que o banco ajustou, descrição que ele reescreveu.
+   *
+   * Porta separada de `ingerir_eventos` de propósito. A janela de recoleta de 4 a
+   * 7 dias faz o lote normal retrazer o que já entrou, e um `ingerir_eventos` que
+   * também atualizasse reescreveria Fato a cada sincronização, escondendo a
+   * mudança de verdade no meio do barulho. Aqui só entra o que a fonte declarou
+   * ter mudado.
+   *
+   * Porta do **sistema**, não do usuário: é a exceção prevista em
+   * [ADR-009](docs/adr/009-fato-vs-conhecimento.md), e a única forma de mexer em
+   * Fato de `open_finance` sem passar por ela é escrever no banco à mão — o que o
+   * trigger recusa.
+   *
+   * O Conhecimento não é tocado. Categoria, pessoa, tags, observações, perfil,
+   * `ignorado_em_relatorio` e a `descricao` que o usuário vê seguem intactos: o
+   * banco corrigiu o extrato dele, não a opinião do usuário sobre ele.
+   */
+  async atualizar_fatos_da_fonte(
+    eventos: EventoFinanceiroNormalizado[],
+    contexto: ContextoIngestao,
+  ): Promise<ResultadoAtualizacaoFonte> {
+    const atualizacoes: OperacaoAtualizacaoFonte["atualizacoes"] = [];
+    const auditorias: NovaAuditoria[] = [];
+    const saldosPorConta = new Map<string, number>();
+    const desconhecidos: EventoFinanceiroNormalizado[] = [];
+    let inalterados = 0;
+
+    for (const eventoBruto of eventos) {
+      const evento = schemaEventoFinanceiroNormalizado.parse(eventoBruto);
+
+      if (!evento.idExterno) {
+        throw new ErroValidacaoFinanceira(
+          "Alteração vinda da fonte exige idExterno: sem ele não há como saber o que mudou.",
+        );
+      }
+
+      const atual = await this.repositorio.obterMovimentoPorIdExterno({
+        workspaceId: evento.workspaceId,
+        fonte: evento.fonte,
+        provedor: evento.provedor,
+        idExterno: evento.idExterno,
+      });
+
+      if (!atual) {
+        desconhecidos.push(evento);
+        continue;
+      }
+
+      const campos = this.diferenca_do_fato(atual, evento);
+      if (Object.keys(campos).length === 0) {
+        inalterados += 1;
+        continue;
+      }
+
+      const contaId = atual.contaId;
+      if (contaId && !atual.cartaoId) {
+        const saldoBase = saldosPorConta.get(contaId) ?? (await this.obter_saldo_atual(contaId));
+        const delta =
+          efeito_no_saldo({
+            tipo: campos.tipo ?? atual.tipo,
+            status: campos.status ?? atual.status,
+            valor: campos.valor !== undefined ? paraNumero(campos.valor) : paraNumero(atual.valor),
+          }) - efeito_no_saldo(atual);
+
+        if (delta !== 0) saldosPorConta.set(contaId, arredondar(saldoBase + delta));
+      }
+
+      atualizacoes.push({ movimentoId: atual.id, campos });
+      auditorias.push({
+        tabela: "movimento",
+        registroId: atual.id,
+        acao: "ALTERACAO",
+        estadoAnterior: atual,
+        estadoAtual: { ...atual, ...campos },
+        /**
+         * Quem conectou o banco responde pela alteração, porque a coluna exige
+         * um usuário existente. Que a mudança veio da instituição, e não de uma
+         * pessoa, se lê no estado anterior e posterior: só campo de Fato mudou.
+         */
+        alteradoPor: contexto.criadoPor,
+      });
+    }
+
+    if (atualizacoes.length === 0) {
+      return { atualizados: [], desconhecidos, inalterados };
+    }
+
+    const atualizados = await this.repositorio.atualizarFatosDaFonte({
+      atualizacoes,
+      atualizacoesSaldoConta: [...saldosPorConta.entries()].map(([contaId, saldoAtual]) => ({
+        contaId,
+        saldoAtual,
+      })),
+      auditorias,
+    });
+
+    return { atualizados, desconhecidos, inalterados };
+  }
+
+  /**
+   * A instituição desfez transações que aqui já são Fato — estorno de compra,
+   * duplicata que ela mesma corrigiu, agendamento cancelado.
+   *
+   * O tratamento é **desaparecimento registrado**: `status_fonte` passa a
+   * `removido`, que é o que a instituição afirma, e `status` passa a
+   * `cancelado`, que é a consequência disso aqui. O saldo volta e a linha fica
+   * no histórico.
+   *
+   * As duas alternativas foram descartadas por motivo explícito. Apagar de
+   * verdade contradiz o ADR-009 e destrói a auditoria de algo que existiu.
+   * Ignorar deixa no relatório um gasto que o banco diz não existir — o pior
+   * dos dois mundos, porque o número fica errado sem ninguém saber por quê.
+   */
+  async remover_fatos_da_fonte(
+    remocoes: Array<{ workspaceId: string; fonte: TipoFonte; provedor?: string; idExterno: string }>,
+    contexto: ContextoIngestao,
+  ): Promise<ResultadoRemocaoFonte> {
+    const atualizacoes: OperacaoAtualizacaoFonte["atualizacoes"] = [];
+    const auditorias: NovaAuditoria[] = [];
+    const saldosPorConta = new Map<string, number>();
+    let desconhecidos = 0;
+    let jaRemovidos = 0;
+
+    for (const remocao of remocoes) {
+      const atual = await this.repositorio.obterMovimentoPorIdExterno(remocao);
+
+      if (!atual) {
+        desconhecidos += 1;
+        continue;
+      }
+
+      if (atual.statusFonte === "removido") {
+        jaRemovidos += 1;
+        continue;
+      }
+
+      const campos: Partial<NovoMovimento> = { statusFonte: "removido" };
+      /**
+       * Movimento que alguém já cancelou continua cancelado, e o saldo dele já
+       * foi devolvido: registrar a remoção não pode devolver duas vezes.
+       */
+      if (atual.status !== "cancelado") campos.status = "cancelado";
+
+      if (atual.contaId && !atual.cartaoId) {
+        const saldoBase =
+          saldosPorConta.get(atual.contaId) ?? (await this.obter_saldo_atual(atual.contaId));
+        const delta = -efeito_no_saldo(atual);
+        if (delta !== 0) saldosPorConta.set(atual.contaId, arredondar(saldoBase + delta));
+      }
+
+      atualizacoes.push({ movimentoId: atual.id, campos });
+      auditorias.push({
+        tabela: "movimento",
+        registroId: atual.id,
+        acao: "CANCELAMENTO",
+        estadoAnterior: atual,
+        estadoAtual: { ...atual, ...campos },
+        alteradoPor: contexto.criadoPor,
+      });
+    }
+
+    if (atualizacoes.length === 0) {
+      return { removidos: [], desconhecidos, jaRemovidos };
+    }
+
+    const removidos = await this.repositorio.atualizarFatosDaFonte({
+      atualizacoes,
+      atualizacoesSaldoConta: [...saldosPorConta.entries()].map(([contaId, saldoAtual]) => ({
+        contaId,
+        saldoAtual,
+      })),
+      auditorias,
+    });
+
+    return { removidos, desconhecidos, jaRemovidos };
+  }
+
+  /**
+   * Só os campos de Fato que realmente mudaram. Devolver o objeto inteiro faria
+   * toda recoleta parecer alteração, e a auditoria encheria de linha sem
+   * diferença nenhuma.
+   */
+  private diferenca_do_fato(
+    atual: Movimento,
+    evento: EventoFinanceiroNormalizado,
+  ): Partial<NovoMovimento> {
+    const campos: Partial<NovoMovimento> = {};
+
+    const valorNovo = paraColuna(evento.valor);
+    if (paraNumero(atual.valor) !== evento.valor) campos.valor = valorNovo;
+    if (atual.tipo !== evento.tipo) campos.tipo = evento.tipo;
+    if (atual.descricaoFonte !== evento.descricaoFonte) {
+      campos.descricaoFonte = evento.descricaoFonte;
+    }
+    if ((atual.favorecidoFonte ?? undefined) !== evento.favorecidoFonte) {
+      campos.favorecidoFonte = evento.favorecidoFonte;
+    }
+    if (atual.statusFonte !== evento.statusFonte) campos.statusFonte = evento.statusFonte;
+
+    const statusNovo = evento.statusFonte === "pendente" ? "previsto" : "realizado";
+    /**
+     * Movimento cancelado não volta a valer por anúncio da fonte. Ressuscitar um
+     * lançamento que alguém cancelou exigiria saber por que foi cancelado, e a
+     * fonte não sabe.
+     */
+    if (atual.status !== statusNovo && atual.status !== "cancelado") {
+      campos.status = statusNovo;
+    }
+
+    if (atual.dataMovimento !== evento.ocorridoEm) campos.dataMovimento = evento.ocorridoEm;
+
+    /**
+     * O parcelamento também é corrigido pela instituição — cartão que reprocessa
+     * uma compra costuma reemitir as parcelas com valor diferente.
+     */
+    const parcelamento = parcelamento_em_colunas(evento.parcelamento);
+    if (
+      atual.parcelaNumero !== parcelamento.parcelaNumero ||
+      atual.parcelaTotal !== parcelamento.parcelaTotal ||
+      atual.parcelaCompraEm !== parcelamento.parcelaCompraEm ||
+      atual.parcelaCompraValor !== parcelamento.parcelaCompraValor
+    ) {
+      Object.assign(campos, parcelamento);
+    }
+
+    return campos;
+  }
+
+  private async obter_saldo_atual(contaId: string): Promise<number> {
+    const conta = await this.repositorio.obterConta(contaId);
+    if (!conta) throw new ErroRecursoNaoEncontrado("conta", contaId);
+    return paraNumero(conta.saldoAtual);
+  }
 
   async criar_movimento(entradaBruta: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
     const entrada = schemaCriarMovimento.parse(entradaBruta);
@@ -74,6 +592,7 @@ export class MotorFinanceiro {
     if (!conta.ativo) {
       throw new ErroValidacaoFinanceira(`Conta "${conta.nome}" está inativa.`);
     }
+    this.garantir_nao_sincronizada(conta, "criar");
 
     const movimentoId = randomUUID();
     const novoMovimento: NovoMovimento = {
@@ -90,6 +609,7 @@ export class MotorFinanceiro {
       pessoaId: entrada.pessoaId,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
+      ...this.campos_de_fato(entrada, entrada.descricao),
     };
 
     const atualizacoesSaldoConta = [];
@@ -133,15 +653,22 @@ export class MotorFinanceiro {
     if (contaOrigem.id === contaDestino.id) {
       throw new ErroValidacaoFinanceira("Conta de origem e destino não podem ser a mesma.");
     }
+    // Basta uma ponta sincronizada: o banco vai informar aquele lado da
+    // transferência, e registrar as duas à mão duplicaria metade dela.
+    this.garantir_nao_sincronizada(contaOrigem, "criar");
+    this.garantir_nao_sincronizada(contaDestino, "criar");
 
     const idOrigem = randomUUID();
     const idDestino = randomUUID();
 
     const formaTransferencia = entrada.formaPagamento ?? "transferencia";
 
+    const descricaoOrigem = `${entrada.descricao} (enviado para ${contaDestino.nome})`;
+    const descricaoDestino = `${entrada.descricao} (recebido de ${contaOrigem.nome})`;
+
     const movimentoOrigem: NovoMovimento = {
       id: idOrigem,
-      descricao: `${entrada.descricao} (enviado para ${contaDestino.nome})`,
+      descricao: descricaoOrigem,
       valor: paraColuna(entrada.valor),
       tipo: "transferencia",
       status: entrada.status,
@@ -153,11 +680,14 @@ export class MotorFinanceiro {
       pessoaId: entrada.pessoaId,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
+      // As duas pontas dividem um `idExterno`, que é único por linha; o sufixo
+      // mantém a deduplicação funcionando sem perder a origem comum.
+      ...this.campos_de_fato(entrada, descricaoOrigem, "origem"),
     };
 
     const movimentoDestino: NovoMovimento = {
       id: idDestino,
-      descricao: `${entrada.descricao} (recebido de ${contaOrigem.nome})`,
+      descricao: descricaoDestino,
       valor: paraColuna(entrada.valor),
       tipo: "transferencia",
       status: entrada.status,
@@ -169,6 +699,7 @@ export class MotorFinanceiro {
       pessoaId: entrada.pessoaId,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
+      ...this.campos_de_fato(entrada, descricaoDestino, "destino"),
     };
 
     const atualizacoesSaldoConta: Array<{ contaId: string; saldoAtual: number }> = [];
@@ -237,6 +768,7 @@ export class MotorFinanceiro {
         `O cartão "${cartao.nome}" é só de débito. Use "no débito" ou cadastre um cartão de crédito/múltiplo.`,
       );
     }
+    this.garantir_nao_sincronizada(cartao, "criar");
 
     const quantidadeParcelas = entrada.parcelamento?.quantidadeParcelas ?? 1;
 
@@ -261,6 +793,7 @@ export class MotorFinanceiro {
       pessoaId: entrada.pessoaId,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
+      ...this.campos_de_fato(entrada, entrada.descricao),
     };
 
     const parcelasCalculadas = registrar_parcelamento(
@@ -337,6 +870,10 @@ export class MotorFinanceiro {
     if (!conta.ativo) {
       throw new ErroValidacaoFinanceira(`Conta "${conta.nome}" vinculada ao cartão está inativa.`);
     }
+    // A compra no débito baixa o saldo da conta vinculada, então quem manda é
+    // ela: cartão não sincronizado ligado a conta sincronizada ainda duplicaria.
+    this.garantir_nao_sincronizada(cartao, "criar");
+    this.garantir_nao_sincronizada(conta, "criar");
 
     const movimentoId = randomUUID();
     const novoMovimento: NovoMovimento = {
@@ -354,6 +891,7 @@ export class MotorFinanceiro {
       pessoaId: entrada.pessoaId,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
+      ...this.campos_de_fato(entrada, entrada.descricao),
     };
 
     const atualizacoesSaldoConta = [];
@@ -383,37 +921,41 @@ export class MotorFinanceiro {
   }
 
   /**
-   * Corrige um lançamento existente (ex.: "corrige o combustível de ontem para R$ 210",
-   * "muda o notebook de 10x pra 12x"). Nunca apaga o registro anterior — grava auditoria
-   * e, quando necessário, ajusta saldo e regenera parcelas (append-only: parcelas antigas
-   * ficam com status `cancelado`).
+   * Corrige o Fato de um lançamento manual (ex.: "corrige o combustível de ontem
+   * para R$ 210", "muda o notebook de 10x pra 12x"). Nunca apaga o registro
+   * anterior — grava auditoria e, quando necessário, ajusta saldo e regenera
+   * parcelas (append-only: parcelas antigas ficam com status `cancelado`).
+   *
+   * Recusa qualquer alteração quando o Fato veio de instituição financeira.
+   * Categoria, descrição, tags e afins não passam por aqui: são Conhecimento,
+   * e vivem em `modulos/conhecimento`.
    */
-  async corrigir_movimento(entradaBruta: EntradaCorrigirMovimento): Promise<Movimento> {
-    const entrada = schemaCorrigirMovimento.parse(entradaBruta);
+  async corrigir_fato_manual(entradaBruta: EntradaCorrigirFatoManual): Promise<Movimento> {
+    const entrada = schemaCorrigirFatoManual.parse(entradaBruta);
 
     const movimentoAtual = await this.repositorio.obterMovimento(entrada.movimentoId);
     if (!movimentoAtual) {
       throw new ErroRecursoNaoEncontrado("movimento", entrada.movimentoId);
+    }
+    if (movimentoAtual.fonte === "open_finance") {
+      throw new ErroFatoImutavel(movimentoAtual.descricao);
     }
     if (movimentoAtual.status === "cancelado") {
       throw new ErroValidacaoFinanceira("Esse lançamento já está cancelado e não pode ser alterado.");
     }
 
     const campos = entrada.campos;
+    await this.garantir_origem_do_movimento_editavel(
+      movimentoAtual,
+      campos.status === "cancelado" ? "cancelar" : "corrigir",
+    );
     const camposParaAtualizar: Partial<NovoMovimento> = {};
 
-    if (campos.descricao !== undefined) camposParaAtualizar.descricao = campos.descricao;
     if (campos.dataMovimento !== undefined) camposParaAtualizar.dataMovimento = campos.dataMovimento;
     if (campos.status !== undefined) camposParaAtualizar.status = campos.status;
     if (campos.valor !== undefined) camposParaAtualizar.valor = paraColuna(campos.valor);
-    if (campos.perfil !== undefined) camposParaAtualizar.perfil = campos.perfil;
     if (campos.formaPagamento !== undefined) camposParaAtualizar.formaPagamento = campos.formaPagamento;
 
-    if (campos.categoriaId !== undefined) {
-      const categoria = await this.repositorio.obterCategoria(campos.categoriaId);
-      if (!categoria) throw new ErroRecursoNaoEncontrado("categoria", campos.categoriaId);
-      camposParaAtualizar.categoriaId = campos.categoriaId;
-    }
     if (campos.contaId !== undefined) {
       const conta = await this.repositorio.obterConta(campos.contaId);
       if (!conta) throw new ErroRecursoNaoEncontrado("conta", campos.contaId);
@@ -423,11 +965,6 @@ export class MotorFinanceiro {
       const cartao = await this.repositorio.obterCartao(campos.cartaoId);
       if (!cartao) throw new ErroRecursoNaoEncontrado("cartao", campos.cartaoId);
       camposParaAtualizar.cartaoId = campos.cartaoId;
-    }
-    if (campos.pessoaId !== undefined) {
-      const pessoa = await this.repositorio.obterPessoa(campos.pessoaId);
-      if (!pessoa) throw new ErroRecursoNaoEncontrado("pessoa", campos.pessoaId);
-      camposParaAtualizar.pessoaId = campos.pessoaId;
     }
 
     camposParaAtualizar.alteradoPor = entrada.alteradoPor;
@@ -455,6 +992,88 @@ export class MotorFinanceiro {
   }
 
   /**
+   * Porta de conciliação (primeira sync): cancela o lançamento manual/WhatsApp
+   * que casou com um Fato do banco. Não passa por `garantir_nao_sincronizada` —
+   * é operação do sistema, não do usuário. O Fato `open_finance` permanece;
+   * a migração de Conhecimento fica no composition root.
+   */
+  async cancelar_para_conciliacao(entrada: {
+    manualId: string;
+    fatoId: string;
+    alteradoPor: string;
+  }): Promise<{ manual: Movimento; fato: Movimento }> {
+    const manual = await this.repositorio.obterMovimento(entrada.manualId);
+    if (!manual) throw new ErroRecursoNaoEncontrado("movimento", entrada.manualId);
+
+    const fato = await this.repositorio.obterMovimento(entrada.fatoId);
+    if (!fato) throw new ErroRecursoNaoEncontrado("movimento", entrada.fatoId);
+
+    if (fato.fonte !== "open_finance") {
+      throw new ErroValidacaoFinanceira("Conciliação exige um Fato vindo do banco.");
+    }
+    if (manual.fonte === "open_finance") {
+      throw new ErroValidacaoFinanceira("Só lançamentos manuais ou do WhatsApp entram na conciliação.");
+    }
+    if (manual.status === "cancelado") {
+      throw new ErroValidacaoFinanceira("Esse lançamento já está cancelado.");
+    }
+    if (manual.usuarioId !== fato.usuarioId || manual.workspaceId !== fato.workspaceId) {
+      throw new ErroValidacaoFinanceira("Manual e Fato precisam ser do mesmo workspace.");
+    }
+    if (manual.contaId !== fato.contaId || manual.cartaoId !== fato.cartaoId) {
+      throw new ErroValidacaoFinanceira("Manual e Fato precisam ser da mesma conta ou cartão.");
+    }
+
+    const campos: Partial<NovoMovimento> = {
+      status: "cancelado",
+      alteradoPor: entrada.alteradoPor,
+    };
+    const atualizacoesSaldoConta = await this.calcular_ajustes_saldo_na_correcao(manual, {
+      status: "cancelado",
+    });
+    const regenerarParcelas = await this.preparar_regeneracao_parcelas(manual, {
+      status: "cancelado",
+    });
+
+    const manualCancelado = await this.repositorio.corrigirMovimento({
+      movimentoId: manual.id,
+      campos,
+      atualizacoesSaldoConta,
+      auditoria: {
+        tabela: "movimento",
+        registroId: manual.id,
+        acao: "CANCELAMENTO",
+        estadoAnterior: manual,
+        estadoAtual: { ...manual, ...campos },
+        alteradoPor: entrada.alteradoPor,
+      },
+      regenerarParcelas,
+    });
+
+    return { manual: manualCancelado, fato };
+  }
+
+  /**
+   * Um lançamento manual antigo pode estar numa conta que só depois foi
+   * conectada ao banco. Dali em diante ele para de aceitar correção de Fato:
+   * mexer no valor de algo que o extrato vai contradizer só cria divergência.
+   * O Conhecimento continua livre, e é por lá que o usuário resolve o que quer.
+   */
+  private async garantir_origem_do_movimento_editavel(
+    movimento: Movimento,
+    acao: "corrigir" | "cancelar",
+  ): Promise<void> {
+    if (movimento.cartaoId) {
+      const cartao = await this.repositorio.obterCartao(movimento.cartaoId);
+      if (cartao) this.garantir_nao_sincronizada(cartao, acao);
+    }
+    if (movimento.contaId) {
+      const conta = await this.repositorio.obterConta(movimento.contaId);
+      if (conta) this.garantir_nao_sincronizada(conta, acao);
+    }
+  }
+
+  /**
    * Calcula os deltas de `saldo_atual` necessários para a correção:
    * - mudança de valor na mesma conta;
    * - troca segura de conta (reverte na antiga, aplica na nova);
@@ -463,7 +1082,7 @@ export class MotorFinanceiro {
    */
   private async calcular_ajustes_saldo_na_correcao(
     movimentoAtual: Movimento,
-    campos: EntradaCorrigirMovimento["campos"],
+    campos: CamposFatoManual,
   ): Promise<Array<{ contaId: string; saldoAtual: number }>> {
     if (movimentoAtual.tipo === "transferencia" || movimentoAtual.cartaoId) {
       return [];
@@ -523,7 +1142,7 @@ export class MotorFinanceiro {
    */
   private async preparar_regeneracao_parcelas(
     movimentoAtual: Movimento,
-    campos: EntradaCorrigirMovimento["campos"],
+    campos: CamposFatoManual,
   ): Promise<OperacaoCorrecao["regenerarParcelas"] | undefined> {
     const cartaoId = campos.cartaoId ?? movimentoAtual.cartaoId;
     if (!cartaoId) {

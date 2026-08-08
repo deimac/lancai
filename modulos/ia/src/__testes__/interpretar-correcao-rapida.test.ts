@@ -28,7 +28,39 @@ describe("interpretar_correcao_rapida", () => {
     });
   });
 
-  it("não intercepta correções de valor", () => {
-    expect(interpretar_correcao_rapida("corrige o almoço para 20", "2026-08-03")).toBeNull();
+  it("corrige valor sem IA", () => {
+    expect(interpretar_correcao_rapida("corrige o almoço para 20", "2026-08-03")).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Almoço", data_movimento: null, codigo: null },
+      campos_alterados: { valor: 20 },
+    });
+  });
+
+  it("corrige valor com data e reais", () => {
+    expect(
+      interpretar_correcao_rapida("corrige o ifood de ontem para 45,90 reais", "2026-08-03"),
+    ).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Ifood", data_movimento: "2026-08-02" },
+      campos_alterados: { valor: 45.9 },
+    });
+  });
+
+  it("corrige descrição explícita sem IA", () => {
+    expect(
+      interpretar_correcao_rapida("muda a descrição do uber para Uber Trip", "2026-08-03"),
+    ).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Uber" },
+      campos_alterados: { descricao: "Uber Trip" },
+    });
+  });
+
+  it("renomeia lançamento com 'para' textual", () => {
+    expect(interpretar_correcao_rapida("muda o almoço para jantar", "2026-08-03")).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Almoço" },
+      campos_alterados: { descricao: "Jantar" },
+    });
   });
 });

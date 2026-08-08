@@ -12,7 +12,9 @@ import type {
   IntencaoCriarCartao,
   IntencaoCriarConta,
   IntencaoRegistrarMovimento,
+  TipoFonte,
 } from "@lancai/tipos";
+import { fato_protegido } from "@lancai/tipos";
 import {
   ErroDadosPlasticosInvalidos,
   preparar_persistencia_plasticos,
@@ -41,9 +43,37 @@ function nome_busca_lancamento(
   return dataMovimento ?? "não especificado";
 }
 
+/** Só Conhecimento — permite “esse” sem nome cair no lançamento mais recente. */
+function eh_so_enriquecimento(
+  campos: IntencaoCorrigirMovimento["campos_alterados"],
+): boolean {
+  const chavesFato = [
+    campos.valor,
+    campos.data_movimento,
+    campos.conta_nome,
+    campos.cartao_nome,
+    campos.parcelas,
+    campos.status,
+    campos.forma_pagamento,
+  ];
+  if (chavesFato.some((v) => v != null && v !== undefined)) return false;
+  return (
+    campos.ignorado_em_relatorio != null ||
+    campos.tags != null ||
+    campos.observacoes !== undefined ||
+    campos.categoria_nome != null ||
+    campos.pessoa_nome != null ||
+    campos.perfil != null ||
+    campos.descricao != null
+  );
+}
+
 export interface ContextoResolucao {
   usuarioId: string;
   criadoPor: string;
+  workspaceId: string;
+  /** Canal que originou o pedido. Define a `fonte` do lançamento criado. */
+  fonte: TipoFonte;
 }
 
 /**
@@ -82,6 +112,8 @@ export class ResolvedorIntencao {
     const pessoaId = await this.resolver_ou_criar_pessoa(usuarioId, intencao.pessoa_nome);
 
     return {
+      workspaceId: contexto.workspaceId,
+      fonte: contexto.fonte,
       descricao: intencao.descricao,
       valor: intencao.valor,
       tipo: intencao.tipo_movimento,
@@ -122,6 +154,9 @@ export class ResolvedorIntencao {
       );
     }
 
+    const camposAlterados = intencao.campos_alterados;
+    const soEnriquecimento = eh_so_enriquecimento(camposAlterados);
+
     let movimentoAlvo = candidatos[0]!;
     const indice = intencao.referencia.indice ?? null;
     if (indice != null) {
@@ -130,7 +165,12 @@ export class ResolvedorIntencao {
         throw new ErroReferenciaNaoEncontrada("lançamento", `nº ${indice}`);
       }
       movimentoAlvo = escolhido;
-    } else if (candidatos.length > 1 && !intencao.referencia.codigo) {
+    } else if (
+      candidatos.length > 1 &&
+      !intencao.referencia.codigo &&
+      // "não considera esse nos relatórios": sem nome, pega o mais recente.
+      !(soEnriquecimento && !intencao.referencia.descricao)
+    ) {
       const rotulo = nome_busca_lancamento(
         intencao.referencia.descricao,
         intencao.referencia.data_movimento,
@@ -139,7 +179,6 @@ export class ResolvedorIntencao {
       throw new ErroReferenciaAmbiguo(montar_lista_lancamentos_semelhantes(rotulo, itens, "corrigir"));
     }
 
-    const camposAlterados = intencao.campos_alterados;
     const campos: EntradaCorrigirMovimento["campos"] = {};
 
     if (camposAlterados.valor != null) campos.valor = camposAlterados.valor;
@@ -150,6 +189,13 @@ export class ResolvedorIntencao {
     if (camposAlterados.status) campos.status = camposAlterados.status;
     if (camposAlterados.forma_pagamento !== undefined) {
       campos.formaPagamento = camposAlterados.forma_pagamento;
+    }
+    if (camposAlterados.ignorado_em_relatorio != null) {
+      campos.ignoradoEmRelatorio = camposAlterados.ignorado_em_relatorio;
+    }
+    if (camposAlterados.tags) campos.tags = camposAlterados.tags;
+    if (camposAlterados.observacoes !== undefined) {
+      campos.observacoes = camposAlterados.observacoes;
     }
 
     if (camposAlterados.categoria_nome) {
@@ -386,6 +432,8 @@ export class ResolvedorIntencao {
     movimentoIds: string[];
     codigo: string | null;
     itens: ItemLancamentoSemelhante[];
+    /** Descrição dos itens que a exclusão não pode tocar. Vazio no caso comum. */
+    protegidos: string[];
   }> {
     const movimentos = await this.repositorio.listarMovimentosParaCorrecao(usuarioId, {
       descricao: referencia.descricao ?? undefined,
@@ -414,6 +462,9 @@ export class ResolvedorIntencao {
       movimentoIds: movimentos.map((item) => item.id),
       codigo: movimentos.length === 1 ? movimentos[0]!.id : null,
       itens,
+      protegidos: itens
+        .filter((item) => item.protegido)
+        .map((item) => item.origemRotulo ?? item.descricao),
     };
   }
 
@@ -531,16 +582,20 @@ export class ResolvedorIntencao {
       this.repositorio.listarContas(usuarioId),
       this.repositorio.listarCartoes(usuarioId),
     ]);
-    const contasPorId = new Map(contas.map((c) => [c.id, c.nome]));
-    const cartoesPorId = new Map(cartoes.map((c) => [c.id, c.nome]));
+    const contasPorId = new Map(contas.map((c) => [c.id, c]));
+    const cartoesPorId = new Map(cartoes.map((c) => [c.id, c]));
 
     return movimentos.map((item) => {
       let origemRotulo: string | null = null;
+      let origem: { sincronizada: boolean } | null = null;
       if (item.cartaoId) {
-        const nome = cartoesPorId.get(item.cartaoId);
-        origemRotulo = nome ? `cartão ${nome}` : null;
+        const cartao = cartoesPorId.get(item.cartaoId);
+        origemRotulo = cartao ? `cartão ${cartao.nome}` : null;
+        origem = cartao ?? null;
       } else if (item.contaId) {
-        origemRotulo = contasPorId.get(item.contaId) ?? null;
+        const conta = contasPorId.get(item.contaId);
+        origemRotulo = conta?.nome ?? null;
+        origem = conta ?? null;
       }
       return {
         id: item.id,
@@ -550,6 +605,7 @@ export class ResolvedorIntencao {
         dataLancamento: item.dataLancamento,
         tipo: item.tipo,
         origemRotulo,
+        protegido: fato_protegido(item, origem),
       };
     });
   }

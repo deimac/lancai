@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import {
   auditoria as auditoriaTabela,
   cartao as cartaoTabela,
@@ -10,6 +10,7 @@ import {
   pessoa as pessoaTabela,
 } from "@lancai/banco";
 import type {
+  OperacaoAtualizacaoFonte,
   OperacaoCorrecao,
   OperacaoPersistencia,
   RepositorioFinanceiro,
@@ -52,6 +53,29 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       .select()
       .from(movimentoTabela)
       .where(eq(movimentoTabela.id, id))
+      .limit(1);
+    return linha;
+  }
+
+  async obterMovimentoPorIdExterno(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    idExterno: string;
+  }): Promise<Movimento | undefined> {
+    const [linha] = await this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.workspaceId, chave.workspaceId),
+          eq(movimentoTabela.fonte, chave.fonte as Movimento["fonte"]),
+          chave.provedor === undefined
+            ? isNull(movimentoTabela.provedor)
+            : eq(movimentoTabela.provedor, chave.provedor),
+          eq(movimentoTabela.idExterno, chave.idExterno),
+        ),
+      )
       .limit(1);
     return linha;
   }
@@ -135,5 +159,58 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
 
       return atualizado;
     });
+  }
+
+  async atualizarFatosDaFonte(operacao: OperacaoAtualizacaoFonte): Promise<Movimento[]> {
+    return this.banco.transaction(async (tx) => {
+      /**
+       * A única declaração desta permissão no sistema. `LOCAL` a amarra a esta
+       * transação: se algo falhar no meio, some junto com o rollback, e nenhuma
+       * escrita posterior na mesma conexão a herda.
+       */
+      await tx.execute(sql`SET LOCAL "lancai.sincronizacao" = 'on'`);
+
+      const atualizados: Movimento[] = [];
+
+      for (const atualizacao of operacao.atualizacoes) {
+        const [linha] = await tx
+          .update(movimentoTabela)
+          .set({ ...atualizacao.campos, dataAtualizacao: new Date() })
+          .where(eq(movimentoTabela.id, atualizacao.movimentoId))
+          .returning();
+
+        if (!linha) {
+          throw new Error(`Movimento não encontrado para atualização: ${atualizacao.movimentoId}`);
+        }
+        atualizados.push(linha);
+      }
+
+      for (const atualizacaoSaldo of operacao.atualizacoesSaldoConta) {
+        await tx
+          .update(contaTabela)
+          .set({ saldoAtual: String(atualizacaoSaldo.saldoAtual), dataAtualizacao: new Date() })
+          .where(eq(contaTabela.id, atualizacaoSaldo.contaId));
+      }
+
+      if (operacao.auditorias.length > 0) {
+        await tx.insert(auditoriaTabela).values(operacao.auditorias);
+      }
+
+      return atualizados;
+    });
+  }
+
+  async definirSincronizacaoConta(contaId: string, sincronizada: boolean): Promise<void> {
+    await this.banco
+      .update(contaTabela)
+      .set({ sincronizada, dataAtualizacao: new Date() })
+      .where(eq(contaTabela.id, contaId));
+  }
+
+  async definirSincronizacaoCartao(cartaoId: string, sincronizada: boolean): Promise<void> {
+    await this.banco
+      .update(cartaoTabela)
+      .set({ sincronizada, dataAtualizacao: new Date() })
+      .where(eq(cartaoTabela.id, cartaoId));
   }
 }

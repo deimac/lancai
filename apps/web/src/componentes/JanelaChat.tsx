@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { IntencaoDetectada } from "@lancai/tipos";
 import { Send } from "lucide-react";
@@ -12,6 +12,8 @@ import { ChipsAtalho } from "./ChipsAtalho";
 export interface JanelaChatHandle {
   /** Envia uma mensagem pelo mesmo pipeline do formulário — usado pelo botão "Menu" do cabeçalho. */
   enviarMensagem: (texto: string) => void;
+  /** Foco no campo de mensagem (abrir painel / a11y). */
+  focar: () => void;
 }
 
 interface PropsJanelaChat {
@@ -21,7 +23,7 @@ interface PropsJanelaChat {
   aoRegistrarOuCorrigirMovimento?: () => void;
 }
 
-/** Intenções que alteram saldos/limites/lista e por isso exigem recarregar o PainelSaldos. */
+/** Intenções que alteram saldos/limites/lista e invalidam o cockpit. */
 const INTENCOES_QUE_AFETAM_SALDOS = new Set<IntencaoDetectada["intencao"]>([
   "REGISTRAR_MOVIMENTO",
   "CORRIGIR_MOVIMENTO",
@@ -91,6 +93,7 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
   const [enviando, setEnviando] = useState(false);
   const [mostrarChips, setMostrarChips] = useState(!temContas);
   const [sessaoId, setSessaoId] = useState<string | undefined>(undefined);
+  const campoRef = useRef<HTMLInputElement>(null);
 
   const ultimaMensagem = mensagens[mensagens.length - 1];
   const aguardandoSenhaCartao =
@@ -143,6 +146,9 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
     enviarMensagem: (texto: string) => {
       void enviarTexto(texto);
     },
+    focar: () => {
+      campoRef.current?.focus();
+    },
   }));
 
   async function enviar(evento: FormEvent) {
@@ -172,6 +178,7 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
 
       <form onSubmit={enviar} className="flex items-center gap-2 border-t border-borda p-3">
         <Campo
+          ref={campoRef}
           type={aguardandoSenhaCartao ? "password" : "text"}
           value={textoAtual}
           onChange={(evento) => setTextoAtual(evento.target.value)}
@@ -183,9 +190,10 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
           disabled={enviando}
           autoFocus
           autoComplete={aguardandoSenhaCartao ? "current-password" : "off"}
+          aria-label="Mensagem para o assistente"
         />
-        <Botao type="submit" disabled={enviando || !textoAtual.trim()}>
-          <Send size={16} />
+        <Botao type="submit" disabled={enviando || !textoAtual.trim()} aria-label="Enviar">
+          <Send size={16} aria-hidden />
         </Botao>
       </form>
     </div>

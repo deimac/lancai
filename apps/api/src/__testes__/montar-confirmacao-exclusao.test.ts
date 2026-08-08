@@ -5,6 +5,7 @@ import {
   montar_confirmacao_exclusao,
   montar_confirmacao_exclusao_lancamento,
   montar_lista_lancamentos_semelhantes,
+  montar_recusa_exclusao_protegida,
 } from "../montar-confirmacao-exclusao";
 
 describe("montar_confirmacao_exclusao", () => {
@@ -71,6 +72,25 @@ describe("montar_confirmacao_exclusao_lancamento", () => {
     expect(texto).toContain('Digite o número (1, 2…) ou "todos"');
     expect(texto).not.toContain("#f41e31f0");
     expect(texto).not.toContain('Responda "sim"');
+  });
+});
+
+describe("montar_recusa_exclusao_protegida", () => {
+  it("recusa sem perguntar e oferece esconder do relatório", () => {
+    const texto = montar_recusa_exclusao_protegida("Mercado", ["Nubank"]);
+    expect(texto).toContain('"Mercado" em Nubank veio do banco');
+    expect(texto).toContain("não considera Mercado nos relatórios");
+    expect(texto).not.toContain('Responda "sim"');
+  });
+
+  it("junta várias origens sem repetir", () => {
+    const texto = montar_recusa_exclusao_protegida("Uber", ["Nubank", "Nubank", "cartão Inter"]);
+    expect(texto).toContain("em Nubank e cartão Inter");
+  });
+
+  it("omite a origem quando ela é desconhecida", () => {
+    const texto = montar_recusa_exclusao_protegida("Mercado", [""]);
+    expect(texto).toContain('"Mercado" veio do banco');
   });
 });
 

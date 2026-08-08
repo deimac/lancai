@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { formaPagamentoSchema, perfilSchema } from "./cadastro";
+import { classificadoPorSchema, statusFonteSchema, tipoFonteSchema } from "./fonte";
 
 export const tipoMovimentoSchema = z.enum([
   "receita",
@@ -37,6 +38,19 @@ export type EntradaParcelamento = z.infer<typeof schemaParcelamento>;
  */
 export const schemaCriarMovimento = z
   .object({
+    workspaceId: z.string().uuid(),
+    /**
+     * Origem do lançamento. Só `open_finance` torna o Fato imutável; tudo o
+     * mais foi digitado por uma pessoa e continua corrigível.
+     */
+    fonte: tipoFonteSchema.default("manual"),
+    /** Rótulo opaco do provedor. Preenchido apenas por fontes automáticas. */
+    provedor: z.string().optional(),
+    idExterno: z.string().optional(),
+    /** Quando omitido, o motor copia `descricao`. Nunca é reescrito depois. */
+    descricaoFonte: z.string().min(1).optional(),
+    favorecidoFonte: z.string().optional(),
+    statusFonte: statusFonteSchema.optional(),
     descricao: z.string().min(1),
     valor: z.number().positive(),
     tipo: tipoMovimentoSchema,
@@ -84,26 +98,124 @@ export const schemaCriarMovimento = z
 
 export type EntradaCriarMovimento = z.infer<typeof schemaCriarMovimento>;
 
+/**
+ * Campos do Fato Financeiro que um lançamento manual aceita corrigir.
+ *
+ * `descricaoFonte` não está aqui de propósito: o original nunca é reescrito.
+ * Para mudar o texto que aparece na conversa, use `descricao`, que é
+ * Conhecimento. Ver ADR-009.
+ */
+export const schemaCamposFatoManual = z.object({
+  valor: z.number().positive().optional(),
+  dataMovimento: dataISOSchema.optional(),
+  contaId: z.string().uuid().optional(),
+  cartaoId: z.string().uuid().optional(),
+  status: statusMovimentoSchema.optional(),
+  formaPagamento: formaPagamentoSchema.nullable().optional(),
+  /** Regenera o parcelamento da compra no cartão com essa quantidade. */
+  parcelas: z.number().int().min(1).max(360).optional(),
+});
+export type CamposFatoManual = z.infer<typeof schemaCamposFatoManual>;
+
+/**
+ * Conhecimento do LançAI. Sempre editável, inclusive em conta sincronizada —
+ * é justamente o que o produto agrega em cima do extrato bruto.
+ */
+export const schemaConhecimentoMovimento = z.object({
+  descricao: z.string().min(1).optional(),
+  categoriaId: z.string().uuid().optional(),
+  pessoaId: z.string().uuid().optional(),
+  perfil: perfilSchema.optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  observacoes: z.string().nullable().optional(),
+  classificadoPor: classificadoPorSchema.optional(),
+  /** Preenchido só quando `classificadoPor = regra`. Null limpa o vínculo. */
+  regraId: z.string().uuid().nullable().optional(),
+  confiancaIa: z.number().min(0).max(1).nullable().optional(),
+  ignoradoEmRelatorio: z.boolean().optional(),
+});
+export type ConhecimentoMovimento = z.infer<typeof schemaConhecimentoMovimento>;
+
+export const schemaCorrigirFatoManual = z.object({
+  movimentoId: z.string().uuid(),
+  alteradoPor: z.string().uuid(),
+  campos: schemaCamposFatoManual.refine((campos) => Object.keys(campos).length > 0, {
+    message: "Informe ao menos um campo para corrigir",
+  }),
+});
+export type EntradaCorrigirFatoManual = z.infer<typeof schemaCorrigirFatoManual>;
+
+export const schemaAtualizarConhecimento = z.object({
+  movimentoId: z.string().uuid(),
+  alteradoPor: z.string().uuid(),
+  conhecimento: schemaConhecimentoMovimento.refine((dados) => Object.keys(dados).length > 0, {
+    message: "Informe ao menos um campo de conhecimento para atualizar",
+  }),
+});
+export type EntradaAtualizarConhecimento = z.infer<typeof schemaAtualizarConhecimento>;
+
+/**
+ * O que a IA produz ao interpretar "corrige o combustível pra 210 e joga em
+ * Transporte": uma correção só, misturando os dois grupos. A separação
+ * acontece na fronteira, com `separar_correcao_por_grupo`, e não no prompt —
+ * pedir para o modelo respeitar a fronteira seria confiar disciplina a quem
+ * não tem como garanti-la.
+ */
 export const schemaCorrigirMovimento = z.object({
   movimentoId: z.string().uuid(),
   alteradoPor: z.string().uuid(),
-  campos: z
-    .object({
-      descricao: z.string().min(1).optional(),
-      valor: z.number().positive().optional(),
-      dataMovimento: dataISOSchema.optional(),
-      categoriaId: z.string().uuid().optional(),
-      contaId: z.string().uuid().optional(),
-      cartaoId: z.string().uuid().optional(),
-      pessoaId: z.string().uuid().optional(),
-      perfil: perfilSchema.optional(),
-      status: statusMovimentoSchema.optional(),
-      formaPagamento: formaPagamentoSchema.nullable().optional(),
-      /** Regenera o parcelamento da compra no cartão com essa quantidade. */
-      parcelas: z.number().int().min(1).max(360).optional(),
-    })
+  campos: schemaCamposFatoManual
+    .merge(schemaConhecimentoMovimento)
     .refine((campos) => Object.keys(campos).length > 0, {
       message: "Informe ao menos um campo para corrigir",
     }),
 });
 export type EntradaCorrigirMovimento = z.infer<typeof schemaCorrigirMovimento>;
+
+const CHAVES_FATO_MANUAL = Object.keys(schemaCamposFatoManual.shape) as Array<
+  keyof CamposFatoManual
+>;
+const CHAVES_CONHECIMENTO = Object.keys(schemaConhecimentoMovimento.shape) as Array<
+  keyof ConhecimentoMovimento
+>;
+
+/**
+ * Divide uma correção mista nos dois grupos, para que cada metade vá ao
+ * componente com autoridade sobre ela. Devolve `undefined` no grupo que não
+ * recebeu nenhum campo, permitindo que o chamador chame só o necessário.
+ */
+export function separar_correcao_por_grupo(entrada: EntradaCorrigirMovimento): {
+  fato?: EntradaCorrigirFatoManual;
+  conhecimento?: EntradaAtualizarConhecimento;
+} {
+  const campos = entrada.campos as Record<string, unknown>;
+
+  const camposFato: Record<string, unknown> = {};
+  for (const chave of CHAVES_FATO_MANUAL) {
+    if (campos[chave] !== undefined) camposFato[chave] = campos[chave];
+  }
+
+  const conhecimento: Record<string, unknown> = {};
+  for (const chave of CHAVES_CONHECIMENTO) {
+    if (campos[chave] !== undefined) conhecimento[chave] = campos[chave];
+  }
+
+  return {
+    fato:
+      Object.keys(camposFato).length > 0
+        ? {
+            movimentoId: entrada.movimentoId,
+            alteradoPor: entrada.alteradoPor,
+            campos: camposFato as CamposFatoManual,
+          }
+        : undefined,
+    conhecimento:
+      Object.keys(conhecimento).length > 0
+        ? {
+            movimentoId: entrada.movimentoId,
+            alteradoPor: entrada.alteradoPor,
+            conhecimento: conhecimento as ConhecimentoMovimento,
+          }
+        : undefined,
+  };
+}

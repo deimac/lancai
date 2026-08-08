@@ -13,10 +13,11 @@
   "dependencies": {
     "@fastify/cors": "^10.0.1",
     "@lancai/banco": "workspace:*",
+    "@lancai/conhecimento": "workspace:*",
     "@lancai/evolution": "workspace:*",
     "@lancai/financeiro": "workspace:*",
     "@lancai/ia": "workspace:*",
-    "@lancai/memoria": "workspace:*",
+    "@lancai/open-finance": "workspace:*",
     "@lancai/relatorios": "workspace:*",
     "@lancai/tipos": "workspace:*",
     "@supabase/supabase-js": "^2.111.0",

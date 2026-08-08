@@ -53,3 +53,66 @@ export const formaPagamentoEnum = pgEnum("forma_pagamento", [
   "credito",
   "debito",
 ]);
+
+/**
+ * Origem da movimentação (ADR-010). Toda fonte entrega o mesmo evento normalizado;
+ * o Core não sabe de onde veio. `ofx`/`csv`/`pdf` estão reservados e sem implementação.
+ */
+export const tipoFonteEnum = pgEnum("tipo_fonte", [
+  "open_finance",
+  "manual",
+  "whatsapp",
+  "api",
+  "recorrencia",
+  "ofx",
+  "csv",
+  "pdf",
+]);
+
+/**
+ * Situação da transação na instituição — diferente do `status_movimento` do
+ * LançAI. `removido` é o que a instituição diz depois de desfazer a transação;
+ * a consequência disso aqui é `status = 'cancelado'`, que é coisa nossa.
+ */
+export const statusFonteEnum = pgEnum("status_fonte", ["confirmado", "pendente", "removido"]);
+
+/**
+ * Quem definiu a classificação. `usuario` tem precedência: uma regra nunca
+ * sobrescreve o que a pessoa classificou à mão.
+ */
+export const classificadoPorEnum = pgEnum("classificado_por", ["regra", "ia", "usuario"]);
+
+/** Como a regra nasceu. `aprendizado_conversa` é o "virar regra?" da F3. */
+export const origemRegraEnum = pgEnum("origem_regra", ["manual", "aprendizado_conversa"]);
+
+/**
+ * Operadores de condição da regra. A v1 só tem `descricao_contem` — o suficiente
+ * para "IFOOD → Restaurantes" sem inventar uma DSL.
+ */
+export const tipoCondicaoRegraEnum = pgEnum("tipo_condicao_regra", ["descricao_contem"]);
+
+/**
+ * Estado de uma conexão com instituição financeira, em vocabulário nosso.
+ * O status do provedor é traduzido para cá pelo adaptador — ver ADR-011.
+ */
+export const statusConexaoEnum = pgEnum("status_conexao", [
+  "ativa",
+  "sincronizando",
+  "precisa_atencao",
+  "removida",
+]);
+
+/** Por que a conexão precisa de atenção. É isto que a interface traduz em ação. */
+export const motivoAtencaoEnum = pgEnum("motivo_atencao", [
+  "credencial_invalida",
+  "consentimento_revogado",
+  "aguardando_usuario",
+  "erro_no_provedor",
+]);
+
+export const tipoWorkspaceEnum = pgEnum("tipo_workspace", ["pessoal", "empresa"]);
+
+export const papelWorkspaceEnum = pgEnum("papel_workspace", ["dono", "editor", "leitor"]);
+
+/** Preferência do painel do assistente no cockpit web. */
+export const posicaoPainelEnum = pgEnum("posicao_painel", ["lateral", "inferior"]);

@@ -118,6 +118,11 @@ export const schemaIntencaoConsultarVisao = z.object({
    * Omitido = a API decide pela mensagem.
    */
   detalhado: z.boolean().nullable().optional(),
+  /**
+   * Histórico detalhado: quantos lançamentos pular (paginação via “mais”).
+   * Preenchido pelo atalho determinístico; a LLM não deve inventar.
+   */
+  deslocamento: z.number().int().min(0).nullable().optional(),
 });
 export type IntencaoConsultarVisao = z.infer<typeof schemaIntencaoConsultarVisao>;
 
@@ -153,21 +158,37 @@ export const schemaIntencaoCorrigirMovimento = z.object({
      * Sem isso, o backend só pergunta se deseja excluir o lançamento.
      */
     confirmado: z.boolean().nullable().optional(),
+    /** Conhecimento: some das agregações sem apagar o Fato (conta sincronizada). */
+    ignorado_em_relatorio: z.boolean().nullable().optional(),
+    /** Conhecimento: marcações livres (ex.: projeto Itália). */
+    tags: z.array(z.string().min(1)).nullable().optional(),
+    /** Conhecimento: nota livre; `null` limpa. */
+    observacoes: z.string().nullable().optional(),
   }),
 });
 export type IntencaoCorrigirMovimento = z.infer<typeof schemaIntencaoCorrigirMovimento>;
 
 /**
- * Escape hatch para mensagens que não são um lançamento, consulta ou correção
- * (ex.: saudações, perguntas fora do domínio financeiro). Não está no documento
- * original, mas é necessário para o `InterpretadorIntencoes` nunca ser forçado
- * a inventar uma das outras três intenções quando a mensagem não se encaixa.
+ * Escape hatch para mensagens fora do domínio financeiro (saudações, perguntas
+ * genéricas). A IA pode gerá-la; cancelamentos amigáveis e orientação de fluxo
+ * usam `MENSAGEM_INFO`, não esta intenção.
  */
 export const schemaIntencaoNaoReconhecida = z.object({
   intencao: z.literal("NAO_RECONHECIDA"),
   motivo: z.string(),
 });
 export type IntencaoNaoReconhecida = z.infer<typeof schemaIntencaoNaoReconhecida>;
+
+/**
+ * Resposta informativa sem efeito no Core: usuário abortou uma confirmação
+ * (“Exclusão cancelada”), ou o atalho precisa orientar o fluxo (“número inválido”).
+ * Nunca gerada pela LLM — só pelos atalhos de confirmação.
+ */
+export const schemaIntencaoMensagemInfo = z.object({
+  intencao: z.literal("MENSAGEM_INFO"),
+  motivo: z.string(),
+});
+export type IntencaoMensagemInfo = z.infer<typeof schemaIntencaoMensagemInfo>;
 
 /**
  * Onboarding/cadastro incremental de conta via conversa. Campos opcionais
@@ -343,6 +364,25 @@ export const schemaIntencaoCancelarRecorrencia = z.object({
 });
 export type IntencaoCancelarRecorrencia = z.infer<typeof schemaIntencaoCancelarRecorrencia>;
 
+/**
+ * Confirmação do “virar regra?” após classificação manual (J9).
+ * Emitida só pelo atalho de confirmação — não faz parte do prompt da LLM.
+ */
+export const schemaIntencaoCriarRegraAprendizado = z.object({
+  intencao: z.literal("CRIAR_REGRA_APRENDIZADO"),
+  confirmado: z.boolean(),
+  /** Mesma referência do CORRIGIR_MOVIMENTO que gerou a oferta. */
+  referencia: z
+    .object({
+      descricao: z.string().min(1).nullable().optional(),
+      data_movimento: dataISOSchema.nullable().optional(),
+      codigo: z.string().min(1).nullable().optional(),
+      indice: z.number().int().positive().nullable().optional(),
+    })
+    .optional(),
+});
+export type IntencaoCriarRegraAprendizado = z.infer<typeof schemaIntencaoCriarRegraAprendizado>;
+
 export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoRegistrarMovimento,
   schemaIntencaoConsultarVisao,
@@ -357,8 +397,10 @@ export const schemaIntencaoDetectada = z.discriminatedUnion("intencao", [
   schemaIntencaoCriarRecorrencia,
   schemaIntencaoListarRecorrencias,
   schemaIntencaoCancelarRecorrencia,
+  schemaIntencaoCriarRegraAprendizado,
   schemaIntencaoSolicitarInformacao,
   schemaIntencaoMenu,
+  schemaIntencaoMensagemInfo,
   schemaIntencaoNaoReconhecida,
 ]);
 export type IntencaoDetectada = z.infer<typeof schemaIntencaoDetectada>;

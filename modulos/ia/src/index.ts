@@ -1,5 +1,6 @@
 export * from "./ramos-intencao";
 export * from "./cifragem-cartao";
+export * from "./classificador-categoria";
 export * from "./erros";
 export * from "./inferir-perfil-padrao";
 export * from "./orquestrador-ia";
@@ -19,6 +20,7 @@ export * from "./montar-lista-semelhantes";
 export * from "./consulta-historico-detalhada";
 export * from "./interpretar-consulta-rapida";
 export * from "./interpretar-correcao-rapida";
+export * from "./interpretar-enriquecimento-rapido";
 export * from "./normalizar-descricao";
 export * from "./normalizar-intencao-cadastro";
 export * from "./normalizar-intencao-movimento";

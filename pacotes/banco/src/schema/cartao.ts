@@ -2,9 +2,13 @@ import { boolean, integer, numeric, pgTable, text, timestamp, uuid } from "drizz
 import { modalidadeCartaoEnum, perfilEnum } from "./enums";
 import { conta } from "./conta";
 import { usuario } from "./usuario";
+import { workspace } from "./workspace";
 
 export const cartao = pgTable("cartao", {
   id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspace.id),
   nome: text("nome").notNull(),
   /** Armazenado como string decimal (numeric do Postgres) para evitar perda de precisão. */
   limite: numeric("limite", { precision: 14, scale: 2 }).notNull(),
@@ -20,6 +24,11 @@ export const cartao = pgTable("cartao", {
    */
   modalidade: modalidadeCartaoEnum("modalidade").notNull().default("credito"),
   ativo: boolean("ativo").notNull().default(true),
+  /**
+   * Cartão alimentado por Open Finance. Quando true, o Fato dos movimentos
+   * vindos da sincronização é imutável e a IA só pode enriquecer (ADR-012).
+   */
+  sincronizada: boolean("sincronizada").notNull().default(false),
   /** Últimos 4 dígitos do plástico (em claro) — só para identificação na UI. */
   final4: text("final4"),
   /**

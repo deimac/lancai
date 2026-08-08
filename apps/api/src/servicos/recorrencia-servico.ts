@@ -1,5 +1,6 @@
 import { and, eq, ilike } from "drizzle-orm";
 import {
+  garantir_workspace_do_usuario,
   obter_banco,
   recorrencia as recorrenciaTabela,
   type Recorrencia,
@@ -25,6 +26,7 @@ export async function criar_recorrencia(entrada: {
     .insert(recorrenciaTabela)
     .values({
       usuarioId: entrada.usuarioId,
+      workspaceId: await garantir_workspace_do_usuario(banco, entrada.usuarioId),
       descricao: entrada.descricao.trim(),
       valor: entrada.valor.toFixed(2),
       tipo: entrada.tipo,
@@ -123,6 +125,8 @@ export async function gerar_recorrencias_do_dia(
     }
 
     await motor.criar_movimento({
+      workspaceId: item.workspaceId,
+      fonte: "recorrencia",
       descricao: item.descricao,
       valor: Number(item.valor),
       tipo: item.tipo === "receita" ? "receita" : "despesa",

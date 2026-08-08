@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Conta, Movimento } from "@lancai/banco";
+import type { Cartao, Conta, Movimento } from "@lancai/banco";
 import { ResolvedorIntencao } from "../resolvedor-intencao";
-import { RepositorioContextoEmMemoria } from "../repositorio-contexto-memoria";
+import { RepositorioContextoEmMemoria, WORKSPACE_EM_MEMORIA } from "../repositorio-contexto-memoria";
+import type { ContextoResolucao } from "../resolvedor-intencao";
 import {
   ErroDadosIncompletos,
   ErroEntidadeJaExiste,
@@ -19,7 +20,9 @@ function criarConta(sobrepor: Partial<Conta> = {}): Conta {
     saldoAtual: "1000",
     perfil: "pf",
     ativo: true,
+    sincronizada: false,
     usuarioId: randomUUID(),
+    workspaceId: WORKSPACE_EM_MEMORIA,
     dataCriacao: agora,
     dataAtualizacao: agora,
     ...sobrepor,
@@ -30,6 +33,17 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
   const agora = new Date();
   return {
     id: randomUUID(),
+    workspaceId: WORKSPACE_EM_MEMORIA,
+    fonte: "manual",
+    provedor: null,
+    idExterno: null,
+    descricaoFonte: "Combustível",
+    favorecidoFonte: null,
+    statusFonte: "confirmado",
+    parcelaNumero: null,
+    parcelaTotal: null,
+    parcelaCompraEm: null,
+    parcelaCompraValor: null,
     descricao: "Combustível",
     valor: "185.00",
     tipo: "despesa",
@@ -42,6 +56,13 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     cartaoId: null,
     categoriaId: randomUUID(),
     pessoaId: null,
+    tags: [],
+    observacoes: null,
+    classificadoPor: "usuario",
+    regraId: null,
+    classificadoEm: null,
+    confiancaIa: null,
+    ignoradoEmRelatorio: false,
     usuarioId: randomUUID(),
     dataCriacao: agora,
     dataAtualizacao: agora,
@@ -56,10 +77,108 @@ describe("ResolvedorIntencao", () => {
   let resolvedor: ResolvedorIntencao;
   let usuarioId: string;
 
+  function contexto(): ContextoResolucao {
+    return {
+      usuarioId,
+      criadoPor: usuarioId,
+      workspaceId: WORKSPACE_EM_MEMORIA,
+      fonte: "manual",
+    };
+  }
+
   beforeEach(() => {
     repositorio = new RepositorioContextoEmMemoria();
     resolvedor = new ResolvedorIntencao(repositorio);
     usuarioId = randomUUID();
+  });
+
+  describe("preparar_confirmacao_exclusao_movimento", () => {
+    it("não marca nada como protegido no caso comum", async () => {
+      const conta = criarConta({ usuarioId, nome: "Nubank" });
+      const movimento = criarMovimento({ usuarioId, contaId: conta.id, descricao: "Almoço" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const previa = await resolvedor.preparar_confirmacao_exclusao_movimento(usuarioId, {
+        descricao: "Almoço",
+      });
+
+      expect(previa.protegidos).toEqual([]);
+    });
+
+    it("marca como protegido o lançamento que veio do banco", async () => {
+      const conta = criarConta({ usuarioId, nome: "Nubank" });
+      const movimento = criarMovimento({
+        usuarioId,
+        contaId: conta.id,
+        descricao: "Mercado",
+        fonte: "open_finance",
+      });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const previa = await resolvedor.preparar_confirmacao_exclusao_movimento(usuarioId, {
+        descricao: "Mercado",
+      });
+
+      expect(previa.protegidos).toEqual(["Nubank"]);
+    });
+
+    it("marca como protegido o lançamento manual em conta que virou sincronizada", async () => {
+      const conta = criarConta({ usuarioId, nome: "C6", sincronizada: true });
+      const movimento = criarMovimento({
+        usuarioId,
+        contaId: conta.id,
+        descricao: "Almoço",
+        fonte: "whatsapp",
+      });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const previa = await resolvedor.preparar_confirmacao_exclusao_movimento(usuarioId, {
+        descricao: "Almoço",
+      });
+
+      expect(previa.protegidos).toEqual(["C6"]);
+    });
+
+    it("identifica a origem pelo cartão quando o lançamento é no cartão", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao: Cartao = {
+        id: randomUUID(),
+        nome: "Inter",
+        limite: "5000.00",
+        fechamento: 20,
+        vencimento: 27,
+        melhorDiaCompra: 21,
+        perfil: "pf",
+        modalidade: "credito",
+        ativo: true,
+        sincronizada: true,
+        final4: null,
+        dadosPlasticosCifrados: null,
+        contaId: conta.id,
+        usuarioId,
+        workspaceId: WORKSPACE_EM_MEMORIA,
+        dataCriacao: new Date(),
+        dataAtualizacao: new Date(),
+      };
+      const movimento = criarMovimento({
+        usuarioId,
+        cartaoId: cartao.id,
+        descricao: "Tênis",
+        fonte: "whatsapp",
+      });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const previa = await resolvedor.preparar_confirmacao_exclusao_movimento(usuarioId, {
+        descricao: "Tênis",
+      });
+
+      expect(previa.protegidos).toEqual(["cartão Inter"]);
+    });
   });
 
   describe("resolver_registrar_movimento", () => {
@@ -78,7 +197,7 @@ describe("ResolvedorIntencao", () => {
           conta_nome: "nubank",
           categoria_nome: "Combustível",
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(resultado.contaId).toBe(conta.id);
@@ -99,7 +218,7 @@ describe("ResolvedorIntencao", () => {
           conta_nome: conta.nome,
           categoria_nome: "Alimentação",
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       const categoriasCriadas = await repositorio.listarCategorias(usuarioId);
@@ -123,7 +242,7 @@ describe("ResolvedorIntencao", () => {
           perfil: "pf",
           conta_nome: conta.nome,
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       const categorias = await repositorio.listarCategorias(usuarioId);
@@ -145,7 +264,7 @@ describe("ResolvedorIntencao", () => {
           conta_nome: conta.nome,
           pessoa_nome: "XPTO",
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       const pessoas = await repositorio.listarPessoas(usuarioId);
@@ -166,7 +285,7 @@ describe("ResolvedorIntencao", () => {
             perfil: "pf",
             conta_nome: "Conta que não existe",
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
@@ -187,7 +306,7 @@ describe("ResolvedorIntencao", () => {
           categoria_nome: "Casa",
           parcelas: 10,
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       ).catch((erro) => {
         // Sem cartão "Inter" cadastrado, esperamos o erro de referência.
         expect(erro).toBeInstanceOf(ErroReferenciaNaoEncontrada);
@@ -209,7 +328,7 @@ describe("ResolvedorIntencao", () => {
           referencia: { descricao: "combustível" },
           campos_alterados: { valor: 210 },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(resultado.movimentoId).toBe(movimento.id);
@@ -226,12 +345,55 @@ describe("ResolvedorIntencao", () => {
           referencia: { descricao: "Almoço" },
           campos_alterados: { categoria_nome: "Lazer" },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       const categorias = await repositorio.listarCategorias(usuarioId);
       expect(categorias[0]?.nome).toBe("Lazer");
       expect(resultado.campos.categoriaId).toBe(categorias[0]?.id);
+    });
+
+    it("aplica ignorado_em_relatorio e, sem nome, escolhe o mais recente", async () => {
+      const antigo = criarMovimento({
+        usuarioId,
+        descricao: "Antigo",
+        dataLancamento: new Date("2026-07-01T10:00:00Z"),
+      });
+      const recente = criarMovimento({
+        usuarioId,
+        descricao: "Recente",
+        dataLancamento: new Date("2026-08-08T10:00:00Z"),
+      });
+      repositorio.movimentos.set(antigo.id, antigo);
+      repositorio.movimentos.set(recente.id, recente);
+
+      const resultado = await resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: {},
+          campos_alterados: { ignorado_em_relatorio: true },
+        },
+        contexto(),
+      );
+
+      expect(resultado.movimentoId).toBe(recente.id);
+      expect(resultado.campos.ignoradoEmRelatorio).toBe(true);
+    });
+
+    it("resolve tags em campos_alterados", async () => {
+      const movimento = criarMovimento({ usuarioId, descricao: "iFood" });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const resultado = await resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: { descricao: "iFood" },
+          campos_alterados: { tags: ["projeto Itália"] },
+        },
+        contexto(),
+      );
+
+      expect(resultado.campos.tags).toEqual(["projeto Itália"]);
     });
 
     it("lança ErroReferenciaNaoEncontrada quando não encontra o movimento a corrigir", async () => {
@@ -242,7 +404,7 @@ describe("ResolvedorIntencao", () => {
             referencia: { descricao: "Algo que nunca existiu" },
             campos_alterados: { valor: 100 },
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
@@ -268,7 +430,7 @@ describe("ResolvedorIntencao", () => {
             referencia: { descricao: "Tênis" },
             campos_alterados: { valor: 300 },
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaAmbiguo);
     });
@@ -297,7 +459,7 @@ describe("ResolvedorIntencao", () => {
           referencia: { descricao: "Uber", indice: 1 },
           campos_alterados: { valor: 40 },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(resultado.movimentoId).toBe(recente.id);
@@ -328,7 +490,7 @@ describe("ResolvedorIntencao", () => {
           referencia: { descricao: "Tênis", indice: 2 },
           campos_alterados: { status: "cancelado", confirmado: true },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(lote.entradas).toHaveLength(1);
@@ -341,7 +503,7 @@ describe("ResolvedorIntencao", () => {
     it("passa perfil e período direto, sem exigir nenhum filtro nomeado", async () => {
       const filtros = await resolvedor.resolver_consultar_visao(
         { intencao: "CONSULTAR_VISAO", tipo_visao: "saldos", filtros: { perfil: "pj" } },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(filtros).toEqual({ usuarioId, perfil: "pj", contaId: undefined, cartaoId: undefined, categoriaId: undefined, pessoaId: undefined, periodo: undefined });
@@ -364,7 +526,7 @@ describe("ResolvedorIntencao", () => {
             periodo: { de: "2026-08-01", ate: "2026-08-31" },
           },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(filtros.contaId).toBe(conta.id);
@@ -377,7 +539,7 @@ describe("ResolvedorIntencao", () => {
       await expect(
         resolvedor.resolver_consultar_visao(
           { intencao: "CONSULTAR_VISAO", tipo_visao: "categoria", filtros: { categoria_nome: "Categoria Inexistente" } },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
@@ -386,7 +548,7 @@ describe("ResolvedorIntencao", () => {
       await expect(
         resolvedor.resolver_consultar_visao(
           { intencao: "CONSULTAR_VISAO", tipo_visao: "cartoes", filtros: { cartao_nome: "Cartão que não existe" } },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
@@ -396,7 +558,7 @@ describe("ResolvedorIntencao", () => {
     it("cria a conta com os dados informados", async () => {
       const conta = await resolvedor.resolver_criar_conta(
         { intencao: "CRIAR_CONTA", nome: "Nubank", saldo_inicial: 1000, perfil: "pf" },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(conta.nome).toBe("Nubank");
@@ -412,7 +574,7 @@ describe("ResolvedorIntencao", () => {
       await expect(
         resolvedor.resolver_criar_conta(
           { intencao: "CRIAR_CONTA", saldo_inicial: 1000, perfil: "pf" },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroDadosIncompletos);
     });
@@ -421,7 +583,7 @@ describe("ResolvedorIntencao", () => {
       await expect(
         resolvedor.resolver_criar_conta(
           { intencao: "CRIAR_CONTA", nome: "Nubank", perfil: "pf" },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroDadosIncompletos);
     });
@@ -430,7 +592,7 @@ describe("ResolvedorIntencao", () => {
       await expect(
         resolvedor.resolver_criar_conta(
           { intencao: "CRIAR_CONTA", nome: "Nubank", saldo_inicial: 1000 },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroDadosIncompletos);
     });
@@ -442,7 +604,7 @@ describe("ResolvedorIntencao", () => {
       await expect(
         resolvedor.resolver_criar_conta(
           { intencao: "CRIAR_CONTA", nome: "C6 Bank", saldo_inicial: 4.03, perfil: "pf" },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroEntidadeJaExiste);
 
@@ -463,7 +625,7 @@ describe("ResolvedorIntencao", () => {
           conta_nome: "c6",
           campos_alterados: { saldo_atual: 4.03 },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(atualizada.id).toBe(existente.id);
@@ -479,7 +641,7 @@ describe("ResolvedorIntencao", () => {
             conta_nome: "Conta que não existe",
             campos_alterados: { saldo_atual: 100 },
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
@@ -494,7 +656,7 @@ describe("ResolvedorIntencao", () => {
           conta_nome: "Inter",
           campos_alterados: { ativo: false },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(removida.ativo).toBe(false);
@@ -523,7 +685,7 @@ describe("ResolvedorIntencao", () => {
           cartao_nome: "Nubank",
           campos_alterados: { ativo: false },
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(removido.id).toBe(cartao.id);
@@ -547,7 +709,7 @@ describe("ResolvedorIntencao", () => {
           perfil: "pf",
           conta_nome: "inter",
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(cartao.nome).toBe("Nubank");
@@ -571,7 +733,7 @@ describe("ResolvedorIntencao", () => {
             perfil: "pf",
             conta_nome: "Conta que não existe",
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroReferenciaNaoEncontrada);
     });
@@ -586,7 +748,7 @@ describe("ResolvedorIntencao", () => {
           vencimento: 17,
           perfil: "pf",
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(cartao.nome).toBe("Azul Itaú");
@@ -606,7 +768,7 @@ describe("ResolvedorIntencao", () => {
           modalidade: "debito",
           conta_nome: "C6 Bank",
         },
-        { usuarioId, criadoPor: usuarioId },
+        contexto(),
       );
 
       expect(cartao.modalidade).toBe("debito");
@@ -623,7 +785,7 @@ describe("ResolvedorIntencao", () => {
             perfil: "pf",
             modalidade: "debito",
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroDadosIncompletos);
     });
@@ -638,7 +800,7 @@ describe("ResolvedorIntencao", () => {
             vencimento: 27,
             perfil: "pf",
           },
-          { usuarioId, criadoPor: usuarioId },
+          contexto(),
         ),
       ).rejects.toThrow(ErroDadosIncompletos);
     });

@@ -16,6 +16,16 @@ import {
   ErroReferenciaNaoEncontrada,
   ErroTodosProvedoresFalharam,
 } from "@lancai/ia";
+import {
+  ErroAssociacaoInvalida,
+  ErroConexaoNaoEncontrada,
+  ErroContaExternaNaoEncontrada,
+  ErroProvedorIndisponivel,
+} from "@lancai/open-finance";
+import {
+  ErroConhecimentoInvalido,
+  ErroMovimentoNaoEncontrado,
+} from "@lancai/conhecimento";
 
 function registrar_falha_ia(provedores: unknown) {
   const linha = `${new Date().toISOString()} ${JSON.stringify(provedores)}\n`;
@@ -32,7 +42,12 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     return resposta.status(400).send({ erro: "Dados inválidos.", detalhes: erro.issues });
   }
 
-  if (erro instanceof ErroRecursoNaoEncontrado) {
+  if (
+    erro instanceof ErroRecursoNaoEncontrado ||
+    erro instanceof ErroConexaoNaoEncontrada ||
+    erro instanceof ErroContaExternaNaoEncontrada ||
+    erro instanceof ErroMovimentoNaoEncontrado
+  ) {
     return resposta.status(404).send({ erro: erro.message });
   }
 
@@ -45,9 +60,19 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     erro instanceof ErroDadosIncompletos ||
     erro instanceof ErroEntidadeJaExiste ||
     erro instanceof ErroDadosPlasticosInvalidos ||
-    erro instanceof ErroCifragemCartao
+    erro instanceof ErroCifragemCartao ||
+    erro instanceof ErroAssociacaoInvalida ||
+    erro instanceof ErroConhecimentoInvalido
   ) {
     return resposta.status(422).send({ erro: erro.message });
+  }
+
+  if (erro instanceof ErroProvedorIndisponivel) {
+    return resposta.status(502).send({
+      erro:
+        "O banco não aceitou a atualização agora. Se pediu sync há pouco, aguarde e tente de novo; " +
+        "se a credencial mudou, use Reconectar.",
+    });
   }
 
   if (erro instanceof ErroTodosProvedoresFalharam) {

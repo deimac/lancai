@@ -3,6 +3,7 @@ import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
   conta as contaTabela,
+  garantir_workspace_do_usuario,
   movimento as movimentoTabela,
   obter_banco,
   pessoa as pessoaTabela,
@@ -92,14 +93,22 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria> {
-    const linhas = await this.banco.insert(categoriaTabela).values({ usuarioId, nome, tipo }).returning();
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const linhas = await this.banco
+      .insert(categoriaTabela)
+      .values({ usuarioId, workspaceId, nome, tipo })
+      .returning();
     const categoria = linhas[0];
     if (!categoria) throw new Error("Falha ao criar categoria automaticamente.");
     return categoria;
   }
 
   async criarPessoa(usuarioId: string, nome: string, tipo: Pessoa["tipo"]): Promise<Pessoa> {
-    const linhas = await this.banco.insert(pessoaTabela).values({ usuarioId, nome, tipo }).returning();
+    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const linhas = await this.banco
+      .insert(pessoaTabela)
+      .values({ usuarioId, workspaceId, nome, tipo })
+      .returning();
     const pessoa = linhas[0];
     if (!pessoa) throw new Error("Falha ao criar pessoa automaticamente.");
     return pessoa;
@@ -112,6 +121,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
         nome: dados.nome,
         perfil: dados.perfil,
         usuarioId: dados.usuarioId,
+        workspaceId: await garantir_workspace_do_usuario(this.banco, dados.usuarioId),
         saldoInicial: String(dados.saldoInicial),
         saldoAtual: String(dados.saldoInicial),
       })
@@ -126,6 +136,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
       .insert(cartaoTabela)
       .values({
         nome: dados.nome,
+        workspaceId: await garantir_workspace_do_usuario(this.banco, dados.usuarioId),
         limite: String(dados.limite),
         fechamento: dados.fechamento,
         vencimento: dados.vencimento,

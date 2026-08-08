@@ -14,6 +14,12 @@ function correspondeAoNome(nomeArmazenado: string, nomeBuscado: string): boolean
   return nomeArmazenado.toLowerCase().includes(nomeBuscado.toLowerCase());
 }
 
+/**
+ * Workspace fixo dos testes. Enquanto cada usuário tem exatamente um workspace,
+ * um valor constante representa fielmente o comportamento real.
+ */
+export const WORKSPACE_EM_MEMORIA = "00000000-0000-4000-8000-000000000001";
+
 /** Implementação em memória do RepositorioContexto, usada exclusivamente em testes. */
 export class RepositorioContextoEmMemoria implements RepositorioContexto {
   readonly contas = new Map<string, Conta>();
@@ -64,14 +70,14 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
 
   async criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria> {
     const agora = new Date();
-    const categoria: Categoria = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, dataCriacao: agora, dataAtualizacao: agora };
+    const categoria: Categoria = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, workspaceId: WORKSPACE_EM_MEMORIA, dataCriacao: agora, dataAtualizacao: agora };
     this.categorias.set(categoria.id, categoria);
     return categoria;
   }
 
   async criarPessoa(usuarioId: string, nome: string, tipo: Pessoa["tipo"]): Promise<Pessoa> {
     const agora = new Date();
-    const pessoa: Pessoa = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, dataCriacao: agora, dataAtualizacao: agora };
+    const pessoa: Pessoa = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, workspaceId: WORKSPACE_EM_MEMORIA, dataCriacao: agora, dataAtualizacao: agora };
     this.pessoas.set(pessoa.id, pessoa);
     return pessoa;
   }
@@ -83,9 +89,11 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       nome: dados.nome,
       perfil: dados.perfil,
       usuarioId: dados.usuarioId,
+      workspaceId: WORKSPACE_EM_MEMORIA,
       saldoInicial: String(dados.saldoInicial),
       saldoAtual: String(dados.saldoInicial),
       ativo: true,
+      sincronizada: false,
       dataCriacao: agora,
       dataAtualizacao: agora,
     };
@@ -106,7 +114,9 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       modalidade: dados.modalidade ?? (dados.contaId ? "multiplo" : "credito"),
       contaId: dados.contaId ?? null,
       usuarioId: dados.usuarioId,
+      workspaceId: WORKSPACE_EM_MEMORIA,
       ativo: true,
+      sincronizada: false,
       final4: dados.final4 ?? null,
       dadosPlasticosCifrados: dados.dadosPlasticosCifrados ?? null,
       dataCriacao: agora,

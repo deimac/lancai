@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Auditoria, Cartao, Categoria, Conta, Movimento, Parcela, Pessoa } from "@lancai/banco";
 import type {
+  OperacaoAtualizacaoFonte,
   OperacaoCorrecao,
   OperacaoPersistencia,
   RepositorioFinanceiro,
@@ -40,6 +41,21 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     return this.movimentos.get(id);
   }
 
+  async obterMovimentoPorIdExterno(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    idExterno: string;
+  }) {
+    return [...this.movimentos.values()].find(
+      (movimento) =>
+        movimento.workspaceId === chave.workspaceId &&
+        movimento.fonte === chave.fonte &&
+        (movimento.provedor ?? undefined) === chave.provedor &&
+        movimento.idExterno === chave.idExterno,
+    );
+  }
+
   async listarParcelasDoMovimento(movimentoId: string) {
     return [...this.parcelas.values()].filter(
       (parcela) => parcela.movimentoId === movimentoId && parcela.status !== "cancelado",
@@ -66,6 +82,17 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
       const agora = new Date();
       const movimento: Movimento = {
         id: novoMovimento.id ?? randomUUID(),
+        workspaceId: novoMovimento.workspaceId,
+        fonte: novoMovimento.fonte ?? "manual",
+        provedor: novoMovimento.provedor ?? null,
+        idExterno: novoMovimento.idExterno ?? null,
+        descricaoFonte: novoMovimento.descricaoFonte,
+        favorecidoFonte: novoMovimento.favorecidoFonte ?? null,
+        statusFonte: novoMovimento.statusFonte ?? "confirmado",
+        parcelaNumero: novoMovimento.parcelaNumero ?? null,
+        parcelaTotal: novoMovimento.parcelaTotal ?? null,
+        parcelaCompraEm: novoMovimento.parcelaCompraEm ?? null,
+        parcelaCompraValor: novoMovimento.parcelaCompraValor ?? null,
         descricao: novoMovimento.descricao,
         valor: String(novoMovimento.valor),
         tipo: novoMovimento.tipo,
@@ -78,6 +105,13 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         cartaoId: novoMovimento.cartaoId ?? null,
         categoriaId: novoMovimento.categoriaId,
         pessoaId: novoMovimento.pessoaId ?? null,
+        tags: novoMovimento.tags ?? [],
+        observacoes: novoMovimento.observacoes ?? null,
+        classificadoPor: novoMovimento.classificadoPor ?? "usuario",
+        regraId: novoMovimento.regraId ?? null,
+        classificadoEm: novoMovimento.classificadoEm ?? null,
+        confiancaIa: novoMovimento.confiancaIa ?? null,
+        ignoradoEmRelatorio: novoMovimento.ignoradoEmRelatorio ?? false,
         usuarioId: novoMovimento.usuarioId,
         dataCriacao: agora,
         dataAtualizacao: agora,
@@ -188,5 +222,61 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     });
 
     return atualizado;
+  }
+
+  async atualizarFatosDaFonte(operacao: OperacaoAtualizacaoFonte): Promise<Movimento[]> {
+    const atualizados: Movimento[] = [];
+
+    for (const atualizacao of operacao.atualizacoes) {
+      const existente = this.movimentos.get(atualizacao.movimentoId);
+      if (!existente) {
+        throw new Error(`Movimento não encontrado: ${atualizacao.movimentoId}`);
+      }
+
+      const atualizado = {
+        ...existente,
+        ...atualizacao.campos,
+        dataAtualizacao: new Date(),
+      } as Movimento;
+      this.movimentos.set(atualizacao.movimentoId, atualizado);
+      atualizados.push(atualizado);
+    }
+
+    for (const atualizacao of operacao.atualizacoesSaldoConta) {
+      const conta = this.contas.get(atualizacao.contaId);
+      if (!conta) continue;
+      this.contas.set(atualizacao.contaId, {
+        ...conta,
+        saldoAtual: String(atualizacao.saldoAtual),
+        dataAtualizacao: new Date(),
+      });
+    }
+
+    for (const auditoria of operacao.auditorias) {
+      this.auditorias.push({
+        id: randomUUID(),
+        tabela: auditoria.tabela,
+        registroId: auditoria.registroId,
+        acao: auditoria.acao,
+        estadoAnterior: auditoria.estadoAnterior ?? null,
+        estadoAtual: auditoria.estadoAtual ?? null,
+        alteradoPor: auditoria.alteradoPor,
+        dataCriacao: new Date(),
+      });
+    }
+
+    return atualizados;
+  }
+
+  async definirSincronizacaoConta(contaId: string, sincronizada: boolean): Promise<void> {
+    const conta = this.contas.get(contaId);
+    if (!conta) return;
+    this.contas.set(contaId, { ...conta, sincronizada, dataAtualizacao: new Date() });
+  }
+
+  async definirSincronizacaoCartao(cartaoId: string, sincronizada: boolean): Promise<void> {
+    const cartao = this.cartoes.get(cartaoId);
+    if (!cartao) return;
+    this.cartoes.set(cartaoId, { ...cartao, sincronizada, dataAtualizacao: new Date() });
   }
 }

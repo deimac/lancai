@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq } from "drizzle-orm";
-import { cartao, obter_banco } from "@lancai/banco";
+import { cartao, garantir_workspace_do_usuario, obter_banco } from "@lancai/banco";
 import { calcularMelhorDiaCompra, schemaCriarCartao } from "@lancai/tipos";
 
 /** Remove o payload cifrado das respostas públicas de listagem. */
@@ -13,9 +13,11 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaCriarCartao.parse(requisicao.body);
     const banco = obter_banco();
+    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
     const [criado] = await banco
       .insert(cartao)
       .values({
+        workspaceId,
         nome: dados.nome,
         limite: String(dados.limite),
         fechamento: dados.fechamento,

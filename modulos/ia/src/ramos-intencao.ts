@@ -123,3 +123,37 @@ export function mensagem_parece_resposta_slot(mensagem: string): boolean {
   if (texto.length <= 40) return true;
   return /^(sim|n[aã]o|ok|pode|confirmo|fechamento|vencimento|limite|saldo|dia\s*\d)/i.test(texto);
 }
+
+/**
+ * Heurística antes (e rede de segurança depois) do classificador LLM.
+ * Frases de gasto vagas (“fiz mercado”, “gastei no uber”) não podem cair em `outro`.
+ */
+export function ramo_heuristico_mensagem(mensagem: string): RamoIntencao | null {
+  const texto = mensagem.trim();
+  if (!texto) return null;
+
+  // Consulta, correção, cadastro, saudação — deixa o classificador decidir.
+  if (
+    /\b(quanto|quais|mostra|mostre|liste|listar|extrato|saldo|resumo|comprometido|parcelamentos?|evolu[cç][aã]o|fluxo\s+cruzado|corrige|corrigir|apague|apaga|cancela|cancelar|cadastr|or[cç]amento|todo\s+m[eê]s|recorrente|menu|ajuda|oi+|ol[aá]|bom\s+dia|boa\s+tarde|boa\s+noite)\b/i.test(
+      texto,
+    )
+  ) {
+    return null;
+  }
+
+  if (/\b(gastei|paguei|comprei|debitei|recebi|ganhei)\b/i.test(texto)) {
+    return "registrar";
+  }
+
+  // "fiz mercado", "fiz um almoço", "fiz uber"
+  if (/\bfiz\s+(?:um\s+|uma\s+)?[\p{L}\d]{2,}/iu.test(texto)) {
+    return "registrar";
+  }
+
+  // "foi no ifood", "foi na farmácia"
+  if (/\bfoi\s+(?:no|na|num|numa|um|uma)\s+/i.test(texto)) {
+    return "registrar";
+  }
+
+  return null;
+}

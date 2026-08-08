@@ -116,6 +116,7 @@ export function montar_resposta_visao(
         saldoPeriodo,
         totalItens,
         itensOmitidos,
+        deslocamento = 0,
         dias,
       } = resultado.dados;
       if (totalItens === 0) {
@@ -134,6 +135,7 @@ export function montar_resposta_visao(
         : null;
 
       const detalhado = opcoes.detalhado !== false;
+      const itensNaPagina = dias.reduce((total, dia) => total + dia.itens.length, 0);
 
       if (!detalhado) {
         if (rotuloDescricao) {
@@ -146,6 +148,10 @@ export function montar_resposta_visao(
           `Em ${periodoTexto}: receitas ${formatarMoeda(totalReceitas)} · despesas ${formatarMoeda(totalDespesas)} · saldo ${formatarMoeda(saldoPeriodo)} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
           'Para ver cada lançamento, diga "detalhado".',
         ].join("\n");
+      }
+
+      if (itensNaPagina === 0) {
+        return "Não há mais lançamentos nessa lista. Peça um período ou filtro diferente se quiser outra busca.";
       }
 
       const secoes = dias.map((dia) => {
@@ -167,17 +173,29 @@ export function montar_resposta_visao(
         return `${formatarData(dia.data)}\n${linhas.join("\n")}`;
       });
 
-      const cabecalho = rotuloDescricao
-        ? [
-            `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
-          ]
-        : [
-            `Lançamentos de ${periodoTexto} (${totalItens}):`,
-            `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
-          ];
+      const faixa =
+        itensOmitidos > 0 || deslocamento > 0
+          ? `mostrando ${deslocamento + 1}–${deslocamento + itensNaPagina} de ${totalItens}`
+          : `${totalItens}`;
+
+      const cabecalho =
+        deslocamento > 0
+          ? [`Próximos lançamentos de ${periodoTexto} (${faixa}):`]
+          : rotuloDescricao
+            ? [
+                `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${faixa}).`,
+              ]
+            : [
+                `Lançamentos de ${periodoTexto} (${faixa}):`,
+                `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
+              ];
 
       const rodape = [
-        ...(itensOmitidos > 0 ? [`… e mais ${itensOmitidos} lançamento(s). Peça um intervalo menor para ver todos.`] : []),
+        ...(itensOmitidos > 0
+          ? [
+              `… e mais ${itensOmitidos} lançamento(s). Diga "mais" para ver os próximos (ou peça um período menor).`,
+            ]
+          : []),
         `Para corrigir ou cancelar, use o código (ex.: "Cancela o #a1b2c3d4") ou diga "Cancela o almoço de ${formatarData(periodo.ate)}".`,
       ];
 

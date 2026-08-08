@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   interpretar_consulta_rapida,
   interpretar_pedido_detalhe_historico,
+  interpretar_pedido_mais_historico,
 } from "../interpretar-consulta-rapida";
 import type { ContextoInterpretacao } from "../prompt";
 
@@ -84,9 +85,78 @@ describe("interpretar_consulta_rapida", () => {
     });
   });
 
-  it("deixa a IA interpretar gasto por estabelecimento ou categoria sem dia", () => {
-    expect(interpretar_consulta_rapida("quanto gastei de uber?", contexto())).toBeNull();
+  it("consulta estabelecimento sem período no mês atual", () => {
+    expect(interpretar_consulta_rapida("quanto gastei de uber?", contexto())).toEqual({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      detalhado: false,
+      filtros: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        conta_nome: null,
+        cartao_nome: null,
+        descricao: "uber",
+      },
+    });
+  });
+
+  it("consulta estabelecimento com período explícito", () => {
+    expect(
+      interpretar_consulta_rapida("quanto gastei de ifood esse mês?", contexto()),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      filtros: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        descricao: "ifood",
+      },
+    });
+  });
+
+  it("deixa a IA interpretar gasto por categoria sem período", () => {
     expect(interpretar_consulta_rapida("quanto gastei com Transporte?", contexto())).toBeNull();
+  });
+
+  it("consulta fluxo cruzado sem IA", () => {
+    expect(
+      interpretar_consulta_rapida(
+        "quanto gastei de pessoal com dinheiro da empresa?",
+        contexto(),
+      ),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "fluxo",
+      filtros: { perfil: null },
+    });
+  });
+
+  it("consulta futuro / comprometido sem IA", () => {
+    expect(
+      interpretar_consulta_rapida("quanto tenho comprometido até dezembro?", contexto()),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "futuro",
+    });
+  });
+
+  it("consulta evolução sem IA", () => {
+    expect(
+      interpretar_consulta_rapida("como estão minhas finanças nos últimos meses?", contexto()),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "evolucao",
+    });
+  });
+
+  it("consulta parcelamentos sem IA", () => {
+    expect(
+      interpretar_consulta_rapida("quanto falta pagar das parcelas?", contexto()),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "parcelamentos",
+    });
+    expect(interpretar_consulta_rapida("mostra meus parcelamentos", contexto())).toMatchObject({
+      tipo_visao: "parcelamentos",
+    });
   });
 
   it("não intercepta lançamento nem exclusão", () => {
@@ -110,9 +180,11 @@ describe("interpretar_pedido_detalhe_historico", () => {
     expect(interpretar_pedido_detalhe_historico("detalhado", ultimaConsulta)).toEqual({
       ...ultimaConsulta,
       detalhado: true,
+      deslocamento: 0,
     });
     expect(interpretar_pedido_detalhe_historico("mostra detalhado", ultimaConsulta)).toMatchObject({
       detalhado: true,
+      deslocamento: 0,
       filtros: { descricao: "uber" },
     });
   });
@@ -127,5 +199,45 @@ describe("interpretar_pedido_detalhe_historico", () => {
       }),
     ).toBeNull();
     expect(interpretar_pedido_detalhe_historico("quanto gastei esse mês?", ultimaConsulta)).toBeNull();
+  });
+});
+
+describe("interpretar_pedido_mais_historico", () => {
+  const ultimaConsulta = {
+    intencao: "CONSULTAR_VISAO" as const,
+    tipo_visao: "historico" as const,
+    detalhado: true,
+    deslocamento: 0,
+    filtros: {
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    },
+  };
+
+  it("avança o deslocamento em páginas de 40", () => {
+    expect(interpretar_pedido_mais_historico("mais", ultimaConsulta)).toEqual({
+      ...ultimaConsulta,
+      detalhado: true,
+      deslocamento: 40,
+    });
+    expect(interpretar_pedido_mais_historico("continuar", { ...ultimaConsulta, deslocamento: 40 })).toEqual({
+      ...ultimaConsulta,
+      detalhado: true,
+      deslocamento: 80,
+    });
+    expect(interpretar_pedido_mais_historico("próximos", ultimaConsulta)).toMatchObject({
+      deslocamento: 40,
+    });
+  });
+
+  it("ignora fora do contexto de histórico", () => {
+    expect(interpretar_pedido_mais_historico("mais", null)).toBeNull();
+    expect(
+      interpretar_pedido_mais_historico("mais", {
+        intencao: "CONSULTAR_VISAO",
+        tipo_visao: "saldos",
+        filtros: {},
+      }),
+    ).toBeNull();
+    expect(interpretar_pedido_mais_historico("mais lançamentos de uber", ultimaConsulta)).toBeNull();
   });
 });

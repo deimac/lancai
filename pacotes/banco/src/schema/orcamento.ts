@@ -4,6 +4,7 @@ import { categoria } from "./categoria";
 import { conta } from "./conta";
 import { cartao } from "./cartao";
 import { usuario } from "./usuario";
+import { workspace } from "./workspace";
 
 /**
  * Limite de gasto mensal (geral ou por categoria).
@@ -12,6 +13,9 @@ import { usuario } from "./usuario";
  */
 export const orcamento = pgTable("orcamento", {
   id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspace.id),
   usuarioId: uuid("usuario_id")
     .notNull()
     .references(() => usuario.id),
@@ -34,6 +38,9 @@ export type NovoOrcamento = typeof orcamento.$inferInsert;
  */
 export const recorrencia = pgTable("recorrencia", {
   id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspace.id),
   usuarioId: uuid("usuario_id")
     .notNull()
     .references(() => usuario.id),

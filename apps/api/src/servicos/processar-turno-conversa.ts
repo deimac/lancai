@@ -1,5 +1,17 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { chat as chatTabela, obter_banco, sessao as sessaoTabela, usuario as usuarioTabela } from "@lancai/banco";
+import {
+  chat as chatTabela,
+  garantir_workspace_do_usuario,
+  obter_banco,
+  sessao as sessaoTabela,
+  usuario as usuarioTabela,
+} from "@lancai/banco";
+import {
+  Memoria,
+  RepositorioConhecimentoDrizzle,
+  RepositorioMemoriaDrizzle,
+  ServicoConhecimento,
+} from "@lancai/conhecimento";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import {
   InterpretadorIntencoes,
@@ -10,17 +22,18 @@ import {
   garantir_categorias_padrao,
   interpretar_consulta_rapida,
   interpretar_correcao_rapida,
+  interpretar_enriquecimento_rapido,
   interpretar_lancamento_rapido,
   interpretar_pedido_detalhe_historico,
+  interpretar_pedido_mais_historico,
   normalizar_intencao_cadastro,
   normalizar_intencao_movimento,
   normalizar_intencao_plasticos,
   normalizar_intencao_recorrencia,
 } from "@lancai/ia";
 import type { ContextoInterpretacao, MensagemHistorico } from "@lancai/ia";
-import { Memoria, RepositorioMemoriaDrizzle } from "@lancai/memoria";
 import { ModuloRelatorios, RepositorioRelatoriosDrizzle } from "@lancai/relatorios";
-import { hojeISO, type IntencaoDetectada } from "@lancai/tipos";
+import { hojeISO, type IntencaoDetectada, type TipoFonte } from "@lancai/tipos";
 import {
   extrair_pendencia_senha_cartao,
   mensagem_parece_senha,
@@ -28,6 +41,7 @@ import {
 } from "../interpretar-confirmacao-senha-cartao";
 import { interpretar_resposta_confirmacao_duplicata } from "../interpretar-confirmacao-duplicata";
 import { interpretar_resposta_confirmacao_exclusao } from "../interpretar-confirmacao-exclusao";
+import { interpretar_resposta_confirmacao_regra } from "../interpretar-confirmacao-regra";
 import { montar_dados_cartao_protegidos } from "../montar-dados-cartao";
 import { montar_resposta_chat } from "../montar-resposta-chat";
 import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
@@ -46,6 +60,7 @@ const interpretador = new InterpretadorIntencoes(orquestrador);
 const repositorioContexto = new RepositorioContextoDrizzle();
 const resolvedor = new ResolvedorIntencao(repositorioContexto);
 const motor = new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
+const conhecimento = new ServicoConhecimento(new RepositorioConhecimentoDrizzle());
 const memoria = new Memoria(new RepositorioMemoriaDrizzle());
 const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
 
@@ -57,6 +72,12 @@ export type EntradaTurnoConversa = {
   reutilizarSessaoAtiva?: boolean;
   /** Vision/comprovante: intenção já extraída (pula atalho/LLM). */
   intencaoPrevia?: IntencaoDetectada;
+  /**
+   * Canal de origem, que vira a `fonte` dos lançamentos criados no turno.
+   * Declarado explicitamente pelo chamador em vez de deduzido de
+   * `reutilizarSessaoAtiva`, que é detalhe de sessão e não de procedência.
+   */
+  fonte?: TipoFonte;
 };
 
 export type ResultadoTurnoConversa = {
@@ -329,6 +350,11 @@ export async function processar_turno_conversa(
 
   const ultimaIntencaoIa = await buscar_ultima_intencao_ia(sessaoAtual.id);
   const intencaoConfirmacao =
+    interpretar_resposta_confirmacao_regra(
+      entrada.mensagem,
+      contexto.historicoRecente,
+      ultimaIntencaoIa,
+    ) ??
     interpretar_resposta_confirmacao_exclusao(
       entrada.mensagem,
       contexto.historicoRecente,
@@ -344,8 +370,10 @@ export async function processar_turno_conversa(
     entrada.intencaoPrevia ??
     intencaoConfirmacao ??
     interpretar_pedido_detalhe_historico(entrada.mensagem, ultimaIntencaoIa) ??
+    interpretar_pedido_mais_historico(entrada.mensagem, ultimaIntencaoIa) ??
     interpretar_orcamento_rapido(entrada.mensagem) ??
     interpretar_recorrencia_rapida(entrada.mensagem, contexto) ??
+    interpretar_enriquecimento_rapido(entrada.mensagem, contexto.dataAtual) ??
     interpretar_correcao_rapida(entrada.mensagem, contexto.dataAtual) ??
     interpretar_consulta_rapida(entrada.mensagem, contexto) ??
     interpretar_lancamento_rapido(entrada.mensagem, contexto);
@@ -391,8 +419,11 @@ export async function processar_turno_conversa(
     respostaTexto = await montar_resposta_chat(intencao, {
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.usuarioId,
+      workspaceId: await garantir_workspace_do_usuario(obter_banco(), entrada.usuarioId),
+      fonte: entrada.fonte ?? "manual",
       resolvedor,
       motor,
+      conhecimento,
       relatorios,
       memoria,
       dataAtual: contexto.dataAtual,

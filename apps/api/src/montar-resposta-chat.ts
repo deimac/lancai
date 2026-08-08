@@ -1,5 +1,16 @@
-import { formatarDataHoraBrasil, formatarMoeda } from "@lancai/tipos";
-import type { IntencaoCorrigirMovimento, IntencaoDetectada } from "@lancai/tipos";
+import {
+  formatarDataHoraBrasil,
+  formatarMoeda,
+  separar_correcao_por_grupo,
+} from "@lancai/tipos";
+import type {
+  EntradaCorrigirMovimento,
+  IntencaoCorrigirMovimento,
+  IntencaoDetectada,
+  TipoFonte,
+} from "@lancai/tipos";
+import type { Movimento } from "@lancai/banco";
+import type { Memoria, ServicoConhecimento } from "@lancai/conhecimento";
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import {
   ErroEntidadeJaExiste,
@@ -8,13 +19,19 @@ import {
   preferir_termo_referencia,
   type ResolvedorIntencao,
 } from "@lancai/ia";
-import type { Memoria } from "@lancai/memoria";
 import type { ModuloRelatorios } from "@lancai/relatorios";
 import {
   montar_confirmacao_duplicata_lancamento,
   montar_confirmacao_exclusao,
   montar_confirmacao_exclusao_lancamento,
+  montar_recusa_exclusao_protegida,
 } from "./montar-confirmacao-exclusao";
+import {
+  montar_oferta_virar_regra,
+  texto_regra_criada,
+  texto_regra_ja_existia,
+  texto_regra_recusada,
+} from "./montar-oferta-virar-regra";
 import { montar_pedido_senha_cartao } from "./montar-pedido-senha-cartao";
 import { montar_resposta_visao } from "./montar-resposta-visao";
 import { aprender_habitos_apos_lancamento } from "./servicos/aprender-habitos-lancamento";
@@ -34,8 +51,12 @@ import {
 interface ContextoResposta {
   usuarioId: string;
   criadoPor: string;
+  workspaceId: string;
+  /** Canal deste turno. Vira a `fonte` dos lançamentos criados. */
+  fonte: TipoFonte;
   resolvedor: ResolvedorIntencao;
   motor: MotorFinanceiro;
+  conhecimento: ServicoConhecimento;
   relatorios: ModuloRelatorios;
   memoria?: Memoria;
   /** Data de hoje (YYYY-MM-DD) — usada pelo ModuloRelatorios para períodos padrão (mês atual, últimos meses etc.). */
@@ -45,6 +66,36 @@ interface ContextoResposta {
   totalCartoes: number;
   /** Mensagem original do usuário — usada para extrair termo/código da referência. */
   mensagem?: string;
+}
+
+/**
+ * Uma frase como "corrige o combustível pra 210 e joga em Transporte" mistura
+ * Fato e Conhecimento. Cada metade vai ao componente com autoridade sobre ela:
+ * o Core cuida de valor, data, conta e status; o ServicoConhecimento cuida de
+ * categoria, descrição, perfil, tags e observações.
+ *
+ * É tudo ou nada. Se o Fato for imutável, o erro sobe e nada é aplicado — meia
+ * correção aplicada em silêncio seria pior do que uma recusa explicando o que
+ * dá para mudar.
+ */
+async function aplicar_correcao(
+  contexto: ContextoResposta,
+  entrada: EntradaCorrigirMovimento,
+): Promise<Movimento> {
+  const { fato, conhecimento } = separar_correcao_por_grupo(entrada);
+
+  let atualizado: Movimento | undefined;
+  if (fato) {
+    atualizado = await contexto.motor.corrigir_fato_manual(fato);
+  }
+  if (conhecimento) {
+    atualizado = await contexto.conhecimento.atualizar(conhecimento);
+  }
+
+  if (!atualizado) {
+    throw new Error("Correção sem nenhum campo reconhecido de Fato ou de Conhecimento.");
+  }
+  return atualizado;
 }
 
 function ajustar_referencia_correcao(
@@ -105,7 +156,12 @@ export async function montar_resposta_chat(
   intencao: IntencaoDetectada,
   contexto: ContextoResposta,
 ): Promise<string> {
-  const referenciaResolucao = { usuarioId: contexto.usuarioId, criadoPor: contexto.criadoPor };
+  const referenciaResolucao = {
+    usuarioId: contexto.usuarioId,
+    criadoPor: contexto.criadoPor,
+    workspaceId: contexto.workspaceId,
+    fonte: contexto.fonte,
+  };
 
   switch (intencao.intencao) {
     case "REGISTRAR_MOVIMENTO": {
@@ -177,6 +233,11 @@ export async function montar_resposta_chat(
           contexto.usuarioId,
           correcao.referencia,
         );
+        // Recusar antes de perguntar. Pedir confirmação de algo que será negado
+        // em seguida é pior do que negar de saída.
+        if (previa.protegidos.length > 0) {
+          return montar_recusa_exclusao_protegida(previa.descricao, previa.protegidos);
+        }
         return montar_confirmacao_exclusao_lancamento(
           previa.descricao,
           previa.dataMovimento,
@@ -190,7 +251,7 @@ export async function montar_resposta_chat(
       if (correcao.campos_alterados.status === "cancelado" && correcao.campos_alterados.confirmado === true) {
         const lote = await contexto.resolvedor.resolver_cancelar_movimentos(correcao, referenciaResolucao);
         for (const entrada of lote.entradas) {
-          await contexto.motor.corrigir_movimento(entrada);
+          await aplicar_correcao(contexto, entrada);
         }
         if (lote.entradas.length === 1) {
           return `Lançamento "${lote.descricao}" cancelado.`;
@@ -199,16 +260,64 @@ export async function montar_resposta_chat(
       }
 
       const entrada = await contexto.resolvedor.resolver_corrigir_movimento(correcao, referenciaResolucao);
-      const movimentoAtualizado = await contexto.motor.corrigir_movimento(entrada);
+      const movimentoAtualizado = await aplicar_correcao(contexto, entrada);
       if (correcao.campos_alterados.parcelas != null) {
         return `Lançamento "${movimentoAtualizado.descricao}" atualizado — agora em ${correcao.campos_alterados.parcelas}x (total ${formatarMoeda(movimentoAtualizado.valor)}).`;
       }
-      return `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
+
+      if (correcao.campos_alterados.ignorado_em_relatorio === true) {
+        return `Pronto — "${movimentoAtualizado.descricao}" fica fora dos totais e relatórios. O histórico do extrato continua intacto.`;
+      }
+      if (correcao.campos_alterados.ignorado_em_relatorio === false) {
+        return `"${movimentoAtualizado.descricao}" voltou a contar nos totais e relatórios.`;
+      }
+      if (correcao.campos_alterados.tags?.length) {
+        return `Marquei "${movimentoAtualizado.descricao}" com: ${correcao.campos_alterados.tags.join(", ")}.`;
+      }
+
+      let base = `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
+      if (correcao.campos_alterados.categoria_nome) {
+        const proposta = await contexto.conhecimento.propor_regra_de_movimento(movimentoAtualizado.id);
+        if (proposta) {
+          base = `${base}\n\n${montar_oferta_virar_regra(proposta)}`;
+        }
+      }
+      return base;
+    }
+
+    case "CRIAR_REGRA_APRENDIZADO": {
+      if (!intencao.confirmado) return texto_regra_recusada();
+      if (!intencao.referencia) {
+        return "Não consegui identificar o lançamento para criar a regra.";
+      }
+
+      const entrada = await contexto.resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: intencao.referencia,
+          campos_alterados: {},
+        },
+        referenciaResolucao,
+      );
+      const resultado = await contexto.conhecimento.criar_regra_a_partir_de_correcao(entrada.movimentoId);
+
+      if (resultado.criada) return texto_regra_criada(resultado.proposta);
+      if (resultado.motivo === "ja_existe" && resultado.proposta) {
+        return texto_regra_ja_existia(resultado.proposta);
+      }
+      return "Não consegui extrair um trecho útil para virar regra.";
     }
 
     case "CONSULTAR_VISAO": {
       const filtros = await contexto.resolvedor.resolver_consultar_visao(intencao, referenciaResolucao);
-      const resultado = await contexto.relatorios.consultar_visao(intencao.tipo_visao, filtros, contexto.dataAtual);
+      const deslocamento =
+        intencao.tipo_visao === "historico" ? (intencao.deslocamento ?? 0) : 0;
+      const resultado = await contexto.relatorios.consultar_visao(
+        intencao.tipo_visao,
+        filtros,
+        contexto.dataAtual,
+        { deslocamento },
+      );
       const detalhado =
         intencao.tipo_visao === "historico"
           ? (intencao.detalhado ?? consulta_historico_detalhada(contexto.mensagem ?? ""))
@@ -391,6 +500,9 @@ export async function montar_resposta_chat(
 
     case "MENU":
       return 'Digite "menu" ou "ajuda" a qualquer momento para ver os comandos disponíveis.';
+
+    case "MENSAGEM_INFO":
+      return intencao.motivo;
 
     case "NAO_RECONHECIDA":
       return intencao.motivo || "Não entendi essa mensagem. Pode reformular?";

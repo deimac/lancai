@@ -55,6 +55,29 @@ export function montar_confirmacao_exclusao_lancamento(
   return `Deseja realmente excluir o lançamento "${descricao}"${codigo}${data} (${formatarMoeda(valorTotal)})? Responda "sim" para confirmar ou "não" para cancelar.`;
 }
 
+/**
+ * Recusa de exclusão de lançamento que vive em conta conectada ao banco. Não é
+ * uma pergunta: é a resposta final, e por isso precisa oferecer o caminho que
+ * existe — esconder do relatório, que resolve o que o usuário realmente quer.
+ */
+export function montar_recusa_exclusao_protegida(descricao: string, origens: string[]): string {
+  const unicas = [...new Set(origens.filter((origem) => origem.trim()))];
+  const onde =
+    unicas.length === 1
+      ? ` em ${unicas[0]}`
+      : unicas.length > 1
+        ? ` em ${unicas.slice(0, -1).join(", ")} e ${unicas.at(-1)}`
+        : "";
+
+  return (
+    `O lançamento "${descricao}"${onde} veio do banco, então não consigo apagá-lo — ` +
+    `o extrato é a fonte da verdade e ele voltaria na próxima sincronização.\n\n` +
+    `Se a ideia é tirar isso das suas contas, diga "não considera ${descricao} nos relatórios" ` +
+    `que eu escondo dos totais sem mexer no histórico. Categoria, descrição e ` +
+    `observações eu também mudo normalmente.`
+  );
+}
+
 /** Pergunta quando já existe lançamento com mesmo valor, data, lugar e origem. */
 export function montar_confirmacao_duplicata_lancamento(
   descricao: string,

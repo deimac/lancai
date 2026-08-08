@@ -35,6 +35,24 @@ export const schemaSincronizarUsuario = z.object({
 });
 export type EntradaSincronizarUsuario = z.infer<typeof schemaSincronizarUsuario>;
 
+export const posicaoPainelSchema = z.enum(["lateral", "inferior"]);
+export type PosicaoPainel = z.infer<typeof posicaoPainelSchema>;
+
+/** Atualização parcial do perfil (Configurações). `whatsappNumero: null` desvincula. */
+export const schemaAtualizarUsuario = z.object({
+  nome: z.string().min(1).optional(),
+  whatsappNumero: z
+    .union([
+      z
+        .string()
+        .regex(/^\d{10,15}$/, "Informe o WhatsApp só com dígitos (10 a 15)."),
+      z.null(),
+    ])
+    .optional(),
+  posicaoPainel: posicaoPainelSchema.optional(),
+});
+export type EntradaAtualizarUsuario = z.infer<typeof schemaAtualizarUsuario>;
+
 export const schemaCriarConta = z.object({
   nome: z.string().min(1),
   saldoInicial: z.number().default(0),

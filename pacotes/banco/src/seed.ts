@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { CATEGORIAS_PADRAO } from "./categorias-padrao";
 import { obter_banco } from "./cliente";
 import { usuario, categoria } from "./schema";
+import { garantir_workspace_do_usuario } from "./workspace-padrao";
 
 async function semear() {
   const banco = obter_banco();
@@ -35,6 +36,8 @@ async function semear() {
     throw new Error("Não foi possível criar ou localizar o usuário para o seed.");
   }
 
+  const workspaceId = await garantir_workspace_do_usuario(banco, usuarioAtual.id);
+
   console.log(`Semeando categorias padrão para ${usuarioAtual.email}...`);
 
   const categoriasExistentes = await banco
@@ -56,6 +59,7 @@ async function semear() {
         nome: categoriaPadrao.nome,
         tipo: categoriaPadrao.tipo,
         usuarioId: usuarioAtual.id,
+        workspaceId,
       })),
     );
   }

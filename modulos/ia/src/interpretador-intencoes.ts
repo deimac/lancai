@@ -15,6 +15,7 @@ import {
 import {
   mensagem_parece_resposta_slot,
   ramo_de_intencao_pendente,
+  ramo_heuristico_mensagem,
   schemaClassificacaoRamo,
   schema_por_ramo,
   type RamoIntencao,
@@ -84,6 +85,12 @@ export class InterpretadorIntencoes {
       const ramo = ramo_de_intencao_pendente(pendente);
       console.info(`[ia] classificar pulado (slot-filling → ${ramo})`);
       return ramo;
+    }
+
+    const heuristico = ramo_heuristico_mensagem(mensagem);
+    if (heuristico) {
+      console.info(`[ia] classificar pulado (heurística → ${heuristico})`);
+      return heuristico;
     }
 
     const chave = chave_cache_classificar(mensagem, contexto);

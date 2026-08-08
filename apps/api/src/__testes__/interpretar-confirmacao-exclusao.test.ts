@@ -176,7 +176,7 @@ describe("interpretar_resposta_confirmacao_exclusao", () => {
 
   it("cancela exclusão com não", () => {
     expect(interpretar_resposta_confirmacao_exclusao("não", historicoCartao)).toEqual({
-      intencao: "NAO_RECONHECIDA",
+      intencao: "MENSAGEM_INFO",
       motivo: "Exclusão cancelada.",
     });
   });

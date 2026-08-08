@@ -1,5 +1,6 @@
 export * from "./enums";
 export * from "./usuario";
+export * from "./workspace";
 export * from "./conta";
 export * from "./cartao";
 export * from "./categoria";
@@ -12,3 +13,5 @@ export * from "./sessao";
 export * from "./chat";
 export * from "./evolution-evento";
 export * from "./orcamento";
+export * from "./open-finance";
+export * from "./regra";

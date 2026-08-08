@@ -113,8 +113,10 @@ export interface ResultadoHistorico {
   saldoPeriodo: number;
   /** Quantidade total de lançamentos no período (antes do limite de exibição). */
   totalItens: number;
-  /** Quantos ficaram de fora por causa do limite de exibição. */
+  /** Quantos ficaram depois da página atual (ainda acessíveis com “mais”). */
   itensOmitidos: number;
+  /** Quantos lançamentos foram pulados no início (paginação). */
+  deslocamento: number;
   dias: DiaHistorico[];
 }
 
