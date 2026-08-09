@@ -188,7 +188,7 @@ export function SeletorWorkspace({ aoMudar }: Props) {
                 required
                 autoFocus
               />
-              <p className="px-0.5 text-[11px] text-texto-suave">Só o nome — sem perfil pessoal/empresa.</p>
+              <p className="px-0.5 text-[11px] text-texto-suave">Agrupe suas contas e cartões.</p>
               <div className="flex gap-1">
                 <Botao type="button" variante="fantasma" className="flex-1" onClick={() => setCriando(false)}>
                   Cancelar
