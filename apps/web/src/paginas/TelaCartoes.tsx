@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { CreditCard, Link2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
-import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
 import { formatar_moeda } from "../lib/formatar";
@@ -34,7 +33,6 @@ export function TelaCartoes() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
-  const [perfil, setPerfil] = useState<Perfil>("pf");
   const [limite, setLimite] = useState("5000");
   const [fechamento, setFechamento] = useState("10");
   const [vencimento, setVencimento] = useState("17");
@@ -81,7 +79,6 @@ export function TelaCartoes() {
     setLimite("5000");
     setFechamento("10");
     setVencimento("17");
-    setPerfil("pf");
     setContaId("");
     setMostrandoForm(false);
     setEditandoId(null);
@@ -91,7 +88,6 @@ export function TelaCartoes() {
     setMostrandoForm(false);
     setEditandoId(cartao.id);
     setNome(cartao.nome);
-    setPerfil(cartao.perfil);
     setLimite(String(para_numero(cartao.limite)));
     setFechamento(String(cartao.fechamento ?? 10));
     setVencimento(String(cartao.vencimento));
@@ -123,7 +119,7 @@ export function TelaCartoes() {
         limite: limiteNum,
         fechamento: diaFechamento,
         vencimento: diaVencimento,
-        perfil,
+        perfil: "pf",
         ...(contaId ? { contaId } : {}),
       });
       limpar_form();
@@ -160,7 +156,6 @@ export function TelaCartoes() {
       await clienteApi.atualizar_cartao(editandoId, {
         usuarioId: usuario.id,
         nome: nome.trim(),
-        perfil,
         ...(cartao.sincronizada
           ? {}
           : {
@@ -267,17 +262,6 @@ export function TelaCartoes() {
           />
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Perfil
-              <select
-                value={perfil}
-                onChange={(e) => setPerfil(e.target.value as Perfil)}
-                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
-              >
-                <option value="pf">Pessoal (PF)</option>
-                <option value="pj">Empresa (PJ)</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Limite
               <Campo
                 inputMode="decimal"
@@ -346,50 +330,37 @@ export function TelaCartoes() {
             required
             autoFocus
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Perfil
-              <select
-                value={perfil}
-                onChange={(e) => setPerfil(e.target.value as Perfil)}
-                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
-              >
-                <option value="pf">Pessoal (PF)</option>
-                <option value="pj">Empresa (PJ)</option>
-              </select>
-            </label>
-            {!cartaoEditando.sincronizada && (
-              <>
-                <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                  Limite
-                  <Campo
-                    inputMode="decimal"
-                    value={limite}
-                    onChange={(e) => setLimite(e.target.value)}
-                    required
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                  Dia de fechamento
-                  <Campo
-                    inputMode="numeric"
-                    value={fechamento}
-                    onChange={(e) => setFechamento(e.target.value)}
-                    required
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                  Dia de vencimento
-                  <Campo
-                    inputMode="numeric"
-                    value={vencimento}
-                    onChange={(e) => setVencimento(e.target.value)}
-                    required
-                  />
-                </label>
-              </>
-            )}
-          </div>
+          {!cartaoEditando.sincronizada && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                Limite
+                <Campo
+                  inputMode="decimal"
+                  value={limite}
+                  onChange={(e) => setLimite(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                Dia de fechamento
+                <Campo
+                  inputMode="numeric"
+                  value={fechamento}
+                  onChange={(e) => setFechamento(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                Dia de vencimento
+                <Campo
+                  inputMode="numeric"
+                  value={vencimento}
+                  onChange={(e) => setVencimento(e.target.value)}
+                  required
+                />
+              </label>
+            </div>
+          )}
           {!cartaoEditando.sincronizada && (
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Conta vinculada (opcional)
@@ -409,7 +380,7 @@ export function TelaCartoes() {
           )}
           {cartaoEditando.sincronizada && (
             <p className="text-xs text-texto-suave">
-              Cartão sincronizado: limite e datas vêm do banco — só o nome e o perfil podem mudar.
+              Cartão sincronizado: limite e datas vêm do banco — só o nome pode mudar.
             </p>
           )}
           <div className="flex justify-end gap-2">
@@ -471,9 +442,6 @@ export function TelaCartoes() {
                         <span className="text-texto-suave"> ···· {cartao.final4}</span>
                       ) : null}
                     </p>
-                    <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
-                      {cartao.perfil}
-                    </span>
                     <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
                       {cartao.modalidade}
                     </span>

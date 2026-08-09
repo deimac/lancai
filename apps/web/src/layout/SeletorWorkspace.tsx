@@ -24,7 +24,6 @@ export function SeletorWorkspace({ aoMudar }: Props) {
   const [aberto, setAberto] = useState(false);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
-  const [descricao, setDescricao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -86,10 +85,8 @@ export function SeletorWorkspace({ aoMudar }: Props) {
       await clienteApi.criar_workspace({
         usuarioId: usuario.id,
         nome: nome.trim(),
-        descricao: descricao.trim() || undefined,
       });
       setNome("");
-      setDescricao("");
       setCriando(false);
       await carregar();
       setAberto(false);
@@ -190,13 +187,6 @@ export function SeletorWorkspace({ aoMudar }: Props) {
                 onChange={(e) => setNome(e.target.value)}
                 required
                 autoFocus
-              />
-              <textarea
-                placeholder="Descrição (opcional)"
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                rows={2}
-                className="resize-none rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm text-texto"
               />
               <div className="flex gap-1">
                 <Botao type="button" variante="fantasma" className="flex-1" onClick={() => setCriando(false)}>

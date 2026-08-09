@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { CreditCard, Link2, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
-import type { Perfil } from "@lancai/tipos";
 import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import {
@@ -68,11 +67,9 @@ export function TelaContasECartoes() {
   const [salvando, setSalvando] = useState(false);
 
   const [nomeConta, setNomeConta] = useState("");
-  const [perfilConta, setPerfilConta] = useState<Perfil>("pf");
   const [saldoInicial, setSaldoInicial] = useState("0");
 
   const [nomeCartao, setNomeCartao] = useState("");
-  const [perfilCartao, setPerfilCartao] = useState<Perfil>("pf");
   const [limite, setLimite] = useState("5000");
   const [fechamento, setFechamento] = useState("10");
   const [vencimento, setVencimento] = useState("17");
@@ -130,12 +127,11 @@ export function TelaContasECartoes() {
       await clienteApi.criar_conta({
         usuarioId: usuario.id,
         nome: nomeConta.trim(),
-        perfil: perfilConta,
+        perfil: "pf",
         saldoInicial: Number.isFinite(saldo) ? saldo : 0,
       });
       setNomeConta("");
       setSaldoInicial("0");
-      setPerfilConta("pf");
       setFormConta(false);
       await carregar();
       contexto?.invalidar("contas", "dashboard");
@@ -169,14 +165,13 @@ export function TelaContasECartoes() {
         limite: limiteNum,
         fechamento: diaFechamento,
         vencimento: diaVencimento,
-        perfil: perfilCartao,
+        perfil: "pf",
         ...(contaId ? { contaId } : {}),
       });
       setNomeCartao("");
       setLimite("5000");
       setFechamento("10");
       setVencimento("17");
-      setPerfilCartao("pf");
       setContaId("");
       setFormCartao(false);
       await carregar();
@@ -318,27 +313,14 @@ export function TelaContasECartoes() {
             required
             autoFocus
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Perfil
-              <select
-                value={perfilConta}
-                onChange={(e) => setPerfilConta(e.target.value as Perfil)}
-                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto"
-              >
-                <option value="pf">Pessoal (PF)</option>
-                <option value="pj">Empresa (PJ)</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Saldo inicial
-              <Campo
-                inputMode="decimal"
-                value={saldoInicial}
-                onChange={(e) => setSaldoInicial(e.target.value)}
-              />
-            </label>
-          </div>
+          <label className="flex flex-col gap-1 text-xs text-texto-suave">
+            Saldo inicial
+            <Campo
+              inputMode="decimal"
+              value={saldoInicial}
+              onChange={(e) => setSaldoInicial(e.target.value)}
+            />
+          </label>
           <div className="flex justify-end gap-2">
             <Botao type="button" variante="fantasma" onClick={() => setFormConta(false)}>
               Cancelar
@@ -366,17 +348,6 @@ export function TelaContasECartoes() {
             autoFocus
           />
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Perfil
-              <select
-                value={perfilCartao}
-                onChange={(e) => setPerfilCartao(e.target.value as Perfil)}
-                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto"
-              >
-                <option value="pf">Pessoal (PF)</option>
-                <option value="pj">Empresa (PJ)</option>
-              </select>
-            </label>
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Limite
               <Campo inputMode="decimal" value={limite} onChange={(e) => setLimite(e.target.value)} />
@@ -457,9 +428,6 @@ export function TelaContasECartoes() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate font-medium text-texto">{conta.nome}</p>
-                      <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase text-texto-suave">
-                        {conta.perfil}
-                      </span>
                       {visaoGeral && conta.workspaceNome ? (
                         <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
                           {conta.workspaceNome}
@@ -534,9 +502,6 @@ export function TelaContasECartoes() {
                           <span className="text-texto-suave"> ···· {cartao.final4}</span>
                         ) : null}
                       </p>
-                      <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase text-texto-suave">
-                        {cartao.perfil}
-                      </span>
                       {visaoGeral && cartao.workspaceNome ? (
                         <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
                           {cartao.workspaceNome}

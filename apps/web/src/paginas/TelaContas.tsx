@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
-import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type ContaResumo } from "../lib/api";
 import { formatar_moeda } from "../lib/formatar";
@@ -27,7 +26,6 @@ export function TelaContas() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
-  const [perfil, setPerfil] = useState<Perfil>("pf");
   const [saldoInicial, setSaldoInicial] = useState("0");
   const [saldoEdicao, setSaldoEdicao] = useState("0");
   const depsDados = chave_dependencia(contexto?.versoes, "contas");
@@ -57,7 +55,6 @@ export function TelaContas() {
   function limpar_form() {
     setNome("");
     setSaldoInicial("0");
-    setPerfil("pf");
     setMostrandoForm(false);
     setEditandoId(null);
   }
@@ -66,7 +63,6 @@ export function TelaContas() {
     setMostrandoForm(false);
     setEditandoId(conta.id);
     setNome(conta.nome);
-    setPerfil(conta.perfil);
     setSaldoEdicao(String(para_numero(conta.saldoAtual)));
     setErro(null);
   }
@@ -81,7 +77,7 @@ export function TelaContas() {
       await clienteApi.criar_conta({
         usuarioId: usuario.id,
         nome: nome.trim(),
-        perfil,
+        perfil: "pf",
         saldoInicial: Number.isFinite(saldo) ? saldo : 0,
       });
       limpar_form();
@@ -106,12 +102,10 @@ export function TelaContas() {
       const payload: {
         usuarioId: string;
         nome: string;
-        perfil: Perfil;
         saldoAtual?: number;
       } = {
         usuarioId: usuario.id,
         nome: nome.trim(),
-        perfil,
       };
       if (!conta.sincronizada) {
         const saldo = Number(saldoEdicao.replace(",", "."));
@@ -216,27 +210,14 @@ export function TelaContas() {
             required
             autoFocus
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Perfil
-              <select
-                value={perfil}
-                onChange={(e) => setPerfil(e.target.value as Perfil)}
-                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
-              >
-                <option value="pf">Pessoal (PF)</option>
-                <option value="pj">Empresa (PJ)</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Saldo inicial
-              <Campo
-                inputMode="decimal"
-                value={saldoInicial}
-                onChange={(e) => setSaldoInicial(e.target.value)}
-              />
-            </label>
-          </div>
+          <label className="flex flex-col gap-1 text-xs text-texto-suave">
+            Saldo inicial
+            <Campo
+              inputMode="decimal"
+              value={saldoInicial}
+              onChange={(e) => setSaldoInicial(e.target.value)}
+            />
+          </label>
           <div className="flex justify-end gap-2">
             <Botao type="button" variante="fantasma" onClick={limpar_form}>
               Cancelar
@@ -263,29 +244,16 @@ export function TelaContas() {
             required
             autoFocus
           />
-          <div className="grid gap-3 sm:grid-cols-2">
+          {!contaEditando.sincronizada && (
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
-              Perfil
-              <select
-                value={perfil}
-                onChange={(e) => setPerfil(e.target.value as Perfil)}
-                className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
-              >
-                <option value="pf">Pessoal (PF)</option>
-                <option value="pj">Empresa (PJ)</option>
-              </select>
+              Saldo atual
+              <Campo
+                inputMode="decimal"
+                value={saldoEdicao}
+                onChange={(e) => setSaldoEdicao(e.target.value)}
+              />
             </label>
-            {!contaEditando.sincronizada && (
-              <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                Saldo atual
-                <Campo
-                  inputMode="decimal"
-                  value={saldoEdicao}
-                  onChange={(e) => setSaldoEdicao(e.target.value)}
-                />
-              </label>
-            )}
-          </div>
+          )}
           {contaEditando.sincronizada && (
             <p className="text-xs text-texto-suave">
               Conta sincronizada: o saldo vem do banco e não pode ser alterado manualmente.
@@ -345,9 +313,6 @@ export function TelaContas() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-medium text-texto">{conta.nome}</p>
-                    <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
-                      {conta.perfil}
-                    </span>
                     {sincronizada && (
                       <span
                         className="rounded-md border border-primaria/40 bg-primaria/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-primaria"
