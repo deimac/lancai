@@ -209,7 +209,7 @@ Estas regras entram com a arquitetura-alvo e governam a metade mutável da movim
 2. IA, quando nenhuma regra casa — `ServicoConhecimento.aplicar_ia` via porta `SugeridorCategoria` (implementação `ClassificadorCategoria` em `modulos/ia`). Grava `classificado_por = ia` e `confianca_ia`. Só escolhe categoria da lista do workspace; não inventa. Fail-open: falha de LLM deixa “Não classificado”. Desligável com `CLASSIFICACAO_IA_HABILITADA=false`.
 3. Usuário, sempre que quiser corrigir.
 
-Após a ingestão de Open Finance e após criar movimento pelo chat **sem** categoria explícita do usuário, a API chama `classificar` (regra → IA) no composition root. Open Finance não importa Conhecimento nem IA. Checkbox “aplicar a existentes” reexecuta regras no histórico de **todos** os workspaces do usuário, sem tocar em `classificado_por = usuario`.
+Após a ingestão de Open Finance e após criar movimento pelo chat **sem** categoria explícita do usuário, o lançamento fica em “Não classificado” e a API chama `classificar` (regra → IA). Open Finance não importa Conhecimento nem IA. Checkbox “aplicar a existentes” reexecuta regras no histórico de **todos** os workspaces do usuário e, por ser opt-in, **também** sobrescreve `classificado_por = usuario` (ex.: “Outros” legado do chat).
 
 ### 9.2 Precedência
 

@@ -16,7 +16,15 @@ import type {
   ParcelamentoFonte,
   TipoFonte,
 } from "@lancai/tipos";
-import type { Cartao, Conta, Movimento, NovaAuditoria, NovaParcela, NovoMovimento } from "@lancai/banco";
+import {
+  CATEGORIA_NAO_CLASSIFICADO,
+  type Cartao,
+  type Conta,
+  type Movimento,
+  type NovaAuditoria,
+  type NovaParcela,
+  type NovoMovimento,
+} from "@lancai/banco";
 import { calcular_saldo, obter_direcao_padrao, tipo_movimento_implementado } from "./calcular-saldo";
 import { eh_fluxo_cruzado } from "./fluxo-cruzado";
 import { registrar_parcelamento } from "./registrar-parcelamento";
@@ -592,21 +600,27 @@ export class MotorFinanceiro {
       }
     }
 
+    // “Não classificado” ainda não é escolha do usuário — regras/IA podem classificar depois.
+    const classificadoPor = categoria_pendente(categoria.nome) ? "regra" : "usuario";
+
     if (entrada.tipo === "transferencia") {
-      return this.criar_transferencia(entrada);
+      return this.criar_transferencia(entrada, classificadoPor);
     }
 
     if (entrada.cartaoId) {
       if (entrada.formaPagamento === "debito") {
-        return this.criar_movimento_debito_cartao(entrada);
+        return this.criar_movimento_debito_cartao(entrada, classificadoPor);
       }
-      return this.criar_movimento_credito_cartao(entrada);
+      return this.criar_movimento_credito_cartao(entrada, classificadoPor);
     }
 
-    return this.criar_movimento_em_conta(entrada);
+    return this.criar_movimento_em_conta(entrada, classificadoPor);
   }
 
-  private async criar_movimento_em_conta(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+  private async criar_movimento_em_conta(
+    entrada: EntradaCriarMovimento,
+    classificadoPor: Movimento["classificadoPor"],
+  ): Promise<ResultadoCriarMovimento> {
     if (!tipo_movimento_implementado(entrada.tipo)) {
       throw new ErroTipoMovimentoNaoImplementado(entrada.tipo);
     }
@@ -633,6 +647,7 @@ export class MotorFinanceiro {
       contaId: conta.id,
       categoriaId: entrada.categoriaId,
       pessoaId: entrada.pessoaId,
+      classificadoPor,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
       ...this.campos_de_fato(entrada, entrada.descricao),
@@ -667,7 +682,10 @@ export class MotorFinanceiro {
    * própria de "conta destino" no schema, então cada ponta é auto-suficiente
    * para o cálculo de saldo da sua respectiva conta.
    */
-  private async criar_transferencia(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+  private async criar_transferencia(
+    entrada: EntradaCriarMovimento,
+    classificadoPor: Movimento["classificadoPor"],
+  ): Promise<ResultadoCriarMovimento> {
     const contaOrigem = await this.repositorio.obterConta(entrada.contaId as string);
     if (!contaOrigem) {
       throw new ErroRecursoNaoEncontrado("conta", entrada.contaId as string);
@@ -704,6 +722,7 @@ export class MotorFinanceiro {
       contaId: contaOrigem.id,
       categoriaId: entrada.categoriaId,
       pessoaId: entrada.pessoaId,
+      classificadoPor,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
       // As duas pontas dividem um `idExterno`, que é único por linha; o sufixo
@@ -723,6 +742,7 @@ export class MotorFinanceiro {
       contaId: contaDestino.id,
       categoriaId: entrada.categoriaId,
       pessoaId: entrada.pessoaId,
+      classificadoPor,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
       ...this.campos_de_fato(entrada, descricaoDestino, "destino"),
@@ -777,7 +797,10 @@ export class MotorFinanceiro {
   /**
    * Compra no crédito: consome limite, gera parcelas, não mexe no saldo da conta.
    */
-  private async criar_movimento_credito_cartao(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+  private async criar_movimento_credito_cartao(
+    entrada: EntradaCriarMovimento,
+    classificadoPor: Movimento["classificadoPor"],
+  ): Promise<ResultadoCriarMovimento> {
     if (!tipo_movimento_implementado(entrada.tipo)) {
       throw new ErroTipoMovimentoNaoImplementado(entrada.tipo);
     }
@@ -819,6 +842,7 @@ export class MotorFinanceiro {
       cartaoId: cartao.id,
       categoriaId: entrada.categoriaId,
       pessoaId: entrada.pessoaId,
+      classificadoPor,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
       ...this.campos_de_fato(entrada, entrada.descricao),
@@ -865,7 +889,10 @@ export class MotorFinanceiro {
    * Compra no débito do cartão: baixa o saldo da conta vinculada na hora,
    * sem parcelas e sem consumir limite.
    */
-  private async criar_movimento_debito_cartao(entrada: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+  private async criar_movimento_debito_cartao(
+    entrada: EntradaCriarMovimento,
+    classificadoPor: Movimento["classificadoPor"],
+  ): Promise<ResultadoCriarMovimento> {
     if (!tipo_movimento_implementado(entrada.tipo)) {
       throw new ErroTipoMovimentoNaoImplementado(entrada.tipo);
     }
@@ -917,6 +944,7 @@ export class MotorFinanceiro {
       contaId: conta.id,
       categoriaId: entrada.categoriaId,
       pessoaId: entrada.pessoaId,
+      classificadoPor,
       usuarioId: entrada.usuarioId,
       criadoPor: entrada.criadoPor,
       ...this.campos_de_fato(entrada, entrada.descricao),
@@ -1233,4 +1261,8 @@ export class MotorFinanceiro {
 
     return { novasParcelas };
   }
+}
+
+function categoria_pendente(nome: string): boolean {
+  return nome.toLocaleLowerCase("pt-BR") === CATEGORIA_NAO_CLASSIFICADO.toLocaleLowerCase("pt-BR");
 }

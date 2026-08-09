@@ -42,7 +42,7 @@ export interface RepositorioConhecimento {
   obterRegra(id: string): Promise<Regra | undefined>;
   atualizarRegra(id: string, campos: CamposAtualizarRegra): Promise<Regra | undefined>;
   excluirRegra(id: string): Promise<void>;
-  /** IDs de movimentos elegíveis para reaplicação de regras. */
+  /** IDs de movimentos (não cancelados) elegíveis para reaplicação em lote. */
   listarMovimentoIdsParaRegras(workspaceIds: string[]): Promise<string[]>;
   /** Workspaces em que o usuário é dono. */
   listarWorkspaceIdsDoUsuario(usuarioId: string): Promise<string[]>;

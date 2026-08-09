@@ -383,7 +383,7 @@ export function ModalRegra({ aberto, regra, categorias, aoFechar, aoSalvar }: Pr
               onChange={(e) => setAplicarExistentes(e.target.checked)}
               className="rounded border-borda"
             />
-            Aplicar às transações existentes (todos os workspaces)
+            Aplicar às transações existentes (todos os workspaces; inclusive as marcadas à mão)
           </label>
 
           {erro && (

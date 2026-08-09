@@ -145,7 +145,7 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
   async listarMovimentoIdsParaRegras(workspaceIds: string[]) {
     const ids = new Set(workspaceIds);
     return [...this.movimentos.values()]
-      .filter((m) => ids.has(m.workspaceId) && m.classificadoPor !== "usuario")
+      .filter((m) => ids.has(m.workspaceId) && m.status !== "cancelado")
       .map((m) => m.id);
   }
 
@@ -500,6 +500,29 @@ describe("ServicoConhecimento", () => {
       expect(resultado).toEqual({ aplicada: false, motivo: "protegido_pelo_usuario" });
       expect(repositorio.movimentos.get(movimento.id)?.categoriaId).toBe(categoriaNaoClassificado);
       expect(repositorio.auditorias).toHaveLength(0);
+    });
+
+    it("no lote ‘aplicar existentes’, sobrescreve classificação usuario (ex.: Outros do chat)", async () => {
+      const catOutros = randomUUID();
+      repositorio.cadastrarCategoria(catOutros, "Outros");
+      repositorio.workspacesPorUsuario.set(usuarioId, [WORKSPACE]);
+
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "UBER", categoriaRestaurante));
+
+      const movimento = criarMovimento({
+        usuarioId,
+        descricao: "Uber",
+        descricaoFonte: "Uber",
+        categoriaId: catOutros,
+        classificadoPor: "usuario",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const { aplicadas } = await servico.aplicar_regras_existentes([WORKSPACE]);
+
+      expect(aplicadas).toBe(1);
+      expect(repositorio.movimentos.get(movimento.id)?.categoriaId).toBe(categoriaRestaurante);
+      expect(repositorio.movimentos.get(movimento.id)?.classificadoPor).toBe("regra");
     });
 
     it("pode sobrescrever sugestão da IA", async () => {

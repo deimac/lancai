@@ -1,4 +1,4 @@
-import type { Cartao, Conta, Movimento } from "@lancai/banco";
+import { CATEGORIA_NAO_CLASSIFICADO, type Cartao, type Conta, type Movimento } from "@lancai/banco";
 import type {
   EntradaAtualizarCartao,
   EntradaAtualizarConta,
@@ -31,8 +31,6 @@ import {
 } from "./montar-lista-semelhantes";
 import { rotulo_descricao_busca } from "./normalizar-descricao";
 import type { RepositorioContexto } from "./repositorio-contexto";
-
-const NOME_CATEGORIA_PADRAO = "Outros";
 
 function nome_busca_lancamento(
   descricao?: string | null,
@@ -660,7 +658,12 @@ export class ResolvedorIntencao {
     tipoMovimento: IntencaoRegistrarMovimento["tipo_movimento"],
   ): Promise<string> {
     const tipoSugerido = tipoMovimento === "receita" ? "receita" : tipoMovimento === "despesa" ? "despesa" : "ambos";
-    const categoria = await this.buscar_ou_criar_categoria(usuarioId, nome ?? NOME_CATEGORIA_PADRAO, tipoSugerido);
+    // Sem categoria na frase → pendente de regra/IA (não “Outros” como se o usuário tivesse escolhido).
+    const categoria = await this.buscar_ou_criar_categoria(
+      usuarioId,
+      nome?.trim() ? nome : CATEGORIA_NAO_CLASSIFICADO,
+      tipoSugerido,
+    );
     return categoria.id;
   }
 

@@ -228,7 +228,7 @@ describe("ResolvedorIntencao", () => {
       expect(resultado.categoriaId).toBe(categoriasCriadas[0]?.id);
     });
 
-    it("usa a categoria 'Outros' quando a IA não informou nenhuma", async () => {
+    it("usa a categoria 'Não classificado' quando a IA não informou nenhuma", async () => {
       const conta = criarConta({ usuarioId });
       repositorio.contas.set(conta.id, conta);
 
@@ -246,7 +246,7 @@ describe("ResolvedorIntencao", () => {
       );
 
       const categorias = await repositorio.listarCategorias(usuarioId);
-      expect(categorias[0]?.nome).toBe("Outros");
+      expect(categorias[0]?.nome).toBe("Não classificado");
     });
 
     it("cria a pessoa automaticamente quando ela ainda não existe", async () => {

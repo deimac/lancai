@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import {
   auditoria as auditoriaTabela,
   categoria as categoriaTabela,
@@ -150,7 +150,6 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
         and(
           inArray(movimentoTabela.workspaceId, workspaceIds),
           ne(movimentoTabela.status, "cancelado"),
-          sql`(${movimentoTabela.classificadoPor} IS DISTINCT FROM 'usuario')`,
         ),
       )
       .orderBy(asc(movimentoTabela.dataCriacao));

@@ -131,11 +131,14 @@ export class ServicoConhecimento {
     });
   }
 
-  async aplicar_regras(movimentoId: string): Promise<ResultadoAplicarRegra> {
+  async aplicar_regras(
+    movimentoId: string,
+    opcoes: { sobrescreverUsuario?: boolean } = {},
+  ): Promise<ResultadoAplicarRegra> {
     const movimento = await this.repositorio.obterMovimento(movimentoId);
     if (!movimento) throw new ErroMovimentoNaoEncontrado(movimentoId);
 
-    if (movimento.classificadoPor === "usuario") {
+    if (movimento.classificadoPor === "usuario" && !opcoes.sobrescreverUsuario) {
       return { aplicada: false, motivo: "protegido_pelo_usuario" };
     }
 
@@ -245,14 +248,15 @@ export class ServicoConhecimento {
   }
 
   /**
-   * Reaplica regras ativas em movimentos dos workspaces do usuário que não foram
-   * classificados à mão. Retorna quantas aplicações efetivas ocorreram.
+   * Reaplica regras ativas no histórico dos workspaces.
+   * Com o checkbox “aplicar a existentes”, sobrescreve também classificação
+   * marcada como usuário (ex.: padrão “Outros” do chat) — é opt-in explícito.
    */
   async aplicar_regras_existentes(workspaceIds: string[]): Promise<{ aplicadas: number }> {
     const ids = await this.repositorio.listarMovimentoIdsParaRegras(workspaceIds);
     let aplicadas = 0;
     for (const id of ids) {
-      const resultado = await this.aplicar_regras(id);
+      const resultado = await this.aplicar_regras(id, { sobrescreverUsuario: true });
       if (resultado.aplicada) aplicadas += 1;
     }
     return { aplicadas };
