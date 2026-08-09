@@ -195,11 +195,17 @@ A consequência prática é boa: dizer "renomeia esse lançamento para Mercado" 
 `id`, `workspace_id`, `usuario_id`, `papel` (`dono`, `editor`, `leitor`), `data_criacao`, `data_atualizacao`, com unicidade em (`workspace_id`, `usuario_id`).
 
 ### `regra`
-Condição simples resultando em ação de classificação. Migração `0013_regra`.
+Builder de condições e ações por workspace. Migrações `0013_regra` e `0023_regra_builder`.
 
-`id`, `workspace_id`, `origem` (`manual` | `aprendizado_conversa`), `ativa`, `condicao_tipo` (v1: só `descricao_contem`), `condicao_valor`, `categoria_id`, `perfil` (opcional), `data_criacao`, `data_atualizacao`.
+`id`, `workspace_id`, `origem` (`manual` | `aprendizado_conversa`), `ativa`, `nome`, `logica_condicoes` (`e` | `ou`), `condicoes` (jsonb), `acoes` (jsonb), `data_criacao`, `data_atualizacao`.
 
-**Decidido:** colunas tipadas, não JSONB. A v1 tem um operador — o suficiente para "IFOOD → Restaurantes" — e um operador não justifica DSL. Novos operadores entram como valor do enum `tipo_condicao_regra`, não como JSON livre.
+Colunas legadas (`condicao_tipo`, `condicao_valor`, `categoria_id`, `perfil`) permanecem anuláveis para compatibilidade/backfill; o motor e a API leem o formato novo.
+
+**`condicoes`:** array de `{ campo, operador, valor }`. Campos: `descricao`, `valor`, `data`, `tipo`, `conta`, `cartao`. Operadores: `comeca_com`, `contem`, `nao_contem`, `igual`, `diferente`, `termina_com`, `regex`. Descrição casa em `descricao` + `descricao_fonte` + `favorecido_fonte`.
+
+**`acoes`:** array de `{ tipo, ... }` — `definir_categoria`, `definir_beneficiario`, `adicionar_tags_notas`, `ignorar_transacao`, e `definir_perfil` (legado/backfill). Sem prioridade numérica: entre regras que casam, condição mais específica primeiro, depois `data_criacao` ASC.
+
+**JSONB justificado:** várias condições com E/OU e ações heterogêneas não cabem em colunas tipadas sem explode de schema; o Zod da API valida o formato.
 
 ### Tabelas do módulo de Open Finance
 

@@ -162,6 +162,13 @@
       "when": 1786201500000,
       "tag": "0022_drop_cartao_final4",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786201600000,
+      "tag": "0023_regra_builder",
+      "breakpoints": true
     }
   ]
 }

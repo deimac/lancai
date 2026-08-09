@@ -14,6 +14,7 @@ import {
 } from "@lancai/conhecimento";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import {
+  ClassificadorCategoria,
   InterpretadorIntencoes,
   OrquestradorIA,
   RepositorioContextoDrizzle,
@@ -63,6 +64,7 @@ const motor = new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
 const conhecimento = new ServicoConhecimento(new RepositorioConhecimentoDrizzle());
 const memoria = new Memoria(new RepositorioMemoriaDrizzle());
 const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
+const sugeridorCategoria = new ClassificadorCategoria(orquestrador);
 
 export type EntradaTurnoConversa = {
   usuarioId: string;
@@ -424,6 +426,7 @@ export async function processar_turno_conversa(
       resolvedor,
       motor,
       conhecimento,
+      sugeridorCategoria,
       relatorios,
       memoria,
       dataAtual: contexto.dataAtual,

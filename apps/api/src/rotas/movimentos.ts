@@ -44,7 +44,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         categoriaNome: categoria.nome,
         classificadoPor: movimento.classificadoPor,
         regraId: movimento.regraId,
-        regraTrecho: regra.condicaoValor,
+        regraTrecho: regra.nome ?? regra.condicaoValor,
         classificadoEm: movimento.classificadoEm,
         confiancaIa: movimento.confiancaIa,
         perfil: movimento.perfil,

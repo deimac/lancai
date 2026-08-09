@@ -1,3 +1,4 @@
+export * from "./avaliar-regra";
 export * from "./erros";
 export * from "./memoria";
 export * from "./repositorio";

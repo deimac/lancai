@@ -58,17 +58,52 @@ export interface CategoriaResumo {
 }
 
 export type OrigemRegra = "manual" | "aprendizado_conversa";
+export type LogicaCondicoesRegra = "e" | "ou";
+export type CampoCondicaoRegra =
+  | "descricao"
+  | "valor"
+  | "data"
+  | "tipo"
+  | "conta"
+  | "cartao";
+export type OperadorCondicaoRegra =
+  | "comeca_com"
+  | "contem"
+  | "nao_contem"
+  | "igual"
+  | "diferente"
+  | "termina_com"
+  | "regex";
+
+export type CondicaoRegraApi = {
+  campo: CampoCondicaoRegra;
+  operador: OperadorCondicaoRegra;
+  valor: string;
+};
+
+export type AcaoRegraApi =
+  | { tipo: "definir_categoria"; categoriaId: string }
+  | { tipo: "definir_beneficiario"; pessoaId: string }
+  | { tipo: "adicionar_tags_notas"; tags?: string[]; observacoes?: string }
+  | { tipo: "ignorar_transacao" }
+  | { tipo: "definir_perfil"; perfil: Perfil };
 
 export interface RegraResumo {
   id: string;
+  nome: string;
   origem: OrigemRegra;
   ativa: boolean;
-  condicaoTipo: "descricao_contem";
-  condicaoValor: string;
-  categoriaId: string;
-  categoriaNome: string;
-  perfil: Perfil | null;
+  logicaCondicoes: LogicaCondicoesRegra;
+  condicoes: CondicaoRegraApi[];
+  acoes: AcaoRegraApi[];
+  categoriaId: string | null;
+  categoriaNome: string | null;
   dataCriacao: string;
+}
+
+export interface PessoaResumo {
+  id: string;
+  nome: string;
 }
 
 export interface Usuario {
@@ -472,12 +507,33 @@ export const clienteApi = {
 
   criar_regra(dados: {
     usuarioId: string;
-    condicaoValor: string;
-    categoriaId: string;
-    perfil?: Perfil;
+    nome: string;
+    logicaCondicoes?: LogicaCondicoesRegra;
+    condicoes: CondicaoRegraApi[];
+    acoes: AcaoRegraApi[];
+    ativa?: boolean;
+    aplicarExistentes?: boolean;
   }): Promise<RegraResumo> {
     return requisitar<RegraResumo>("/regras", {
       method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  atualizar_regra(
+    regraId: string,
+    dados: {
+      usuarioId: string;
+      nome?: string;
+      logicaCondicoes?: LogicaCondicoesRegra;
+      condicoes?: CondicaoRegraApi[];
+      acoes?: AcaoRegraApi[];
+      ativa?: boolean;
+      aplicarExistentes?: boolean;
+    },
+  ): Promise<RegraResumo> {
+    return requisitar<RegraResumo>(`/regras/${regraId}`, {
+      method: "PATCH",
       body: JSON.stringify(dados),
     });
   },
@@ -491,6 +547,16 @@ export const clienteApi = {
       method: "PATCH",
       body: JSON.stringify({ usuarioId: dados.usuarioId, ativa: dados.ativa }),
     });
+  },
+
+  excluir_regra(regraId: string, usuarioId: string): Promise<void> {
+    return requisitar<void>(`/regras/${regraId}?usuarioId=${usuarioId}`, {
+      method: "DELETE",
+    });
+  },
+
+  listar_pessoas(usuarioId: string): Promise<PessoaResumo[]> {
+    return requisitar<PessoaResumo[]>(`/pessoas?usuarioId=${usuarioId}`);
   },
 
   listar_movimentos(usuarioId: string): Promise<MovimentoResumo[]> {

@@ -5,8 +5,17 @@ import {
   ErroConhecimentoInvalido,
   RepositorioConhecimentoDrizzle,
   ServicoConhecimento,
+  acoes_da_regra,
+  categoria_id_da_regra,
+  condicoes_da_regra,
 } from "@lancai/conhecimento";
-import { perfilSchema } from "@lancai/tipos";
+import type { Regra } from "@lancai/banco";
+import {
+  logicaCondicoesRegraSchema,
+  schemaAcaoRegra,
+  schemaAtualizarRegra,
+  schemaCondicaoRegra,
+} from "@lancai/tipos";
 
 const conhecimento = new ServicoConhecimento(new RepositorioConhecimentoDrizzle());
 
@@ -14,17 +23,37 @@ const schemaListar = z.object({
   usuarioId: z.string().uuid(),
 });
 
-const schemaCriar = z.object({
+const schemaCriarApi = z.object({
   usuarioId: z.string().uuid(),
-  condicaoValor: z.string().trim().min(2).max(120),
-  categoriaId: z.string().uuid(),
-  perfil: perfilSchema.optional(),
+  nome: z.string().trim().min(1).max(120),
+  logicaCondicoes: logicaCondicoesRegraSchema.default("ou"),
+  condicoes: z.array(schemaCondicaoRegra).min(1).max(20),
+  acoes: z.array(schemaAcaoRegra).min(1).max(10),
+  ativa: z.boolean().optional().default(true),
+  aplicarExistentes: z.boolean().optional().default(false),
 });
 
-const schemaAtualizar = z.object({
+const schemaAtualizarApi = schemaAtualizarRegra.extend({
   usuarioId: z.string().uuid(),
-  ativa: z.boolean(),
 });
+
+async function serializar_regra(regra: Regra) {
+  const repo = new RepositorioConhecimentoDrizzle();
+  const categoriaId = categoria_id_da_regra(regra);
+  const categoria = categoriaId ? await repo.obterCategoria(categoriaId) : null;
+  return {
+    id: regra.id,
+    nome: regra.nome,
+    origem: regra.origem,
+    ativa: regra.ativa,
+    logicaCondicoes: regra.logicaCondicoes,
+    condicoes: condicoes_da_regra(regra),
+    acoes: acoes_da_regra(regra),
+    categoriaId,
+    categoriaNome: categoria?.nome ?? null,
+    dataCriacao: regra.dataCriacao,
+  };
+}
 
 export async function registrar_rotas_regras(app: FastifyInstance) {
   app.get("/", async (requisicao) => {
@@ -32,28 +61,11 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
     const banco = obter_banco();
     const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
     const regras = await conhecimento.listar_regras(workspaceId);
-    const repo = new RepositorioConhecimentoDrizzle();
-
-    return Promise.all(
-      regras.map(async (regra) => {
-        const categoria = await repo.obterCategoria(regra.categoriaId);
-        return {
-          id: regra.id,
-          origem: regra.origem,
-          ativa: regra.ativa,
-          condicaoTipo: regra.condicaoTipo,
-          condicaoValor: regra.condicaoValor,
-          categoriaId: regra.categoriaId,
-          categoriaNome: categoria?.nome ?? "Categoria",
-          perfil: regra.perfil,
-          dataCriacao: regra.dataCriacao,
-        };
-      }),
-    );
+    return Promise.all(regras.map((regra) => serializar_regra(regra)));
   });
 
   app.post("/", async (requisicao, resposta) => {
-    const dados = schemaCriar.parse(requisicao.body);
+    const dados = schemaCriarApi.parse(requisicao.body);
     const banco = obter_banco();
     const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
 
@@ -61,22 +73,14 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
       const criada = await conhecimento.criar_regra({
         workspaceId,
         origem: "manual",
-        condicaoValor: dados.condicaoValor,
-        categoriaId: dados.categoriaId,
-        perfil: dados.perfil,
+        nome: dados.nome,
+        logicaCondicoes: dados.logicaCondicoes,
+        condicoes: dados.condicoes,
+        acoes: dados.acoes,
+        ativa: dados.ativa,
+        aplicarExistentes: dados.aplicarExistentes,
       });
-      const categoria = await new RepositorioConhecimentoDrizzle().obterCategoria(criada.categoriaId);
-      return resposta.status(201).send({
-        id: criada.id,
-        origem: criada.origem,
-        ativa: criada.ativa,
-        condicaoTipo: criada.condicaoTipo,
-        condicaoValor: criada.condicaoValor,
-        categoriaId: criada.categoriaId,
-        categoriaNome: categoria?.nome ?? "Categoria",
-        perfil: criada.perfil,
-        dataCriacao: criada.dataCriacao,
-      });
+      return resposta.status(201).send(await serializar_regra(criada));
     } catch (erro) {
       if (erro instanceof ErroConhecimentoInvalido) {
         return resposta.status(400).send({ erro: erro.message });
@@ -87,7 +91,7 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
 
   app.patch("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
-    const dados = schemaAtualizar.parse(requisicao.body);
+    const dados = schemaAtualizarApi.parse(requisicao.body);
     const banco = obter_banco();
     const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
     const repo = new RepositorioConhecimentoDrizzle();
@@ -98,19 +102,32 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
     }
 
     try {
-      const atualizada = await conhecimento.definir_ativa_regra(id, dados.ativa);
-      const categoria = await repo.obterCategoria(atualizada.categoriaId);
-      return {
-        id: atualizada.id,
-        origem: atualizada.origem,
-        ativa: atualizada.ativa,
-        condicaoTipo: atualizada.condicaoTipo,
-        condicaoValor: atualizada.condicaoValor,
-        categoriaId: atualizada.categoriaId,
-        categoriaNome: categoria?.nome ?? "Categoria",
-        perfil: atualizada.perfil,
-        dataCriacao: atualizada.dataCriacao,
-      };
+      const { usuarioId: _u, ...campos } = dados;
+      const atualizada = await conhecimento.atualizar_regra(id, campos);
+      return serializar_regra(atualizada);
+    } catch (erro) {
+      if (erro instanceof ErroConhecimentoInvalido) {
+        return resposta.status(400).send({ erro: erro.message });
+      }
+      throw erro;
+    }
+  });
+
+  app.delete("/:id", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const { usuarioId } = schemaListar.parse(requisicao.query);
+    const banco = obter_banco();
+    const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
+    const repo = new RepositorioConhecimentoDrizzle();
+    const existente = await repo.obterRegra(id);
+
+    if (!existente || existente.workspaceId !== workspaceId) {
+      return resposta.status(404).send({ erro: "Regra não encontrada." });
+    }
+
+    try {
+      await conhecimento.excluir_regra(id);
+      return resposta.status(204).send();
     } catch (erro) {
       if (erro instanceof ErroConhecimentoInvalido) {
         return resposta.status(400).send({ erro: erro.message });

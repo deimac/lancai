@@ -86,10 +86,13 @@ export const classificadoPorEnum = pgEnum("classificado_por", ["regra", "ia", "u
 export const origemRegraEnum = pgEnum("origem_regra", ["manual", "aprendizado_conversa"]);
 
 /**
- * Operadores de condição da regra. A v1 só tem `descricao_contem` — o suficiente
- * para "IFOOD → Restaurantes" sem inventar uma DSL.
+ * Legado v1. O builder novo usa `condicoes` JSONB; este enum só permanece
+ * para colunas antigas ainda presentes após o backfill.
  */
 export const tipoCondicaoRegraEnum = pgEnum("tipo_condicao_regra", ["descricao_contem"]);
+
+/** Combina as linhas de condição da regra. */
+export const logicaCondicoesRegraEnum = pgEnum("logica_condicoes_regra", ["e", "ou"]);
 
 /**
  * Estado de uma conexão com instituição financeira, em vocabulário nosso.

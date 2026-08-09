@@ -9,8 +9,8 @@ import type {
   IntencaoDetectada,
   TipoFonte,
 } from "@lancai/tipos";
-import type { Movimento } from "@lancai/banco";
-import type { Memoria, ServicoConhecimento } from "@lancai/conhecimento";
+import { CATEGORIA_NAO_CLASSIFICADO, type Movimento } from "@lancai/banco";
+import type { Memoria, ServicoConhecimento, SugeridorCategoria } from "@lancai/conhecimento";
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import {
   ErroEntidadeJaExiste,
@@ -58,6 +58,8 @@ interface ContextoResposta {
   resolvedor: ResolvedorIntencao;
   motor: MotorFinanceiro;
   conhecimento: ServicoConhecimento;
+  /** Quando presente, classifica (regra → IA) lançamentos sem categoria explícita. */
+  sugeridorCategoria?: SugeridorCategoria;
   relatorios: ModuloRelatorios;
   memoria?: Memoria;
   /** Data de hoje (YYYY-MM-DD) — usada pelo ModuloRelatorios para períodos padrão (mês atual, últimos meses etc.). */
@@ -184,6 +186,18 @@ export async function montar_resposta_chat(
       const entrada = await contexto.resolvedor.resolver_registrar_movimento(intencao, referenciaResolucao);
       const resultado = await contexto.motor.criar_movimento(entrada);
       const viaForma = rotulo_forma_pagamento(entrada.formaPagamento);
+
+      // Regras (e IA, se ligada) quando o usuário não classificou à mão.
+      if (contexto.sugeridorCategoria) {
+        for (const mov of resultado.movimentos) {
+          try {
+            await classificar_se_pendente(contexto, mov.id);
+          } catch (erroClass) {
+            const msg = erroClass instanceof Error ? erroClass.message : String(erroClass);
+            console.warn(`[regras] falha ao classificar pós-chat (ignorada): ${msg.slice(0, 160)}`);
+          }
+        }
+      }
 
       if (contexto.memoria) {
         try {
@@ -510,4 +524,29 @@ export async function montar_resposta_chat(
     case "NAO_RECONHECIDA":
       return intencao.motivo || "Não entendi essa mensagem. Pode reformular?";
   }
+}
+
+/**
+ * Aplica regras (e IA) só quando o lançamento ainda está em “Não classificado”
+ * e não foi marcado à mão pelo usuário.
+ */
+async function classificar_se_pendente(
+  contexto: ContextoResposta,
+  movimentoId: string,
+): Promise<void> {
+  if (!contexto.sugeridorCategoria) return;
+
+  const { RepositorioConhecimentoDrizzle } = await import("@lancai/conhecimento");
+  const repo = new RepositorioConhecimentoDrizzle();
+  const atual = await repo.obterMovimento(movimentoId);
+  if (!atual || atual.classificadoPor === "usuario") return;
+
+  const categoria = await repo.obterCategoria(atual.categoriaId);
+  const pendente =
+    !categoria ||
+    categoria.nome.toLocaleLowerCase("pt-BR") ===
+      CATEGORIA_NAO_CLASSIFICADO.toLocaleLowerCase("pt-BR");
+  if (!pendente) return;
+
+  await contexto.conhecimento.classificar(movimentoId, contexto.sugeridorCategoria);
 }

@@ -205,11 +205,11 @@ Estas regras entram com a arquitetura-alvo e governam a metade mutável da movim
 
 ### 9.1 Ordem de classificação
 
-1. Regra manual, se alguma condição casar — `ServicoConhecimento.aplicar_regras`. A v1 casa `descricao_contem` contra `descricao`, `descricao_fonte` e `favorecido_fonte`; trecho mais longo ganha.
+1. Regra do workspace, se condições casarem — `ServicoConhecimento.aplicar_regras`. Avalia `condicoes` com lógica E/OU; aplica **todas** as ações da primeira regra que casa (categoria, beneficiário, tags/notas, ignorar, perfil legado). Sem prioridade numérica: especificidade da condição, depois `data_criacao` ASC.
 2. IA, quando nenhuma regra casa — `ServicoConhecimento.aplicar_ia` via porta `SugeridorCategoria` (implementação `ClassificadorCategoria` em `modulos/ia`). Grava `classificado_por = ia` e `confianca_ia`. Só escolhe categoria da lista do workspace; não inventa. Fail-open: falha de LLM deixa “Não classificado”. Desligável com `CLASSIFICACAO_IA_HABILITADA=false`.
 3. Usuário, sempre que quiser corrigir.
 
-Após a ingestão de Open Finance, a API chama `classificar` (regra → IA) no composition root. Open Finance não importa Conhecimento nem IA.
+Após a ingestão de Open Finance e após criar movimento pelo chat **sem** categoria explícita do usuário, a API chama `classificar` (regra → IA) no composition root. Open Finance não importa Conhecimento nem IA. Checkbox “aplicar a existentes” reexecuta regras no histórico sem tocar em `classificado_por = usuario`.
 
 ### 9.2 Precedência
 
@@ -221,7 +221,7 @@ Quando o usuário classifica algo manualmente, o assistente oferece transformar 
 
 ### 9.4 Explicabilidade
 
-A interface diz por que algo foi classificado: pela regra (trecho em `regra_id`/`condicao_valor`), por sugestão da IA com `confianca_ia`, ou porque o usuário ensinou em `classificado_em`. No extrato web isso aparece sob cada lançamento classificado.
+A interface diz por que algo foi classificado: pela regra (`regra_id` + nome/trecho legível), por sugestão da IA com `confianca_ia`, ou porque o usuário ensinou em `classificado_em`. No extrato web isso aparece sob cada lançamento classificado.
 
 ---
 

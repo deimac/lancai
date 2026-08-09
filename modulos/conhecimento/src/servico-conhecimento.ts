@@ -1,7 +1,21 @@
 import { CATEGORIA_NAO_CLASSIFICADO } from "@lancai/banco";
-import { schemaAtualizarConhecimento, schemaCriarRegra } from "@lancai/tipos";
-import type { EntradaAtualizarConhecimento, EntradaCriarRegra } from "@lancai/tipos";
+import {
+  schemaAtualizarConhecimento,
+  schemaAtualizarRegra,
+  schemaCriarRegra,
+} from "@lancai/tipos";
+import type {
+  AcaoRegra,
+  EntradaAtualizarConhecimento,
+  EntradaAtualizarRegra,
+  EntradaCriarRegra,
+} from "@lancai/tipos";
 import type { Movimento, NovaAuditoria, NovoMovimento, Regra } from "@lancai/banco";
+import {
+  acoes_da_regra,
+  categoria_id_da_regra,
+  regra_casa,
+} from "./avaliar-regra";
 import { ErroConhecimentoInvalido, ErroMovimentoNaoEncontrado } from "./erros";
 import type { RepositorioConhecimento } from "./repositorio";
 import type { SugeridorCategoria } from "./sugeridor-categoria";
@@ -39,15 +53,8 @@ export type ResultadoCriarRegraDeCorrecao =
   | { criada: false; motivo: "sem_trecho" | "ja_existe"; proposta?: PropostaRegra; regra?: Regra };
 
 /**
- * Enriquecimento do LançAI sobre uma movimentação: categoria, pessoa, perfil,
+ * Enriquecimento do Lançai sobre uma movimentação: categoria, pessoa, perfil,
  * tags, observações e visibilidade em relatório.
- *
- * Nenhum método aqui aceita valor, data ou conta. Isso é deliberado: é o que
- * torna impossível, por assinatura de função, que um enriquecimento reescreva o
- * Fato Financeiro. Ver ADR-009.
- *
- * Por isso também não há verificação de `fonte`: o Conhecimento é editável em
- * qualquer movimentação, inclusive nas que vieram de instituição financeira.
  */
 export class ServicoConhecimento {
   constructor(private readonly repositorio: RepositorioConhecimento) {}
@@ -85,11 +92,6 @@ export class ServicoConhecimento {
       campos.pessoaId = dados.pessoaId;
     }
 
-    /**
-     * Origem da classificação só muda quando o chamador diz (regra/IA) ou quando
-     * a categoria muda sem origem — aí assume-se a pessoa. Editar tag,
-     * observação ou “ignorado” não pode apagar “classificado pela regra IFOOD”.
-     */
     if (dados.classificadoPor !== undefined) {
       campos.classificadoPor = dados.classificadoPor;
     } else if (dados.categoriaId !== undefined) {
@@ -129,13 +131,6 @@ export class ServicoConhecimento {
     });
   }
 
-  /**
-   * Primeira etapa da ordem de classificação (09-REGRAS §9.1): regra manual,
-   * se alguma condição casar. Nunca toca movimento com `classificado_por =
-   * 'usuario'` — é a regra que impede o motor de desfazer o trabalho da pessoa.
-   *
-   * Idempotente: reaplicar a mesma regra não gera auditoria nova.
-   */
   async aplicar_regras(movimentoId: string): Promise<ResultadoAplicarRegra> {
     const movimento = await this.repositorio.obterMovimento(movimentoId);
     if (!movimento) throw new ErroMovimentoNaoEncontrado(movimentoId);
@@ -148,24 +143,22 @@ export class ServicoConhecimento {
     const casada = regras.find((regra) => regra_casa(regra, movimento));
     if (!casada) return { aplicada: false, motivo: "nenhuma_casou" };
 
-    const perfilAlvo = casada.perfil ?? undefined;
-    const jaAplicada =
+    if (
       movimento.classificadoPor === "regra" &&
       movimento.regraId === casada.id &&
-      movimento.categoriaId === casada.categoriaId &&
-      (perfilAlvo === undefined || movimento.perfil === perfilAlvo);
+      acoes_ja_aplicadas(casada, movimento)
+    ) {
+      return { aplicada: false, motivo: "ja_aplicada" };
+    }
 
-    if (jaAplicada) return { aplicada: false, motivo: "ja_aplicada" };
-
+    const conhecimento = await this.montar_conhecimento_das_acoes(casada, movimento);
     const atualizado = await this.atualizar({
       movimentoId,
       alteradoPor: movimento.usuarioId,
       conhecimento: {
-        categoriaId: casada.categoriaId,
-        ...(perfilAlvo ? { perfil: perfilAlvo } : {}),
+        ...conhecimento,
         classificadoPor: "regra",
         regraId: casada.id,
-        /** Regra ganhou: a confiança da IA, se havia, deixa de valer. */
         confiancaIa: null,
       },
     });
@@ -173,11 +166,6 @@ export class ServicoConhecimento {
     return { aplicada: true, regraId: casada.id, movimento: atualizado };
   }
 
-  /**
-   * Segunda etapa da ordem de classificação (09-REGRAS §9.1): IA quando nenhuma
-   * regra casa. Grava `classificado_por = ia` e `confianca_ia`. Nunca toca
-   * classificação do usuário. Não inventa categoria — só escolhe da lista.
-   */
   async aplicar_ia(
     movimentoId: string,
     sugeridor: SugeridorCategoria,
@@ -233,10 +221,6 @@ export class ServicoConhecimento {
     return { aplicada: true, movimento: atualizado, confianca };
   }
 
-  /**
-   * Ordem completa: regra primeiro; IA só no que sobra. Fail-open da IA fica
-   * com o chamador (composition root) — este método propaga o erro do sugeridor.
-   */
   async classificar(
     movimentoId: string,
     sugeridor: SugeridorCategoria,
@@ -254,23 +238,82 @@ export class ServicoConhecimento {
     return { etapa: "ia", resultado: ia };
   }
 
+  /**
+   * Reaplica regras ativas em movimentos do workspace que não foram classificados
+   * à mão pelo usuário. Retorna quantas aplicações efetivas ocorreram.
+   */
+  async aplicar_regras_existentes(workspaceId: string): Promise<{ aplicadas: number }> {
+    const ids = await this.repositorio.listarMovimentoIdsParaRegras(workspaceId);
+    let aplicadas = 0;
+    for (const id of ids) {
+      const resultado = await this.aplicar_regras(id);
+      if (resultado.aplicada) aplicadas += 1;
+    }
+    return { aplicadas };
+  }
+
   async criar_regra(entradaBruta: EntradaCriarRegra): Promise<Regra> {
     const entrada = schemaCriarRegra.parse(entradaBruta);
+    await this.validar_acoes(entrada.acoes);
 
-    const categoria = await this.repositorio.obterCategoria(entrada.categoriaId);
-    if (!categoria) {
-      throw new ErroConhecimentoInvalido(`Categoria ${entrada.categoriaId} não existe.`);
-    }
-
-    return this.repositorio.criarRegra({
+    const categoriaId = entrada.acoes.find((a) => a.tipo === "definir_categoria");
+    const criada = await this.repositorio.criarRegra({
       workspaceId: entrada.workspaceId,
       origem: entrada.origem,
-      ativa: true,
-      condicaoTipo: entrada.condicaoTipo,
-      condicaoValor: entrada.condicaoValor.trim(),
-      categoriaId: entrada.categoriaId,
-      perfil: entrada.perfil ?? null,
+      ativa: entrada.ativa ?? true,
+      nome: entrada.nome.trim(),
+      logicaCondicoes: entrada.logicaCondicoes,
+      condicoes: entrada.condicoes,
+      acoes: entrada.acoes,
+      condicaoTipo: null,
+      condicaoValor: null,
+      categoriaId:
+        categoriaId && categoriaId.tipo === "definir_categoria" ? categoriaId.categoriaId : null,
+      perfil: null,
     });
+
+    if (entrada.aplicarExistentes) {
+      await this.aplicar_regras_existentes(entrada.workspaceId);
+    }
+
+    return criada;
+  }
+
+  async atualizar_regra(regraId: string, entradaBruta: EntradaAtualizarRegra): Promise<Regra> {
+    const entrada = schemaAtualizarRegra.parse(entradaBruta);
+    const existente = await this.repositorio.obterRegra(regraId);
+    if (!existente) throw new ErroConhecimentoInvalido(`Regra ${regraId} não existe.`);
+
+    if (entrada.acoes) await this.validar_acoes(entrada.acoes);
+
+    const categoriaAcao = (entrada.acoes ?? acoes_da_regra(existente)).find(
+      (a) => a.tipo === "definir_categoria",
+    );
+
+    const atualizada = await this.repositorio.atualizarRegra(regraId, {
+      ...(entrada.nome !== undefined ? { nome: entrada.nome.trim() } : {}),
+      ...(entrada.logicaCondicoes !== undefined ? { logicaCondicoes: entrada.logicaCondicoes } : {}),
+      ...(entrada.condicoes !== undefined ? { condicoes: entrada.condicoes } : {}),
+      ...(entrada.acoes !== undefined ? { acoes: entrada.acoes } : {}),
+      ...(entrada.ativa !== undefined ? { ativa: entrada.ativa } : {}),
+      categoriaId:
+        categoriaAcao && categoriaAcao.tipo === "definir_categoria"
+          ? categoriaAcao.categoriaId
+          : existente.categoriaId,
+    });
+    if (!atualizada) throw new ErroConhecimentoInvalido(`Falha ao atualizar regra ${regraId}.`);
+
+    if (entrada.aplicarExistentes) {
+      await this.aplicar_regras_existentes(existente.workspaceId);
+    }
+
+    return atualizada;
+  }
+
+  async excluir_regra(regraId: string): Promise<void> {
+    const existente = await this.repositorio.obterRegra(regraId);
+    if (!existente) throw new ErroConhecimentoInvalido(`Regra ${regraId} não existe.`);
+    await this.repositorio.excluirRegra(regraId);
   }
 
   async listar_regras(workspaceId: string): Promise<Regra[]> {
@@ -278,17 +321,9 @@ export class ServicoConhecimento {
   }
 
   async definir_ativa_regra(regraId: string, ativa: boolean): Promise<Regra> {
-    const existente = await this.repositorio.obterRegra(regraId);
-    if (!existente) throw new ErroConhecimentoInvalido(`Regra ${regraId} não existe.`);
-    const atualizada = await this.repositorio.atualizarRegra(regraId, { ativa });
-    if (!atualizada) throw new ErroConhecimentoInvalido(`Falha ao atualizar regra ${regraId}.`);
-    return atualizada;
+    return this.atualizar_regra(regraId, { ativa });
   }
 
-  /**
-   * Monta a proposta "IFOOD → Restaurantes" a partir do movimento já classificado.
-   * Sem trecho útil, sem categoria ou com regra idêntica já ativa, não há o que oferecer.
-   */
   async propor_regra_de_movimento(movimentoId: string): Promise<PropostaRegra | null> {
     const movimento = await this.repositorio.obterMovimento(movimentoId);
     if (!movimento) throw new ErroMovimentoNaoEncontrado(movimentoId);
@@ -300,12 +335,7 @@ export class ServicoConhecimento {
     if (!categoria) return null;
 
     const existentes = await this.repositorio.listarRegrasAtivas(movimento.workspaceId);
-    const jaExiste = existentes.some(
-      (regra) =>
-        regra.condicaoTipo === "descricao_contem" &&
-        regra.condicaoValor.toLocaleLowerCase("pt-BR") === trecho.toLocaleLowerCase("pt-BR") &&
-        regra.categoriaId === categoria.id,
-    );
+    const jaExiste = existentes.some((regra) => regra_simples_igual(regra, trecho, categoria.id));
     if (jaExiste) return null;
 
     return {
@@ -316,10 +346,6 @@ export class ServicoConhecimento {
     };
   }
 
-  /**
-   * O "sim" do "virar regra?". Origem `aprendizado_conversa`. Idempotente: se já
-   * existe regra ativa com o mesmo trecho e categoria, devolve a existente.
-   */
   async criar_regra_a_partir_de_correcao(
     movimentoId: string,
   ): Promise<ResultadoCriarRegraDeCorrecao> {
@@ -340,42 +366,119 @@ export class ServicoConhecimento {
     };
 
     const existentes = await this.repositorio.listarRegrasAtivas(movimento.workspaceId);
-    const igual = existentes.find(
-      (regra) =>
-        regra.condicaoTipo === "descricao_contem" &&
-        regra.condicaoValor.toLocaleLowerCase("pt-BR") ===
-          proposta.trecho.toLocaleLowerCase("pt-BR") &&
-        regra.categoriaId === proposta.categoriaId,
+    const igual = existentes.find((regra) =>
+      regra_simples_igual(regra, proposta.trecho, proposta.categoriaId),
     );
     if (igual) return { criada: false, motivo: "ja_existe", proposta, regra: igual };
 
     const regra = await this.criar_regra({
       workspaceId: movimento.workspaceId,
       origem: "aprendizado_conversa",
-      condicaoValor: proposta.trecho,
-      categoriaId: proposta.categoriaId,
+      nome: `"${proposta.trecho}" → ${proposta.categoriaNome}`,
+      logicaCondicoes: "ou",
+      condicoes: [{ campo: "descricao", operador: "contem", valor: proposta.trecho }],
+      acoes: [{ tipo: "definir_categoria", categoriaId: proposta.categoriaId }],
     });
 
     return { criada: true, regra, proposta };
   }
+
+  private async validar_acoes(acoes: AcaoRegra[]): Promise<void> {
+    for (const acao of acoes) {
+      if (acao.tipo === "definir_categoria") {
+        const categoria = await this.repositorio.obterCategoria(acao.categoriaId);
+        if (!categoria) {
+          throw new ErroConhecimentoInvalido(`Categoria ${acao.categoriaId} não existe.`);
+        }
+      }
+      if (acao.tipo === "definir_beneficiario") {
+        const pessoa = await this.repositorio.obterPessoa(acao.pessoaId);
+        if (!pessoa) {
+          throw new ErroConhecimentoInvalido(`Pessoa ${acao.pessoaId} não existe.`);
+        }
+      }
+    }
+  }
+
+  private async montar_conhecimento_das_acoes(
+    regra: Regra,
+    movimento: Movimento,
+  ): Promise<EntradaAtualizarConhecimento["conhecimento"]> {
+    const conhecimento: EntradaAtualizarConhecimento["conhecimento"] = {};
+    for (const acao of acoes_da_regra(regra)) {
+      switch (acao.tipo) {
+        case "definir_categoria":
+          conhecimento.categoriaId = acao.categoriaId;
+          break;
+        case "definir_beneficiario":
+          conhecimento.pessoaId = acao.pessoaId;
+          break;
+        case "adicionar_tags_notas": {
+          if (acao.tags?.length) {
+            const atuais = new Set(movimento.tags ?? []);
+            for (const tag of acao.tags) atuais.add(tag);
+            conhecimento.tags = [...atuais];
+          }
+          if (acao.observacoes !== undefined) {
+            conhecimento.observacoes = acao.observacoes;
+          }
+          break;
+        }
+        case "ignorar_transacao":
+          conhecimento.ignoradoEmRelatorio = true;
+          break;
+        case "definir_perfil":
+          conhecimento.perfil = acao.perfil;
+          break;
+      }
+    }
+    return conhecimento;
+  }
 }
 
 export { propor_trecho_regra } from "./trecho-regra";
+export { regra_casa, categoria_id_da_regra, acoes_da_regra, condicoes_da_regra } from "./avaliar-regra";
 
-/**
- * Casa a condição contra o texto que o usuário vê e o que a instituição
- * mandou. Sem `descricao_fonte`, a regra "IFOOD" falharia em tudo que ainda
- * está com a descrição bruta do banco — que é exatamente o caso da ingestão.
- */
-export function regra_casa(
-  regra: Pick<Regra, "condicaoTipo" | "condicaoValor">,
-  movimento: Pick<Movimento, "descricao" | "descricaoFonte" | "favorecidoFonte">,
-): boolean {
-  if (regra.condicaoTipo !== "descricao_contem") return false;
+function regra_simples_igual(regra: Regra, trecho: string, categoriaId: string): boolean {
+  const cat = categoria_id_da_regra(regra);
+  if (cat !== categoriaId) return false;
+  const condicoes = regra.condicoes ?? [];
+  if (condicoes.length === 1) {
+    const c = condicoes[0];
+    return (
+      c?.campo === "descricao" &&
+      c.operador === "contem" &&
+      c.valor.toLocaleLowerCase("pt-BR") === trecho.toLocaleLowerCase("pt-BR")
+    );
+  }
+  return (
+    regra.condicaoTipo === "descricao_contem" &&
+    (regra.condicaoValor ?? "").toLocaleLowerCase("pt-BR") === trecho.toLocaleLowerCase("pt-BR")
+  );
+}
 
-  const trecho = regra.condicaoValor.trim().toLocaleLowerCase("pt-BR");
-  if (!trecho) return false;
-
-  const campos = [movimento.descricao, movimento.descricaoFonte, movimento.favorecidoFonte ?? ""];
-  return campos.some((campo) => campo.toLocaleLowerCase("pt-BR").includes(trecho));
+function acoes_ja_aplicadas(regra: Regra, movimento: Movimento): boolean {
+  for (const acao of acoes_da_regra(regra)) {
+    switch (acao.tipo) {
+      case "definir_categoria":
+        if (movimento.categoriaId !== acao.categoriaId) return false;
+        break;
+      case "definir_beneficiario":
+        if (movimento.pessoaId !== acao.pessoaId) return false;
+        break;
+      case "definir_perfil":
+        if (movimento.perfil !== acao.perfil) return false;
+        break;
+      case "ignorar_transacao":
+        if (!movimento.ignoradoEmRelatorio) return false;
+        break;
+      case "adicionar_tags_notas":
+        if (acao.tags?.some((t) => !(movimento.tags ?? []).includes(t))) return false;
+        if (acao.observacoes !== undefined && movimento.observacoes !== acao.observacoes) {
+          return false;
+        }
+        break;
+    }
+  }
+  return true;
 }

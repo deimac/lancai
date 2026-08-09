@@ -2,12 +2,27 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Movimento, NovaRegra, Regra } from "@lancai/banco";
 import { separar_correcao_por_grupo } from "@lancai/tipos";
+import { especificidade_regra } from "../avaliar-regra";
 import { regra_casa, ServicoConhecimento } from "../servico-conhecimento";
 import { propor_trecho_regra } from "../trecho-regra";
 import { ErroConhecimentoInvalido, ErroMovimentoNaoEncontrado } from "../erros";
-import type { OperacaoConhecimento, RepositorioConhecimento } from "../repositorio";
+import type {
+  CamposAtualizarRegra,
+  OperacaoConhecimento,
+  RepositorioConhecimento,
+} from "../repositorio";
 
 const WORKSPACE = "00000000-0000-4000-8000-000000000001";
+
+function entrada_regra_contem(workspaceId: string, trecho: string, categoriaId: string) {
+  return {
+    workspaceId,
+    nome: `"${trecho}" → categoria`,
+    logicaCondicoes: "ou" as const,
+    condicoes: [{ campo: "descricao" as const, operador: "contem" as const, valor: trecho }],
+    acoes: [{ tipo: "definir_categoria" as const, categoriaId }],
+  };
+}
 
 class RepositorioEmMemoria implements RepositorioConhecimento {
   movimentos = new Map<string, Movimento>();
@@ -43,7 +58,7 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
       .filter((r) => r.workspaceId === workspaceId && r.ativa)
       .sort(
         (a, b) =>
-          b.condicaoValor.length - a.condicaoValor.length ||
+          especificidade_regra(b) - especificidade_regra(a) ||
           a.dataCriacao.getTime() - b.dataCriacao.getTime(),
       );
   }
@@ -54,7 +69,7 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
       .sort(
         (a, b) =>
           Number(b.ativa) - Number(a.ativa) ||
-          b.condicaoValor.length - a.condicaoValor.length ||
+          especificidade_regra(b) - especificidade_regra(a) ||
           a.dataCriacao.getTime() - b.dataCriacao.getTime(),
       );
   }
@@ -66,9 +81,13 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
       workspaceId: regra.workspaceId,
       origem: regra.origem ?? "manual",
       ativa: regra.ativa ?? true,
-      condicaoTipo: regra.condicaoTipo,
-      condicaoValor: regra.condicaoValor,
-      categoriaId: regra.categoriaId,
+      nome: regra.nome,
+      logicaCondicoes: regra.logicaCondicoes ?? "ou",
+      condicoes: regra.condicoes ?? [],
+      acoes: regra.acoes ?? [],
+      condicaoTipo: regra.condicaoTipo ?? null,
+      condicaoValor: regra.condicaoValor ?? null,
+      categoriaId: regra.categoriaId ?? null,
       perfil: regra.perfil ?? null,
       dataCriacao: agora,
       dataAtualizacao: agora,
@@ -81,12 +100,21 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
     return this.regras.find((r) => r.id === id);
   }
 
-  async atualizarRegra(id: string, campos: { ativa: boolean }) {
+  async atualizarRegra(id: string, campos: CamposAtualizarRegra) {
     const atual = this.regras.find((r) => r.id === id);
     if (!atual) return undefined;
-    atual.ativa = campos.ativa;
-    atual.dataAtualizacao = new Date();
+    Object.assign(atual, campos, { dataAtualizacao: new Date() });
     return atual;
+  }
+
+  async excluirRegra(id: string) {
+    this.regras = this.regras.filter((r) => r.id !== id);
+  }
+
+  async listarMovimentoIdsParaRegras(workspaceId: string) {
+    return [...this.movimentos.values()]
+      .filter((m) => m.workspaceId === workspaceId && m.classificadoPor !== "usuario")
+      .map((m) => m.id);
   }
 
   async listarCategoriasAtivas(workspaceId: string) {
@@ -342,11 +370,7 @@ describe("ServicoConhecimento", () => {
       });
       repositorio.movimentos.set(movimento.id, movimento);
 
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD",
-        categoriaId: categoriaRestaurante,
-      });
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
 
       const resultado = await servico.aplicar_regras(movimento.id);
 
@@ -366,11 +390,7 @@ describe("ServicoConhecimento", () => {
       });
       repositorio.movimentos.set(movimento.id, movimento);
 
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD",
-        categoriaId: categoriaRestaurante,
-      });
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
 
       const resultado = await servico.aplicar_regras(movimento.id);
 
@@ -388,11 +408,7 @@ describe("ServicoConhecimento", () => {
       });
       repositorio.movimentos.set(movimento.id, movimento);
 
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD",
-        categoriaId: categoriaRestaurante,
-      });
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
 
       const resultado = await servico.aplicar_regras(movimento.id);
 
@@ -410,11 +426,7 @@ describe("ServicoConhecimento", () => {
       });
       repositorio.movimentos.set(movimento.id, movimento);
 
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD",
-        categoriaId: categoriaRestaurante,
-      });
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
 
       await servico.aplicar_regras(movimento.id);
       const segunda = await servico.aplicar_regras(movimento.id);
@@ -436,16 +448,8 @@ describe("ServicoConhecimento", () => {
       });
       repositorio.movimentos.set(movimento.id, movimento);
 
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD",
-        categoriaId: categoriaGenerica,
-      });
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD *LOOP",
-        categoriaId: categoriaEspecifica,
-      });
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaGenerica));
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD *LOOP", categoriaEspecifica));
 
       const resultado = await servico.aplicar_regras(movimento.id);
 
@@ -462,11 +466,7 @@ describe("ServicoConhecimento", () => {
       });
       repositorio.movimentos.set(movimento.id, movimento);
 
-      await servico.criar_regra({
-        workspaceId: WORKSPACE,
-        condicaoValor: "IFOOD",
-        categoriaId: categoriaRestaurante,
-      });
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
 
       const resultado = await servico.aplicar_regras(movimento.id);
       expect(resultado).toEqual({ aplicada: false, motivo: "nenhuma_casou" });
@@ -557,11 +557,7 @@ describe("aplicar_ia e classificar", () => {
     repositorio.movimentos.set(movimento.id, movimento);
     const categoriaRestaurante = randomUUID();
     repositorio.categorias.set(categoriaRestaurante, "Restaurantes");
-    await servico.criar_regra({
-      workspaceId: WORKSPACE,
-      condicaoValor: "IFOOD",
-      categoriaId: categoriaRestaurante,
-    });
+    await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
     let chamado = 0;
 
     const resultado = await servico.classificar(movimento.id, {
@@ -670,7 +666,11 @@ describe("criar_regra_a_partir_de_correcao", () => {
     expect(resultado.criada).toBe(true);
     if (!resultado.criada) return;
     expect(resultado.regra.origem).toBe("aprendizado_conversa");
-    expect(resultado.regra.condicaoValor).toBe("IFOOD");
+    expect(resultado.regra.condicoes[0]).toMatchObject({
+      campo: "descricao",
+      operador: "contem",
+      valor: "IFOOD",
+    });
     expect(resultado.regra.categoriaId).toBe(categoriaId);
     expect(resultado.proposta.categoriaNome).toBe("Restaurantes");
   });
@@ -704,22 +704,33 @@ describe("criar_regra_a_partir_de_correcao", () => {
     });
     repositorio.movimentos.set(movimento.id, movimento);
 
-    await servico.criar_regra({
-      workspaceId: WORKSPACE,
-      condicaoValor: "IFOOD",
-      categoriaId,
-    });
+    await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaId));
 
     expect(await servico.propor_regra_de_movimento(movimento.id)).toBeNull();
   });
 });
 
 describe("regra_casa", () => {
+  const movimentoBase = {
+    valor: "10",
+    dataMovimento: "2026-08-01",
+    tipo: "despesa" as const,
+    contaId: null,
+    cartaoId: null,
+  };
+
   it("casa na descrição da instituição mesmo com descrição do usuário diferente", () => {
     expect(
       regra_casa(
-        { condicaoTipo: "descricao_contem", condicaoValor: "ifoOd" },
         {
+          condicoes: [{ campo: "descricao", operador: "contem", valor: "ifoOd" }],
+          logicaCondicoes: "ou",
+          condicaoTipo: null,
+          condicaoValor: null,
+          acoes: [],
+        },
+        {
+          ...movimentoBase,
           descricao: "Almoço",
           descricaoFonte: "IFOOD *LOOP",
           favorecidoFonte: null,
@@ -731,8 +742,15 @@ describe("regra_casa", () => {
   it("casa no favorecido quando a descrição não traz o estabelecimento", () => {
     expect(
       regra_casa(
-        { condicaoTipo: "descricao_contem", condicaoValor: "UBER" },
         {
+          condicoes: [{ campo: "descricao", operador: "contem", valor: "UBER" }],
+          logicaCondicoes: "ou",
+          condicaoTipo: null,
+          condicaoValor: null,
+          acoes: [],
+        },
+        {
+          ...movimentoBase,
           descricao: "Corrida",
           descricaoFonte: "PAGAMENTO",
           favorecidoFonte: "UBER TRIP",

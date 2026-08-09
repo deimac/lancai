@@ -1,19 +1,22 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Plus, Sparkles, Workflow } from "lucide-react";
-import type { Perfil } from "@lancai/tipos";
+import { Pencil, Plus, Sparkles, Workflow } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
+  type AcaoRegraApi,
+  type CampoCondicaoRegra,
   type CategoriaResumo,
+  type CondicaoRegraApi,
+  type OperadorCondicaoRegra,
   type RegraResumo,
 } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
-import { Campo } from "../componentes/ui/Campo";
+import { ModalRegra } from "../componentes/ModalRegra";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import { unir_classes } from "../lib/unir-classes";
 
@@ -21,6 +24,54 @@ const ROTULO_ORIGEM: Record<RegraResumo["origem"], string> = {
   manual: "Manual",
   aprendizado_conversa: "Aprendizado",
 };
+
+const ROTULO_CAMPO: Record<CampoCondicaoRegra, string> = {
+  descricao: "Descrição",
+  valor: "Valor",
+  data: "Data",
+  tipo: "Tipo",
+  conta: "Conta",
+  cartao: "Cartão",
+};
+
+const ROTULO_OPERADOR: Record<OperadorCondicaoRegra, string> = {
+  comeca_com: "começa com",
+  contem: "contém",
+  nao_contem: "não contém",
+  igual: "é igual a",
+  diferente: "é diferente de",
+  termina_com: "termina com",
+  regex: "regex",
+};
+
+function resumir_condicao(condicao: CondicaoRegraApi): string {
+  const campo = ROTULO_CAMPO[condicao.campo] ?? condicao.campo;
+  const operador = ROTULO_OPERADOR[condicao.operador] ?? condicao.operador;
+  return `${campo} ${operador} "${condicao.valor}"`;
+}
+
+function resumir_condicoes(regra: RegraResumo): string {
+  const juntor = regra.logicaCondicoes === "e" ? " E " : " OU ";
+  return regra.condicoes.map(resumir_condicao).join(juntor);
+}
+
+function badges_acoes(acoes: AcaoRegraApi[], categoriaNome: string | null): string[] {
+  const badges: string[] = [];
+  for (const acao of acoes) {
+    if (acao.tipo === "definir_categoria") {
+      badges.push(categoriaNome ?? "Categoria");
+    } else if (acao.tipo === "definir_beneficiario") {
+      badges.push("Beneficiário");
+    } else if (acao.tipo === "adicionar_tags_notas") {
+      badges.push("Tags/notas");
+    } else if (acao.tipo === "ignorar_transacao") {
+      badges.push("Ignorar");
+    } else if (acao.tipo === "definir_perfil") {
+      badges.push(acao.perfil.toUpperCase());
+    }
+  }
+  return badges;
+}
 
 export function TelaRegras() {
   const { usuario } = useAutenticacao();
@@ -30,11 +81,8 @@ export function TelaRegras() {
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [mostrandoForm, setMostrandoForm] = useState(false);
-  const [salvando, setSalvando] = useState(false);
-  const [trecho, setTrecho] = useState("");
-  const [categoriaId, setCategoriaId] = useState("");
-  const [perfil, setPerfil] = useState<"" | Perfil>("");
+  const [modalAberto, setModalAberto] = useState(false);
+  const [regraEditando, setRegraEditando] = useState<RegraResumo | null>(null);
   const depsDados = chave_dependencia(contexto?.versoes, "regras", "categorias");
 
   const carregar = useCallback(async () => {
@@ -47,11 +95,11 @@ export function TelaRegras() {
         clienteApi.listar_categorias(usuario.id),
       ]);
       setRegras(regrasCarregadas);
-      const elegiveis = categoriasCarregadas.filter(
-        (c) => c.nome.toLocaleLowerCase("pt-BR") !== "não classificado",
+      setCategorias(
+        categoriasCarregadas.filter(
+          (c) => c.nome.toLocaleLowerCase("pt-BR") !== "não classificado",
+        ),
       );
-      setCategorias(elegiveis);
-      setCategoriaId((atual) => atual || elegiveis[0]?.id || "");
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar as regras.");
     } finally {
@@ -63,29 +111,14 @@ export function TelaRegras() {
     void carregar();
   }, [carregar, depsDados]);
 
-  async function criar(evento: FormEvent) {
-    evento.preventDefault();
-    if (!usuario || !trecho.trim() || !categoriaId) return;
-    setSalvando(true);
-    setErro(null);
-    try {
-      await clienteApi.criar_regra({
-        usuarioId: usuario.id,
-        condicaoValor: trecho.trim(),
-        categoriaId,
-        ...(perfil ? { perfil } : {}),
-      });
-      setTrecho("");
-      setPerfil("");
-      setMostrandoForm(false);
-      toast.sucesso("Regra criada.");
-      await carregar();
-      contexto?.invalidar("regras", "extrato");
-    } catch (e) {
-      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível criar a regra.");
-    } finally {
-      setSalvando(false);
-    }
+  function abrir_nova() {
+    setRegraEditando(null);
+    setModalAberto(true);
+  }
+
+  function abrir_edicao(regra: RegraResumo) {
+    setRegraEditando(regra);
+    setModalAberto(true);
   }
 
   async function alternar_ativa(regra: RegraResumo) {
@@ -99,6 +132,7 @@ export function TelaRegras() {
       });
       setRegras((atual) => atual.map((item) => (item.id === atualizada.id ? atualizada : item)));
       toast.sucesso(atualizada.ativa ? "Regra ativada." : "Regra desativada.");
+      contexto?.invalidar("regras", "extrato");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível atualizar a regra.");
     }
@@ -114,10 +148,10 @@ export function TelaRegras() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Regras</h1>
           <p className="text-sm text-texto-suave">
-            Se a descrição contém o trecho, classifica sem chamar modelo
+            Condições com E/OU e ações automáticas — sem chamar modelo quando casam
           </p>
         </div>
-        <Botao onClick={() => setMostrandoForm((v) => !v)}>
+        <Botao onClick={abrir_nova}>
           <Plus size={14} />
           Nova regra
         </Botao>
@@ -140,71 +174,13 @@ export function TelaRegras() {
         </div>
       </motion.div>
 
-      {mostrandoForm && (
-        <motion.form
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          onSubmit={(e) => void criar(e)}
-          className="flex flex-col gap-3 rounded-2xl border border-borda bg-superficie/80 p-4"
-        >
-          <p className="text-sm font-medium text-texto">Nova regra</p>
-          <p className="text-xs text-texto-suave">
-            Ex.: trecho <span className="text-texto">IFOOD</span> → categoria Restaurantes. Também
-            dá para ensinar pelo assistente (“virar regra?”).
-          </p>
-          <label className="flex flex-col gap-1 text-xs text-texto-suave">
-            Descrição contém
-            <Campo
-              placeholder="IFOOD"
-              value={trecho}
-              onChange={(e) => setTrecho(e.target.value)}
-              required
-              minLength={2}
-              autoFocus
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-texto-suave">
-            Categoria
-            <select
-              value={categoriaId}
-              onChange={(e) => setCategoriaId(e.target.value)}
-              required
-              className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
-            >
-              {categorias.length === 0 && <option value="">Cadastre uma categoria primeiro</option>}
-              {categorias.map((categoria) => (
-                <option key={categoria.id} value={categoria.id}>
-                  {categoria.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-texto-suave">
-            Perfil (opcional)
-            <select
-              value={perfil}
-              onChange={(e) => setPerfil(e.target.value as "" | Perfil)}
-              className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
-            >
-              <option value="">Não definir</option>
-              <option value="pf">Pessoal (PF)</option>
-              <option value="pj">Empresa (PJ)</option>
-            </select>
-          </label>
-          {categorias.length === 0 && (
-            <Link to="/categorias" className="text-sm text-primaria hover:underline">
-              Ir para Categorias
-            </Link>
-          )}
-          <div className="flex justify-end gap-2">
-            <Botao type="button" variante="fantasma" onClick={() => setMostrandoForm(false)}>
-              Cancelar
-            </Botao>
-            <Botao type="submit" disabled={salvando || !trecho.trim() || !categoriaId}>
-              {salvando ? "Salvando..." : "Criar regra"}
-            </Botao>
-          </div>
-        </motion.form>
+      {categorias.length === 0 && (
+        <p className="text-sm text-texto-suave">
+          Cadastre categorias antes de criar regras de classificação.{" "}
+          <Link to="/categorias" className="text-primaria hover:underline">
+            Ir para Categorias
+          </Link>
+        </p>
       )}
 
       {erro && (
@@ -222,7 +198,7 @@ export function TelaRegras() {
             Crie uma regra ou classifique no assistente e aceite “virar regra?”.
           </p>
           <div className="mt-4 flex justify-center">
-            <Botao onClick={() => setMostrandoForm(true)}>
+            <Botao onClick={abrir_nova}>
               <Plus size={14} />
               Nova regra
             </Botao>
@@ -230,53 +206,77 @@ export function TelaRegras() {
         </div>
       ) : (
         <ul className="flex flex-col gap-2">
-          {regras.map((regra, indice) => (
-            <motion.li
-              key={regra.id}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: indice * 0.02 }}
-              className={unir_classes(
-                "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3",
-                regra.ativa
-                  ? "border-borda bg-superficie/80"
-                  : "border-borda/60 bg-superficie/40 opacity-70",
-              )}
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate font-medium text-texto">
-                    <span className="text-primaria">“{regra.condicaoValor}”</span>
-                    <span className="text-texto-suave"> → </span>
-                    {regra.categoriaNome}
-                  </p>
-                  <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
-                    {ROTULO_ORIGEM[regra.origem]}
-                  </span>
-                  {regra.origem === "aprendizado_conversa" && (
-                    <Sparkles size={12} className="text-primaria" />
-                  )}
-                  {regra.perfil && (
-                    <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
-                      {regra.perfil}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-xs text-texto-suave">
-                  descrição contém · {regra.ativa ? "ativa" : "pausada"}
-                </p>
-              </div>
-              <Botao
-                variante="fantasma"
-                className="shrink-0"
-                onClick={() => void alternar_ativa(regra)}
+          {regras.map((regra, indice) => {
+            const acoes = badges_acoes(regra.acoes, regra.categoriaNome);
+            return (
+              <motion.li
+                key={regra.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: indice * 0.02 }}
+                className={unir_classes(
+                  "flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3",
+                  regra.ativa
+                    ? "border-borda bg-superficie/80"
+                    : "border-borda/60 bg-superficie/40 opacity-70",
+                )}
               >
-                {regra.ativa ? "Pausar" : "Ativar"}
-              </Botao>
-            </motion.li>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-medium text-texto">{regra.nome}</p>
+                    <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave">
+                      {ROTULO_ORIGEM[regra.origem]}
+                    </span>
+                    {regra.origem === "aprendizado_conversa" && (
+                      <Sparkles size={12} className="text-primaria" />
+                    )}
+                    {acoes.map((badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-md border border-primaria/30 bg-primaria/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-primaria"
+                      >
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-texto-suave">{resumir_condicoes(regra)}</p>
+                  <p className="mt-0.5 text-[11px] text-texto-suave">
+                    {regra.ativa ? "ativa" : "pausada"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Botao
+                    variante="fantasma"
+                    className="px-3"
+                    onClick={() => abrir_edicao(regra)}
+                    aria-label="Editar regra"
+                  >
+                    <Pencil size={14} />
+                    Editar
+                  </Botao>
+                  <Botao variante="fantasma" onClick={() => void alternar_ativa(regra)}>
+                    {regra.ativa ? "Pausar" : "Ativar"}
+                  </Botao>
+                </div>
+              </motion.li>
+            );
+          })}
         </ul>
       )}
+
+      <ModalRegra
+        aberto={modalAberto}
+        regra={regraEditando}
+        categorias={categorias}
+        aoFechar={() => {
+          setModalAberto(false);
+          setRegraEditando(null);
+        }}
+        aoSalvar={() => {
+          void carregar();
+          contexto?.invalidar("regras", "extrato");
+        }}
+      />
     </div>
   );
 }

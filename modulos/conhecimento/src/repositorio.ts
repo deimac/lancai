@@ -11,18 +11,30 @@ export interface OperacaoConhecimento {
   auditoria: NovaAuditoria;
 }
 
+export type CamposAtualizarRegra = Partial<{
+  nome: string;
+  logicaCondicoes: Regra["logicaCondicoes"];
+  condicoes: Regra["condicoes"];
+  acoes: Regra["acoes"];
+  ativa: boolean;
+  categoriaId: string | null;
+}>;
+
 export interface RepositorioConhecimento {
   obterMovimento(id: string): Promise<Movimento | undefined>;
   obterCategoria(id: string): Promise<{ id: string; nome: string } | undefined>;
   obterPessoa(id: string): Promise<{ id: string } | undefined>;
   atualizarConhecimento(operacao: OperacaoConhecimento): Promise<Movimento>;
-  /** Regras ativas do workspace, da mais específica (trecho maior) para a mais antiga. */
+  /** Regras ativas do workspace, da mais específica para a mais antiga. */
   listarRegrasAtivas(workspaceId: string): Promise<Regra[]>;
   /** Todas as regras do workspace (ativas e inativas), ativas primeiro. */
   listarRegras(workspaceId: string): Promise<Regra[]>;
   criarRegra(regra: NovaRegra): Promise<Regra>;
   obterRegra(id: string): Promise<Regra | undefined>;
-  atualizarRegra(id: string, campos: { ativa: boolean }): Promise<Regra | undefined>;
+  atualizarRegra(id: string, campos: CamposAtualizarRegra): Promise<Regra | undefined>;
+  excluirRegra(id: string): Promise<void>;
+  /** IDs de movimentos do workspace elegíveis para reaplicação de regras. */
+  listarMovimentoIdsParaRegras(workspaceId: string): Promise<string[]>;
   /** Categorias ativas do workspace — lista que o sugeridor de IA pode escolher. */
   listarCategoriasAtivas(
     workspaceId: string,

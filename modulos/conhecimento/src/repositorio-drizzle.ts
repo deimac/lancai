@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import {
   auditoria as auditoriaTabela,
   categoria as categoriaTabela,
@@ -8,7 +8,12 @@ import {
   regra as regraTabela,
 } from "@lancai/banco";
 import type { Movimento, NovaRegra, Regra } from "@lancai/banco";
-import type { OperacaoConhecimento, RepositorioConhecimento } from "./repositorio";
+import { especificidade_regra } from "./avaliar-regra";
+import type {
+  CamposAtualizarRegra,
+  OperacaoConhecimento,
+  RepositorioConhecimento,
+} from "./repositorio";
 
 export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
   private get banco() {
@@ -62,27 +67,21 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
   }
 
   async listarRegrasAtivas(workspaceId: string): Promise<Regra[]> {
-    /**
-     * Trecho maior primeiro: "IFOOD *LOOP" ganha de "IFOOD". Empate pela
-     * regra mais antiga — a que o usuário ensinou primeiro.
-     */
-    return this.banco
+    const linhas = await this.banco
       .select()
       .from(regraTabela)
       .where(and(eq(regraTabela.workspaceId, workspaceId), eq(regraTabela.ativa, true)))
-      .orderBy(desc(sql`char_length(${regraTabela.condicaoValor})`), asc(regraTabela.dataCriacao));
+      .orderBy(asc(regraTabela.dataCriacao));
+    return ordenar_por_especificidade(linhas);
   }
 
   async listarRegras(workspaceId: string): Promise<Regra[]> {
-    return this.banco
+    const linhas = await this.banco
       .select()
       .from(regraTabela)
       .where(eq(regraTabela.workspaceId, workspaceId))
-      .orderBy(
-        desc(regraTabela.ativa),
-        desc(sql`char_length(${regraTabela.condicaoValor})`),
-        asc(regraTabela.dataCriacao),
-      );
+      .orderBy(desc(regraTabela.ativa), asc(regraTabela.dataCriacao));
+    return ordenar_por_especificidade(linhas);
   }
 
   async criarRegra(regra: NovaRegra): Promise<Regra> {
@@ -100,13 +99,32 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
     return linhas[0];
   }
 
-  async atualizarRegra(id: string, campos: { ativa: boolean }): Promise<Regra | undefined> {
+  async atualizarRegra(id: string, campos: CamposAtualizarRegra): Promise<Regra | undefined> {
     const [atualizada] = await this.banco
       .update(regraTabela)
-      .set({ ativa: campos.ativa, dataAtualizacao: new Date() })
+      .set({ ...campos, dataAtualizacao: new Date() })
       .where(eq(regraTabela.id, id))
       .returning();
     return atualizada;
+  }
+
+  async excluirRegra(id: string): Promise<void> {
+    await this.banco.delete(regraTabela).where(eq(regraTabela.id, id));
+  }
+
+  async listarMovimentoIdsParaRegras(workspaceId: string): Promise<string[]> {
+    const linhas = await this.banco
+      .select({ id: movimentoTabela.id })
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.workspaceId, workspaceId),
+          ne(movimentoTabela.status, "cancelado"),
+          sql`(${movimentoTabela.classificadoPor} IS DISTINCT FROM 'usuario')`,
+        ),
+      )
+      .orderBy(asc(movimentoTabela.dataCriacao));
+    return linhas.map((l) => l.id);
   }
 
   async listarCategoriasAtivas(
@@ -122,4 +140,13 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
       .where(and(eq(categoriaTabela.workspaceId, workspaceId), eq(categoriaTabela.ativo, true)))
       .orderBy(asc(categoriaTabela.nome));
   }
+}
+
+function ordenar_por_especificidade(regras: Regra[]): Regra[] {
+  return [...regras].sort(
+    (a, b) =>
+      Number(b.ativa) - Number(a.ativa) ||
+      especificidade_regra(b) - especificidade_regra(a) ||
+      a.dataCriacao.getTime() - b.dataCriacao.getTime(),
+  );
 }
