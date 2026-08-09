@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { CreditCard, FolderKanban, Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
@@ -56,7 +56,6 @@ export function TelaContasECartoes() {
   const [fonte, setFonte] = useState<DescritorFonte | null>(null);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
-  const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -73,17 +72,14 @@ export function TelaContasECartoes() {
     setCarregando(true);
     setErro(null);
     try {
-      const [contasCarregadas, cartoesCarregados, fonteDesc, workspaces] = await Promise.all([
-        clienteApi.listar_contas(usuario.id),
-        clienteApi.listar_cartoes(usuario.id),
+      const [contasCarregadas, cartoesCarregados, fonteDesc] = await Promise.all([
+        clienteApi.listar_contas(usuario.id, true),
+        clienteApi.listar_cartoes(usuario.id, true),
         clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
-        clienteApi.listar_workspaces(usuario.id).catch(() => []),
       ]);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
       setFonte(fonteDesc);
-      const ativo = workspaces.find((w) => w.ativo);
-      setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar contas e cartões.");
     } finally {
@@ -98,11 +94,6 @@ export function TelaContasECartoes() {
   useEffect(() => {
     return () => widgetRef.current?.fechar();
   }, []);
-
-  const totalContas = useMemo(
-    () => contas.reduce((acc, c) => acc + para_numero(c.saldoAtual), 0),
-    [contas],
-  );
 
   function abrir_criar(tipo: TipoCadastro = "conta") {
     setModalModo("criar");
@@ -203,9 +194,7 @@ export function TelaContasECartoes() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
           <p className="text-sm text-texto-suave">
-            {visaoGeral
-              ? "Todos os workspaces — novos cadastros vão para o workspace ativo"
-              : "Manuais e sincronizados no workspace ativo — o banco é só a fonte"}
+            Todas as contas e cartões — novos cadastros e conexões vão para o workspace ativo
           </p>
         </div>
         <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando || ocupado}>
@@ -243,21 +232,16 @@ export function TelaContasECartoes() {
       )}
 
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
-            <Wallet size={18} className="text-primaria" />
-            Contas
-          </h2>
-          <p className="text-sm tabular-nums text-texto-suave">{formatar_moeda(totalContas)}</p>
-        </div>
+        <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
+          <Wallet size={18} className="text-primaria" />
+          Contas
+        </h2>
 
         {carregando && contas.length === 0 ? (
           <p className="text-sm text-texto-suave">Carregando...</p>
         ) : contas.length === 0 ? (
           <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-            {visaoGeral
-              ? "Nenhuma conta nos seus workspaces."
-              : "Nenhuma conta neste workspace. Conecte um banco ou cadastre manualmente."}
+            Nenhuma conta cadastrada. Conecte um banco ou cadastre manualmente.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -275,7 +259,7 @@ export function TelaContasECartoes() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate font-medium text-texto">{conta.nome}</p>
-                      {visaoGeral && conta.workspaceNome ? (
+                      {conta.workspaceNome ? (
                         <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
                           {conta.workspaceNome}
                         </span>
@@ -324,23 +308,16 @@ export function TelaContasECartoes() {
       </section>
 
       <section id="cartoes" className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
-            <CreditCard size={18} className="text-primaria" />
-            Cartões
-          </h2>
-          <Botao variante="fantasma" className="px-2" onClick={() => abrir_criar("cartao")} title="Adicionar cartão">
-            <Plus size={14} />
-          </Botao>
-        </div>
+        <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
+          <CreditCard size={18} className="text-primaria" />
+          Cartões
+        </h2>
 
         {carregando && cartoes.length === 0 ? (
           <p className="text-sm text-texto-suave">Carregando...</p>
         ) : cartoes.length === 0 ? (
           <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-            {visaoGeral
-              ? "Nenhum cartão nos seus workspaces."
-              : "Nenhum cartão neste workspace. Conecte um banco ou cadastre manualmente."}
+            Nenhum cartão cadastrado. Conecte um banco ou cadastre manualmente.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -362,7 +339,7 @@ export function TelaContasECartoes() {
                           <span className="text-texto-suave"> ···· {cartao.final4}</span>
                         ) : null}
                       </p>
-                      {visaoGeral && cartao.workspaceNome ? (
+                      {cartao.workspaceNome ? (
                         <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
                           {cartao.workspaceNome}
                         </span>
