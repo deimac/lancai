@@ -74,15 +74,26 @@ export const schemaExcluirContaApi = z.object({
   usuarioId: z.string().uuid(),
 });
 
+/** Dados do plástico em claro — a API cifra antes de persistir. */
+export const schemaPlasticoCartao = z.object({
+  numero: z.string().min(1),
+  validade: z.string().min(1),
+  cvv: z.string().min(1),
+});
+export type EntradaPlasticoCartao = z.infer<typeof schemaPlasticoCartao>;
+
 /** PATCH /cartoes/:id — body da API web. */
 export const schemaPatchCartaoApi = z.object({
   usuarioId: z.string().uuid(),
   nome: z.string().min(1).optional(),
   limite: z.number().nonnegative().optional(),
+  /** Saldo devido do cartão. */
+  saldo: z.number().nonnegative().optional(),
   fechamento: z.number().int().min(1).max(31).optional(),
   vencimento: z.number().int().min(1).max(31).optional(),
   perfil: perfilSchema.optional(),
   contaId: z.string().uuid().nullable().optional(),
+  plastico: schemaPlasticoCartao.optional(),
 });
 export type EntradaPatchCartaoApi = z.infer<typeof schemaPatchCartaoApi>;
 
@@ -134,6 +145,8 @@ export const schemaExcluirWorkspaceApi = z.object({
 export const schemaCriarCartao = z.object({
   nome: z.string().min(1),
   limite: z.number().nonnegative(),
+  /** Saldo devido do cartão (gasto/dívida atual). */
+  saldo: z.number().nonnegative().optional(),
   fechamento: z.number().int().min(1).max(31),
   vencimento: z.number().int().min(1).max(31),
   perfil: perfilSchema,
@@ -145,9 +158,9 @@ export const schemaCriarCartao = z.object({
   /** Conta vinculada (débito / fatura preferencial) — opcional no crédito puro. */
   contaId: z.string().uuid().optional(),
   usuarioId: z.string().uuid(),
-  /** Últimos 4 dígitos (em claro) quando o usuário informou o número do plástico. */
-  final4: z.string().length(4).optional(),
-  /** Payload AES-GCM com número/validade/CVV — nunca expor em listagens. */
+  /** Número / validade / CVV em claro — a API cifra; máscara vem na leitura. */
+  plastico: schemaPlasticoCartao.optional(),
+  /** Payload AES-GCM com número/validade/CVV — compatível com chat. */
   dadosPlasticosCifrados: z.string().min(1).optional(),
 });
 export type EntradaCriarCartao = z.infer<typeof schemaCriarCartao>;
@@ -165,13 +178,14 @@ export type EntradaAtualizarConta = z.infer<typeof schemaAtualizarConta>;
 export const schemaAtualizarCartao = z.object({
   nome: z.string().min(1).optional(),
   limite: z.number().nonnegative().optional(),
+  saldo: z.number().nonnegative().optional(),
   fechamento: z.number().int().min(1).max(31).optional(),
   vencimento: z.number().int().min(1).max(31).optional(),
   perfil: perfilSchema.optional(),
   modalidade: modalidadeCartaoSchema.optional(),
   contaId: z.string().uuid().nullable().optional(),
   ativo: z.boolean().optional(),
-  final4: z.string().length(4).optional(),
+  plastico: schemaPlasticoCartao.optional(),
   dadosPlasticosCifrados: z.string().min(1).optional(),
 });
 export type EntradaAtualizarCartao = z.infer<typeof schemaAtualizarCartao>;

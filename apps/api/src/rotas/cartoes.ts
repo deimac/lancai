@@ -7,6 +7,10 @@ import {
   obter_banco,
 } from "@lancai/banco";
 import {
+  mascara_final4_do_payload,
+  preparar_persistencia_plasticos,
+} from "@lancai/ia";
+import {
   calcularMelhorDiaCompra,
   schemaCriarCartao,
   schemaExcluirCartaoApi,
@@ -23,7 +27,7 @@ function cartao_publico<
     workspaceId: string;
   },
 >(linha: T, meta: MetaOrigem | undefined, nomes: Map<string, string>) {
-  const { dadosPlasticosCifrados: _omitido, ...publico } = linha;
+  const { dadosPlasticosCifrados, ...resto } = linha;
   const origem = meta ?? {
     origem: linha.sincronizada ? ("open_finance" as const) : ("manual" as const),
     conexaoId: null,
@@ -31,10 +35,26 @@ function cartao_publico<
     idExterno: null,
   };
   return {
-    ...publico,
+    ...resto,
+    /** Máscara derivada na leitura (decifra o blob); nunca persiste como coluna. */
+    final4: mascara_final4_do_payload(dadosPlasticosCifrados),
     ...origem,
     workspaceNome: nomes.get(linha.workspaceId) ?? null,
   };
+}
+
+function resolver_plasticos(dados: {
+  plastico?: { numero: string; validade: string; cvv: string };
+  dadosPlasticosCifrados?: string;
+}): { dadosPlasticosCifrados?: string } {
+  if (dados.plastico) {
+    const preparado = preparar_persistencia_plasticos(dados.plastico);
+    return { dadosPlasticosCifrados: preparado.dadosPlasticosCifrados };
+  }
+  if (dados.dadosPlasticosCifrados != null) {
+    return { dadosPlasticosCifrados: dados.dadosPlasticosCifrados };
+  }
+  return {};
 }
 
 export async function registrar_rotas_cartao(app: FastifyInstance) {
@@ -42,20 +62,21 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const dados = schemaCriarCartao.parse(requisicao.body);
     const banco = obter_banco();
     const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
+    const plasticos = resolver_plasticos(dados);
     const [criado] = await banco
       .insert(cartao)
       .values({
         workspaceId,
         nome: dados.nome,
         limite: String(dados.limite),
+        saldo: String(dados.saldo ?? 0),
         fechamento: dados.fechamento,
         vencimento: dados.vencimento,
         melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
         perfil: dados.perfil,
         contaId: dados.contaId,
         usuarioId: dados.usuarioId,
-        final4: dados.final4,
-        dadosPlasticosCifrados: dados.dadosPlasticosCifrados,
+        dadosPlasticosCifrados: plasticos.dadosPlasticosCifrados,
       })
       .returning();
     const nomes = await mapear_nomes_workspaces(banco, [workspaceId]);
@@ -144,12 +165,14 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     if (
       existente.sincronizada &&
       (dados.limite != null ||
+        dados.saldo != null ||
         dados.fechamento != null ||
         dados.vencimento != null ||
-        dados.contaId !== undefined)
+        dados.contaId !== undefined ||
+        dados.plastico != null)
     ) {
       return resposta.status(400).send({
-        erro: "Cartão sincronizado: limite, datas e conta vinculada vêm do banco.",
+        erro: "Cartão sincronizado: limite, saldo, datas, plástico e conta vinculada vêm do banco.",
       });
     }
 
@@ -157,12 +180,16 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.perfil != null) valores.perfil = dados.perfil;
     if (dados.limite != null) valores.limite = String(dados.limite);
+    if (dados.saldo != null) valores.saldo = String(dados.saldo);
     if (dados.fechamento != null) {
       valores.fechamento = dados.fechamento;
       valores.melhorDiaCompra = calcularMelhorDiaCompra(dados.fechamento);
     }
     if (dados.vencimento != null) valores.vencimento = dados.vencimento;
     if (dados.contaId !== undefined) valores.contaId = dados.contaId;
+    if (dados.plastico) {
+      valores.dadosPlasticosCifrados = preparar_persistencia_plasticos(dados.plastico).dadosPlasticosCifrados;
+    }
 
     if (Object.keys(valores).length === 1) {
       return resposta.status(400).send({ erro: "Nenhum campo para atualizar." });

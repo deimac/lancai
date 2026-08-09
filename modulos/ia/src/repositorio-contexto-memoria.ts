@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
+import { preparar_persistencia_plasticos } from "./cifragem-cartao";
 import { codigo_curto_movimento, normalizar_codigo_busca } from "./codigo-movimento";
 import { chave_descricao_lancamento, descricao_corresponde_busca } from "./normalizar-descricao";
 import type {
@@ -103,10 +104,14 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
 
   async criarCartao(dados: EntradaCriarCartao): Promise<Cartao> {
     const agora = new Date();
+    const dadosPlasticosCifrados = dados.plastico
+      ? preparar_persistencia_plasticos(dados.plastico).dadosPlasticosCifrados
+      : (dados.dadosPlasticosCifrados ?? null);
     const cartao: Cartao = {
       id: randomUUID(),
       nome: dados.nome,
       limite: String(dados.limite),
+      saldo: String(dados.saldo ?? 0),
       fechamento: dados.fechamento,
       vencimento: dados.vencimento,
       melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
@@ -117,8 +122,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       workspaceId: WORKSPACE_EM_MEMORIA,
       ativo: true,
       sincronizada: false,
-      final4: dados.final4 ?? null,
-      dadosPlasticosCifrados: dados.dadosPlasticosCifrados ?? null,
+      dadosPlasticosCifrados,
       dataCriacao: agora,
       dataAtualizacao: agora,
     };
@@ -145,10 +149,14 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
     const cartao = this.cartoes.get(cartaoId);
     if (!cartao || cartao.usuarioId !== usuarioId) throw new Error("Cartão não encontrado.");
     const fechamento = dados.fechamento ?? cartao.fechamento;
+    const dadosPlasticosCifrados = dados.plastico
+      ? preparar_persistencia_plasticos(dados.plastico).dadosPlasticosCifrados
+      : (dados.dadosPlasticosCifrados ?? cartao.dadosPlasticosCifrados);
     const atualizado: Cartao = {
       ...cartao,
       nome: dados.nome ?? cartao.nome,
       limite: dados.limite != null ? String(dados.limite) : cartao.limite,
+      saldo: dados.saldo != null ? String(dados.saldo) : cartao.saldo,
       fechamento,
       vencimento: dados.vencimento ?? cartao.vencimento,
       melhorDiaCompra: dados.fechamento != null ? calcularMelhorDiaCompra(fechamento) : cartao.melhorDiaCompra,
@@ -156,8 +164,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       modalidade: dados.modalidade ?? cartao.modalidade,
       contaId: dados.contaId !== undefined ? dados.contaId : cartao.contaId,
       ativo: dados.ativo ?? cartao.ativo,
-      final4: dados.final4 ?? cartao.final4,
-      dadosPlasticosCifrados: dados.dadosPlasticosCifrados ?? cartao.dadosPlasticosCifrados,
+      dadosPlasticosCifrados,
       dataAtualizacao: new Date(),
     };
     this.cartoes.set(cartaoId, atualizado);

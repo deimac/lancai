@@ -3,6 +3,7 @@ import {
   cifrar_dados_plasticos,
   decifrar_dados_plasticos,
   extrair_final4,
+  mascara_final4_do_payload,
   preparar_persistencia_plasticos,
   validar_dados_plasticos,
   validar_luhn,
@@ -55,5 +56,16 @@ describe("cifragem-cartao", () => {
     expect(preparado.final4).toBe("1111");
     expect(extrair_final4("4111111111111111")).toBe("1111");
     expect(decifrar_dados_plasticos(preparado.dadosPlasticosCifrados).validade).toBe("08/30");
+  });
+
+  it("deriva máscara final4 a partir do blob cifrado", () => {
+    const preparado = preparar_persistencia_plasticos({
+      numero: "4111111111111111",
+      validade: "08/30",
+      cvv: "123",
+    });
+    expect(mascara_final4_do_payload(preparado.dadosPlasticosCifrados)).toBe("1111");
+    expect(mascara_final4_do_payload(null)).toBeNull();
+    expect(mascara_final4_do_payload("payload-invalido")).toBeNull();
   });
 });

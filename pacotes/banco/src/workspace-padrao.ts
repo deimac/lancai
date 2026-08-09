@@ -174,16 +174,24 @@ export async function resolver_escopo_leitura(
 
 async function contar_por_workspace(
   banco: Banco,
+  usuarioId: string,
   workspaceIds: string[],
 ): Promise<{ contas: Map<string, number>; cartoes: Map<string, number> }> {
   const contas = new Map<string, number>();
   const cartoes = new Map<string, number>();
   if (workspaceIds.length === 0) return { contas, cartoes };
 
+  // Mesmo critério do modal: só ativos do dono.
   const linhasConta = await banco
     .select({ workspaceId: contaTabela.workspaceId, total: count() })
     .from(contaTabela)
-    .where(and(inArray(contaTabela.workspaceId, workspaceIds), eq(contaTabela.ativo, true)))
+    .where(
+      and(
+        eq(contaTabela.usuarioId, usuarioId),
+        inArray(contaTabela.workspaceId, workspaceIds),
+        eq(contaTabela.ativo, true),
+      ),
+    )
     .groupBy(contaTabela.workspaceId);
 
   for (const linha of linhasConta) contas.set(linha.workspaceId, Number(linha.total));
@@ -191,7 +199,13 @@ async function contar_por_workspace(
   const linhasCartao = await banco
     .select({ workspaceId: cartaoTabela.workspaceId, total: count() })
     .from(cartaoTabela)
-    .where(inArray(cartaoTabela.workspaceId, workspaceIds))
+    .where(
+      and(
+        eq(cartaoTabela.usuarioId, usuarioId),
+        inArray(cartaoTabela.workspaceId, workspaceIds),
+        eq(cartaoTabela.ativo, true),
+      ),
+    )
     .groupBy(cartaoTabela.workspaceId);
 
   for (const linha of linhasCartao) cartoes.set(linha.workspaceId, Number(linha.total));
@@ -217,7 +231,7 @@ export async function listar_workspaces_do_usuario(
     .where(and(eq(workspaceMembro.usuarioId, usuarioId), eq(workspaceMembro.papel, "dono")));
 
   const ids = linhas.map((l) => l.id);
-  const totais = await contar_por_workspace(banco, ids);
+  const totais = await contar_por_workspace(banco, usuarioId, ids);
 
   const geral: WorkspaceResumo = {
     id: WORKSPACE_VISAO_GERAL,
@@ -376,7 +390,7 @@ export async function atualizar_workspace_do_usuario(
   if (!linha) throw new ErroWorkspaceNaoEncontrado();
 
   const escopo = await resolver_escopo_leitura(banco, usuarioId);
-  const totais = await contar_por_workspace(banco, [linha.id]);
+  const totais = await contar_por_workspace(banco, usuarioId, [linha.id]);
   return {
     ...linha,
     ativo: !escopo.visaoAgregada && linha.id === escopo.workspaceAtivoId,
@@ -442,7 +456,7 @@ export async function definir_membros_workspace(
   const cartoesDoUsuario = await banco
     .select({ id: cartaoTabela.id, workspaceId: cartaoTabela.workspaceId })
     .from(cartaoTabela)
-    .where(eq(cartaoTabela.usuarioId, usuarioId));
+    .where(and(eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true)));
 
   const setCartoes = new Set(entrada.cartaoIds);
   for (const id of setCartoes) {
@@ -468,6 +482,32 @@ export async function definir_membros_workspace(
         .set({ workspaceId: principalId, dataAtualizacao: agora })
         .where(eq(cartaoTabela.id, cartao.id));
     }
+  }
+
+  // Itens ativos no Principal: se este workspace NÃO é o Principal, ok.
+  // Se ESTE é o Principal, desmarcar não remove (não há outro destino).
+  // Para workspaces não-Principal, também tira contas/cartões inativos órfãos.
+  if (workspaceId !== principalId) {
+    await banco
+      .update(contaTabela)
+      .set({ workspaceId: principalId, dataAtualizacao: agora })
+      .where(
+        and(
+          eq(contaTabela.usuarioId, usuarioId),
+          eq(contaTabela.workspaceId, workspaceId),
+          eq(contaTabela.ativo, false),
+        ),
+      );
+    await banco
+      .update(cartaoTabela)
+      .set({ workspaceId: principalId, dataAtualizacao: agora })
+      .where(
+        and(
+          eq(cartaoTabela.usuarioId, usuarioId),
+          eq(cartaoTabela.workspaceId, workspaceId),
+          eq(cartaoTabela.ativo, false),
+        ),
+      );
   }
 
   return atualizar_workspace_do_usuario(banco, usuarioId, workspaceId, {});

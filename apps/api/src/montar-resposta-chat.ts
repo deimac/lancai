@@ -16,6 +16,7 @@ import {
   ErroEntidadeJaExiste,
   consulta_historico_detalhada,
   extrair_codigo_da_mensagem,
+  mascara_final4_do_payload,
   preferir_termo_referencia,
   type ResolvedorIntencao,
 } from "@lancai/ia";
@@ -438,7 +439,8 @@ export async function montar_resposta_chat(
     case "CRIAR_CARTAO": {
       const eraPrimeiroCartao = contexto.totalCartoes === 0;
       const cartao = await contexto.resolvedor.resolver_criar_cartao(intencao, referenciaResolucao);
-      const final4 = cartao.final4 ? ` Final •••• ${cartao.final4} salvo.` : "";
+      const mascara = mascara_final4_do_payload(cartao.dadosPlasticosCifrados);
+      const final4 = mascara ? ` Final •••• ${mascara} salvo.` : "";
       const modalidade = rotulo_modalidade(cartao.modalidade);
       const confirmacao =
         cartao.modalidade === "debito"
@@ -490,7 +492,8 @@ export async function montar_resposta_chat(
       if (cartao.ativo === false) {
         return `Cartão "${cartao.nome}" removido.`;
       }
-      const final4 = cartao.final4 ? ` Final •••• ${cartao.final4}.` : "";
+      const mascara = mascara_final4_do_payload(cartao.dadosPlasticosCifrados);
+      const final4 = mascara ? ` Final •••• ${mascara}.` : "";
       const modalidade = rotulo_modalidade(cartao.modalidade);
       return `Cartão "${cartao.nome}" atualizado (${modalidade}) — limite de ${formatarMoeda(cartao.limite)}, fecha dia ${cartao.fechamento} e vence dia ${cartao.vencimento}.${final4}`;
     }

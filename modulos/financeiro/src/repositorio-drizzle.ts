@@ -257,6 +257,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
         nome: entrada.nome,
         perfil: entrada.perfil,
         limite: String(entrada.limite ?? 0),
+        saldo: "0",
         fechamento,
         vencimento,
         melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,

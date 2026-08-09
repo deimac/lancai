@@ -557,7 +557,7 @@ export class ResolvedorIntencao {
     numero: string | null | undefined,
     validade: string | null | undefined,
     cvv: string | null | undefined,
-  ): { final4?: string; dadosPlasticosCifrados?: string } {
+  ): { dadosPlasticosCifrados?: string } {
     const temAlgum = numero != null || validade != null || cvv != null;
     if (!temAlgum) return {};
     if (!numero || !validade || !cvv) {
@@ -567,7 +567,8 @@ export class ResolvedorIntencao {
       );
     }
     try {
-      return preparar_persistencia_plasticos({ numero, validade, cvv });
+      const preparado = preparar_persistencia_plasticos({ numero, validade, cvv });
+      return { dadosPlasticosCifrados: preparado.dadosPlasticosCifrados };
     } catch (erro) {
       if (erro instanceof ErroDadosPlasticosInvalidos) throw erro;
       throw erro;

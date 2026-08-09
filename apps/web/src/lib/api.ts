@@ -26,6 +26,8 @@ export interface CartaoResumo {
   id: string;
   nome: string;
   limite: string;
+  /** Saldo devido do cartão. */
+  saldo?: string;
   perfil: Perfil;
   modalidade: "credito" | "debito" | "multiplo";
   fechamento?: number;
@@ -40,7 +42,7 @@ export interface CartaoResumo {
   workspaceId?: string;
   workspaceNome?: string | null;
   contaId?: string | null;
-  /** Últimos 4 dígitos quando o plástico foi cadastrado. */
+  /** Últimos 4 dígitos derivados na leitura (decifragem do blob); não é coluna. */
   final4?: string | null;
 }
 
@@ -394,10 +396,12 @@ export const clienteApi = {
     usuarioId: string;
     nome: string;
     limite: number;
+    saldo?: number;
     fechamento: number;
     vencimento: number;
     perfil: Perfil;
     contaId?: string;
+    plastico?: { numero: string; validade: string; cvv: string };
   }): Promise<CartaoResumo> {
     return requisitar<CartaoResumo>("/cartoes", {
       method: "POST",
@@ -412,9 +416,11 @@ export const clienteApi = {
       nome?: string;
       perfil?: Perfil;
       limite?: number;
+      saldo?: number;
       fechamento?: number;
       vencimento?: number;
       contaId?: string | null;
+      plastico?: { numero: string; validade: string; cvv: string };
     },
   ): Promise<CartaoResumo> {
     return requisitar<CartaoResumo>(`/cartoes/${cartaoId}`, {

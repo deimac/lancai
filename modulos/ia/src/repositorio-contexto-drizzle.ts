@@ -12,6 +12,7 @@ import {
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
+import { preparar_persistencia_plasticos } from "./cifragem-cartao";
 import { normalizar_codigo_busca } from "./codigo-movimento";
 import { chave_descricao_lancamento, descricao_corresponde_busca } from "./normalizar-descricao";
 import type {
@@ -195,12 +196,16 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async criarCartao(dados: EntradaCriarCartao): Promise<Cartao> {
+    const dadosPlasticosCifrados = dados.plastico
+      ? preparar_persistencia_plasticos(dados.plastico).dadosPlasticosCifrados
+      : dados.dadosPlasticosCifrados;
     const linhas = await this.banco
       .insert(cartaoTabela)
       .values({
         nome: dados.nome,
         workspaceId: await garantir_workspace_do_usuario(this.banco, dados.usuarioId),
         limite: String(dados.limite),
+        saldo: String(dados.saldo ?? 0),
         fechamento: dados.fechamento,
         vencimento: dados.vencimento,
         melhorDiaCompra: calcularMelhorDiaCompra(dados.fechamento),
@@ -208,8 +213,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
         modalidade: dados.modalidade ?? (dados.contaId ? "multiplo" : "credito"),
         contaId: dados.contaId,
         usuarioId: dados.usuarioId,
-        final4: dados.final4,
-        dadosPlasticosCifrados: dados.dadosPlasticosCifrados,
+        dadosPlasticosCifrados,
       })
       .returning();
     const cartao = linhas[0];
@@ -246,6 +250,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const valores: Partial<typeof cartaoTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.limite != null) valores.limite = String(dados.limite);
+    if (dados.saldo != null) valores.saldo = String(dados.saldo);
     if (dados.fechamento != null) {
       valores.fechamento = dados.fechamento;
       valores.melhorDiaCompra = calcularMelhorDiaCompra(dados.fechamento);
@@ -255,8 +260,11 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     if (dados.modalidade != null) valores.modalidade = dados.modalidade;
     if (dados.contaId !== undefined) valores.contaId = dados.contaId;
     if (dados.ativo != null) valores.ativo = dados.ativo;
-    if (dados.final4 != null) valores.final4 = dados.final4;
-    if (dados.dadosPlasticosCifrados != null) valores.dadosPlasticosCifrados = dados.dadosPlasticosCifrados;
+    if (dados.plastico) {
+      valores.dadosPlasticosCifrados = preparar_persistencia_plasticos(dados.plastico).dadosPlasticosCifrados;
+    } else if (dados.dadosPlasticosCifrados != null) {
+      valores.dadosPlasticosCifrados = dados.dadosPlasticosCifrados;
+    }
 
     const linhas = await this.banco
       .update(cartaoTabela)

@@ -148,6 +148,20 @@
       "when": 1786201300000,
       "tag": "0020_workspace_cor_e_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786201400000,
+      "tag": "0021_cartao_saldo",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786201500000,
+      "tag": "0022_drop_cartao_final4",
+      "breakpoints": true
     }
   ]
 }

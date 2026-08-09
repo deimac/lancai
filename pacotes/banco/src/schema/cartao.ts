@@ -12,6 +12,8 @@ export const cartao = pgTable("cartao", {
   nome: text("nome").notNull(),
   /** Armazenado como string decimal (numeric do Postgres) para evitar perda de precisão. */
   limite: numeric("limite", { precision: 14, scale: 2 }).notNull(),
+  /** Saldo devido do cartão (gasto/dívida atual). Conta usa saldo_atual; cartão usa este campo. */
+  saldo: numeric("saldo", { precision: 14, scale: 2 }).notNull().default("0"),
   fechamento: integer("fechamento").notNull(),
   vencimento: integer("vencimento").notNull(),
   /** Calculado dinamicamente pelo MotorFinanceiro: dia seguinte ao fechamento. */
@@ -29,11 +31,10 @@ export const cartao = pgTable("cartao", {
    * vindos da sincronização é imutável e a IA só pode enriquecer (ADR-012).
    */
   sincronizada: boolean("sincronizada").notNull().default(false),
-  /** Últimos 4 dígitos do plástico (em claro) — só para identificação na UI. */
-  final4: text("final4"),
   /**
    * Payload AES-256-GCM (base64) com número, validade e CVV.
    * Nunca deve ser devolvido em listagens públicas — só após validar senha no chat.
+   * A máscara dos 4 últimos dígitos é derivada na leitura (decifragem), não persistida.
    */
   dadosPlasticosCifrados: text("dados_plasticos_cifrados"),
   /**

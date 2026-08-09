@@ -798,7 +798,9 @@ export class MotorFinanceiro {
 
     const quantidadeParcelas = entrada.parcelamento?.quantidadeParcelas ?? 1;
 
-    const comprometidoAtual = await this.repositorio.obterTotalComprometidoCartao(cartao.id);
+    const comprometidoAtual = arredondar(
+      (await this.repositorio.obterTotalComprometidoCartao(cartao.id)) + paraNumero(cartao.saldo),
+    );
     const limite = paraNumero(cartao.limite);
     if (arredondar(comprometidoAtual + entrada.valor) > limite) {
       throw new ErroLimiteCartaoExcedido(cartao.nome, arredondar(limite - comprometidoAtual), entrada.valor);
@@ -1208,7 +1210,9 @@ export class MotorFinanceiro {
     });
 
     // Limite: desconsidera o comprometido deste próprio movimento (que será cancelado).
-    const comprometidoAtual = await this.repositorio.obterTotalComprometidoCartao(cartaoId);
+    const comprometidoAtual = arredondar(
+      (await this.repositorio.obterTotalComprometidoCartao(cartaoId)) + paraNumero(cartao.saldo),
+    );
     const comprometidoDesteMovimento = parcelasAtuais.reduce(
       (soma, parcela) => soma + paraNumero(parcela.valor),
       0,

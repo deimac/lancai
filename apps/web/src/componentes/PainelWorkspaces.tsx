@@ -120,7 +120,16 @@ export function PainelWorkspaces({ aoVoltar, aoMudar }: Props) {
         ) : (
           <ul className="flex flex-col gap-2">
             {workspaces.map((item) => {
-              const n = (item.quantidadeContas ?? 0) + (item.quantidadeCartoes ?? 0);
+              const nContas = item.quantidadeContas ?? 0;
+              const nCartoes = item.quantidadeCartoes ?? 0;
+              const partes: string[] = [];
+              if (nContas > 0) {
+                partes.push(`${nContas} ${nContas === 1 ? "conta" : "contas"}`);
+              }
+              if (nCartoes > 0) {
+                partes.push(`${nCartoes} ${nCartoes === 1 ? "cartão" : "cartões"}`);
+              }
+              const resumo = partes.length > 0 ? partes.join(" · ") : "Nenhuma conta ou cartão";
               return (
                 <li
                   key={item.id}
@@ -136,9 +145,7 @@ export function PainelWorkspaces({ aoVoltar, aoMudar }: Props) {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-texto">{item.nome}</p>
-                    <p className="text-xs text-texto-suave">
-                      {n} {n === 1 ? "conta/cartão" : "contas/cartões"}
-                    </p>
+                    <p className="text-xs text-texto-suave">{resumo}</p>
                   </div>
                   <button
                     type="button"

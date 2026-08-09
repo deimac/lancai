@@ -125,6 +125,19 @@ export function extrair_final4(numero: string): string {
   return normalizado.slice(-4);
 }
 
+/**
+ * Decifra o blob só para obter os 4 últimos dígitos (máscara na UI).
+ * Retorna null se não houver payload ou se a decifragem falhar (chave ausente etc.).
+ */
+export function mascara_final4_do_payload(payloadBase64: string | null | undefined): string | null {
+  if (!payloadBase64) return null;
+  try {
+    return extrair_final4(decifrar_dados_plasticos(payloadBase64).numero);
+  } catch {
+    return null;
+  }
+}
+
 /** Cifra o payload plástico. Formato: base64(iv[12] + tag[16] + ciphertext). */
 export function cifrar_dados_plasticos(dados: DadosPlasticosCartao): string {
   const chave = obter_chave();

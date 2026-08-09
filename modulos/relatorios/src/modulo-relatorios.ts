@@ -107,7 +107,9 @@ export class ModuloRelatorios {
     const linhas = await Promise.all(
       cartoes.map(async (cartao) => {
         const parcelas = await this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: cartao.id });
-        const comprometido = parcelas.length ? somar(...parcelas.map((parcela) => parcela.valor)) : 0;
+        const saldoDevido = paraNumero(cartao.saldo);
+        const parcelasSoma = parcelas.length ? somar(...parcelas.map((parcela) => parcela.valor)) : 0;
+        const comprometido = somar(saldoDevido, parcelasSoma);
         const limite = paraNumero(cartao.limite);
         return {
           nome: cartao.nome,
