@@ -36,7 +36,6 @@ Arquivo `enums.ts`. Alterar um enum exige migração, então a lista é parte do
 - `tipo_fonte`: `open_finance`, `manual`, `whatsapp`, `api`, `recorrencia`, `ofx`, `csv`, `pdf` — os três últimos estão reservados e sem implementação
 - `status_fonte`: `confirmado`, `pendente` — situação na instituição, não confundir com `status_movimento`
 - `classificado_por`: `regra`, `ia`, `usuario`
-- `tipo_workspace`: `pessoal`, `empresa`
 - `papel_workspace`: `dono`, `editor`, `leitor`
 - `status_conexao`: `ativa`, `sincronizando`, `precisa_atencao`, `removida` — vocabulário nosso, traduzido do status do provedor pelo adaptador
 - `motivo_atencao`: `credencial_invalida`, `consentimento_revogado`, `aguardando_usuario`, `erro_no_provedor`
