@@ -139,19 +139,25 @@ export class ServicoConhecimento {
       return { aplicada: false, motivo: "protegido_pelo_usuario" };
     }
 
-    const regras = await this.repositorio.listarRegrasAtivas(movimento.workspaceId);
+    const regras = await this.repositorio.listarRegrasAtivas(
+      await this.workspaces_do_usuario(movimento.usuarioId, movimento.workspaceId),
+    );
     const casada = regras.find((regra) => regra_casa(regra, movimento));
     if (!casada) return { aplicada: false, motivo: "nenhuma_casou" };
+
+    const conhecimento = await this.montar_conhecimento_das_acoes(casada, movimento);
+    if (Object.keys(conhecimento).length === 0) {
+      return { aplicada: false, motivo: "nenhuma_casou" };
+    }
 
     if (
       movimento.classificadoPor === "regra" &&
       movimento.regraId === casada.id &&
-      acoes_ja_aplicadas(casada, movimento)
+      conhecimento_ja_aplicado(conhecimento, movimento)
     ) {
       return { aplicada: false, motivo: "ja_aplicada" };
     }
 
-    const conhecimento = await this.montar_conhecimento_das_acoes(casada, movimento);
     const atualizado = await this.atualizar({
       movimentoId,
       alteradoPor: movimento.usuarioId,
@@ -239,11 +245,11 @@ export class ServicoConhecimento {
   }
 
   /**
-   * Reaplica regras ativas em movimentos do workspace que não foram classificados
-   * à mão pelo usuário. Retorna quantas aplicações efetivas ocorreram.
+   * Reaplica regras ativas em movimentos dos workspaces do usuário que não foram
+   * classificados à mão. Retorna quantas aplicações efetivas ocorreram.
    */
-  async aplicar_regras_existentes(workspaceId: string): Promise<{ aplicadas: number }> {
-    const ids = await this.repositorio.listarMovimentoIdsParaRegras(workspaceId);
+  async aplicar_regras_existentes(workspaceIds: string[]): Promise<{ aplicadas: number }> {
+    const ids = await this.repositorio.listarMovimentoIdsParaRegras(workspaceIds);
     let aplicadas = 0;
     for (const id of ids) {
       const resultado = await this.aplicar_regras(id);
@@ -272,10 +278,6 @@ export class ServicoConhecimento {
       perfil: null,
     });
 
-    if (entrada.aplicarExistentes) {
-      await this.aplicar_regras_existentes(entrada.workspaceId);
-    }
-
     return criada;
   }
 
@@ -303,10 +305,6 @@ export class ServicoConhecimento {
     });
     if (!atualizada) throw new ErroConhecimentoInvalido(`Falha ao atualizar regra ${regraId}.`);
 
-    if (entrada.aplicarExistentes) {
-      await this.aplicar_regras_existentes(existente.workspaceId);
-    }
-
     return atualizada;
   }
 
@@ -316,8 +314,8 @@ export class ServicoConhecimento {
     await this.repositorio.excluirRegra(regraId);
   }
 
-  async listar_regras(workspaceId: string): Promise<Regra[]> {
-    return this.repositorio.listarRegras(workspaceId);
+  async listar_regras(workspaceIds: string[]): Promise<Regra[]> {
+    return this.repositorio.listarRegras(workspaceIds);
   }
 
   async definir_ativa_regra(regraId: string, ativa: boolean): Promise<Regra> {
@@ -334,7 +332,8 @@ export class ServicoConhecimento {
     const categoria = await this.repositorio.obterCategoria(movimento.categoriaId);
     if (!categoria) return null;
 
-    const existentes = await this.repositorio.listarRegrasAtivas(movimento.workspaceId);
+    const workspaceIds = await this.workspaces_do_usuario(movimento.usuarioId, movimento.workspaceId);
+    const existentes = await this.repositorio.listarRegrasAtivas(workspaceIds);
     const jaExiste = existentes.some((regra) => regra_simples_igual(regra, trecho, categoria.id));
     if (jaExiste) return null;
 
@@ -365,7 +364,8 @@ export class ServicoConhecimento {
       categoriaNome: categoria.nome,
     };
 
-    const existentes = await this.repositorio.listarRegrasAtivas(movimento.workspaceId);
+    const workspaceIds = await this.workspaces_do_usuario(movimento.usuarioId, movimento.workspaceId);
+    const existentes = await this.repositorio.listarRegrasAtivas(workspaceIds);
     const igual = existentes.find((regra) =>
       regra_simples_igual(regra, proposta.trecho, proposta.categoriaId),
     );
@@ -400,6 +400,14 @@ export class ServicoConhecimento {
     }
   }
 
+  private async workspaces_do_usuario(
+    usuarioId: string,
+    fallbackWorkspaceId: string,
+  ): Promise<string[]> {
+    const ids = await this.repositorio.listarWorkspaceIdsDoUsuario(usuarioId);
+    return ids.length > 0 ? ids : [fallbackWorkspaceId];
+  }
+
   private async montar_conhecimento_das_acoes(
     regra: Regra,
     movimento: Movimento,
@@ -407,12 +415,26 @@ export class ServicoConhecimento {
     const conhecimento: EntradaAtualizarConhecimento["conhecimento"] = {};
     for (const acao of acoes_da_regra(regra)) {
       switch (acao.tipo) {
-        case "definir_categoria":
-          conhecimento.categoriaId = acao.categoriaId;
+        case "definir_categoria": {
+          const origem = await this.repositorio.obterCategoria(acao.categoriaId);
+          if (!origem) break;
+          const local = await this.repositorio.buscarCategoriaPorNome(
+            movimento.workspaceId,
+            origem.nome,
+          );
+          if (local) conhecimento.categoriaId = local.id;
           break;
-        case "definir_beneficiario":
-          conhecimento.pessoaId = acao.pessoaId;
+        }
+        case "definir_beneficiario": {
+          const origem = await this.repositorio.obterPessoa(acao.pessoaId);
+          if (!origem) break;
+          const local = await this.repositorio.buscarPessoaPorNome(
+            movimento.workspaceId,
+            origem.nome,
+          );
+          if (local) conhecimento.pessoaId = local.id;
           break;
+        }
         case "adicionar_tags_notas": {
           if (acao.tags?.length) {
             const atuais = new Set(movimento.tags ?? []);
@@ -457,28 +479,30 @@ function regra_simples_igual(regra: Regra, trecho: string, categoriaId: string):
   );
 }
 
-function acoes_ja_aplicadas(regra: Regra, movimento: Movimento): boolean {
-  for (const acao of acoes_da_regra(regra)) {
-    switch (acao.tipo) {
-      case "definir_categoria":
-        if (movimento.categoriaId !== acao.categoriaId) return false;
-        break;
-      case "definir_beneficiario":
-        if (movimento.pessoaId !== acao.pessoaId) return false;
-        break;
-      case "definir_perfil":
-        if (movimento.perfil !== acao.perfil) return false;
-        break;
-      case "ignorar_transacao":
-        if (!movimento.ignoradoEmRelatorio) return false;
-        break;
-      case "adicionar_tags_notas":
-        if (acao.tags?.some((t) => !(movimento.tags ?? []).includes(t))) return false;
-        if (acao.observacoes !== undefined && movimento.observacoes !== acao.observacoes) {
-          return false;
-        }
-        break;
-    }
+function conhecimento_ja_aplicado(
+  conhecimento: EntradaAtualizarConhecimento["conhecimento"],
+  movimento: Movimento,
+): boolean {
+  if (conhecimento.categoriaId !== undefined && movimento.categoriaId !== conhecimento.categoriaId) {
+    return false;
+  }
+  if (conhecimento.pessoaId !== undefined && movimento.pessoaId !== conhecimento.pessoaId) {
+    return false;
+  }
+  if (conhecimento.perfil !== undefined && movimento.perfil !== conhecimento.perfil) {
+    return false;
+  }
+  if (conhecimento.ignoradoEmRelatorio === true && !movimento.ignoradoEmRelatorio) {
+    return false;
+  }
+  if (conhecimento.tags?.some((t) => !(movimento.tags ?? []).includes(t))) {
+    return false;
+  }
+  if (
+    conhecimento.observacoes !== undefined &&
+    movimento.observacoes !== conhecimento.observacoes
+  ) {
+    return false;
   }
   return true;
 }

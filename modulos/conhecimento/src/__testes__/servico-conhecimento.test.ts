@@ -26,8 +26,10 @@ function entrada_regra_contem(workspaceId: string, trecho: string, categoriaId: 
 
 class RepositorioEmMemoria implements RepositorioConhecimento {
   movimentos = new Map<string, Movimento>();
-  categorias = new Map<string, string>();
-  pessoas = new Set<string>();
+  /** id → { nome, workspaceId } */
+  categorias = new Map<string, { nome: string; workspaceId: string }>();
+  pessoas = new Map<string, { nome: string; workspaceId: string }>();
+  workspacesPorUsuario = new Map<string, string[]>();
   regras: Regra[] = [];
   auditorias: OperacaoConhecimento["auditoria"][] = [];
 
@@ -36,12 +38,39 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
   }
 
   async obterCategoria(id: string) {
-    const nome = this.categorias.get(id);
-    return nome !== undefined ? { id, nome } : undefined;
+    const cat = this.categorias.get(id);
+    return cat ? { id, nome: cat.nome } : undefined;
   }
 
   async obterPessoa(id: string) {
-    return this.pessoas.has(id) ? { id } : undefined;
+    const pessoa = this.pessoas.get(id);
+    return pessoa ? { id, nome: pessoa.nome } : undefined;
+  }
+
+  async buscarCategoriaPorNome(workspaceId: string, nome: string) {
+    const alvo = nome.toLocaleLowerCase("pt-BR");
+    for (const [id, cat] of this.categorias) {
+      if (
+        cat.workspaceId === workspaceId &&
+        cat.nome.toLocaleLowerCase("pt-BR") === alvo
+      ) {
+        return { id, nome: cat.nome };
+      }
+    }
+    return undefined;
+  }
+
+  async buscarPessoaPorNome(workspaceId: string, nome: string) {
+    const alvo = nome.toLocaleLowerCase("pt-BR");
+    for (const [id, pessoa] of this.pessoas) {
+      if (
+        pessoa.workspaceId === workspaceId &&
+        pessoa.nome.toLocaleLowerCase("pt-BR") === alvo
+      ) {
+        return { id, nome: pessoa.nome };
+      }
+    }
+    return undefined;
   }
 
   async atualizarConhecimento(operacao: OperacaoConhecimento) {
@@ -53,9 +82,10 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
     return atualizado;
   }
 
-  async listarRegrasAtivas(workspaceId: string) {
+  async listarRegrasAtivas(workspaceIds: string[]) {
+    const ids = new Set(workspaceIds);
     return this.regras
-      .filter((r) => r.workspaceId === workspaceId && r.ativa)
+      .filter((r) => ids.has(r.workspaceId) && r.ativa)
       .sort(
         (a, b) =>
           especificidade_regra(b) - especificidade_regra(a) ||
@@ -63,9 +93,10 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
       );
   }
 
-  async listarRegras(workspaceId: string) {
+  async listarRegras(workspaceIds: string[]) {
+    const ids = new Set(workspaceIds);
     return this.regras
-      .filter((r) => r.workspaceId === workspaceId)
+      .filter((r) => ids.has(r.workspaceId))
       .sort(
         (a, b) =>
           Number(b.ativa) - Number(a.ativa) ||
@@ -111,19 +142,29 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
     this.regras = this.regras.filter((r) => r.id !== id);
   }
 
-  async listarMovimentoIdsParaRegras(workspaceId: string) {
+  async listarMovimentoIdsParaRegras(workspaceIds: string[]) {
+    const ids = new Set(workspaceIds);
     return [...this.movimentos.values()]
-      .filter((m) => m.workspaceId === workspaceId && m.classificadoPor !== "usuario")
+      .filter((m) => ids.has(m.workspaceId) && m.classificadoPor !== "usuario")
       .map((m) => m.id);
   }
 
+  async listarWorkspaceIdsDoUsuario(usuarioId: string) {
+    return this.workspacesPorUsuario.get(usuarioId) ?? [WORKSPACE];
+  }
+
   async listarCategoriasAtivas(workspaceId: string) {
-    void workspaceId;
-    return [...this.categorias.entries()].map(([id, nome]) => ({
-      id,
-      nome,
-      tipo: "ambos",
-    }));
+    return [...this.categorias.entries()]
+      .filter(([, cat]) => cat.workspaceId === workspaceId)
+      .map(([id, cat]) => ({
+        id,
+        nome: cat.nome,
+        tipo: "ambos",
+      }));
+  }
+
+  cadastrarCategoria(id: string, nome: string, workspaceId = WORKSPACE) {
+    this.categorias.set(id, { nome, workspaceId });
   }
 }
 
@@ -179,13 +220,14 @@ describe("ServicoConhecimento", () => {
     repositorio = new RepositorioEmMemoria();
     servico = new ServicoConhecimento(repositorio);
     usuarioId = randomUUID();
+    repositorio.workspacesPorUsuario.set(usuarioId, [WORKSPACE]);
   });
 
   it("edita o Conhecimento de uma movimentação vinda do banco", async () => {
     const movimento = criarMovimento();
     const categoriaNova = randomUUID();
     repositorio.movimentos.set(movimento.id, movimento);
-    repositorio.categorias.set(categoriaNova, "Transporte");
+    repositorio.cadastrarCategoria(categoriaNova, "Transporte");
 
     const atualizado = await servico.atualizar({
       movimentoId: movimento.id,
@@ -249,7 +291,7 @@ describe("ServicoConhecimento", () => {
 
   it("marca como classificação do usuário quando a categoria muda sem origem", async () => {
     const categoriaNova = randomUUID();
-    repositorio.categorias.set(categoriaNova, "Transporte");
+    repositorio.cadastrarCategoria(categoriaNova, "Transporte");
     const movimento = criarMovimento({ classificadoPor: "ia" });
     repositorio.movimentos.set(movimento.id, movimento);
 
@@ -356,8 +398,8 @@ describe("ServicoConhecimento", () => {
     const categoriaRestaurante = randomUUID();
 
     beforeEach(() => {
-      repositorio.categorias.set(categoriaNaoClassificado, "Não classificado");
-      repositorio.categorias.set(categoriaRestaurante, "Restaurantes");
+      repositorio.cadastrarCategoria(categoriaNaoClassificado, "Não classificado");
+      repositorio.cadastrarCategoria(categoriaRestaurante, "Restaurantes");
     });
 
     /** Critério de pronto da F3: iFood classifica sem chamar modelo. */
@@ -380,6 +422,67 @@ describe("ServicoConhecimento", () => {
       expect(resultado.movimento.classificadoPor).toBe("regra");
       expect(resultado.movimento.regraId).toBe(resultado.regraId);
       expect(resultado.movimento.classificadoEm).toBeInstanceOf(Date);
+    });
+
+    it("aplica regra de outro workspace remapeando a categoria pelo nome", async () => {
+      const workspaceB = "00000000-0000-4000-8000-000000000099";
+      const catNaoB = randomUUID();
+      const catRestB = randomUUID();
+      repositorio.cadastrarCategoria(catNaoB, "Não classificado", workspaceB);
+      repositorio.cadastrarCategoria(catRestB, "Restaurantes", workspaceB);
+      repositorio.workspacesPorUsuario.set(usuarioId, [WORKSPACE, workspaceB]);
+
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
+
+      const movimentoB = criarMovimento({
+        usuarioId,
+        workspaceId: workspaceB,
+        descricaoFonte: "IFOOD *LOOP",
+        descricao: "IFOOD *LOOP",
+        categoriaId: catNaoB,
+        classificadoPor: "ia",
+      });
+      repositorio.movimentos.set(movimentoB.id, movimentoB);
+
+      const resultado = await servico.aplicar_regras(movimentoB.id);
+
+      expect(resultado.aplicada).toBe(true);
+      if (!resultado.aplicada) return;
+      expect(resultado.movimento.categoriaId).toBe(catRestB);
+      expect(resultado.movimento.classificadoPor).toBe("regra");
+    });
+
+    it("reaplica existentes em todos os workspaces do usuário", async () => {
+      const workspaceB = "00000000-0000-4000-8000-000000000098";
+      const catNaoB = randomUUID();
+      const catRestB = randomUUID();
+      repositorio.cadastrarCategoria(catNaoB, "Não classificado", workspaceB);
+      repositorio.cadastrarCategoria(catRestB, "Restaurantes", workspaceB);
+      repositorio.workspacesPorUsuario.set(usuarioId, [WORKSPACE, workspaceB]);
+
+      await servico.criar_regra(entrada_regra_contem(WORKSPACE, "UBER", categoriaRestaurante));
+
+      const movA = criarMovimento({
+        usuarioId,
+        descricaoFonte: "UBER TRIP",
+        categoriaId: categoriaNaoClassificado,
+        classificadoPor: "ia",
+      });
+      const movB = criarMovimento({
+        usuarioId,
+        workspaceId: workspaceB,
+        descricaoFonte: "UBER TRIP",
+        categoriaId: catNaoB,
+        classificadoPor: "ia",
+      });
+      repositorio.movimentos.set(movA.id, movA);
+      repositorio.movimentos.set(movB.id, movB);
+
+      const { aplicadas } = await servico.aplicar_regras_existentes([WORKSPACE, workspaceB]);
+
+      expect(aplicadas).toBe(2);
+      expect(repositorio.movimentos.get(movA.id)?.categoriaId).toBe(categoriaRestaurante);
+      expect(repositorio.movimentos.get(movB.id)?.categoriaId).toBe(catRestB);
     });
 
     it("não sobrescreve classificação feita à mão", async () => {
@@ -438,8 +541,8 @@ describe("ServicoConhecimento", () => {
     it("prefere o trecho mais específico quando duas regras casam", async () => {
       const categoriaGenerica = randomUUID();
       const categoriaEspecifica = randomUUID();
-      repositorio.categorias.set(categoriaGenerica, "Delivery");
-      repositorio.categorias.set(categoriaEspecifica, "Loop");
+      repositorio.cadastrarCategoria(categoriaGenerica, "Delivery");
+      repositorio.cadastrarCategoria(categoriaEspecifica, "Loop");
 
       const movimento = criarMovimento({
         descricaoFonte: "IFOOD *LOOP RESTAURANTE",
@@ -483,8 +586,8 @@ describe("aplicar_ia e classificar", () => {
   beforeEach(() => {
     repositorio = new RepositorioEmMemoria();
     servico = new ServicoConhecimento(repositorio);
-    repositorio.categorias.set(categoriaNaoClassificado, "Não classificado");
-    repositorio.categorias.set(categoriaCombustivel, "Combustível");
+    repositorio.cadastrarCategoria(categoriaNaoClassificado, "Não classificado");
+    repositorio.cadastrarCategoria(categoriaCombustivel, "Combustível");
   });
 
   it("classifica pela IA com confianca_ia quando o sugeridor devolve categoria", async () => {
@@ -556,7 +659,7 @@ describe("aplicar_ia e classificar", () => {
     });
     repositorio.movimentos.set(movimento.id, movimento);
     const categoriaRestaurante = randomUUID();
-    repositorio.categorias.set(categoriaRestaurante, "Restaurantes");
+    repositorio.cadastrarCategoria(categoriaRestaurante, "Restaurantes");
     await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
     let chamado = 0;
 
@@ -652,7 +755,7 @@ describe("criar_regra_a_partir_de_correcao", () => {
 
   it("cria regra com origem aprendizado_conversa a partir do IFOOD classificado", async () => {
     const categoriaId = randomUUID();
-    repositorio.categorias.set(categoriaId, "Restaurantes");
+    repositorio.cadastrarCategoria(categoriaId, "Restaurantes");
     const movimento = criarMovimento({
       descricaoFonte: "IFOOD *LOOP RESTAURANTE",
       descricao: "Almoço",
@@ -677,7 +780,7 @@ describe("criar_regra_a_partir_de_correcao", () => {
 
   it("é idempotente quando a regra já existe", async () => {
     const categoriaId = randomUUID();
-    repositorio.categorias.set(categoriaId, "Restaurantes");
+    repositorio.cadastrarCategoria(categoriaId, "Restaurantes");
     const movimento = criarMovimento({
       descricaoFonte: "IFOOD *LOOP",
       categoriaId,
@@ -696,7 +799,7 @@ describe("criar_regra_a_partir_de_correcao", () => {
 
   it("não oferece proposta quando a regra já existe", async () => {
     const categoriaId = randomUUID();
-    repositorio.categorias.set(categoriaId, "Restaurantes");
+    repositorio.cadastrarCategoria(categoriaId, "Restaurantes");
     const movimento = criarMovimento({
       descricaoFonte: "IFOOD *LOOP",
       categoriaId,

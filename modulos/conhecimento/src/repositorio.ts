@@ -23,18 +23,29 @@ export type CamposAtualizarRegra = Partial<{
 export interface RepositorioConhecimento {
   obterMovimento(id: string): Promise<Movimento | undefined>;
   obterCategoria(id: string): Promise<{ id: string; nome: string } | undefined>;
-  obterPessoa(id: string): Promise<{ id: string } | undefined>;
+  obterPessoa(id: string): Promise<{ id: string; nome: string } | undefined>;
+  /** Resolve categoria pelo nome no workspace do movimento (regras cross-workspace). */
+  buscarCategoriaPorNome(
+    workspaceId: string,
+    nome: string,
+  ): Promise<{ id: string; nome: string } | undefined>;
+  buscarPessoaPorNome(
+    workspaceId: string,
+    nome: string,
+  ): Promise<{ id: string; nome: string } | undefined>;
   atualizarConhecimento(operacao: OperacaoConhecimento): Promise<Movimento>;
-  /** Regras ativas do workspace, da mais específica para a mais antiga. */
-  listarRegrasAtivas(workspaceId: string): Promise<Regra[]>;
-  /** Todas as regras do workspace (ativas e inativas), ativas primeiro. */
-  listarRegras(workspaceId: string): Promise<Regra[]>;
+  /** Regras ativas nos workspaces do usuário, da mais específica para a mais antiga. */
+  listarRegrasAtivas(workspaceIds: string[]): Promise<Regra[]>;
+  /** Todas as regras dos workspaces (ativas e inativas), ativas primeiro. */
+  listarRegras(workspaceIds: string[]): Promise<Regra[]>;
   criarRegra(regra: NovaRegra): Promise<Regra>;
   obterRegra(id: string): Promise<Regra | undefined>;
   atualizarRegra(id: string, campos: CamposAtualizarRegra): Promise<Regra | undefined>;
   excluirRegra(id: string): Promise<void>;
-  /** IDs de movimentos do workspace elegíveis para reaplicação de regras. */
-  listarMovimentoIdsParaRegras(workspaceId: string): Promise<string[]>;
+  /** IDs de movimentos elegíveis para reaplicação de regras. */
+  listarMovimentoIdsParaRegras(workspaceIds: string[]): Promise<string[]>;
+  /** Workspaces em que o usuário é dono. */
+  listarWorkspaceIdsDoUsuario(usuarioId: string): Promise<string[]>;
   /** Categorias ativas do workspace — lista que o sugeridor de IA pode escolher. */
   listarCategoriasAtivas(
     workspaceId: string,

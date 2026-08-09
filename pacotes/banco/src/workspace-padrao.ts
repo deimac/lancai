@@ -71,12 +71,20 @@ async function membro_dono(banco: Banco, usuarioId: string, workspaceId: string)
   return Boolean(membro);
 }
 
-async function ids_workspaces_dono(banco: Banco, usuarioId: string): Promise<string[]> {
+/** Workspaces em que o usuário é dono — escopo das regras gerais do usuário. */
+export async function listar_ids_workspaces_dono(
+  banco: Banco,
+  usuarioId: string,
+): Promise<string[]> {
   const linhas = await banco
     .select({ id: workspaceMembro.workspaceId })
     .from(workspaceMembro)
     .where(and(eq(workspaceMembro.usuarioId, usuarioId), eq(workspaceMembro.papel, "dono")));
   return linhas.map((linha) => linha.id);
+}
+
+async function ids_workspaces_dono(banco: Banco, usuarioId: string): Promise<string[]> {
+  return listar_ids_workspaces_dono(banco, usuarioId);
 }
 
 export async function garantir_workspace_do_usuario(

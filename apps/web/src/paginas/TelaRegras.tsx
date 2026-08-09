@@ -148,7 +148,7 @@ export function TelaRegras() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Regras</h1>
           <p className="text-sm text-texto-suave">
-            Condições com E/OU e ações automáticas — sem chamar modelo quando casam
+            Regras gerais do usuário: valem em todos os workspaces quando casam
           </p>
         </div>
         <Botao onClick={abrir_nova}>

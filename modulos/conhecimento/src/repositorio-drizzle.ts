@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   auditoria as auditoriaTabela,
   categoria as categoriaTabela,
+  listar_ids_workspaces_dono,
   movimento as movimentoTabela,
   obter_banco,
   pessoa as pessoaTabela,
@@ -38,13 +39,39 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
     return linhas[0];
   }
 
-  async obterPessoa(id: string): Promise<{ id: string } | undefined> {
+  async obterPessoa(id: string): Promise<{ id: string; nome: string } | undefined> {
     const linhas = await this.banco
-      .select({ id: pessoaTabela.id })
+      .select({ id: pessoaTabela.id, nome: pessoaTabela.nome })
       .from(pessoaTabela)
       .where(eq(pessoaTabela.id, id))
       .limit(1);
     return linhas[0];
+  }
+
+  async buscarCategoriaPorNome(
+    workspaceId: string,
+    nome: string,
+  ): Promise<{ id: string; nome: string } | undefined> {
+    const alvo = nome.trim().toLocaleLowerCase("pt-BR");
+    const linhas = await this.banco
+      .select({ id: categoriaTabela.id, nome: categoriaTabela.nome })
+      .from(categoriaTabela)
+      .where(
+        and(eq(categoriaTabela.workspaceId, workspaceId), eq(categoriaTabela.ativo, true)),
+      );
+    return linhas.find((c) => c.nome.toLocaleLowerCase("pt-BR") === alvo);
+  }
+
+  async buscarPessoaPorNome(
+    workspaceId: string,
+    nome: string,
+  ): Promise<{ id: string; nome: string } | undefined> {
+    const alvo = nome.trim().toLocaleLowerCase("pt-BR");
+    const linhas = await this.banco
+      .select({ id: pessoaTabela.id, nome: pessoaTabela.nome })
+      .from(pessoaTabela)
+      .where(and(eq(pessoaTabela.workspaceId, workspaceId), eq(pessoaTabela.ativo, true)));
+    return linhas.find((p) => p.nome.toLocaleLowerCase("pt-BR") === alvo);
   }
 
   async atualizarConhecimento(operacao: OperacaoConhecimento): Promise<Movimento> {
@@ -66,20 +93,22 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
     });
   }
 
-  async listarRegrasAtivas(workspaceId: string): Promise<Regra[]> {
+  async listarRegrasAtivas(workspaceIds: string[]): Promise<Regra[]> {
+    if (workspaceIds.length === 0) return [];
     const linhas = await this.banco
       .select()
       .from(regraTabela)
-      .where(and(eq(regraTabela.workspaceId, workspaceId), eq(regraTabela.ativa, true)))
+      .where(and(inArray(regraTabela.workspaceId, workspaceIds), eq(regraTabela.ativa, true)))
       .orderBy(asc(regraTabela.dataCriacao));
     return ordenar_por_especificidade(linhas);
   }
 
-  async listarRegras(workspaceId: string): Promise<Regra[]> {
+  async listarRegras(workspaceIds: string[]): Promise<Regra[]> {
+    if (workspaceIds.length === 0) return [];
     const linhas = await this.banco
       .select()
       .from(regraTabela)
-      .where(eq(regraTabela.workspaceId, workspaceId))
+      .where(inArray(regraTabela.workspaceId, workspaceIds))
       .orderBy(desc(regraTabela.ativa), asc(regraTabela.dataCriacao));
     return ordenar_por_especificidade(linhas);
   }
@@ -112,19 +141,24 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
     await this.banco.delete(regraTabela).where(eq(regraTabela.id, id));
   }
 
-  async listarMovimentoIdsParaRegras(workspaceId: string): Promise<string[]> {
+  async listarMovimentoIdsParaRegras(workspaceIds: string[]): Promise<string[]> {
+    if (workspaceIds.length === 0) return [];
     const linhas = await this.banco
       .select({ id: movimentoTabela.id })
       .from(movimentoTabela)
       .where(
         and(
-          eq(movimentoTabela.workspaceId, workspaceId),
+          inArray(movimentoTabela.workspaceId, workspaceIds),
           ne(movimentoTabela.status, "cancelado"),
           sql`(${movimentoTabela.classificadoPor} IS DISTINCT FROM 'usuario')`,
         ),
       )
       .orderBy(asc(movimentoTabela.dataCriacao));
     return linhas.map((l) => l.id);
+  }
+
+  async listarWorkspaceIdsDoUsuario(usuarioId: string): Promise<string[]> {
+    return listar_ids_workspaces_dono(this.banco, usuarioId);
   }
 
   async listarCategoriasAtivas(

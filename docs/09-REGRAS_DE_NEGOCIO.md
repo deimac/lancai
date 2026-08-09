@@ -205,11 +205,11 @@ Estas regras entram com a arquitetura-alvo e governam a metade mutável da movim
 
 ### 9.1 Ordem de classificação
 
-1. Regra do workspace, se condições casarem — `ServicoConhecimento.aplicar_regras`. Avalia `condicoes` com lógica E/OU; aplica **todas** as ações da primeira regra que casa (categoria, beneficiário, tags/notas, ignorar, perfil legado). Sem prioridade numérica: especificidade da condição, depois `data_criacao` ASC.
+1. Regra do usuário (todos os workspaces em que é dono), se condições casarem — `ServicoConhecimento.aplicar_regras`. Avalia `condicoes` com lógica E/OU; aplica **todas** as ações da primeira regra que casa (categoria, beneficiário, tags/notas, ignorar, perfil legado). Categoria/pessoa são remapeadas pelo **nome** no workspace do movimento. Sem prioridade numérica: especificidade da condição, depois `data_criacao` ASC.
 2. IA, quando nenhuma regra casa — `ServicoConhecimento.aplicar_ia` via porta `SugeridorCategoria` (implementação `ClassificadorCategoria` em `modulos/ia`). Grava `classificado_por = ia` e `confianca_ia`. Só escolhe categoria da lista do workspace; não inventa. Fail-open: falha de LLM deixa “Não classificado”. Desligável com `CLASSIFICACAO_IA_HABILITADA=false`.
 3. Usuário, sempre que quiser corrigir.
 
-Após a ingestão de Open Finance e após criar movimento pelo chat **sem** categoria explícita do usuário, a API chama `classificar` (regra → IA) no composition root. Open Finance não importa Conhecimento nem IA. Checkbox “aplicar a existentes” reexecuta regras no histórico sem tocar em `classificado_por = usuario`.
+Após a ingestão de Open Finance e após criar movimento pelo chat **sem** categoria explícita do usuário, a API chama `classificar` (regra → IA) no composition root. Open Finance não importa Conhecimento nem IA. Checkbox “aplicar a existentes” reexecuta regras no histórico de **todos** os workspaces do usuário, sem tocar em `classificado_por = usuario`.
 
 ### 9.2 Precedência
 

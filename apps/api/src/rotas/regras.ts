@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { garantir_workspace_do_usuario, obter_banco } from "@lancai/banco";
+import {
+  garantir_workspace_do_usuario,
+  listar_ids_workspaces_dono,
+  obter_banco,
+} from "@lancai/banco";
 import {
   ErroConhecimentoInvalido,
   RepositorioConhecimentoDrizzle,
@@ -55,12 +59,18 @@ async function serializar_regra(regra: Regra) {
   };
 }
 
+async function workspaces_do_usuario(usuarioId: string): Promise<string[]> {
+  const banco = obter_banco();
+  const ids = await listar_ids_workspaces_dono(banco, usuarioId);
+  if (ids.length > 0) return ids;
+  return [await garantir_workspace_do_usuario(banco, usuarioId)];
+}
+
 export async function registrar_rotas_regras(app: FastifyInstance) {
   app.get("/", async (requisicao) => {
     const { usuarioId } = schemaListar.parse(requisicao.query);
-    const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
-    const regras = await conhecimento.listar_regras(workspaceId);
+    const workspaceIds = await workspaces_do_usuario(usuarioId);
+    const regras = await conhecimento.listar_regras(workspaceIds);
     return Promise.all(regras.map((regra) => serializar_regra(regra)));
   });
 
@@ -68,6 +78,7 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
     const dados = schemaCriarApi.parse(requisicao.body);
     const banco = obter_banco();
     const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const workspaceIds = await workspaces_do_usuario(dados.usuarioId);
 
     try {
       const criada = await conhecimento.criar_regra({
@@ -78,8 +89,10 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
         condicoes: dados.condicoes,
         acoes: dados.acoes,
         ativa: dados.ativa,
-        aplicarExistentes: dados.aplicarExistentes,
       });
+      if (dados.aplicarExistentes) {
+        await conhecimento.aplicar_regras_existentes(workspaceIds);
+      }
       return resposta.status(201).send(await serializar_regra(criada));
     } catch (erro) {
       if (erro instanceof ErroConhecimentoInvalido) {
@@ -92,18 +105,20 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
   app.patch("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const dados = schemaAtualizarApi.parse(requisicao.body);
-    const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const workspaceIds = await workspaces_do_usuario(dados.usuarioId);
     const repo = new RepositorioConhecimentoDrizzle();
     const existente = await repo.obterRegra(id);
 
-    if (!existente || existente.workspaceId !== workspaceId) {
+    if (!existente || !workspaceIds.includes(existente.workspaceId)) {
       return resposta.status(404).send({ erro: "Regra não encontrada." });
     }
 
     try {
-      const { usuarioId: _u, ...campos } = dados;
+      const { usuarioId: _u, aplicarExistentes, ...campos } = dados;
       const atualizada = await conhecimento.atualizar_regra(id, campos);
+      if (aplicarExistentes) {
+        await conhecimento.aplicar_regras_existentes(workspaceIds);
+      }
       return serializar_regra(atualizada);
     } catch (erro) {
       if (erro instanceof ErroConhecimentoInvalido) {
@@ -116,12 +131,11 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
   app.delete("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const { usuarioId } = schemaListar.parse(requisicao.query);
-    const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
+    const workspaceIds = await workspaces_do_usuario(usuarioId);
     const repo = new RepositorioConhecimentoDrizzle();
     const existente = await repo.obterRegra(id);
 
-    if (!existente || existente.workspaceId !== workspaceId) {
+    if (!existente || !workspaceIds.includes(existente.workspaceId)) {
       return resposta.status(404).send({ erro: "Regra não encontrada." });
     }
 

@@ -195,7 +195,7 @@ A consequência prática é boa: dizer "renomeia esse lançamento para Mercado" 
 `id`, `workspace_id`, `usuario_id`, `papel` (`dono`, `editor`, `leitor`), `data_criacao`, `data_atualizacao`, com unicidade em (`workspace_id`, `usuario_id`).
 
 ### `regra`
-Builder de condições e ações por workspace. Migrações `0013_regra` e `0023_regra_builder`.
+Builder de condições e ações. A linha ainda tem `workspace_id` (onde foi criada), mas o motor trata regras como **gerais do usuário**: matching e “aplicar a existentes” consideram todos os workspaces em que o usuário é dono. Migrações `0013_regra` e `0023_regra_builder`.
 
 `id`, `workspace_id`, `origem` (`manual` | `aprendizado_conversa`), `ativa`, `nome`, `logica_condicoes` (`e` | `ou`), `condicoes` (jsonb), `acoes` (jsonb), `data_criacao`, `data_atualizacao`.
 
