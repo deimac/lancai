@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { CreditCard, Link2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
 import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
@@ -26,6 +27,7 @@ function dia_valido(valor: string): number | null {
 
 export function TelaCartoes() {
   const { usuario } = useAutenticacao();
+  const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
   const [contas, setContas] = useState<ContaResumo[]>([]);
@@ -179,9 +181,13 @@ export function TelaCartoes() {
 
   async function excluir(cartao: CartaoResumo) {
     if (!usuario) return;
-    const ok = window.confirm(
-      `Excluir o cartão "${cartao.nome}"? O histórico permanece; ele some das listagens.`,
-    );
+    const ok = await confirmar({
+      titulo: "Excluir cartão?",
+      mensagem:
+        `Esta ação é irreversível. O cartão "${cartao.nome}" some das listagens, ` +
+        "mas o histórico de lançamentos vinculados é preservado.",
+      confirmarRotulo: "Excluir",
+    });
     if (!ok) return;
     setErro(null);
     try {

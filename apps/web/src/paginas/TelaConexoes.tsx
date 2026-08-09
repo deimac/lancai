@@ -7,6 +7,8 @@ import {
 } from "@lancai/open-finance/web";
 import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
+import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
@@ -90,6 +92,8 @@ function destino_associado(
 
 export function TelaConexoes() {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
+  const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const [fonte, setFonte] = useState<DescritorFonte | null>(null);
   const [conexoes, setConexoes] = useState<ConexaoDetalhada[]>([]);
@@ -100,7 +104,6 @@ export function TelaConexoes() {
   const [carregando, setCarregando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
   const widgetRef = useRef<WidgetAberto | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
@@ -182,19 +185,18 @@ export function TelaConexoes() {
     if (!usuario || !detalhe) return;
     setOcupado(true);
     setErro(null);
-    setOk(null);
     try {
       const resumo = await clienteApi.sincronizar_duble(detalhe.conexao.id, usuario.id);
       setDetalhe(await clienteApi.detalhar_conexao(detalhe.conexao.id, usuario.id));
       await carregar();
       contexto?.invalidar("conexoes", "extrato", "contas", "dashboard");
       if (resumo.criados === 0 && resumo.semDestino > 0) {
-        setErro("Lote chegou, mas nenhuma conta está associada — associe antes de sincronizar.");
+        toast.erro("Lote chegou, mas nenhuma conta está associada — associe antes de sincronizar.");
       } else {
-        setOk(texto_ultimo_lote(resumo) ?? "Lote sincronizado.");
+        toast.sucesso(texto_ultimo_lote(resumo) ?? "Lote sincronizado.");
       }
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível sincronizar o lote de mentira.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível sincronizar o lote de mentira.");
     } finally {
       setOcupado(false);
     }
@@ -204,15 +206,14 @@ export function TelaConexoes() {
     if (!usuario) return;
     setOcupado(true);
     setErro(null);
-    setOk(null);
     try {
       const atualizado = await clienteApi.atualizar_conexao(conexaoId, usuario.id);
       if (detalhe?.conexao.id === conexaoId) setDetalhe(atualizado);
       await carregar();
       contexto?.invalidar("conexoes");
-      setOk("Atualização pedida ao banco. O extrato chega em instantes pelo webhook.");
+      toast.sucesso("Atualização pedida ao banco. O extrato chega em instantes pelo webhook.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível pedir a atualização.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível pedir a atualização.");
     } finally {
       setOcupado(false);
     }
@@ -296,10 +297,14 @@ export function TelaConexoes() {
     const [tipo, id] = destino.split(":");
     if ((tipo !== "conta" && tipo !== "cartao") || !id) return;
 
-    const confirmado = window.confirm(
-      "Ao associar, esta conta passa a receber só o extrato do banco. " +
-        "Lançamento manual, correção e cancelamento ficam bloqueados em qualquer canal. Continuar?",
-    );
+    const confirmado = await confirmar({
+      titulo: "Associar conta ao banco?",
+      mensagem:
+        "Ao associar, esta conta passa a receber só o extrato do banco. " +
+        "Lançamento manual, correção e cancelamento ficam bloqueados em qualquer canal.",
+      confirmarRotulo: "Associar",
+      perigo: false,
+    });
     if (!confirmado) return;
 
     setOcupado(true);
@@ -325,9 +330,13 @@ export function TelaConexoes() {
   async function desassociar(contaExterna: ContaExternaRegistrada) {
     if (!usuario || !detalhe) return;
 
-    const confirmado = window.confirm(
-      "Desassociar devolve a conta ao uso manual, mas o que já veio do banco continua imutável. Continuar?",
-    );
+    const confirmado = await confirmar({
+      titulo: "Desassociar conta?",
+      mensagem:
+        "Desassociar devolve a conta ao uso manual, mas o que já veio do banco continua imutável.",
+      confirmarRotulo: "Desassociar",
+      perigo: false,
+    });
     if (!confirmado) return;
 
     setOcupado(true);
@@ -350,22 +359,24 @@ export function TelaConexoes() {
 
   async function desconectar(conexaoId: string) {
     if (!usuario) return;
-    const confirmado = window.confirm(
-      "Desconectar a instituição? Contas, cartões e histórico permanecem; a sincronização para.",
-    );
+    const confirmado = await confirmar({
+      titulo: "Desconectar instituição?",
+      mensagem:
+        "Contas, cartões e histórico permanecem; a sincronização com o banco é encerrada.",
+      confirmarRotulo: "Desconectar",
+    });
     if (!confirmado) return;
 
     setOcupado(true);
     setErro(null);
-    setOk(null);
     try {
       await clienteApi.desconectar_conexao(conexaoId, usuario.id);
       setDetalhe(null);
       await carregar();
       contexto?.invalidar("conexoes", "contas", "cartoes", "dashboard");
-      setOk("Instituição desconectada. O histórico financeiro foi preservado.");
+      toast.sucesso("Instituição desconectada. O histórico financeiro foi preservado.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível desconectar.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível desconectar.");
     } finally {
       setOcupado(false);
     }
@@ -413,11 +424,6 @@ export function TelaConexoes() {
       {erro && (
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
           {erro}
-        </div>
-      )}
-      {ok && (
-        <div className="rounded-lg border border-primaria/40 bg-primaria/10 px-3 py-2 text-sm text-texto">
-          {ok}
         </div>
       )}
 

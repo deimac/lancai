@@ -184,7 +184,7 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
           onChange={(evento) => setTextoAtual(evento.target.value)}
           placeholder={
             aguardandoSenhaCartao
-              ? "Digite a senha da sua conta LançAI..."
+              ? "Digite a senha da sua conta Lançai..."
               : "Conte o que aconteceu com o seu dinheiro..."
           }
           disabled={enviando}

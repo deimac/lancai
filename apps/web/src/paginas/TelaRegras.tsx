@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Plus, RefreshCw, Sparkles, Workflow } from "lucide-react";
 import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
@@ -23,6 +24,7 @@ const ROTULO_ORIGEM: Record<RegraResumo["origem"], string> = {
 
 export function TelaRegras() {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
   const contexto = useContextoLayout();
   const [regras, setRegras] = useState<RegraResumo[]>([]);
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
@@ -76,10 +78,11 @@ export function TelaRegras() {
       setTrecho("");
       setPerfil("");
       setMostrandoForm(false);
+      toast.sucesso("Regra criada.");
       await carregar();
       contexto?.invalidar("regras", "extrato");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível criar a regra.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível criar a regra.");
     } finally {
       setSalvando(false);
     }
@@ -95,8 +98,9 @@ export function TelaRegras() {
         ativa: !regra.ativa,
       });
       setRegras((atual) => atual.map((item) => (item.id === atualizada.id ? atualizada : item)));
+      toast.sucesso(atualizada.ativa ? "Regra ativada." : "Regra desativada.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível atualizar a regra.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível atualizar a regra.");
     }
   }
 

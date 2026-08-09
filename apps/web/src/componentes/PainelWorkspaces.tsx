@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Folder, Pencil, Plus, Trash2 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
+import { useToast } from "../contexto/ContextoToast";
 import { clienteApi, ErroApi, type WorkspaceResumo } from "../lib/api";
 import { classe_cor_workspace } from "../lib/cores-workspace";
 import { Botao } from "./ui/Botao";
@@ -14,6 +16,8 @@ type Props = {
 
 export function PainelWorkspaces({ aoVoltar, aoMudar }: Props) {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
+  const { confirmar } = useConfirmacao();
   const [workspaces, setWorkspaces] = useState<WorkspaceResumo[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -43,15 +47,21 @@ export function PainelWorkspaces({ aoVoltar, aoMudar }: Props) {
 
   async function excluir(item: WorkspaceResumo) {
     if (!usuario) return;
-    if (!window.confirm(`Excluir o workspace "${item.nome}"? Contas vão para o Principal.`)) {
-      return;
-    }
+    const ok = await confirmar({
+      titulo: "Excluir workspace?",
+      mensagem:
+        `Esta ação é irreversível. O workspace "${item.nome}" será removido e as contas ` +
+        "vinculadas voltam para o Principal.",
+      confirmarRotulo: "Excluir",
+    });
+    if (!ok) return;
     try {
       await clienteApi.excluir_workspace(item.id, usuario.id);
+      toast.sucesso("Workspace excluído.");
       await carregar();
       aoMudar();
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível excluir.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível excluir.");
     }
   }
 

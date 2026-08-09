@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Eye, EyeOff, Lock, X } from "lucide-react";
 import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useToast } from "../contexto/ContextoToast";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
 import { parsear_valor_mascara, valor_para_mascara } from "../lib/mascara-valor";
 import { Botao } from "./ui/Botao";
@@ -34,6 +35,24 @@ function formatar_numero_grupos(numero: string): string {
   return digitos.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
 }
 
+/** Máscara de validade do plástico: `MM/AA`. */
+function formatar_validade_digitacao(entrada: string): string {
+  let digitos = entrada.replace(/\D/g, "").slice(0, 4);
+  if (digitos.length >= 1) {
+    const d1 = Number(digitos[0]);
+    if (d1 > 1) digitos = `0${digitos}`;
+  }
+  digitos = digitos.slice(0, 4);
+  if (digitos.length >= 2) {
+    let mes = Number(digitos.slice(0, 2));
+    if (mes === 0) mes = 1;
+    if (mes > 12) mes = 12;
+    digitos = `${String(mes).padStart(2, "0")}${digitos.slice(2)}`;
+  }
+  if (digitos.length <= 2) return digitos;
+  return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+}
+
 export function ModalContaCartao({
   aberto,
   modo,
@@ -43,6 +62,7 @@ export function ModalContaCartao({
   aoSalvar,
 }: Props) {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
   const editando = modo === "editar";
   const tipoFixo: TipoCadastro | null = editando ? (eh_cartao(alvo) ? "cartao" : "conta") : null;
 
@@ -118,7 +138,7 @@ export function ModalContaCartao({
         senha: senha.trim(),
       });
       setNumero(formatar_numero_grupos(dados.numero));
-      setValidade(dados.validade);
+      setValidade(formatar_validade_digitacao(dados.validade));
       setCvv(dados.cvv);
       setPlasticoBloqueado(false);
       setPlasticoVisivel(false);
@@ -220,6 +240,15 @@ export function ModalContaCartao({
           });
         }
       }
+      toast.sucesso(
+        tipoEfetivo === "cartao"
+          ? editando
+            ? "Cartão atualizado."
+            : "Cartão cadastrado."
+          : editando
+            ? "Conta atualizada."
+            : "Conta cadastrada.",
+      );
       aoSalvar();
       aoFechar();
     } catch (e) {
@@ -388,10 +417,12 @@ export function ModalContaCartao({
                     <label className="flex flex-col gap-1 text-xs text-texto-suave">
                       Validade
                       <Campo
+                        inputMode="numeric"
                         autoComplete="cc-exp"
                         value={validadeExibida}
-                        onChange={(e) => setValidade(e.target.value)}
+                        onChange={(e) => setValidade(formatar_validade_digitacao(e.target.value))}
                         placeholder="MM/AA"
+                        maxLength={5}
                         disabled={plasticoBloqueado}
                         type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
                       />
@@ -454,7 +485,7 @@ export function ModalContaCartao({
               </button>
             </div>
             <p className="mb-3 text-xs text-texto-suave">
-              Digite a senha do LançAI para ver e editar número, validade e CVV.
+              Digite a senha do Lançai para ver e editar número, validade e CVV.
             </p>
             <Campo
               type="password"

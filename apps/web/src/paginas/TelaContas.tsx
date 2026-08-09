@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { clienteApi, ErroApi, type ContaResumo } from "../lib/api";
 import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
@@ -20,6 +21,7 @@ function para_numero(valor: string | undefined): number {
 
 export function TelaContas() {
   const { usuario } = useAutenticacao();
+  const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -131,9 +133,13 @@ export function TelaContas() {
 
   async function excluir(conta: ContaResumo) {
     if (!usuario) return;
-    const ok = window.confirm(
-      `Excluir a conta "${conta.nome}"? O histórico permanece; ela some das listagens.`,
-    );
+    const ok = await confirmar({
+      titulo: "Excluir conta?",
+      mensagem:
+        `Esta ação é irreversível. A conta "${conta.nome}" some das listagens, ` +
+        "mas o histórico de lançamentos vinculados é preservado.",
+      confirmarRotulo: "Excluir",
+    });
     if (!ok) return;
     setErro(null);
     try {

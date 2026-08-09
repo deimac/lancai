@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { MessageCircle, PanelRight, UserRound } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useToast } from "../contexto/ContextoToast";
 import { clienteApi, ErroApi } from "../lib/api";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
@@ -16,13 +17,13 @@ function normalizar_whatsapp(valor: string): string {
 
 export function TelaConfiguracoes() {
   const { usuario, definir_usuario, sair } = useAutenticacao();
+  const toast = useToast();
   const contexto = useContextoLayout();
   const [nome, setNome] = useState(usuario?.nome ?? "");
   const [whatsapp, setWhatsapp] = useState(usuario?.whatsappNumero ?? "");
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
   const [salvandoWhatsapp, setSalvandoWhatsapp] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   useEffect(() => {
     setNome(usuario?.nome ?? "");
@@ -40,13 +41,12 @@ export function TelaConfiguracoes() {
     if (!nome.trim()) return;
     setSalvandoPerfil(true);
     setErro(null);
-    setOk(null);
     try {
       const atualizado = await clienteApi.atualizar_usuario(usuarioId, { nome: nome.trim() });
       definir_usuario(atualizado);
-      setOk("Nome atualizado.");
+      toast.sucesso("Nome atualizado.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível salvar o perfil.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível salvar o perfil.");
     } finally {
       setSalvandoPerfil(false);
     }
@@ -61,16 +61,15 @@ export function TelaConfiguracoes() {
     }
     setSalvandoWhatsapp(true);
     setErro(null);
-    setOk(null);
     try {
       const atualizado = await clienteApi.atualizar_usuario(usuarioId, {
         whatsappNumero: digitos,
       });
       definir_usuario(atualizado);
       setWhatsapp(atualizado.whatsappNumero ?? digitos);
-      setOk("WhatsApp vinculado.");
+      toast.sucesso("WhatsApp vinculado.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível vincular o WhatsApp.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível vincular o WhatsApp.");
     } finally {
       setSalvandoWhatsapp(false);
     }
@@ -79,16 +78,15 @@ export function TelaConfiguracoes() {
   async function desvincular_whatsapp() {
     setSalvandoWhatsapp(true);
     setErro(null);
-    setOk(null);
     try {
       const atualizado = await clienteApi.atualizar_usuario(usuarioId, {
         whatsappNumero: null,
       });
       definir_usuario(atualizado);
       setWhatsapp("");
-      setOk("WhatsApp desvinculado.");
+      toast.sucesso("WhatsApp desvinculado.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível desvincular.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível desvincular.");
     } finally {
       setSalvandoWhatsapp(false);
     }
@@ -96,12 +94,11 @@ export function TelaConfiguracoes() {
 
   async function definir_posicao(posicao: PosicaoPainel) {
     setErro(null);
-    setOk(null);
     try {
       await contexto?.definirPosicaoPainel(posicao);
-      setOk("Posição do assistente salva na sua conta.");
+      toast.sucesso("Posição do assistente salva na sua conta.");
     } catch {
-      setErro("Não foi possível salvar a posição do assistente.");
+      toast.erro("Não foi possível salvar a posição do assistente.");
     }
   }
 
@@ -117,11 +114,6 @@ export function TelaConfiguracoes() {
       {erro && (
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
           {erro}
-        </div>
-      )}
-      {ok && (
-        <div className="rounded-lg border border-primaria/40 bg-primaria/10 px-3 py-2 text-sm text-texto">
-          {ok}
         </div>
       )}
 

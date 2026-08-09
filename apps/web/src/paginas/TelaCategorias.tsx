@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { motion } from "framer-motion";
 import { Plus, RefreshCw, Tags } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
@@ -27,6 +28,7 @@ function eh_nao_classificado(nome: string): boolean {
 
 export function TelaCategorias() {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
   const contexto = useContextoLayout();
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -87,10 +89,11 @@ export function TelaCategorias() {
       setNome("");
       setTipo("despesa");
       setMostrandoForm(false);
+      toast.sucesso("Categoria criada.");
       await carregar();
       contexto?.invalidar("categorias", "extrato", "regras");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível criar a categoria.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível criar a categoria.");
     } finally {
       setSalvando(false);
     }

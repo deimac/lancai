@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { MarcaLancai } from "../componentes/MarcaLancai";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -40,7 +41,7 @@ export function TelaLogin() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-fundo px-4">
       <Cartao className="w-full max-w-sm">
-        <h1 className="text-xl font-semibold text-texto">LançAI</h1>
+        <MarcaLancai link={false} />
         <p className="mt-1 text-sm text-texto-suave">Converse com a sua vida financeira.</p>
 
         <form onSubmit={enviar} className="mt-6 flex flex-col gap-3">

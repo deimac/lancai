@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { AlertTriangle, Building2, PenLine, RefreshCw } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
@@ -76,6 +77,7 @@ function filtro_da_query(valor: string | null): FiltroExtrato {
 
 export function TelaExtrato() {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
@@ -190,8 +192,9 @@ export function TelaExtrato() {
         ),
       );
       contexto?.invalidar("extrato", "dashboard");
+      toast.sucesso("Movimento classificado.");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível classificar.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível classificar.");
     } finally {
       setSalvandoId(null);
     }

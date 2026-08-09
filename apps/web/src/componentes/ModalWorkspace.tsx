@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
@@ -23,6 +24,7 @@ type Props = {
 
 export function ModalWorkspace({ aberto, workspace, aoFechar, aoSalvar }: Props) {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
   const editando = Boolean(workspace && !workspace.sintetico);
   const [nome, setNome] = useState("");
   const [cor, setCor] = useState<CorWorkspace>("violet");
@@ -106,6 +108,7 @@ export function ModalWorkspace({ aberto, workspace, aoFechar, aoSalvar }: Props)
         contaIds: [...contaIds],
         cartaoIds: [...cartaoIds],
       });
+      toast.sucesso(editando ? "Workspace atualizado." : "Workspace criado.");
       aoSalvar();
       aoFechar();
     } catch (e) {

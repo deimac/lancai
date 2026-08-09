@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
-  Home,
   List,
   LogOut,
   Settings,
@@ -17,6 +16,7 @@ import {
   type VersoesDados,
   versao_inicial,
 } from "../lib/invalidacao-dados";
+import { MarcaLancai } from "../componentes/MarcaLancai";
 import { Botao } from "../componentes/ui/Botao";
 import { unir_classes } from "../lib/unir-classes";
 import { PainelAssistente } from "./PainelAssistente";
@@ -30,12 +30,11 @@ import {
 } from "../lib/preferencias-painel";
 
 const LINKS = [
-  { para: "/", rotulo: "Início", icone: Home, fim: true },
-  { para: "/contas", rotulo: "Contas", icone: Wallet, fim: false },
-  { para: "/categorias", rotulo: "Categorias", icone: Tags, fim: false },
-  { para: "/regras", rotulo: "Regras", icone: Workflow, fim: false },
-  { para: "/extrato", rotulo: "Extrato", icone: List, fim: false },
-  { para: "/configuracoes", rotulo: "Configurações", icone: Settings, fim: false },
+  { para: "/contas", rotulo: "Contas", icone: Wallet },
+  { para: "/categorias", rotulo: "Categorias", icone: Tags },
+  { para: "/regras", rotulo: "Regras", icone: Workflow },
+  { para: "/extrato", rotulo: "Extrato", icone: List },
+  { para: "/configuracoes", rotulo: "Configurações", icone: Settings },
 ] as const;
 
 export type ContextoLayout = {
@@ -115,8 +114,8 @@ export function LayoutAutenticado() {
     <div className="flex h-screen bg-fundo text-texto">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-borda bg-superficie/60 md:flex">
         <div className="border-b border-borda px-4 py-5">
-          <p className="text-lg font-semibold tracking-tight text-texto">LançAI</p>
-          <p className="truncate text-xs text-texto-suave">{usuario.nome}</p>
+          <MarcaLancai />
+          <p className="mt-1 truncate text-xs text-texto-suave">{usuario.nome}</p>
         </div>
         <SeletorWorkspace
           aoMudar={() => {
@@ -129,7 +128,6 @@ export function LayoutAutenticado() {
             <NavLink
               key={link.para}
               to={link.para}
-              end={link.fim}
               className={({ isActive }) =>
                 unir_classes(
                   "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
@@ -161,13 +159,12 @@ export function LayoutAutenticado() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex flex-col gap-1 border-b border-borda px-1 py-2 md:hidden">
             <div className="flex items-center justify-between gap-2 px-2">
-              <p className="font-semibold">LançAI</p>
+              <MarcaLancai tamanho="sm" />
               <nav className="flex gap-1" aria-label="Principal">
                 {LINKS.map((link) => (
                   <NavLink
                     key={link.para}
                     to={link.para}
-                    end={link.fim}
                     aria-label={link.rotulo}
                     className={({ isActive }) =>
                       unir_classes(

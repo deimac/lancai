@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { CreditCard, FolderKanban, Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
 import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
+import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
   ErroApi,
@@ -47,6 +49,8 @@ function badge_origem(item: {
 
 export function TelaContasECartoes() {
   const { usuario } = useAutenticacao();
+  const toast = useToast();
+  const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const widgetRef = useRef<WidgetAberto | null>(null);
   const [fonte, setFonte] = useState<DescritorFonte | null>(null);
@@ -55,7 +59,6 @@ export function TelaContasECartoes() {
   const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [painelWs, setPainelWs] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
@@ -124,39 +127,54 @@ export function TelaContasECartoes() {
 
   async function excluir_conta(conta: ContaResumo) {
     if (!usuario) return;
-    if (!window.confirm(`Excluir a conta "${conta.nome}"? O histórico permanece.`)) return;
+    const ok = await confirmar({
+      titulo: "Excluir conta?",
+      mensagem:
+        `Esta ação é irreversível. A conta "${conta.nome}" some das listagens, ` +
+        "mas o histórico de lançamentos vinculados é preservado.",
+      confirmarRotulo: "Excluir",
+    });
+    if (!ok) return;
     try {
       await clienteApi.excluir_conta(conta.id, usuario.id);
+      toast.sucesso("Conta excluída.");
       await carregar();
       contexto?.invalidar("contas", "dashboard");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível excluir a conta.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível excluir a conta.");
     }
   }
 
   async function excluir_cartao(cartao: CartaoResumo) {
     if (!usuario) return;
-    if (!window.confirm(`Excluir o cartão "${cartao.nome}"? O histórico permanece.`)) return;
+    const ok = await confirmar({
+      titulo: "Excluir cartão?",
+      mensagem:
+        `Esta ação é irreversível. O cartão "${cartao.nome}" some das listagens, ` +
+        "mas o histórico de lançamentos vinculados é preservado.",
+      confirmarRotulo: "Excluir",
+    });
+    if (!ok) return;
     try {
       await clienteApi.excluir_cartao(cartao.id, usuario.id);
+      toast.sucesso("Cartão excluído.");
       await carregar();
       contexto?.invalidar("cartoes", "dashboard");
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível excluir o cartão.");
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível excluir o cartão.");
     }
   }
 
   function ao_conectar() {
     if (!usuario || !fonte) return;
-    setOk(null);
     void conectar_banco({
       usuarioId: usuario.id,
       fonte,
       widgetRef,
       aoOcupado: setOcupado,
-      aoErro: setErro,
+      aoErro: (mensagem) => toast.erro(mensagem),
       aoSucesso: async () => {
-        setOk("Banco conectado. Contas e cartões foram criados neste workspace.");
+        toast.sucesso("Banco conectado. Contas e cartões foram criados neste workspace.");
         await carregar();
         contexto?.invalidar("tudo");
       },
@@ -214,11 +232,6 @@ export function TelaContasECartoes() {
         </Link>
       </div>
 
-      {ok && (
-        <div className="rounded-lg border border-primaria/40 bg-primaria/10 px-3 py-2 text-sm text-texto">
-          {ok}
-        </div>
-      )}
       {erro && (
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
           {erro}
