@@ -330,7 +330,7 @@ export const clienteApi = {
     dados: { usuarioId: string; contaIds: string[]; cartaoIds: string[] },
   ): Promise<WorkspaceResumo> {
     return requisitar<WorkspaceResumo>(`/workspaces/${workspaceId}/membros`, {
-      method: "PUT",
+      method: "POST",
       body: JSON.stringify(dados),
     });
   },

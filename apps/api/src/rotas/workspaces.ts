@@ -66,27 +66,12 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
     }
   });
 
-  app.patch("/:id", async (requisicao, resposta) => {
-    const { id } = requisicao.params as { id: string };
-    const dados = schemaAtualizarWorkspace.parse(requisicao.body);
-    const banco = obter_banco();
-    try {
-      return await atualizar_workspace_do_usuario(banco, dados.usuarioId, id, {
-        nome: dados.nome,
-        descricao: dados.descricao,
-        cor: dados.cor,
-      });
-    } catch (erro) {
-      if (erro instanceof ErroWorkspaceNaoEncontrado) {
-        return resposta.status(404).send({ erro: erro.message });
-      }
-      throw erro;
-    }
-  });
-
-  app.put("/:id/membros", async (requisicao, resposta) => {
-    const { id } = requisicao.params as { id: string };
-    const dados = schemaMembrosWorkspace.parse(requisicao.body);
+  async function tratar_membros(
+    id: string,
+    body: unknown,
+    resposta: import("fastify").FastifyReply,
+  ) {
+    const dados = schemaMembrosWorkspace.parse(body);
     const banco = obter_banco();
     try {
       return await definir_membros_workspace(banco, dados.usuarioId, id, {
@@ -102,6 +87,35 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
         erro instanceof ErroWorkspaceMembroInvalido
       ) {
         return resposta.status(400).send({ erro: erro.message });
+      }
+      throw erro;
+    }
+  }
+
+  // Rotas mais específicas antes de `/:id`
+  app.post("/:id/membros", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    return tratar_membros(id, requisicao.body, resposta);
+  });
+
+  app.put("/:id/membros", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    return tratar_membros(id, requisicao.body, resposta);
+  });
+
+  app.patch("/:id", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const dados = schemaAtualizarWorkspace.parse(requisicao.body);
+    const banco = obter_banco();
+    try {
+      return await atualizar_workspace_do_usuario(banco, dados.usuarioId, id, {
+        nome: dados.nome,
+        descricao: dados.descricao,
+        cor: dados.cor,
+      });
+    } catch (erro) {
+      if (erro instanceof ErroWorkspaceNaoEncontrado) {
+        return resposta.status(404).send({ erro: erro.message });
       }
       throw erro;
     }
