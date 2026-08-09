@@ -79,7 +79,7 @@ export async function garantir_workspace_do_usuario(
 
   const [criado] = await banco
     .insert(workspace)
-    .values({ nome, tipo: "pessoal", descricao: null })
+    .values({ nome, descricao: null })
     .returning({ id: workspace.id });
 
   if (!criado) {
@@ -168,7 +168,6 @@ export async function criar_workspace_do_usuario(
     .values({
       nome: entrada.nome.trim(),
       descricao: entrada.descricao?.trim() || null,
-      tipo: "pessoal",
     })
     .returning({ id: workspace.id, nome: workspace.nome, descricao: workspace.descricao });
 

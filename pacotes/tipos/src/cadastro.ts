@@ -91,8 +91,6 @@ export const schemaExcluirCartaoApi = z.object({
 });
 
 /** Legado — não usar em APIs novas; workspace não tem perfil PF/PJ. */
-export const tipoWorkspaceSchema = z.enum(["pessoal", "empresa"]);
-
 export const schemaCriarWorkspace = z.object({
   usuarioId: z.string().uuid(),
   nome: z.string().min(1),

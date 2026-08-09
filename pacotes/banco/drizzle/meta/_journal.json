@@ -134,6 +134,13 @@
       "when": 1786201100000,
       "tag": "0018_visao_e_descricao_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786201200000,
+      "tag": "0019_drop_tipo_workspace",
+      "breakpoints": true
     }
   ]
 }

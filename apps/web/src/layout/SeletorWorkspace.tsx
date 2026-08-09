@@ -182,12 +182,13 @@ export function SeletorWorkspace({ aoMudar }: Props) {
           {criando ? (
             <form onSubmit={(e) => void criar(e)} className="mt-2 flex flex-col gap-2 border-t border-borda pt-2">
               <Campo
-                placeholder="Nome (ex.: Viagens)"
+                placeholder="Nome do workspace"
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
                 required
                 autoFocus
               />
+              <p className="px-0.5 text-[11px] text-texto-suave">Só o nome — sem perfil pessoal/empresa.</p>
               <div className="flex gap-1">
                 <Botao type="button" variante="fantasma" className="flex-1" onClick={() => setCriando(false)}>
                   Cancelar

@@ -110,8 +110,6 @@ export const motivoAtencaoEnum = pgEnum("motivo_atencao", [
   "erro_no_provedor",
 ]);
 
-export const tipoWorkspaceEnum = pgEnum("tipo_workspace", ["pessoal", "empresa"]);
-
 export const papelWorkspaceEnum = pgEnum("papel_workspace", ["dono", "editor", "leitor"]);
 
 /** Preferência do painel do assistente no cockpit web. */

@@ -1,22 +1,16 @@
 import { pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { papelWorkspaceEnum, tipoWorkspaceEnum } from "./enums";
+import { papelWorkspaceEnum } from "./enums";
 import { usuario } from "./usuario";
 
 /**
- * Contexto financeiro isolado (um CPF, um CNPJ, uma família).
- * Existe desde a F1 apenas como escopo de dados: até a F6 cada usuário
- * tem exatamente um workspace, criado automaticamente. Ver ADR-013.
+ * Organizador de contas/cartões/conexões — só nome (+ descrição opcional).
+ * PF/PJ vive em conta/cartão/movimento, não no workspace. Ver ADR-013.
  */
 export const workspace = pgTable("workspace", {
   id: uuid("id").primaryKey().defaultRandom(),
   nome: text("nome").notNull(),
   /** Texto livre opcional — workspace é só organizador de contas. */
   descricao: text("descricao"),
-  /**
-   * Legado interno (enum pessoal|empresa). Não é produto: PF/PJ vive em conta/cartão.
-   * Novos inserts usam "pessoal" por default de compatibilidade.
-   */
-  tipo: tipoWorkspaceEnum("tipo").notNull(),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -56,7 +56,7 @@ try {
     const categoriaId = randomUUID();
 
     await tx`insert into usuario (id, email, nome) values (${usuarioId}, ${`trigger-${usuarioId}@teste.local`}, 'Verificação de trigger')`;
-    await tx`insert into workspace (id, nome, tipo) values (${workspaceId}, 'Verificação', 'pessoal')`;
+    await tx`insert into workspace (id, nome) values (${workspaceId}, 'Verificação')`;
     await tx`insert into workspace_membro (workspace_id, usuario_id, papel) values (${workspaceId}, ${usuarioId}, 'dono')`;
     await tx`insert into categoria (id, nome, tipo, usuario_id, workspace_id) values (${categoriaId}, 'Verificação', 'despesa', ${usuarioId}, ${workspaceId})`;
 
