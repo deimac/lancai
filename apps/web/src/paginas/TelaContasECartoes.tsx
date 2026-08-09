@@ -104,9 +104,9 @@ export function TelaContasECartoes() {
     [contas],
   );
 
-  function abrir_criar() {
+  function abrir_criar(tipo: TipoCadastro = "conta") {
     setModalModo("criar");
-    setModalTipo("conta");
+    setModalTipo(tipo);
     setModalAlvo(null);
     setModalAberto(true);
   }
@@ -219,9 +219,13 @@ export function TelaContasECartoes() {
           <Link2 size={14} />
           {ocupado ? "Conectando..." : "Conectar banco"}
         </Botao>
-        <Botao variante="fantasma" onClick={abrir_criar}>
+        <Botao variante="fantasma" onClick={() => abrir_criar("conta")}>
           <Plus size={14} />
           Adicionar conta
+        </Botao>
+        <Botao variante="fantasma" onClick={() => abrir_criar("cartao")}>
+          <Plus size={14} />
+          Adicionar cartão
         </Botao>
         <Botao variante="fantasma" onClick={() => setPainelWs(true)}>
           <FolderKanban size={14} />
@@ -320,10 +324,15 @@ export function TelaContasECartoes() {
       </section>
 
       <section id="cartoes" className="flex flex-col gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
-          <CreditCard size={18} className="text-primaria" />
-          Cartões
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
+            <CreditCard size={18} className="text-primaria" />
+            Cartões
+          </h2>
+          <Botao variante="fantasma" className="px-2" onClick={() => abrir_criar("cartao")} title="Adicionar cartão">
+            <Plus size={14} />
+          </Botao>
+        </div>
 
         {carregando && cartoes.length === 0 ? (
           <p className="text-sm text-texto-suave">Carregando...</p>

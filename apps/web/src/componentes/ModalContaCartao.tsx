@@ -276,7 +276,9 @@ export function ModalContaCartao({
               ? tipoEfetivo === "cartao"
                 ? "Editar cartão"
                 : "Editar conta"
-              : "Adicionar conta"}
+              : tipoEfetivo === "cartao"
+                ? "Adicionar cartão"
+                : "Adicionar conta"}
           </h2>
           <button
             type="button"
