@@ -6,7 +6,6 @@ import {
   openFinanceConexao as conexaoTabela,
   openFinanceContaExterna as contaExternaTabela,
   openFinanceEvento as eventoTabela,
-  workspace as workspaceTabela,
 } from "@lancai/banco";
 import type {
   ConexaoDetalhada,
@@ -141,18 +140,15 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
         criadoPor: conexaoTabela.criadoPor,
         idExterno: conexaoTabela.idExterno,
         status: conexaoTabela.status,
-        tipoWorkspace: workspaceTabela.tipo,
       })
       .from(conexaoTabela)
-      .innerJoin(workspaceTabela, eq(workspaceTabela.id, conexaoTabela.workspaceId))
       .where(and(eq(conexaoTabela.provedor, provedor), eq(conexaoTabela.idExterno, idExterno)))
       .limit(1);
 
     const linha = linhas[0];
     if (!linha) return undefined;
-
-    const { tipoWorkspace, ...conexao } = linha;
-    return { ...conexao, perfilPadrao: tipoWorkspace === "empresa" ? "pj" : "pf" };
+    /** Perfil PF/PJ vive na conta/cartão; default da ingestão é pf. */
+    return { ...linha, perfilPadrao: "pf" };
   }
 
   async obterConexaoPorId(id: string): Promise<ConexaoDetalhada | undefined> {
@@ -168,21 +164,20 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
         ultimoSyncEm: conexaoTabela.ultimoSyncEm,
         consentimentoExpiraEm: conexaoTabela.consentimentoExpiraEm,
         ultimoResumoIngestao: conexaoTabela.ultimoResumoIngestao,
-        tipoWorkspace: workspaceTabela.tipo,
       })
       .from(conexaoTabela)
-      .innerJoin(workspaceTabela, eq(workspaceTabela.id, conexaoTabela.workspaceId))
       .where(eq(conexaoTabela.id, id))
       .limit(1);
 
     const linha = linhas[0];
     if (!linha) return undefined;
-
-    const { tipoWorkspace, ...conexao } = linha;
-    return { ...conexao, perfilPadrao: tipoWorkspace === "empresa" ? "pj" : "pf" };
+    return { ...linha, perfilPadrao: "pf" };
   }
 
-  async listarConexoes(workspaceId: string): Promise<ConexaoDetalhada[]> {
+  async listarConexoes(workspaceIds: string | string[]): Promise<ConexaoDetalhada[]> {
+    const ids = Array.isArray(workspaceIds) ? workspaceIds : [workspaceIds];
+    if (ids.length === 0) return [];
+
     const linhas = await this.banco
       .select({
         id: conexaoTabela.id,
@@ -195,15 +190,13 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
         ultimoSyncEm: conexaoTabela.ultimoSyncEm,
         consentimentoExpiraEm: conexaoTabela.consentimentoExpiraEm,
         ultimoResumoIngestao: conexaoTabela.ultimoResumoIngestao,
-        tipoWorkspace: workspaceTabela.tipo,
       })
       .from(conexaoTabela)
-      .innerJoin(workspaceTabela, eq(workspaceTabela.id, conexaoTabela.workspaceId))
-      .where(eq(conexaoTabela.workspaceId, workspaceId));
+      .where(inArray(conexaoTabela.workspaceId, ids));
 
-    return linhas.map(({ tipoWorkspace, ...conexao }) => ({
+    return linhas.map((conexao) => ({
       ...conexao,
-      perfilPadrao: tipoWorkspace === "empresa" ? ("pj" as const) : ("pf" as const),
+      perfilPadrao: "pf" as const,
     }));
   }
 

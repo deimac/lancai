@@ -82,6 +82,7 @@ export function TelaExtrato() {
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
+  const [visaoGeral, setVisaoGeral] = useState(false);
   const [filtro, setFiltro] = useState<FiltroExtrato>(() =>
     filtro_da_query(searchParams.get("fila") ?? searchParams.get("filtro")),
   );
@@ -101,19 +102,27 @@ export function TelaExtrato() {
     setCarregando(true);
     setErro(null);
     try {
-      const [movimentosCarregados, contasCarregadas, cartoesCarregados, categoriasCarregadas] =
-        await Promise.all([
-          clienteApi.listar_movimentos(usuario.id),
-          clienteApi.listar_contas(usuario.id),
-          clienteApi.listar_cartoes(usuario.id),
-          clienteApi.listar_categorias(usuario.id),
-        ]);
+      const [
+        movimentosCarregados,
+        contasCarregadas,
+        cartoesCarregados,
+        categoriasCarregadas,
+        workspaces,
+      ] = await Promise.all([
+        clienteApi.listar_movimentos(usuario.id),
+        clienteApi.listar_contas(usuario.id),
+        clienteApi.listar_cartoes(usuario.id),
+        clienteApi.listar_categorias(usuario.id),
+        clienteApi.listar_workspaces(usuario.id).catch(() => []),
+      ]);
       setMovimentos(movimentosCarregados);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
       setCategorias(
         categoriasCarregadas.filter((c) => !eh_nao_classificado(c.nome)),
       );
+      const ativo = workspaces.find((w) => w.ativo);
+      setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar o extrato.");
     } finally {
@@ -200,7 +209,9 @@ export function TelaExtrato() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
           <p className="text-sm text-texto-suave">
-            Classifique e revise o que veio do banco ou do assistente
+            {visaoGeral
+              ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"
+              : "Classifique e revise o que veio do banco ou do assistente"}
           </p>
         </div>
         <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando}>

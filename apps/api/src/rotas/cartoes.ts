@@ -1,19 +1,23 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq } from "drizzle-orm";
-import { cartao, garantir_workspace_do_usuario, obter_banco } from "@lancai/banco";
+import { and, eq, inArray } from "drizzle-orm";
+import { cartao, mapear_nomes_workspaces, obter_banco } from "@lancai/banco";
 import {
   calcularMelhorDiaCompra,
   schemaCriarCartao,
   schemaExcluirCartaoApi,
   schemaPatchCartaoApi,
 } from "@lancai/tipos";
+import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
 import { mapear_origem_cartoes, type MetaOrigem } from "../servicos/origem-conta-cartao";
 
-/** Remove o payload cifrado das respostas públicas de listagem. */
-function cartao_publico<T extends { dadosPlasticosCifrados?: string | null; id: string; sincronizada: boolean }>(
-  linha: T,
-  meta?: MetaOrigem,
-) {
+function cartao_publico<
+  T extends {
+    dadosPlasticosCifrados?: string | null;
+    id: string;
+    sincronizada: boolean;
+    workspaceId: string;
+  },
+>(linha: T, meta: MetaOrigem | undefined, nomes: Map<string, string>) {
   const { dadosPlasticosCifrados: _omitido, ...publico } = linha;
   const origem = meta ?? {
     origem: linha.sincronizada ? ("open_finance" as const) : ("manual" as const),
@@ -21,14 +25,18 @@ function cartao_publico<T extends { dadosPlasticosCifrados?: string | null; id: 
     instituicao: null,
     idExterno: null,
   };
-  return { ...publico, ...origem };
+  return {
+    ...publico,
+    ...origem,
+    workspaceNome: nomes.get(linha.workspaceId) ?? null,
+  };
 }
 
 export async function registrar_rotas_cartao(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaCriarCartao.parse(requisicao.body);
     const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
     const [criado] = await banco
       .insert(cartao)
       .values({
@@ -45,13 +53,18 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
         dadosPlasticosCifrados: dados.dadosPlasticosCifrados,
       })
       .returning();
+    const nomes = await mapear_nomes_workspaces(banco, [workspaceId]);
     return resposta.status(201).send(
-      cartao_publico(criado!, {
-        origem: "manual",
-        conexaoId: null,
-        instituicao: null,
-        idExterno: null,
-      }),
+      cartao_publico(
+        criado!,
+        {
+          origem: "manual",
+          conexaoId: null,
+          instituicao: null,
+          idExterno: null,
+        },
+        nomes,
+      ),
     );
   });
 
@@ -60,21 +73,27 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const banco = obter_banco();
     if (!usuarioId) {
       const linhas = await banco.select().from(cartao).where(eq(cartao.ativo, true));
-      return linhas.map((linha) => cartao_publico(linha));
+      return linhas.map((linha) => cartao_publico(linha, undefined, new Map()));
     }
-    const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
+    const escopo = await obter_escopo_leitura(usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
+
     const linhas = await banco
       .select()
       .from(cartao)
       .where(
         and(
           eq(cartao.usuarioId, usuarioId),
-          eq(cartao.workspaceId, workspaceId),
+          inArray(cartao.workspaceId, escopo.workspaceIds),
           eq(cartao.ativo, true),
         ),
       );
     const origem = await mapear_origem_cartoes(linhas.map((item) => item.id));
-    return linhas.map((linha) => cartao_publico(linha, origem.get(linha.id)));
+    const nomes = await mapear_nomes_workspaces(
+      banco,
+      linhas.map((item) => item.workspaceId),
+    );
+    return linhas.map((linha) => cartao_publico(linha, origem.get(linha.id), nomes));
   });
 
   app.get("/:id", async (requisicao, resposta) => {
@@ -85,14 +104,15 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       return resposta.status(404).send({ erro: "Cartão não encontrado." });
     }
     const origem = await mapear_origem_cartoes([encontrado.id]);
-    return cartao_publico(encontrado, origem.get(encontrado.id));
+    const nomes = await mapear_nomes_workspaces(banco, [encontrado.workspaceId]);
+    return cartao_publico(encontrado, origem.get(encontrado.id), nomes);
   });
 
   app.patch("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const dados = schemaPatchCartaoApi.parse(requisicao.body);
     const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
@@ -101,7 +121,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
         and(
           eq(cartao.id, id),
           eq(cartao.usuarioId, dados.usuarioId),
-          eq(cartao.workspaceId, workspaceId),
+          inArray(cartao.workspaceId, escopo.workspaceIds),
           eq(cartao.ativo, true),
         ),
       )
@@ -144,14 +164,16 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       .where(eq(cartao.id, id))
       .returning();
 
-    return cartao_publico(atualizado!);
+    const nomes = await mapear_nomes_workspaces(banco, [atualizado!.workspaceId]);
+    const origem = await mapear_origem_cartoes([atualizado!.id]);
+    return cartao_publico(atualizado!, origem.get(atualizado!.id), nomes);
   });
 
   app.delete("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const dados = schemaExcluirCartaoApi.parse(requisicao.body);
     const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
@@ -160,7 +182,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
         and(
           eq(cartao.id, id),
           eq(cartao.usuarioId, dados.usuarioId),
-          eq(cartao.workspaceId, workspaceId),
+          inArray(cartao.workspaceId, escopo.workspaceIds),
           eq(cartao.ativo, true),
         ),
       )
@@ -176,6 +198,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       .where(eq(cartao.id, id))
       .returning();
 
-    return cartao_publico(removido!);
+    const nomes = await mapear_nomes_workspaces(banco, [removido!.workspaceId]);
+    return cartao_publico(removido!, undefined, nomes);
   });
 }

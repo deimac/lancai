@@ -26,6 +26,7 @@ import {
   ErroConhecimentoInvalido,
   ErroMovimentoNaoEncontrado,
 } from "@lancai/conhecimento";
+import { ErroVisaoAgregadaSomenteLeitura } from "@lancai/banco";
 
 function registrar_falha_ia(provedores: unknown) {
   const linha = `${new Date().toISOString()} ${JSON.stringify(provedores)}\n`;
@@ -49,6 +50,10 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     erro instanceof ErroMovimentoNaoEncontrado
   ) {
     return resposta.status(404).send({ erro: erro.message });
+  }
+
+  if (erro instanceof ErroVisaoAgregadaSomenteLeitura) {
+    return resposta.status(400).send({ erro: erro.message });
   }
 
   if (

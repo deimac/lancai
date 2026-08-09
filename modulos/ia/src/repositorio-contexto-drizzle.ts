@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, ne, sql } from "drizzle-orm";
 import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
@@ -7,6 +7,7 @@ import {
   movimento as movimentoTabela,
   obter_banco,
   pessoa as pessoaTabela,
+  resolver_escopo_leitura,
 } from "@lancai/banco";
 import type { Cartao, Categoria, Conta, Movimento, Pessoa } from "@lancai/banco";
 import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
@@ -25,70 +26,75 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async listarContas(usuarioId: string): Promise<Conta[]> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(contaTabela)
       .where(
         and(
           eq(contaTabela.usuarioId, usuarioId),
-          eq(contaTabela.workspaceId, workspaceId),
+          inArray(contaTabela.workspaceId, escopo.workspaceIds),
           eq(contaTabela.ativo, true),
         ),
       );
   }
 
   async listarCartoes(usuarioId: string): Promise<Cartao[]> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(cartaoTabela)
       .where(
         and(
           eq(cartaoTabela.usuarioId, usuarioId),
-          eq(cartaoTabela.workspaceId, workspaceId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
           eq(cartaoTabela.ativo, true),
         ),
       );
   }
 
   async listarCategorias(usuarioId: string): Promise<Categoria[]> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(categoriaTabela)
       .where(
         and(
           eq(categoriaTabela.usuarioId, usuarioId),
-          eq(categoriaTabela.workspaceId, workspaceId),
+          inArray(categoriaTabela.workspaceId, escopo.workspaceIds),
           eq(categoriaTabela.ativo, true),
         ),
       );
   }
 
   async listarPessoas(usuarioId: string): Promise<Pessoa[]> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(pessoaTabela)
       .where(
         and(
           eq(pessoaTabela.usuarioId, usuarioId),
-          eq(pessoaTabela.workspaceId, workspaceId),
+          inArray(pessoaTabela.workspaceId, escopo.workspaceIds),
           eq(pessoaTabela.ativo, true),
         ),
       );
   }
 
   async buscarContaPorNome(usuarioId: string, nome: string): Promise<Conta | undefined> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(contaTabela)
       .where(
         and(
           eq(contaTabela.usuarioId, usuarioId),
-          eq(contaTabela.workspaceId, workspaceId),
+          inArray(contaTabela.workspaceId, escopo.workspaceIds),
           eq(contaTabela.ativo, true),
           ilike(contaTabela.nome, `%${nome}%`),
         ),
@@ -98,14 +104,15 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async buscarCartaoPorNome(usuarioId: string, nome: string): Promise<Cartao | undefined> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(cartaoTabela)
       .where(
         and(
           eq(cartaoTabela.usuarioId, usuarioId),
-          eq(cartaoTabela.workspaceId, workspaceId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
           eq(cartaoTabela.ativo, true),
           ilike(cartaoTabela.nome, `%${nome}%`),
         ),
@@ -115,14 +122,15 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async buscarCategoriaPorNome(usuarioId: string, nome: string): Promise<Categoria | undefined> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(categoriaTabela)
       .where(
         and(
           eq(categoriaTabela.usuarioId, usuarioId),
-          eq(categoriaTabela.workspaceId, workspaceId),
+          inArray(categoriaTabela.workspaceId, escopo.workspaceIds),
           ilike(categoriaTabela.nome, nome),
         ),
       )
@@ -131,14 +139,15 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async buscarPessoaPorNome(usuarioId: string, nome: string): Promise<Pessoa | undefined> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(pessoaTabela)
       .where(
         and(
           eq(pessoaTabela.usuarioId, usuarioId),
-          eq(pessoaTabela.workspaceId, workspaceId),
+          inArray(pessoaTabela.workspaceId, escopo.workspaceIds),
           ilike(pessoaTabela.nome, nome),
         ),
       )
@@ -209,7 +218,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async atualizarConta(usuarioId: string, contaId: string, dados: EntradaAtualizarConta): Promise<Conta> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
     const valores: Partial<typeof contaTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.saldoAtual != null) valores.saldoAtual = String(dados.saldoAtual);
@@ -223,7 +232,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
         and(
           eq(contaTabela.id, contaId),
           eq(contaTabela.usuarioId, usuarioId),
-          eq(contaTabela.workspaceId, workspaceId),
+          inArray(contaTabela.workspaceId, escopo.workspaceIds),
         ),
       )
       .returning();
@@ -233,7 +242,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async atualizarCartao(usuarioId: string, cartaoId: string, dados: EntradaAtualizarCartao): Promise<Cartao> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
     const valores: Partial<typeof cartaoTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.limite != null) valores.limite = String(dados.limite);
@@ -256,7 +265,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
         and(
           eq(cartaoTabela.id, cartaoId),
           eq(cartaoTabela.usuarioId, usuarioId),
-          eq(cartaoTabela.workspaceId, workspaceId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
         ),
       )
       .returning();
@@ -269,7 +278,8 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     usuarioId: string,
     referencia: ReferenciaMovimentoParaCorrecao,
   ): Promise<Movimento[]> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     if (referencia.codigo) {
       const codigo = normalizar_codigo_busca(referencia.codigo);
       if (codigo.length >= 6) {
@@ -279,7 +289,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
           .where(
             and(
               eq(movimentoTabela.usuarioId, usuarioId),
-              eq(movimentoTabela.workspaceId, workspaceId),
+              inArray(movimentoTabela.workspaceId, escopo.workspaceIds),
               ne(movimentoTabela.status, "cancelado"),
               sql`replace(${movimentoTabela.id}::text, '-', '') like ${`${codigo}%`}`,
             ),
@@ -292,7 +302,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
 
     const condicoes = [
       eq(movimentoTabela.usuarioId, usuarioId),
-      eq(movimentoTabela.workspaceId, workspaceId),
+      inArray(movimentoTabela.workspaceId, escopo.workspaceIds),
       ne(movimentoTabela.status, "cancelado"),
     ];
     if (referencia.dataMovimento) {
@@ -324,10 +334,11 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     usuarioId: string,
     criterio: CriterioMovimentoSimilar,
   ): Promise<Movimento | undefined> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const condicoes = [
       eq(movimentoTabela.usuarioId, usuarioId),
-      eq(movimentoTabela.workspaceId, workspaceId),
+      inArray(movimentoTabela.workspaceId, escopo.workspaceIds),
       ne(movimentoTabela.status, "cancelado"),
       eq(movimentoTabela.dataMovimento, criterio.dataMovimento),
       eq(movimentoTabela.valor, paraColuna(criterio.valor)),

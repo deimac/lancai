@@ -144,8 +144,9 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
     return this.conexoes.get(id);
   }
 
-  async listarConexoes(workspaceId: string): Promise<ConexaoDetalhada[]> {
-    return [...this.conexoes.values()].filter((conexao) => conexao.workspaceId === workspaceId);
+  async listarConexoes(workspaceIds: string | string[]): Promise<ConexaoDetalhada[]> {
+    const ids = new Set(Array.isArray(workspaceIds) ? workspaceIds : [workspaceIds]);
+    return [...this.conexoes.values()].filter((conexao) => ids.has(conexao.workspaceId));
   }
 
   async registrarConexao(conexao: {

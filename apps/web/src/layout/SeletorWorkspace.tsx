@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Building2, ChevronsUpDown, Plus, User } from "lucide-react";
+import { ChevronsUpDown, Folder, Layers, Plus } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
-import { clienteApi, ErroApi, type TipoWorkspace, type WorkspaceResumo } from "../lib/api";
+import { clienteApi, ErroApi, type WorkspaceResumo } from "../lib/api";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
 import { unir_classes } from "../lib/unir-classes";
@@ -10,6 +10,13 @@ type Props = {
   aoMudar: () => void;
 };
 
+function IconeWorkspace({ item }: { item: WorkspaceResumo }) {
+  if (item.sintetico || item.id === "geral") {
+    return <Layers size={14} className="shrink-0 text-primaria" aria-hidden />;
+  }
+  return <Folder size={14} className="shrink-0 text-primaria" aria-hidden />;
+}
+
 export function SeletorWorkspace({ aoMudar }: Props) {
   const { usuario } = useAutenticacao();
   const [workspaces, setWorkspaces] = useState<WorkspaceResumo[]>([]);
@@ -17,7 +24,7 @@ export function SeletorWorkspace({ aoMudar }: Props) {
   const [aberto, setAberto] = useState(false);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
-  const [tipo, setTipo] = useState<TipoWorkspace>("empresa");
+  const [descricao, setDescricao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -37,7 +44,7 @@ export function SeletorWorkspace({ aoMudar }: Props) {
         setErro(
           e instanceof ErroApi
             ? e.message
-            : "Não foi possível carregar os workspaces. Confira se a API está atualizada e a migration 0017 aplicada.",
+            : "Não foi possível carregar os workspaces. Confira se a API está atualizada e a migration 0018 aplicada.",
         );
       }
     } finally {
@@ -79,10 +86,10 @@ export function SeletorWorkspace({ aoMudar }: Props) {
       await clienteApi.criar_workspace({
         usuarioId: usuario.id,
         nome: nome.trim(),
-        tipo,
+        descricao: descricao.trim() || undefined,
       });
       setNome("");
-      setTipo("empresa");
+      setDescricao("");
       setCriando(false);
       await carregar();
       setAberto(false);
@@ -130,37 +137,46 @@ export function SeletorWorkspace({ aoMudar }: Props) {
         disabled={ocupado}
         onClick={() => setAberto((v) => !v)}
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-borda bg-superficie px-3 py-2 text-left text-sm transition hover:border-primaria/50"
-        title="Trocar workspace"
+        title={ativo.descricao ?? "Trocar workspace"}
       >
         <span className="flex min-w-0 items-center gap-2">
-          {ativo.tipo === "empresa" ? (
-            <Building2 size={14} className="shrink-0 text-primaria" aria-hidden />
-          ) : (
-            <User size={14} className="shrink-0 text-primaria" aria-hidden />
-          )}
-          <span className="truncate font-medium text-texto">{ativo.nome}</span>
+          <IconeWorkspace item={ativo} />
+          <span className="min-w-0">
+            <span className="block truncate font-medium text-texto">{ativo.nome}</span>
+            {ativo.descricao ? (
+              <span className="block truncate text-[11px] text-texto-suave">{ativo.descricao}</span>
+            ) : null}
+          </span>
         </span>
         <ChevronsUpDown size={14} className="shrink-0 text-texto-suave" aria-hidden />
       </button>
 
       {aberto && (
         <div className="absolute left-3 right-3 z-30 mt-1 rounded-xl border border-borda bg-superficie p-2 shadow-lg">
-          <ul className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+          <ul className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
             {workspaces.map((item) => (
               <li key={item.id}>
                 <button
                   type="button"
                   disabled={ocupado}
                   onClick={() => void ativar(item.id)}
+                  title={item.descricao ?? undefined}
                   className={unir_classes(
-                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
+                    "flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
                     item.ativo
                       ? "bg-primaria/15 text-primaria"
                       : "text-texto-suave hover:bg-superficie-alta hover:text-texto",
                   )}
                 >
-                  {item.tipo === "empresa" ? <Building2 size={14} /> : <User size={14} />}
-                  <span className="truncate">{item.nome}</span>
+                  <span className="mt-0.5">
+                    <IconeWorkspace item={item} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate">{item.nome}</span>
+                    {item.descricao ? (
+                      <span className="block truncate text-[11px] opacity-80">{item.descricao}</span>
+                    ) : null}
+                  </span>
                 </button>
               </li>
             ))}
@@ -169,20 +185,19 @@ export function SeletorWorkspace({ aoMudar }: Props) {
           {criando ? (
             <form onSubmit={(e) => void criar(e)} className="mt-2 flex flex-col gap-2 border-t border-borda pt-2">
               <Campo
-                placeholder="Nome (ex.: Empresa)"
+                placeholder="Nome (ex.: Viagens)"
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
                 required
                 autoFocus
               />
-              <select
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as TipoWorkspace)}
-                className="rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm text-texto"
-              >
-                <option value="pessoal">Pessoal</option>
-                <option value="empresa">Empresa</option>
-              </select>
+              <textarea
+                placeholder="Descrição (opcional)"
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                rows={2}
+                className="resize-none rounded-lg border border-borda bg-fundo px-2 py-1.5 text-sm text-texto"
+              />
               <div className="flex gap-1">
                 <Botao type="button" variante="fantasma" className="flex-1" onClick={() => setCriando(false)}>
                   Cancelar

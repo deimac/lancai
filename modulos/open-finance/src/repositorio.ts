@@ -1,9 +1,8 @@
 import type { MotivoAtencao, StatusConexao } from "./provedor";
 
 /**
- * Uma conexão como o módulo a conhece. `perfilPadrao` vem do tipo do workspace
- * e existe porque a ingestão precisa de um perfil para o Fato: workspace pessoal
- * gera lançamento `pf`, workspace de empresa gera `pj`.
+ * Uma conexão como o módulo a conhece. `perfilPadrao` alimenta o Fato na
+ * ingestão (default `pf`); PF/PJ de produto vive na conta/cartão local.
  */
 export interface ConexaoRegistrada {
   id: string;
@@ -118,7 +117,7 @@ export interface RepositorioOpenFinance {
 
   obterConexaoPorId(id: string): Promise<ConexaoDetalhada | undefined>;
 
-  listarConexoes(workspaceId: string): Promise<ConexaoDetalhada[]>;
+  listarConexoes(workspaceIds: string | string[]): Promise<ConexaoDetalhada[]>;
 
   /** Idempotente por `(provedor, idExterno)`: reabrir o widget não cria conexão nova. */
   registrarConexao(conexao: {

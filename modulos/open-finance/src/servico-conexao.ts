@@ -112,8 +112,8 @@ export class ServicoConexaoOpenFinance {
     return this.detalhar(conexao.id);
   }
 
-  async listar_conexoes(workspaceId: string): Promise<ConexaoDetalhada[]> {
-    return this.repositorio.listarConexoes(workspaceId);
+  async listar_conexoes(workspaceIds: string | string[]): Promise<ConexaoDetalhada[]> {
+    return this.repositorio.listarConexoes(workspaceIds);
   }
 
   async detalhar(conexaoId: string): Promise<ConexaoComContas> {

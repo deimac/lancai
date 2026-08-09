@@ -1,16 +1,18 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq } from "drizzle-orm";
-import { conta, garantir_workspace_do_usuario, obter_banco } from "@lancai/banco";
+import { and, eq, inArray } from "drizzle-orm";
+import { conta, mapear_nomes_workspaces, obter_banco } from "@lancai/banco";
 import {
   schemaCriarConta,
   schemaExcluirContaApi,
   schemaPatchContaApi,
 } from "@lancai/tipos";
+import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
 import { mapear_origem_contas, type MetaOrigem } from "../servicos/origem-conta-cartao";
 
-function com_origem<T extends { id: string; sincronizada: boolean }>(
+function com_meta<T extends { id: string; sincronizada: boolean; workspaceId: string }>(
   linha: T,
   meta: MetaOrigem | undefined,
+  nomes: Map<string, string>,
 ) {
   const origem = meta ?? {
     origem: linha.sincronizada ? ("open_finance" as const) : ("manual" as const),
@@ -18,14 +20,18 @@ function com_origem<T extends { id: string; sincronizada: boolean }>(
     instituicao: null,
     idExterno: null,
   };
-  return { ...linha, ...origem };
+  return {
+    ...linha,
+    ...origem,
+    workspaceNome: nomes.get(linha.workspaceId) ?? null,
+  };
 }
 
 export async function registrar_rotas_conta(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaCriarConta.parse(requisicao.body);
     const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
     const [criada] = await banco
       .insert(conta)
       .values({
@@ -37,13 +43,18 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
         saldoAtual: String(dados.saldoInicial),
       })
       .returning();
+    const nomes = await mapear_nomes_workspaces(banco, [workspaceId]);
     return resposta.status(201).send(
-      com_origem(criada!, {
-        origem: "manual",
-        conexaoId: null,
-        instituicao: null,
-        idExterno: null,
-      }),
+      com_meta(
+        criada!,
+        {
+          origem: "manual",
+          conexaoId: null,
+          instituicao: null,
+          idExterno: null,
+        },
+        nomes,
+      ),
     );
   });
 
@@ -53,15 +64,25 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
     if (!usuarioId) {
       return banco.select().from(conta).where(eq(conta.ativo, true));
     }
-    const workspaceId = await garantir_workspace_do_usuario(banco, usuarioId);
+    const escopo = await obter_escopo_leitura(usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
+
     const linhas = await banco
       .select()
       .from(conta)
       .where(
-        and(eq(conta.usuarioId, usuarioId), eq(conta.workspaceId, workspaceId), eq(conta.ativo, true)),
+        and(
+          eq(conta.usuarioId, usuarioId),
+          inArray(conta.workspaceId, escopo.workspaceIds),
+          eq(conta.ativo, true),
+        ),
       );
     const origem = await mapear_origem_contas(linhas.map((item) => item.id));
-    return linhas.map((linha) => com_origem(linha, origem.get(linha.id)));
+    const nomes = await mapear_nomes_workspaces(
+      banco,
+      linhas.map((item) => item.workspaceId),
+    );
+    return linhas.map((linha) => com_meta(linha, origem.get(linha.id), nomes));
   });
 
   app.get("/:id", async (requisicao, resposta) => {
@@ -72,14 +93,15 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
       return resposta.status(404).send({ erro: "Conta não encontrada." });
     }
     const origem = await mapear_origem_contas([encontrada.id]);
-    return com_origem(encontrada, origem.get(encontrada.id));
+    const nomes = await mapear_nomes_workspaces(banco, [encontrada.workspaceId]);
+    return com_meta(encontrada, origem.get(encontrada.id), nomes);
   });
 
   app.patch("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const dados = schemaPatchContaApi.parse(requisicao.body);
     const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
@@ -88,7 +110,7 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
         and(
           eq(conta.id, id),
           eq(conta.usuarioId, dados.usuarioId),
-          eq(conta.workspaceId, workspaceId),
+          inArray(conta.workspaceId, escopo.workspaceIds),
           eq(conta.ativo, true),
         ),
       )
@@ -119,14 +141,16 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
       .where(eq(conta.id, id))
       .returning();
 
-    return atualizada;
+    const nomes = await mapear_nomes_workspaces(banco, [atualizada!.workspaceId]);
+    const origem = await mapear_origem_contas([atualizada!.id]);
+    return com_meta(atualizada!, origem.get(atualizada!.id), nomes);
   });
 
   app.delete("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const dados = schemaExcluirContaApi.parse(requisicao.body);
     const banco = obter_banco();
-    const workspaceId = await garantir_workspace_do_usuario(banco, dados.usuarioId);
+    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
@@ -135,7 +159,7 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
         and(
           eq(conta.id, id),
           eq(conta.usuarioId, dados.usuarioId),
-          eq(conta.workspaceId, workspaceId),
+          inArray(conta.workspaceId, escopo.workspaceIds),
           eq(conta.ativo, true),
         ),
       )

@@ -34,6 +34,7 @@ export function TelaDashboard() {
   const { usuario } = useAutenticacao();
   const contexto = useContextoLayout();
   const [dados, setDados] = useState<DashboardResposta | null>(null);
+  const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const depsDados = chave_dependencia(
@@ -48,7 +49,13 @@ export function TelaDashboard() {
     setCarregando(true);
     setErro(null);
     try {
-      setDados(await clienteApi.obter_dashboard(usuario.id));
+      const [dash, workspaces] = await Promise.all([
+        clienteApi.obter_dashboard(usuario.id),
+        clienteApi.listar_workspaces(usuario.id).catch(() => []),
+      ]);
+      setDados(dash);
+      const ativo = workspaces.find((w) => w.ativo);
+      setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar o dashboard.");
     } finally {
@@ -101,6 +108,9 @@ export function TelaDashboard() {
           <h1 className="text-2xl font-semibold capitalize tracking-tight">
             {formatar_mes(dados.mes)}
           </h1>
+          {visaoGeral ? (
+            <p className="text-sm text-texto-suave">Todos os workspaces</p>
+          ) : null}
         </div>
         <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando}>
           <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />

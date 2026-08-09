@@ -10,6 +10,12 @@ import { usuario } from "./usuario";
 export const workspace = pgTable("workspace", {
   id: uuid("id").primaryKey().defaultRandom(),
   nome: text("nome").notNull(),
+  /** Texto livre opcional — workspace é só organizador de contas. */
+  descricao: text("descricao"),
+  /**
+   * Legado interno (enum pessoal|empresa). Não é produto: PF/PJ vive em conta/cartão.
+   * Novos inserts usam "pessoal" por default de compatibilidade.
+   */
   tipo: tipoWorkspaceEnum("tipo").notNull(),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),

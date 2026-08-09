@@ -95,6 +95,7 @@ export function TelaConexoes() {
   const [conexoes, setConexoes] = useState<ConexaoDetalhada[]>([]);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
+  const [visaoGeral, setVisaoGeral] = useState(false);
   const [detalhe, setDetalhe] = useState<ConexaoComContas | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
@@ -113,7 +114,7 @@ export function TelaConexoes() {
     setCarregando(true);
     setErro(null);
     try {
-      const [fonteCarregada, conexoesCarregadas, contasCarregadas, cartoesCarregados] =
+      const [fonteCarregada, conexoesCarregadas, contasCarregadas, cartoesCarregados, workspaces] =
         await Promise.all([
           clienteApi.descrever_fonte(),
           clienteApi.listar_conexoes(usuario.id).catch((e: unknown) => {
@@ -122,11 +123,14 @@ export function TelaConexoes() {
           }),
           clienteApi.listar_contas(usuario.id),
           clienteApi.listar_cartoes(usuario.id),
+          clienteApi.listar_workspaces(usuario.id).catch(() => []),
         ]);
       setFonte(fonteCarregada);
       setConexoes(conexoesCarregadas);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
+      const ativo = workspaces.find((w) => w.ativo);
+      setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar as conexões.");
     } finally {
@@ -381,17 +385,25 @@ export function TelaConexoes() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Conexões bancárias</h1>
           <p className="text-sm text-texto-suave">
-            {!fonteDisponivel
-              ? "Fonte desligada neste ambiente"
-              : fonte?.id === "duble"
-                ? "Dublê ativo: conecte um banco de mentira e sincronize um lote de teste"
-                : "Ao conectar, o LancAI cria contas e cartões neste workspace"}
+            {visaoGeral
+              ? "Todos os workspaces — escolha um workspace para conectar banco"
+              : !fonteDisponivel
+                ? "Fonte desligada neste ambiente"
+                : fonte?.id === "duble"
+                  ? "Dublê ativo: conecte um banco de mentira e sincronize um lote de teste"
+                  : "Ao conectar, o LancAI cria contas e cartões neste workspace"}
           </p>
         </div>
         <Botao
           onClick={() => void conectar()}
-          disabled={!fonteDisponivel || ocupado}
-          title={!fonteDisponivel ? "Fonte Open Finance desligada" : undefined}
+          disabled={visaoGeral || !fonteDisponivel || ocupado}
+          title={
+            visaoGeral
+              ? "Escolha um workspace para cadastrar"
+              : !fonteDisponivel
+                ? "Fonte Open Finance desligada"
+                : undefined
+          }
         >
           <Link2 size={14} />
           {fonte?.id === "duble" ? "Conectar banco de mentira" : "Conectar banco"}

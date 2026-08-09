@@ -8,22 +8,47 @@ import {
   schemaPatchContaApi,
 } from "../cadastro";
 
+/** Espelha a mensagem da API — garante contrato estável do 400 em visão Geral. */
+const MSG_GERAL_SOMENTE_LEITURA =
+  "Na visão Geral só é possível consultar. Escolha um workspace para cadastrar.";
+
 const USUARIO = "11111111-1111-4111-8111-111111111111";
 const WORKSPACE = "22222222-2222-4222-8222-222222222222";
 
 describe("schemas workspace e cadastro REST", () => {
-  it("aceita criar e ativar workspace", () => {
+  it("aceita criar workspace só com nome e descrição", () => {
     expect(
-      schemaCriarWorkspace.parse({ usuarioId: USUARIO, nome: "Empresa", tipo: "empresa" }),
-    ).toMatchObject({ nome: "Empresa", tipo: "empresa" });
+      schemaCriarWorkspace.parse({
+        usuarioId: USUARIO,
+        nome: "Viagens",
+        descricao: "Contas da empresa de viagens",
+      }),
+    ).toMatchObject({ nome: "Viagens", descricao: "Contas da empresa de viagens" });
+
+    expect(
+      schemaDefinirWorkspaceAtivo.parse({ usuarioId: USUARIO, workspaceId: "geral" }),
+    ).toEqual({ usuarioId: USUARIO, workspaceId: "geral" });
 
     expect(
       schemaDefinirWorkspaceAtivo.parse({ usuarioId: USUARIO, workspaceId: WORKSPACE }),
     ).toEqual({ usuarioId: USUARIO, workspaceId: WORKSPACE });
 
     expect(
-      schemaAtualizarWorkspace.parse({ usuarioId: USUARIO, nome: "Pessoal 2" }),
-    ).toMatchObject({ nome: "Pessoal 2" });
+      schemaAtualizarWorkspace.parse({ usuarioId: USUARIO, nome: "Principal", descricao: null }),
+    ).toMatchObject({ nome: "Principal", descricao: null });
+
+    // `tipo` deixa de ser produto — Zod descarta chave desconhecida
+    expect(
+      schemaCriarWorkspace.parse({
+        usuarioId: USUARIO,
+        nome: "Principal",
+        tipo: "empresa",
+      } as { usuarioId: string; nome: string }),
+    ).toEqual({ usuarioId: USUARIO, nome: "Principal" });
+  });
+
+  it("documenta bloqueio de escrita na visão Geral", () => {
+    expect(MSG_GERAL_SOMENTE_LEITURA).toContain("Escolha um workspace");
   });
 
   it("aceita patch/excluir conta e cartão", () => {

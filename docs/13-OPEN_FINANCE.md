@@ -138,7 +138,7 @@ Três tabelas, criadas na migração `0009_open_finance`. A fronteira do [ADR-01
 - **`open_finance_conta_externa`:** identificador da conta no provedor para conta ou cartão local. Sem uma linha aqui a movimentação não tem onde pousar.
 - **`open_finance_evento`:** o webhook como chegou, com unicidade em `(provedor, evento_id)`. É essa unicidade que torna a retentativa inofensiva — a Pluggy manda até nove vezes o mesmo evento. A decisão é gravar e deixar o banco resolver a corrida, em vez de consultar antes de inserir: duas entregas simultâneas passariam pela consulta e seriam processadas em dobro.
 
-O `perfil` do Fato (`pf` ou `pj`) não é coluna daqui: sai do tipo do workspace, pessoal ou empresa.
+O `perfil` do Fato (`pf` ou `pj`) não é coluna daqui: default `pf` na ingestão; o perfil de produto vive na conta/cartão local (workspace é só organizador).
 
 **Configurações por conexão** ficam em `configuracoes`, um jsonb — por exemplo importar transações pendentes e qual campo do provedor usar como favorecido. São conceitos de provedor, e é justamente por isso que não são colunas do Core.
 

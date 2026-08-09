@@ -3,10 +3,10 @@ import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
   conta as contaTabela,
-  garantir_workspace_do_usuario,
   movimento as movimentoTabela,
   obter_banco,
   parcela as parcelaTabela,
+  resolver_escopo_leitura,
 } from "@lancai/banco";
 import type { Perfil } from "@lancai/tipos";
 import type {
@@ -23,10 +23,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarContas(usuarioId: string, perfil?: Perfil) {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     const condicoes = [
       eq(contaTabela.usuarioId, usuarioId),
-      eq(contaTabela.workspaceId, workspaceId),
+      inArray(contaTabela.workspaceId, escopo.workspaceIds),
       eq(contaTabela.ativo, true),
     ];
     if (perfil) condicoes.push(eq(contaTabela.perfil, perfil));
@@ -37,10 +38,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarCartoes(usuarioId: string, perfil?: Perfil) {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     const condicoes = [
       eq(cartaoTabela.usuarioId, usuarioId),
-      eq(cartaoTabela.workspaceId, workspaceId),
+      inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
       eq(cartaoTabela.ativo, true),
     ];
     if (perfil) condicoes.push(eq(cartaoTabela.perfil, perfil));
@@ -51,11 +53,17 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarCategorias(usuarioId: string) {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(categoriaTabela)
-      .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.workspaceId, workspaceId)));
+      .where(
+        and(
+          eq(categoriaTabela.usuarioId, usuarioId),
+          inArray(categoriaTabela.workspaceId, escopo.workspaceIds),
+        ),
+      );
   }
 
   async obterCategoria(id: string) {
@@ -64,10 +72,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarMovimentos(usuarioId: string, filtro: FiltroMovimentos) {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     const condicoes = [
       eq(movimentoTabela.usuarioId, usuarioId),
-      eq(movimentoTabela.workspaceId, workspaceId),
+      inArray(movimentoTabela.workspaceId, escopo.workspaceIds),
     ];
     condicoes.push(notInArray(movimentoTabela.status, filtro.statusExcluir ?? ["cancelado"]));
     if (filtro.perfil) condicoes.push(eq(movimentoTabela.perfil, filtro.perfil));
@@ -88,10 +97,11 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarParcelas(usuarioId: string, filtro: FiltroParcelas): Promise<ParcelaComMovimento[]> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     const condicoes = [
       eq(movimentoTabela.usuarioId, usuarioId),
-      eq(movimentoTabela.workspaceId, workspaceId),
+      inArray(movimentoTabela.workspaceId, escopo.workspaceIds),
     ];
     condicoes.push(notInArray(parcelaTabela.status, filtro.statusExcluir ?? ["cancelado"]));
     if (filtro.cartaoId) condicoes.push(eq(movimentoTabela.cartaoId, filtro.cartaoId));

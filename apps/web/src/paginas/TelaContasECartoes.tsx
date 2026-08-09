@@ -58,6 +58,7 @@ export function TelaContasECartoes() {
   const [fonte, setFonte] = useState<DescritorFonte | null>(null);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
+  const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -84,14 +85,21 @@ export function TelaContasECartoes() {
     setCarregando(true);
     setErro(null);
     try {
-      const [contasCarregadas, cartoesCarregados, fonteDesc] = await Promise.all([
+      const [contasCarregadas, cartoesCarregados, fonteDesc, workspaces] = await Promise.all([
         clienteApi.listar_contas(usuario.id),
         clienteApi.listar_cartoes(usuario.id),
         clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
+        clienteApi.listar_workspaces(usuario.id).catch(() => []),
       ]);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
       setFonte(fonteDesc);
+      const ativo = workspaces.find((w) => w.ativo);
+      setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
+      if (ativo?.id === "geral" || ativo?.sintetico) {
+        setFormConta(false);
+        setFormCartao(false);
+      }
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar contas e cartões.");
     } finally {
@@ -229,7 +237,9 @@ export function TelaContasECartoes() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas e cartões</h1>
           <p className="text-sm text-texto-suave">
-            Manuais e sincronizados no workspace ativo — o banco é só a fonte
+            {visaoGeral
+              ? "Todos os workspaces — escolha um workspace para cadastrar"
+              : "Manuais e sincronizados no workspace ativo — o banco é só a fonte"}
           </p>
         </div>
         <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando || ocupado}>
@@ -238,13 +248,25 @@ export function TelaContasECartoes() {
         </Botao>
       </div>
 
+      {visaoGeral && (
+        <p className="rounded-lg border border-borda bg-superficie/80 px-3 py-2 text-sm text-texto-suave">
+          Escolha um workspace no seletor para conectar banco ou cadastrar conta/cartão.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        <Botao onClick={ao_conectar} disabled={ocupado || !fonte?.disponivel}>
+        <Botao
+          onClick={ao_conectar}
+          disabled={visaoGeral || ocupado || !fonte?.disponivel}
+          title={visaoGeral ? "Escolha um workspace para cadastrar" : undefined}
+        >
           <Link2 size={14} />
           {ocupado ? "Conectando..." : "Conectar banco"}
         </Botao>
         <Botao
           variante="fantasma"
+          disabled={visaoGeral}
+          title={visaoGeral ? "Escolha um workspace para cadastrar" : undefined}
           onClick={() => {
             setFormCartao(false);
             setFormConta((v) => !v);
@@ -255,6 +277,8 @@ export function TelaContasECartoes() {
         </Botao>
         <Botao
           variante="fantasma"
+          disabled={visaoGeral}
+          title={visaoGeral ? "Escolha um workspace para cadastrar" : undefined}
           onClick={() => {
             setFormConta(false);
             setFormCartao((v) => !v);
@@ -413,7 +437,9 @@ export function TelaContasECartoes() {
           <p className="text-sm text-texto-suave">Carregando...</p>
         ) : contas.length === 0 ? (
           <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-            Nenhuma conta neste workspace. Conecte um banco ou cadastre manualmente.
+            {visaoGeral
+              ? "Nenhuma conta nos seus workspaces."
+              : "Nenhuma conta neste workspace. Conecte um banco ou cadastre manualmente."}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -434,6 +460,11 @@ export function TelaContasECartoes() {
                       <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase text-texto-suave">
                         {conta.perfil}
                       </span>
+                      {visaoGeral && conta.workspaceNome ? (
+                        <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
+                          {conta.workspaceNome}
+                        </span>
+                      ) : null}
                       <span
                         className={unir_classes(
                           "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
@@ -479,7 +510,9 @@ export function TelaContasECartoes() {
           <p className="text-sm text-texto-suave">Carregando...</p>
         ) : cartoes.length === 0 ? (
           <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-            Nenhum cartão neste workspace. Conecte um banco ou cadastre manualmente.
+            {visaoGeral
+              ? "Nenhum cartão nos seus workspaces."
+              : "Nenhum cartão neste workspace. Conecte um banco ou cadastre manualmente."}
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
@@ -504,6 +537,11 @@ export function TelaContasECartoes() {
                       <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase text-texto-suave">
                         {cartao.perfil}
                       </span>
+                      {visaoGeral && cartao.workspaceNome ? (
+                        <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
+                          {cartao.workspaceNome}
+                        </span>
+                      ) : null}
                       <span
                         className={unir_classes(
                           "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",

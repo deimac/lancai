@@ -1,5 +1,4 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { garantir_workspace_do_usuario, obter_banco } from "@lancai/banco";
 import type { ServicoConexaoOpenFinance } from "@lancai/open-finance";
 import {
   schemaAssociarContaExterna,
@@ -17,6 +16,7 @@ import {
   obter_provedor_duble,
   sincronizar_conexao_duble,
 } from "../servicos/duble-open-finance";
+import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
 import { obter_servico_conexao } from "../servicos/open-finance";
 
 function fonte_desativada(resposta: FastifyReply) {
@@ -34,18 +34,18 @@ async function exigir_conexao_do_usuario(
   conexaoId: string,
   usuarioId: string,
 ) {
-  const workspaceId = await garantir_workspace_do_usuario(obter_banco(), usuarioId);
+  const escopo = await obter_escopo_leitura(usuarioId);
   const detalhe = await servico.detalhar(conexaoId);
 
   /**
    * Mesma resposta de conexão inexistente, de propósito: distinguir "não existe"
    * de "não é sua" conta quem sonda identificadores quais deles são válidos.
    */
-  if (detalhe.conexao.workspaceId !== workspaceId) {
+  if (!escopo.workspaceIds.includes(detalhe.conexao.workspaceId)) {
     return { erro: `conexão não encontrada: ${conexaoId}` } as const;
   }
 
-  return { detalhe, workspaceId } as const;
+  return { detalhe, workspaceId: detalhe.conexao.workspaceId, escopo } as const;
 }
 
 export async function registrar_rotas_open_finance(app: FastifyInstance) {
@@ -61,7 +61,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if (!servico) return fonte_desativada(resposta);
 
     const dados = schemaIniciarConexao.parse(requisicao.body);
-    const workspaceId = await garantir_workspace_do_usuario(obter_banco(), dados.usuarioId);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
 
     if (dados.conexaoId) {
       const acesso = await exigir_conexao_do_usuario(servico, dados.conexaoId, dados.usuarioId);
@@ -77,7 +77,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if (!servico) return fonte_desativada(resposta);
 
     const dados = schemaRegistrarConexao.parse(requisicao.body);
-    const workspaceId = await garantir_workspace_do_usuario(obter_banco(), dados.usuarioId);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
 
     const registrada = await servico.registrar_conexao({
       workspaceId,
@@ -93,9 +93,9 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if (!servico) return fonte_desativada(resposta);
 
     const { usuarioId } = schemaUsuarioDaRequisicao.parse(requisicao.query);
-    const workspaceId = await garantir_workspace_do_usuario(obter_banco(), usuarioId);
+    const escopo = await obter_escopo_leitura(usuarioId);
 
-    return resposta.send(await servico.listar_conexoes(workspaceId));
+    return resposta.send(await servico.listar_conexoes(escopo.workspaceIds));
   });
 
   app.get("/conexoes/:id", async (requisicao, resposta) => {
@@ -192,7 +192,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     }
 
     const dados = schemaCriarConexaoDuble.parse(requisicao.body);
-    const workspaceId = await garantir_workspace_do_usuario(obter_banco(), dados.usuarioId);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
 
     try {
       const registrada = await criar_conexao_duble({
@@ -215,7 +215,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
 
     const { id } = requisicao.params as { id: string };
     const dados = schemaSincronizarDuble.parse(requisicao.body);
-    const workspaceId = await garantir_workspace_do_usuario(obter_banco(), dados.usuarioId);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
 
     try {
       const resumo = await sincronizar_conexao_duble({

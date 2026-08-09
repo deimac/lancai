@@ -1,14 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq } from "drizzle-orm";
-import {
-  categoria,
-  garantir_workspace_do_usuario,
-  movimento,
-  obter_banco,
-  regra,
-} from "@lancai/banco";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { categoria, movimento, obter_banco, regra } from "@lancai/banco";
 import { schemaCriarMovimento } from "@lancai/tipos";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
+import { obter_escopo_leitura } from "../servicos/escopo-workspace";
 
 const motor = new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
 
@@ -60,12 +55,16 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
       .orderBy(desc(movimento.dataMovimento));
 
     const linhas = usuarioId
-      ? await consulta.where(
-          and(
-            eq(movimento.usuarioId, usuarioId),
-            eq(movimento.workspaceId, await garantir_workspace_do_usuario(banco, usuarioId)),
-          ),
-        )
+      ? await (async () => {
+          const escopo = await obter_escopo_leitura(usuarioId);
+          if (escopo.workspaceIds.length === 0) return [];
+          return consulta.where(
+            and(
+              eq(movimento.usuarioId, usuarioId),
+              inArray(movimento.workspaceId, escopo.workspaceIds),
+            ),
+          );
+        })()
       : await consulta;
 
     return linhas.map((linha) => ({

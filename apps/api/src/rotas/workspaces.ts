@@ -40,7 +40,7 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
     const banco = obter_banco();
     const criado = await criar_workspace_do_usuario(banco, dados.usuarioId, {
       nome: dados.nome,
-      tipo: dados.tipo,
+      descricao: dados.descricao,
     });
     return resposta.status(201).send(criado);
   });
@@ -65,7 +65,7 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
     try {
       return await atualizar_workspace_do_usuario(banco, dados.usuarioId, id, {
         nome: dados.nome,
-        tipo: dados.tipo,
+        descricao: dados.descricao,
       });
     } catch (erro) {
       if (erro instanceof ErroWorkspaceNaoEncontrado) {
@@ -75,7 +75,7 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
     }
   });
 
-  /** Garante workspace pessoal na sincronização de usuário (sem efeito colateral extra). */
+  /** Garante workspace real na sincronização de usuário. */
   app.post("/garantir", async (requisicao, resposta) => {
     const { usuarioId } = requisicao.body as { usuarioId?: string };
     if (!usuarioId) {

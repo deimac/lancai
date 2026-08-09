@@ -17,6 +17,8 @@ export interface ContaResumo {
   conexaoId?: string | null;
   instituicao?: string | null;
   idExterno?: string | null;
+  workspaceId?: string;
+  workspaceNome?: string | null;
   ativo?: boolean;
 }
 
@@ -35,6 +37,8 @@ export interface CartaoResumo {
   conexaoId?: string | null;
   instituicao?: string | null;
   idExterno?: string | null;
+  workspaceId?: string;
+  workspaceNome?: string | null;
   contaId?: string | null;
   /** Últimos 4 dígitos quando o plástico foi cadastrado. */
   final4?: string | null;
@@ -74,13 +78,12 @@ export interface Usuario {
   ativo?: boolean;
 }
 
-export type TipoWorkspace = "pessoal" | "empresa";
-
 export interface WorkspaceResumo {
   id: string;
   nome: string;
-  tipo: TipoWorkspace;
+  descricao: string | null;
   ativo: boolean;
+  sintetico?: boolean;
 }
 
 export interface MensagemChat {
@@ -278,7 +281,7 @@ export const clienteApi = {
   criar_workspace(dados: {
     usuarioId: string;
     nome: string;
-    tipo: TipoWorkspace;
+    descricao?: string;
   }): Promise<WorkspaceResumo> {
     return requisitar<WorkspaceResumo>("/workspaces", {
       method: "POST",
@@ -295,7 +298,7 @@ export const clienteApi = {
 
   atualizar_workspace(
     workspaceId: string,
-    dados: { usuarioId: string; nome?: string; tipo?: TipoWorkspace },
+    dados: { usuarioId: string; nome?: string; descricao?: string | null },
   ): Promise<WorkspaceResumo> {
     return requisitar<WorkspaceResumo>(`/workspaces/${workspaceId}`, {
       method: "PATCH",
