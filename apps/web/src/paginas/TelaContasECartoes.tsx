@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CreditCard, Link2, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { CreditCard, FolderKanban, Link2, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
 import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import {
@@ -16,6 +16,7 @@ import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
+import { PainelWorkspaces } from "../componentes/PainelWorkspaces";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import { unir_classes } from "../lib/unir-classes";
 
@@ -64,6 +65,7 @@ export function TelaContasECartoes() {
   const [ocupado, setOcupado] = useState(false);
   const [formConta, setFormConta] = useState(false);
   const [formCartao, setFormCartao] = useState(false);
+  const [painelWs, setPainelWs] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const [nomeConta, setNomeConta] = useState("");
@@ -230,7 +232,7 @@ export function TelaContasECartoes() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas e cartões</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
           <p className="text-sm text-texto-suave">
             {visaoGeral
               ? "Todos os workspaces — escolha um workspace para cadastrar"
@@ -282,10 +284,23 @@ export function TelaContasECartoes() {
           <Plus size={14} />
           Novo cartão
         </Botao>
+        <Botao variante="fantasma" onClick={() => setPainelWs(true)}>
+          <FolderKanban size={14} />
+          Workspaces
+        </Botao>
         <Link to="/conexoes">
           <Botao variante="fantasma">Gerenciar conexões</Botao>
         </Link>
       </div>
+
+      <PainelWorkspaces
+        aberto={painelWs}
+        aoFechar={() => setPainelWs(false)}
+        aoMudar={() => {
+          void carregar();
+          contexto?.invalidar("tudo");
+        }}
+      />
 
       {ok && (
         <div className="rounded-lg border border-primaria/40 bg-primaria/10 px-3 py-2 text-sm text-texto">

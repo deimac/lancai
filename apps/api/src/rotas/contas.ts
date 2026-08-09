@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
-import { conta, mapear_nomes_workspaces, obter_banco } from "@lancai/banco";
+import {
+  conta,
+  listar_workspaces_do_usuario,
+  mapear_nomes_workspaces,
+  obter_banco,
+} from "@lancai/banco";
 import {
   schemaCriarConta,
   schemaExcluirContaApi,
@@ -59,13 +64,18 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId } = requisicao.query as { usuarioId?: string };
+    const { usuarioId, todos } = requisicao.query as { usuarioId?: string; todos?: string };
     const banco = obter_banco();
     if (!usuarioId) {
       return banco.select().from(conta).where(eq(conta.ativo, true));
     }
     const escopo = await obter_escopo_leitura(usuarioId);
-    if (escopo.workspaceIds.length === 0) return [];
+    let workspaceIds = escopo.workspaceIds;
+    if (todos === "1") {
+      const lista = await listar_workspaces_do_usuario(banco, usuarioId);
+      workspaceIds = lista.filter((w) => !w.sintetico).map((w) => w.id);
+    }
+    if (workspaceIds.length === 0) return [];
 
     const linhas = await banco
       .select()
@@ -73,7 +83,7 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
       .where(
         and(
           eq(conta.usuarioId, usuarioId),
-          inArray(conta.workspaceId, escopo.workspaceIds),
+          inArray(conta.workspaceId, workspaceIds),
           eq(conta.ativo, true),
         ),
       );

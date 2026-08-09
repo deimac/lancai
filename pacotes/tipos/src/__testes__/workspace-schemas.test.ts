@@ -22,8 +22,9 @@ describe("schemas workspace e cadastro REST", () => {
         usuarioId: USUARIO,
         nome: "Viagens",
         descricao: "Contas da empresa de viagens",
+        cor: "teal",
       }),
-    ).toMatchObject({ nome: "Viagens", descricao: "Contas da empresa de viagens" });
+    ).toMatchObject({ nome: "Viagens", descricao: "Contas da empresa de viagens", cor: "teal" });
 
     expect(
       schemaDefinirWorkspaceAtivo.parse({ usuarioId: USUARIO, workspaceId: "geral" }),

@@ -243,8 +243,8 @@ export function TelaConfiguracoes() {
         </div>
         <p className="text-xs text-texto-suave">
           Bancos e sync:{" "}
-          <Link to="/conexoes" className="text-primaria hover:underline">
-            abrir Conexões
+          <Link to="/contas" className="text-primaria hover:underline">
+            abrir Contas
           </Link>
         </p>
       </motion.section>

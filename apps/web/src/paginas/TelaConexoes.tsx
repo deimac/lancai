@@ -630,7 +630,7 @@ function DetalheConexao({
 
       {semDestinoLocal && (
         <p className="text-xs text-texto-suave">
-          Nenhum recurso materializado ainda. Reconecte o banco ou volte a Contas e cartões
+          Nenhum recurso materializado ainda. Reconecte o banco ou volte a Contas
           para conectar de novo.
         </p>
       )}

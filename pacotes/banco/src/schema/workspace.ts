@@ -11,6 +11,8 @@ export const workspace = pgTable("workspace", {
   nome: text("nome").notNull(),
   /** Texto livre opcional — workspace é só organizador de contas. */
   descricao: text("descricao"),
+  /** Cor da UI (swatch: violet, blue, teal, …). */
+  cor: text("cor").notNull().default("violet"),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),
 });

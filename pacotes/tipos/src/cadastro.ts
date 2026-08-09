@@ -90,11 +90,22 @@ export const schemaExcluirCartaoApi = z.object({
   usuarioId: z.string().uuid(),
 });
 
-/** Legado — não usar em APIs novas; workspace não tem perfil PF/PJ. */
+const corWorkspaceSchema = z.enum([
+  "violet",
+  "blue",
+  "teal",
+  "orange",
+  "red",
+  "pink",
+  "indigo",
+  "slate",
+]);
+
 export const schemaCriarWorkspace = z.object({
   usuarioId: z.string().uuid(),
   nome: z.string().min(1),
   descricao: z.string().max(500).optional().nullable(),
+  cor: corWorkspaceSchema.optional(),
 });
 
 export const schemaDefinirWorkspaceAtivo = z.object({
@@ -107,6 +118,17 @@ export const schemaAtualizarWorkspace = z.object({
   usuarioId: z.string().uuid(),
   nome: z.string().min(1).optional(),
   descricao: z.string().max(500).optional().nullable(),
+  cor: corWorkspaceSchema.optional(),
+});
+
+export const schemaMembrosWorkspace = z.object({
+  usuarioId: z.string().uuid(),
+  contaIds: z.array(z.string().uuid()),
+  cartaoIds: z.array(z.string().uuid()),
+});
+
+export const schemaExcluirWorkspaceApi = z.object({
+  usuarioId: z.string().uuid(),
 });
 
 export const schemaCriarCartao = z.object({

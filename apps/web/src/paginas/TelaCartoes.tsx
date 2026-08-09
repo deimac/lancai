@@ -248,8 +248,8 @@ export function TelaCartoes() {
           <p className="text-sm font-medium text-texto">Novo cartão manual</p>
           <p className="text-xs text-texto-suave">
             Cartão do banco? Prefira{" "}
-            <Link to="/conexoes" className="text-primaria hover:underline">
-              conectar em Bancos
+            <Link to="/contas" className="text-primaria hover:underline">
+              Contas
             </Link>
             .
           </p>
@@ -413,7 +413,7 @@ export function TelaCartoes() {
               <Plus size={14} />
               Novo cartão
             </Botao>
-            <Link to="/conexoes">
+            <Link to="/contas">
               <Botao variante="fantasma">
                 <Link2 size={14} />
                 Conectar banco

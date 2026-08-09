@@ -141,6 +141,13 @@
       "when": 1786201200000,
       "tag": "0019_drop_tipo_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786201300000,
+      "tag": "0020_workspace_cor_e_delete",
+      "breakpoints": true
     }
   ]
 }

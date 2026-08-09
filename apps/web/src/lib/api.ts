@@ -78,12 +78,25 @@ export interface Usuario {
   ativo?: boolean;
 }
 
+export type CorWorkspace =
+  | "violet"
+  | "blue"
+  | "teal"
+  | "orange"
+  | "red"
+  | "pink"
+  | "indigo"
+  | "slate";
+
 export interface WorkspaceResumo {
   id: string;
   nome: string;
   descricao: string | null;
+  cor: CorWorkspace | string;
   ativo: boolean;
   sintetico?: boolean;
+  quantidadeContas?: number;
+  quantidadeCartoes?: number;
 }
 
 export interface MensagemChat {
@@ -282,6 +295,7 @@ export const clienteApi = {
     usuarioId: string;
     nome: string;
     descricao?: string;
+    cor?: CorWorkspace;
   }): Promise<WorkspaceResumo> {
     return requisitar<WorkspaceResumo>("/workspaces", {
       method: "POST",
@@ -298,7 +312,12 @@ export const clienteApi = {
 
   atualizar_workspace(
     workspaceId: string,
-    dados: { usuarioId: string; nome?: string; descricao?: string | null },
+    dados: {
+      usuarioId: string;
+      nome?: string;
+      descricao?: string | null;
+      cor?: CorWorkspace;
+    },
   ): Promise<WorkspaceResumo> {
     return requisitar<WorkspaceResumo>(`/workspaces/${workspaceId}`, {
       method: "PATCH",
@@ -306,8 +325,25 @@ export const clienteApi = {
     });
   },
 
-  listar_contas(usuarioId: string): Promise<ContaResumo[]> {
-    return requisitar<ContaResumo[]>(`/contas?usuarioId=${usuarioId}`);
+  definir_membros_workspace(
+    workspaceId: string,
+    dados: { usuarioId: string; contaIds: string[]; cartaoIds: string[] },
+  ): Promise<WorkspaceResumo> {
+    return requisitar<WorkspaceResumo>(`/workspaces/${workspaceId}/membros`, {
+      method: "PUT",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  excluir_workspace(workspaceId: string, usuarioId: string): Promise<void> {
+    return requisitar<void>(`/workspaces/${workspaceId}?usuarioId=${usuarioId}`, {
+      method: "DELETE",
+    });
+  },
+
+  listar_contas(usuarioId: string, todos = false): Promise<ContaResumo[]> {
+    const qs = todos ? `&todos=1` : "";
+    return requisitar<ContaResumo[]>(`/contas?usuarioId=${usuarioId}${qs}`);
   },
 
   criar_conta(dados: {
@@ -349,8 +385,9 @@ export const clienteApi = {
     });
   },
 
-  listar_cartoes(usuarioId: string): Promise<CartaoResumo[]> {
-    return requisitar<CartaoResumo[]>(`/cartoes?usuarioId=${usuarioId}`);
+  listar_cartoes(usuarioId: string, todos = false): Promise<CartaoResumo[]> {
+    const qs = todos ? `&todos=1` : "";
+    return requisitar<CartaoResumo[]>(`/cartoes?usuarioId=${usuarioId}${qs}`);
   },
 
   criar_cartao(dados: {

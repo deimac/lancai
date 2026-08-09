@@ -2,8 +2,13 @@ import type { FastifyInstance } from "fastify";
 import {
   atualizar_workspace_do_usuario,
   criar_workspace_do_usuario,
+  definir_membros_workspace,
   definir_workspace_ativo,
+  ErroWorkspaceMembroInvalido,
   ErroWorkspaceNaoEncontrado,
+  ErroWorkspaceNaoPodeExcluir,
+  ErroWorkspaceSemMembros,
+  excluir_workspace_do_usuario,
   garantir_workspace_do_usuario,
   listar_workspaces_do_usuario,
   obter_banco,
@@ -12,6 +17,8 @@ import {
   schemaAtualizarWorkspace,
   schemaCriarWorkspace,
   schemaDefinirWorkspaceAtivo,
+  schemaExcluirWorkspaceApi,
+  schemaMembrosWorkspace,
 } from "@lancai/tipos";
 
 export async function registrar_rotas_workspaces(app: FastifyInstance) {
@@ -41,6 +48,7 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
     const criado = await criar_workspace_do_usuario(banco, dados.usuarioId, {
       nome: dados.nome,
       descricao: dados.descricao,
+      cor: dados.cor,
     });
     return resposta.status(201).send(criado);
   });
@@ -66,10 +74,54 @@ export async function registrar_rotas_workspaces(app: FastifyInstance) {
       return await atualizar_workspace_do_usuario(banco, dados.usuarioId, id, {
         nome: dados.nome,
         descricao: dados.descricao,
+        cor: dados.cor,
       });
     } catch (erro) {
       if (erro instanceof ErroWorkspaceNaoEncontrado) {
         return resposta.status(404).send({ erro: erro.message });
+      }
+      throw erro;
+    }
+  });
+
+  app.put("/:id/membros", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const dados = schemaMembrosWorkspace.parse(requisicao.body);
+    const banco = obter_banco();
+    try {
+      return await definir_membros_workspace(banco, dados.usuarioId, id, {
+        contaIds: dados.contaIds,
+        cartaoIds: dados.cartaoIds,
+      });
+    } catch (erro) {
+      if (erro instanceof ErroWorkspaceNaoEncontrado) {
+        return resposta.status(404).send({ erro: erro.message });
+      }
+      if (
+        erro instanceof ErroWorkspaceSemMembros ||
+        erro instanceof ErroWorkspaceMembroInvalido
+      ) {
+        return resposta.status(400).send({ erro: erro.message });
+      }
+      throw erro;
+    }
+  });
+
+  app.delete("/:id", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const dados = schemaExcluirWorkspaceApi.parse({
+      usuarioId: (requisicao.query as { usuarioId?: string }).usuarioId,
+    });
+    const banco = obter_banco();
+    try {
+      await excluir_workspace_do_usuario(banco, dados.usuarioId, id);
+      return resposta.status(204).send();
+    } catch (erro) {
+      if (erro instanceof ErroWorkspaceNaoEncontrado) {
+        return resposta.status(404).send({ erro: erro.message });
+      }
+      if (erro instanceof ErroWorkspaceNaoPodeExcluir) {
+        return resposta.status(400).send({ erro: erro.message });
       }
       throw erro;
     }

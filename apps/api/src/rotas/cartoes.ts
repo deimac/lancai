@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
-import { cartao, mapear_nomes_workspaces, obter_banco } from "@lancai/banco";
+import {
+  cartao,
+  listar_workspaces_do_usuario,
+  mapear_nomes_workspaces,
+  obter_banco,
+} from "@lancai/banco";
 import {
   calcularMelhorDiaCompra,
   schemaCriarCartao,
@@ -69,14 +74,19 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId } = requisicao.query as { usuarioId?: string };
+    const { usuarioId, todos } = requisicao.query as { usuarioId?: string; todos?: string };
     const banco = obter_banco();
     if (!usuarioId) {
       const linhas = await banco.select().from(cartao).where(eq(cartao.ativo, true));
       return linhas.map((linha) => cartao_publico(linha, undefined, new Map()));
     }
     const escopo = await obter_escopo_leitura(usuarioId);
-    if (escopo.workspaceIds.length === 0) return [];
+    let workspaceIds = escopo.workspaceIds;
+    if (todos === "1") {
+      const lista = await listar_workspaces_do_usuario(banco, usuarioId);
+      workspaceIds = lista.filter((w) => !w.sintetico).map((w) => w.id);
+    }
+    if (workspaceIds.length === 0) return [];
 
     const linhas = await banco
       .select()
@@ -84,7 +94,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       .where(
         and(
           eq(cartao.usuarioId, usuarioId),
-          inArray(cartao.workspaceId, escopo.workspaceIds),
+          inArray(cartao.workspaceId, workspaceIds),
           eq(cartao.ativo, true),
         ),
       );

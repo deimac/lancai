@@ -276,14 +276,14 @@ export function TelaExtrato() {
           </p>
           <p className="mt-1 text-xs text-texto-suave">
             {filtro === "banco"
-              ? "Conecte um banco em Conexões e associe as contas para o extrato aparecer."
+              ? "Conecte um banco em Contas e associe as contas para o extrato aparecer."
               : filtro === "revisar"
                 ? "Quando a IA classificar com pouca certeza, o item aparece aqui."
                 : "Lance pelo assistente ou conecte um banco para começar."}
           </p>
           {filtro === "banco" && (
-            <Link to="/conexoes" className="mt-3 inline-block text-sm text-primaria hover:underline">
-              Ir para conexões
+            <Link to="/contas" className="mt-3 inline-block text-sm text-primaria hover:underline">
+              Ir para Contas
             </Link>
           )}
         </Cartao>

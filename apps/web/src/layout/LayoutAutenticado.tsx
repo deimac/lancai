@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
   Home,
-  Link2,
   List,
   LogOut,
   Settings,
@@ -32,11 +31,10 @@ import {
 
 const LINKS = [
   { para: "/", rotulo: "Início", icone: Home, fim: true },
-  { para: "/contas", rotulo: "Contas e cartões", icone: Wallet, fim: false },
+  { para: "/contas", rotulo: "Contas", icone: Wallet, fim: false },
   { para: "/categorias", rotulo: "Categorias", icone: Tags, fim: false },
   { para: "/regras", rotulo: "Regras", icone: Workflow, fim: false },
   { para: "/extrato", rotulo: "Extrato", icone: List, fim: false },
-  { para: "/conexoes", rotulo: "Bancos", icone: Link2, fim: false },
   { para: "/configuracoes", rotulo: "Configurações", icone: Settings, fim: false },
 ] as const;
 

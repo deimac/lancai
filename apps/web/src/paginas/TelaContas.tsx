@@ -198,8 +198,8 @@ export function TelaContas() {
           <p className="text-sm font-medium text-texto">Nova conta manual</p>
           <p className="text-xs text-texto-suave">
             Conta do banco? Prefira{" "}
-            <Link to="/conexoes" className="text-primaria hover:underline">
-              conectar em Bancos
+            <Link to="/contas" className="text-primaria hover:underline">
+              Contas
             </Link>{" "}
             para o extrato entrar sozinho.
           </p>
@@ -289,7 +289,7 @@ export function TelaContas() {
               <Plus size={14} />
               Nova conta
             </Botao>
-            <Link to="/conexoes">
+            <Link to="/contas">
               <Botao variante="fantasma">
                 <Link2 size={14} />
                 Conectar banco
