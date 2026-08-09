@@ -228,6 +228,20 @@ export function TelaContasECartoes() {
 
   if (!usuario) return null;
 
+  if (painelWs) {
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
+        <PainelWorkspaces
+          aoVoltar={() => setPainelWs(false)}
+          aoMudar={() => {
+            void carregar();
+            contexto?.invalidar("tudo");
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -292,15 +306,6 @@ export function TelaContasECartoes() {
           <Botao variante="fantasma">Gerenciar conexões</Botao>
         </Link>
       </div>
-
-      <PainelWorkspaces
-        aberto={painelWs}
-        aoFechar={() => setPainelWs(false)}
-        aoMudar={() => {
-          void carregar();
-          contexto?.invalidar("tudo");
-        }}
-      />
 
       {ok && (
         <div className="rounded-lg border border-primaria/40 bg-primaria/10 px-3 py-2 text-sm text-texto">
