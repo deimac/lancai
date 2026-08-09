@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { clienteApi, ErroApi, type ContaResumo } from "../lib/api";
@@ -165,21 +165,15 @@ export function TelaContas() {
             Saldos e origem — contas sincronizadas só classificam pelo assistente
           </p>
         </div>
-        <div className="flex gap-2">
-          <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando}>
-            <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
-            Atualizar
-          </Botao>
-          <Botao
-            onClick={() => {
-              setEditandoId(null);
-              setMostrandoForm((v) => !v);
-            }}
-          >
-            <Plus size={14} />
-            Nova conta
-          </Botao>
-        </div>
+        <Botao
+          onClick={() => {
+            setEditandoId(null);
+            setMostrandoForm((v) => !v);
+          }}
+        >
+          <Plus size={14} />
+          Nova conta
+        </Botao>
       </div>
 
       <motion.div

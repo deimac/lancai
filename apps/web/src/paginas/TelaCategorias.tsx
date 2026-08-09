@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Plus, RefreshCw, Tags } from "lucide-react";
+import { Plus, Tags } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
@@ -110,16 +110,10 @@ export function TelaCategorias() {
             Usadas por regras e pela IA — “Não classificado” é a fila do que ainda falta
           </p>
         </div>
-        <div className="flex gap-2">
-          <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando}>
-            <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
-            Atualizar
-          </Botao>
-          <Botao onClick={() => setMostrandoForm((v) => !v)}>
-            <Plus size={14} />
-            Nova categoria
-          </Botao>
-        </div>
+        <Botao onClick={() => setMostrandoForm((v) => !v)}>
+          <Plus size={14} />
+          Nova categoria
+        </Botao>
       </div>
 
       <motion.div

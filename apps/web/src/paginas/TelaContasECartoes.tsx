@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CreditCard, FolderKanban, Link2, Pencil, Plus, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { CreditCard, FolderKanban, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
@@ -190,17 +190,11 @@ export function TelaContasECartoes() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
-          <p className="text-sm text-texto-suave">
-            Todas as contas e cartões — novos cadastros e conexões vão para o workspace ativo
-          </p>
-        </div>
-        <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando || ocupado}>
-          <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
-          Atualizar
-        </Botao>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
+        <p className="text-sm text-texto-suave">
+          Todas as contas e cartões — novos cadastros e conexões vão para o workspace ativo
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-2">

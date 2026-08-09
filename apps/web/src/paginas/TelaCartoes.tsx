@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CreditCard, Link2, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { CreditCard, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
@@ -213,21 +213,15 @@ export function TelaCartoes() {
             Limite, fechamento e vencimento — cartões sincronizados só classificam
           </p>
         </div>
-        <div className="flex gap-2">
-          <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando}>
-            <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
-            Atualizar
-          </Botao>
-          <Botao
-            onClick={() => {
-              setEditandoId(null);
-              setMostrandoForm((v) => !v);
-            }}
-          >
-            <Plus size={14} />
-            Novo cartão
-          </Botao>
-        </div>
+        <Botao
+          onClick={() => {
+            setEditandoId(null);
+            setMostrandoForm((v) => !v);
+          }}
+        >
+          <Plus size={14} />
+          Novo cartão
+        </Botao>
       </div>
 
       <motion.div

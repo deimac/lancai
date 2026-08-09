@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertTriangle, Building2, PenLine, RefreshCw } from "lucide-react";
+import { AlertTriangle, Building2, PenLine } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
@@ -208,19 +208,13 @@ export function TelaExtrato() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
-          <p className="text-sm text-texto-suave">
-            {visaoGeral
-              ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"
-              : "Classifique e revise o que veio do banco ou do assistente"}
-          </p>
-        </div>
-        <Botao variante="fantasma" onClick={() => void carregar()} disabled={carregando}>
-          <RefreshCw size={14} className={carregando ? "animate-spin" : undefined} />
-          Atualizar
-        </Botao>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
+        <p className="text-sm text-texto-suave">
+          {visaoGeral
+            ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"
+            : "Classifique e revise o que veio do banco ou do assistente"}
+        </p>
       </div>
 
       {quantidadeRevisar > 0 && filtro !== "revisar" && (
