@@ -42,6 +42,8 @@ export interface CartaoResumo {
   workspaceId?: string;
   workspaceNome?: string | null;
   contaId?: string | null;
+  /** True quando há blob de plástico salvo (sem revelar dados). */
+  temPlastico?: boolean;
   /** Últimos 4 dígitos derivados na leitura (decifragem do blob); não é coluna. */
   final4?: string | null;
 }
@@ -434,6 +436,19 @@ export const clienteApi = {
       method: "DELETE",
       body: JSON.stringify({ usuarioId }),
     });
+  },
+
+  revelar_plastico(
+    cartaoId: string,
+    dados: { usuarioId: string; senha: string },
+  ): Promise<{ numero: string; validade: string; cvv: string }> {
+    return requisitar<{ numero: string; validade: string; cvv: string }>(
+      `/cartoes/${cartaoId}/revelar`,
+      {
+        method: "POST",
+        body: JSON.stringify(dados),
+      },
+    );
   },
 
   listar_categorias(usuarioId: string): Promise<CategoriaResumo[]> {

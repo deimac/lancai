@@ -8,7 +8,9 @@ import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
+import { CampoValor } from "../componentes/ui/CampoValor";
 import { useContextoLayout } from "../layout/useContextoLayout";
+import { parsear_valor_mascara, valor_para_mascara } from "../lib/mascara-valor";
 import { unir_classes } from "../lib/unir-classes";
 
 function para_numero(valor: string | undefined): number {
@@ -26,8 +28,8 @@ export function TelaContas() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
-  const [saldoInicial, setSaldoInicial] = useState("0");
-  const [saldoEdicao, setSaldoEdicao] = useState("0");
+  const [saldoInicial, setSaldoInicial] = useState(valor_para_mascara(0));
+  const [saldoEdicao, setSaldoEdicao] = useState(valor_para_mascara(0));
   const depsDados = chave_dependencia(contexto?.versoes, "contas");
 
   const carregar = useCallback(async () => {
@@ -54,7 +56,7 @@ export function TelaContas() {
 
   function limpar_form() {
     setNome("");
-    setSaldoInicial("0");
+    setSaldoInicial(valor_para_mascara(0));
     setMostrandoForm(false);
     setEditandoId(null);
   }
@@ -63,7 +65,7 @@ export function TelaContas() {
     setMostrandoForm(false);
     setEditandoId(conta.id);
     setNome(conta.nome);
-    setSaldoEdicao(String(para_numero(conta.saldoAtual)));
+    setSaldoEdicao(valor_para_mascara(para_numero(conta.saldoAtual)));
     setErro(null);
   }
 
@@ -73,12 +75,12 @@ export function TelaContas() {
     setSalvando(true);
     setErro(null);
     try {
-      const saldo = Number(saldoInicial.replace(",", "."));
+      const saldo = parsear_valor_mascara(saldoInicial) ?? 0;
       await clienteApi.criar_conta({
         usuarioId: usuario.id,
         nome: nome.trim(),
         perfil: "pf",
-        saldoInicial: Number.isFinite(saldo) ? saldo : 0,
+        saldoInicial: saldo,
       });
       limpar_form();
       await carregar();
@@ -108,8 +110,8 @@ export function TelaContas() {
         nome: nome.trim(),
       };
       if (!conta.sincronizada) {
-        const saldo = Number(saldoEdicao.replace(",", "."));
-        if (!Number.isFinite(saldo)) {
+        const saldo = parsear_valor_mascara(saldoEdicao);
+        if (saldo == null) {
           setErro("Informe um saldo válido.");
           setSalvando(false);
           return;
@@ -212,11 +214,7 @@ export function TelaContas() {
           />
           <label className="flex flex-col gap-1 text-xs text-texto-suave">
             Saldo inicial
-            <Campo
-              inputMode="decimal"
-              value={saldoInicial}
-              onChange={(e) => setSaldoInicial(e.target.value)}
-            />
+            <CampoValor value={saldoInicial} onChange={setSaldoInicial} />
           </label>
           <div className="flex justify-end gap-2">
             <Botao type="button" variante="fantasma" onClick={limpar_form}>
@@ -247,11 +245,7 @@ export function TelaContas() {
           {!contaEditando.sincronizada && (
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Saldo atual
-              <Campo
-                inputMode="decimal"
-                value={saldoEdicao}
-                onChange={(e) => setSaldoEdicao(e.target.value)}
-              />
+              <CampoValor value={saldoEdicao} onChange={setSaldoEdicao} />
             </label>
           )}
           {contaEditando.sincronizada && (

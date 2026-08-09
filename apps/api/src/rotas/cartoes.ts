@@ -5,8 +5,12 @@ import {
   listar_workspaces_do_usuario,
   mapear_nomes_workspaces,
   obter_banco,
+  usuario as usuarioTabela,
 } from "@lancai/banco";
 import {
+  decifrar_dados_plasticos,
+  ErroCifragemCartao,
+  ErroDadosPlasticosInvalidos,
   mascara_final4_do_payload,
   preparar_persistencia_plasticos,
 } from "@lancai/ia";
@@ -15,9 +19,11 @@ import {
   schemaCriarCartao,
   schemaExcluirCartaoApi,
   schemaPatchCartaoApi,
+  schemaRevelarPlasticoApi,
 } from "@lancai/tipos";
 import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
 import { mapear_origem_cartoes, type MetaOrigem } from "../servicos/origem-conta-cartao";
+import { verificar_senha_usuario } from "../verificar-senha-usuario";
 
 function cartao_publico<
   T extends {
@@ -36,6 +42,7 @@ function cartao_publico<
   };
   return {
     ...resto,
+    temPlastico: Boolean(dadosPlasticosCifrados),
     /** Máscara derivada na leitura (decifra o blob); nunca persiste como coluna. */
     final4: mascara_final4_do_payload(dadosPlasticosCifrados),
     ...origem,
@@ -137,6 +144,57 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const origem = await mapear_origem_cartoes([encontrado.id]);
     const nomes = await mapear_nomes_workspaces(banco, [encontrado.workspaceId]);
     return cartao_publico(encontrado, origem.get(encontrado.id), nomes);
+  });
+
+  app.post("/:id/revelar", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const dados = schemaRevelarPlasticoApi.parse(requisicao.body);
+    const banco = obter_banco();
+    const escopo = await obter_escopo_leitura(dados.usuarioId);
+
+    const [existente] = await banco
+      .select()
+      .from(cartao)
+      .where(
+        and(
+          eq(cartao.id, id),
+          eq(cartao.usuarioId, dados.usuarioId),
+          inArray(cartao.workspaceId, escopo.workspaceIds),
+          eq(cartao.ativo, true),
+        ),
+      )
+      .limit(1);
+
+    if (!existente) {
+      return resposta.status(404).send({ erro: "Cartão não encontrado." });
+    }
+    if (!existente.dadosPlasticosCifrados) {
+      return resposta.status(400).send({ erro: "Este cartão não tem dados do plástico salvos." });
+    }
+
+    const [usuario] = await banco
+      .select()
+      .from(usuarioTabela)
+      .where(eq(usuarioTabela.id, dados.usuarioId))
+      .limit(1);
+    if (!usuario) {
+      return resposta.status(404).send({ erro: "Usuário não encontrado." });
+    }
+
+    const senhaOk = await verificar_senha_usuario(usuario.email, dados.senha);
+    if (!senhaOk) {
+      return resposta.status(401).send({ erro: "Senha incorreta." });
+    }
+
+    try {
+      const plasticos = decifrar_dados_plasticos(existente.dadosPlasticosCifrados);
+      return { numero: plasticos.numero, validade: plasticos.validade, cvv: plasticos.cvv };
+    } catch (erro) {
+      if (erro instanceof ErroCifragemCartao || erro instanceof ErroDadosPlasticosInvalidos) {
+        return resposta.status(422).send({ erro: erro.message });
+      }
+      throw erro;
+    }
   });
 
   app.patch("/:id", async (requisicao, resposta) => {

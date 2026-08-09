@@ -8,7 +8,9 @@ import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
+import { CampoValor } from "../componentes/ui/CampoValor";
 import { useContextoLayout } from "../layout/useContextoLayout";
+import { parsear_valor_mascara, valor_para_mascara } from "../lib/mascara-valor";
 import { unir_classes } from "../lib/unir-classes";
 
 function para_numero(valor: string | undefined): number {
@@ -33,7 +35,7 @@ export function TelaCartoes() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [nome, setNome] = useState("");
-  const [limite, setLimite] = useState("5000");
+  const [limite, setLimite] = useState(valor_para_mascara(5000));
   const [fechamento, setFechamento] = useState("10");
   const [vencimento, setVencimento] = useState("17");
   const [contaId, setContaId] = useState("");
@@ -76,7 +78,7 @@ export function TelaCartoes() {
 
   function limpar_form() {
     setNome("");
-    setLimite("5000");
+    setLimite(valor_para_mascara(5000));
     setFechamento("10");
     setVencimento("17");
     setContaId("");
@@ -88,7 +90,7 @@ export function TelaCartoes() {
     setMostrandoForm(false);
     setEditandoId(cartao.id);
     setNome(cartao.nome);
-    setLimite(String(para_numero(cartao.limite)));
+    setLimite(valor_para_mascara(para_numero(cartao.limite)));
     setFechamento(String(cartao.fechamento ?? 10));
     setVencimento(String(cartao.vencimento));
     setContaId(cartao.contaId ?? "");
@@ -100,12 +102,12 @@ export function TelaCartoes() {
     if (!usuario || !nome.trim()) return;
     const diaFechamento = dia_valido(fechamento);
     const diaVencimento = dia_valido(vencimento);
-    const limiteNum = Number(limite.replace(",", "."));
+    const limiteNum = parsear_valor_mascara(limite);
     if (diaFechamento == null || diaVencimento == null) {
       setErro("Fechamento e vencimento precisam ser dias entre 1 e 31.");
       return;
     }
-    if (!Number.isFinite(limiteNum) || limiteNum < 0) {
+    if (limiteNum == null || limiteNum < 0) {
       setErro("Informe um limite válido.");
       return;
     }
@@ -140,12 +142,12 @@ export function TelaCartoes() {
 
     const diaFechamento = dia_valido(fechamento);
     const diaVencimento = dia_valido(vencimento);
-    const limiteNum = Number(limite.replace(",", "."));
+    const limiteNum = parsear_valor_mascara(limite);
     if (diaFechamento == null || diaVencimento == null) {
       setErro("Fechamento e vencimento precisam ser dias entre 1 e 31.");
       return;
     }
-    if (!Number.isFinite(limiteNum) || limiteNum < 0) {
+    if (limiteNum == null || limiteNum < 0) {
       setErro("Informe um limite válido.");
       return;
     }
@@ -263,12 +265,7 @@ export function TelaCartoes() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Limite
-              <Campo
-                inputMode="decimal"
-                value={limite}
-                onChange={(e) => setLimite(e.target.value)}
-                required
-              />
+              <CampoValor value={limite} onChange={setLimite} required />
             </label>
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Dia de fechamento
@@ -334,12 +331,7 @@ export function TelaCartoes() {
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-xs text-texto-suave">
                 Limite
-                <Campo
-                  inputMode="decimal"
-                  value={limite}
-                  onChange={(e) => setLimite(e.target.value)}
-                  required
-                />
+                <CampoValor value={limite} onChange={setLimite} required />
               </label>
               <label className="flex flex-col gap-1 text-xs text-texto-suave">
                 Dia de fechamento

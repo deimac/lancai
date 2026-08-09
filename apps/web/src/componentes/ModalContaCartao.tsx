@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { X } from "lucide-react";
+import { Eye, EyeOff, Lock, X } from "lucide-react";
 import type { Perfil } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
+import { parsear_valor_mascara, valor_para_mascara } from "../lib/mascara-valor";
 import { Botao } from "./ui/Botao";
 import { Campo } from "./ui/Campo";
+import { CampoValor } from "./ui/CampoValor";
 
 export type TipoCadastro = "conta" | "cartao";
 
@@ -27,9 +29,9 @@ function dia_valido(valor: string): number | null {
   return n;
 }
 
-function para_numero(valor: string): number | null {
-  const n = Number(valor.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
+function formatar_numero_grupos(numero: string): string {
+  const digitos = numero.replace(/\D/g, "");
+  return digitos.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
 }
 
 export function ModalContaCartao({
@@ -47,42 +49,56 @@ export function ModalContaCartao({
   const [tipo, setTipo] = useState<TipoCadastro>(tipoInicial);
   const [nome, setNome] = useState("");
   const [perfil, setPerfil] = useState<Perfil>("pf");
-  const [saldo, setSaldo] = useState("0");
-  const [limite, setLimite] = useState("5000");
+  const [saldo, setSaldo] = useState(valor_para_mascara(0));
+  const [limite, setLimite] = useState(valor_para_mascara(5000));
   const [fechamento, setFechamento] = useState("10");
   const [vencimento, setVencimento] = useState("17");
   const [numero, setNumero] = useState("");
   const [validade, setValidade] = useState("");
   const [cvv, setCvv] = useState("");
+  const [plasticoBloqueado, setPlasticoBloqueado] = useState(false);
+  const [plasticoVisivel, setPlasticoVisivel] = useState(false);
+  const [pedindoSenha, setPedindoSenha] = useState(false);
+  const [senha, setSenha] = useState("");
+  const [desbloqueando, setDesbloqueando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const tipoEfetivo = tipoFixo ?? tipo;
   const sincronizada = Boolean(alvo?.sincronizada);
-  const temPlastico = eh_cartao(alvo) && Boolean(alvo.final4);
+  const temPlasticoSalvo =
+    eh_cartao(alvo) && Boolean(alvo.temPlastico || alvo.final4);
+  const final4 = eh_cartao(alvo) ? alvo.final4 : null;
 
   useEffect(() => {
     if (!aberto) return;
     setErro(null);
     setTipo(tipoInicial);
+    setPedindoSenha(false);
+    setSenha("");
+    setPlasticoVisivel(false);
     if (editando && alvo) {
       setNome(alvo.nome);
       setPerfil(alvo.perfil);
       if (eh_cartao(alvo)) {
-        setSaldo(String(Number(alvo.saldo ?? 0)));
-        setLimite(String(Number(alvo.limite ?? 0)));
+        setSaldo(valor_para_mascara(Number(alvo.saldo ?? 0)));
+        setLimite(valor_para_mascara(Number(alvo.limite ?? 0)));
         setFechamento(String(alvo.fechamento ?? 10));
         setVencimento(String(alvo.vencimento ?? 17));
+        const tem = Boolean(alvo.temPlastico || alvo.final4);
+        setPlasticoBloqueado(tem);
       } else {
-        setSaldo(String(Number(alvo.saldoAtual ?? 0)));
+        setSaldo(valor_para_mascara(Number(alvo.saldoAtual ?? 0)));
+        setPlasticoBloqueado(false);
       }
     } else {
       setNome("");
       setPerfil("pf");
-      setSaldo("0");
-      setLimite("5000");
+      setSaldo(valor_para_mascara(0));
+      setLimite(valor_para_mascara(5000));
       setFechamento("10");
       setVencimento("17");
+      setPlasticoBloqueado(false);
     }
     setNumero("");
     setValidade("");
@@ -91,20 +107,45 @@ export function ModalContaCartao({
 
   if (!aberto || !usuario) return null;
 
+  async function desbloquear_plastico(evento: FormEvent) {
+    evento.preventDefault();
+    if (!usuario || !alvo || !eh_cartao(alvo) || !senha.trim()) return;
+    setDesbloqueando(true);
+    setErro(null);
+    try {
+      const dados = await clienteApi.revelar_plastico(alvo.id, {
+        usuarioId: usuario.id,
+        senha: senha.trim(),
+      });
+      setNumero(formatar_numero_grupos(dados.numero));
+      setValidade(dados.validade);
+      setCvv(dados.cvv);
+      setPlasticoBloqueado(false);
+      setPlasticoVisivel(false);
+      setPedindoSenha(false);
+      setSenha("");
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : "Não foi possível desbloquear o plástico.");
+    } finally {
+      setDesbloqueando(false);
+    }
+  }
+
   async function salvar(evento: FormEvent) {
     evento.preventDefault();
     if (!usuario || !nome.trim()) return;
 
-    const saldoNum = para_numero(saldo);
+    const saldoNum = parsear_valor_mascara(saldo);
     if (saldoNum == null || saldoNum < 0) {
       setErro("Informe um saldo válido.");
       return;
     }
 
+    const podeEnviarPlastico = tipoEfetivo === "cartao" && !plasticoBloqueado;
     const algumPlastico = Boolean(numero.trim() || validade.trim() || cvv.trim());
-    if (tipoEfetivo === "cartao" && algumPlastico) {
+    if (podeEnviarPlastico && algumPlastico) {
       if (!numero.trim() || !validade.trim() || !cvv.trim()) {
-        setErro("Preencha número, validade e CVV juntos, ou deixe os três em branco.");
+        setErro("Preencha número, validade e CVV juntos.");
         return;
       }
     }
@@ -131,7 +172,7 @@ export function ModalContaCartao({
       } else {
         const diaFechamento = dia_valido(fechamento);
         const diaVencimento = dia_valido(vencimento);
-        const limiteNum = para_numero(limite);
+        const limiteNum = parsear_valor_mascara(limite);
         if (diaFechamento == null || diaVencimento == null) {
           setErro("Fechamento e vencimento precisam ser dias entre 1 e 31.");
           setSalvando(false);
@@ -143,8 +184,12 @@ export function ModalContaCartao({
           return;
         }
         const plastico =
-          algumPlastico
-            ? { numero: numero.trim(), validade: validade.trim(), cvv: cvv.trim() }
+          podeEnviarPlastico && algumPlastico
+            ? {
+                numero: numero.replace(/\s/g, ""),
+                validade: validade.trim(),
+                cvv: cvv.trim(),
+              }
             : undefined;
 
         if (editando && alvo && eh_cartao(alvo)) {
@@ -183,6 +228,12 @@ export function ModalContaCartao({
       setSalvando(false);
     }
   }
+
+  const numeroExibido = plasticoBloqueado
+    ? `•••• •••• •••• ${final4 ?? "••••"}`
+    : numero;
+  const validadeExibida = plasticoBloqueado ? "••/••" : validade;
+  const cvvExibido = plasticoBloqueado ? "•••" : cvv;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -248,12 +299,7 @@ export function ModalContaCartao({
 
           <label className="flex flex-col gap-1 text-xs text-texto-suave">
             Saldo
-            <Campo
-              inputMode="decimal"
-              value={saldo}
-              onChange={(e) => setSaldo(e.target.value)}
-              disabled={sincronizada}
-            />
+            <CampoValor value={saldo} onChange={setSaldo} disabled={sincronizada} />
             <span className="text-[11px] text-texto-suave">
               {tipoEfetivo === "cartao"
                 ? "Saldo devido do cartão (gasto atual). Use 0 se não houver dívida."
@@ -265,12 +311,7 @@ export function ModalContaCartao({
             <>
               <label className="flex flex-col gap-1 text-xs text-texto-suave">
                 Limite do cartão
-                <Campo
-                  inputMode="decimal"
-                  value={limite}
-                  onChange={(e) => setLimite(e.target.value)}
-                  disabled={sincronizada}
-                />
+                <CampoValor value={limite} onChange={setLimite} disabled={sincronizada} />
               </label>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -296,21 +337,51 @@ export function ModalContaCartao({
 
               {!sincronizada && (
                 <fieldset className="flex flex-col gap-3 rounded-xl border border-borda p-3">
-                  <legend className="px-1 text-xs text-texto-suave">Dados do plástico</legend>
-                  {temPlastico && (
+                  <legend className="flex items-center gap-2 px-1 text-xs text-texto-suave">
+                    Dados do plástico
+                    {temPlasticoSalvo && plasticoBloqueado && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPedindoSenha(true);
+                          setErro(null);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[11px] text-texto hover:bg-superficie-alta"
+                        title="Desbloquear com senha para ver e alterar"
+                      >
+                        <Lock size={12} />
+                        Desbloquear
+                      </button>
+                    )}
+                    {temPlasticoSalvo && !plasticoBloqueado && (
+                      <button
+                        type="button"
+                        onClick={() => setPlasticoVisivel((v) => !v)}
+                        className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[11px] text-texto hover:bg-superficie-alta"
+                        title={plasticoVisivel ? "Ocultar dados" : "Mostrar dados"}
+                      >
+                        {plasticoVisivel ? <EyeOff size={12} /> : <Eye size={12} />}
+                        {plasticoVisivel ? "Ocultar" : "Mostrar"}
+                      </button>
+                    )}
+                  </legend>
+
+                  {plasticoBloqueado && (
                     <p className="text-[11px] text-texto-suave">
-                      Plástico salvo: ···· {eh_cartao(alvo) ? alvo.final4 : ""}. Deixe em branco para
-                      manter; preencha os três campos só se quiser substituir.
+                      Dados ocultos. Use o cadeado e a senha da sua conta para ver e alterar.
                     </p>
                   )}
+
                   <label className="flex flex-col gap-1 text-xs text-texto-suave">
                     Número do cartão
                     <Campo
                       inputMode="numeric"
                       autoComplete="cc-number"
-                      value={numero}
-                      onChange={(e) => setNumero(e.target.value)}
-                      placeholder={temPlastico ? "Manter o atual" : "0000 0000 0000 0000"}
+                      value={numeroExibido}
+                      onChange={(e) => setNumero(formatar_numero_grupos(e.target.value))}
+                      placeholder="0000 0000 0000 0000"
+                      disabled={plasticoBloqueado}
+                      type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
                     />
                   </label>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -318,9 +389,11 @@ export function ModalContaCartao({
                       Validade
                       <Campo
                         autoComplete="cc-exp"
-                        value={validade}
+                        value={validadeExibida}
                         onChange={(e) => setValidade(e.target.value)}
-                        placeholder={temPlastico ? "Manter" : "MM/AA"}
+                        placeholder="MM/AA"
+                        disabled={plasticoBloqueado}
+                        type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-texto-suave">
@@ -328,9 +401,11 @@ export function ModalContaCartao({
                       <Campo
                         inputMode="numeric"
                         autoComplete="cc-csc"
-                        value={cvv}
-                        onChange={(e) => setCvv(e.target.value)}
-                        placeholder={temPlastico ? "Manter" : "•••"}
+                        value={cvvExibido}
+                        onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder="•••"
+                        disabled={plasticoBloqueado}
+                        type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
                       />
                     </label>
                   </div>
@@ -357,6 +432,58 @@ export function ModalContaCartao({
           </Botao>
         </div>
       </form>
+
+      {pedindoSenha && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <form
+            onSubmit={(e) => void desbloquear_plastico(e)}
+            className="w-full max-w-sm rounded-2xl border border-borda bg-superficie p-4 shadow-xl"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-texto">Senha da conta</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setPedindoSenha(false);
+                  setSenha("");
+                }}
+                className="rounded-lg p-1 text-texto-suave hover:bg-superficie-alta"
+                aria-label="Fechar"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-texto-suave">
+              Digite a senha do LançAI para ver e editar número, validade e CVV.
+            </p>
+            <Campo
+              type="password"
+              autoComplete="current-password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              placeholder="Senha"
+              autoFocus
+              required
+            />
+            {erro && <p className="mt-2 text-sm text-despesa">{erro}</p>}
+            <div className="mt-3 flex justify-end gap-2">
+              <Botao
+                type="button"
+                variante="fantasma"
+                onClick={() => {
+                  setPedindoSenha(false);
+                  setSenha("");
+                }}
+              >
+                Cancelar
+              </Botao>
+              <Botao type="submit" disabled={desbloqueando || !senha.trim()}>
+                {desbloqueando ? "Validando..." : "Desbloquear"}
+              </Botao>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

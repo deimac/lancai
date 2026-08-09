@@ -101,6 +101,13 @@ export const schemaExcluirCartaoApi = z.object({
   usuarioId: z.string().uuid(),
 });
 
+/** POST /cartoes/:id/revelar — senha da conta para ver número/validade/CVV. */
+export const schemaRevelarPlasticoApi = z.object({
+  usuarioId: z.string().uuid(),
+  senha: z.string().min(1),
+});
+export type EntradaRevelarPlasticoApi = z.infer<typeof schemaRevelarPlasticoApi>;
+
 const corWorkspaceSchema = z.enum([
   "violet",
   "blue",
