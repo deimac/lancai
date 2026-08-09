@@ -30,6 +30,11 @@ function dia_valido(valor: string): number | null {
   return n;
 }
 
+/** Dia do mês na digitação: só dígitos, no máximo 2 caracteres. */
+function formatar_dia_digitacao(entrada: string): string {
+  return entrada.replace(/\D/g, "").slice(0, 2);
+}
+
 function formatar_numero_grupos(numero: string): string {
   const digitos = numero.replace(/\D/g, "");
   return digitos.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
@@ -70,9 +75,9 @@ export function ModalContaCartao({
   const [nome, setNome] = useState("");
   const [perfil, setPerfil] = useState<Perfil>("pf");
   const [saldo, setSaldo] = useState(valor_para_mascara(0));
-  const [limite, setLimite] = useState(valor_para_mascara(5000));
-  const [fechamento, setFechamento] = useState("10");
-  const [vencimento, setVencimento] = useState("17");
+  const [limite, setLimite] = useState("");
+  const [fechamento, setFechamento] = useState("");
+  const [vencimento, setVencimento] = useState("");
   const [numero, setNumero] = useState("");
   const [validade, setValidade] = useState("");
   const [cvv, setCvv] = useState("");
@@ -103,8 +108,8 @@ export function ModalContaCartao({
       if (eh_cartao(alvo)) {
         setSaldo(valor_para_mascara(Number(alvo.saldo ?? 0)));
         setLimite(valor_para_mascara(Number(alvo.limite ?? 0)));
-        setFechamento(String(alvo.fechamento ?? 10));
-        setVencimento(String(alvo.vencimento ?? 17));
+        setFechamento(alvo.fechamento != null ? String(alvo.fechamento) : "");
+        setVencimento(alvo.vencimento != null ? String(alvo.vencimento) : "");
         const tem = Boolean(alvo.temPlastico || alvo.final4);
         setPlasticoBloqueado(tem);
       } else {
@@ -115,9 +120,9 @@ export function ModalContaCartao({
       setNome("");
       setPerfil("pf");
       setSaldo(valor_para_mascara(0));
-      setLimite(valor_para_mascara(5000));
-      setFechamento("10");
-      setVencimento("17");
+      setLimite("");
+      setFechamento("");
+      setVencimento("");
       setPlasticoBloqueado(false);
     }
     setNumero("");
@@ -161,6 +166,24 @@ export function ModalContaCartao({
       return;
     }
 
+    let diaFechamento: number | null = null;
+    let diaVencimento: number | null = null;
+    let limiteNum: number | null = null;
+
+    if (tipoEfetivo === "cartao") {
+      limiteNum = parsear_valor_mascara(limite);
+      if (limiteNum == null || limiteNum < 0) {
+        setErro("Informe o limite do cartão.");
+        return;
+      }
+      diaFechamento = dia_valido(fechamento);
+      diaVencimento = dia_valido(vencimento);
+      if (diaFechamento == null || diaVencimento == null) {
+        setErro("Fechamento e vencimento precisam ser dias entre 1 e 31.");
+        return;
+      }
+    }
+
     const podeEnviarPlastico = tipoEfetivo === "cartao" && !plasticoBloqueado;
     const algumPlastico = Boolean(numero.trim() || validade.trim() || cvv.trim());
     if (podeEnviarPlastico && algumPlastico) {
@@ -190,19 +213,6 @@ export function ModalContaCartao({
           });
         }
       } else {
-        const diaFechamento = dia_valido(fechamento);
-        const diaVencimento = dia_valido(vencimento);
-        const limiteNum = parsear_valor_mascara(limite);
-        if (diaFechamento == null || diaVencimento == null) {
-          setErro("Fechamento e vencimento precisam ser dias entre 1 e 31.");
-          setSalvando(false);
-          return;
-        }
-        if (limiteNum == null || limiteNum < 0) {
-          setErro("Informe um limite válido.");
-          setSalvando(false);
-          return;
-        }
         const plastico =
           podeEnviarPlastico && algumPlastico
             ? {
@@ -220,10 +230,10 @@ export function ModalContaCartao({
             ...(sincronizada
               ? {}
               : {
-                  limite: limiteNum,
+                  limite: limiteNum!,
                   saldo: saldoNum,
-                  fechamento: diaFechamento,
-                  vencimento: diaVencimento,
+                  fechamento: diaFechamento!,
+                  vencimento: diaVencimento!,
                   ...(plastico ? { plastico } : {}),
                 }),
           });
@@ -232,10 +242,10 @@ export function ModalContaCartao({
             usuarioId: usuario.id,
             nome: nome.trim(),
             perfil,
-            limite: limiteNum,
+            limite: limiteNum!,
             saldo: saldoNum,
-            fechamento: diaFechamento,
-            vencimento: diaVencimento,
+            fechamento: diaFechamento!,
+            vencimento: diaVencimento!,
             ...(plastico ? { plastico } : {}),
           });
         }
@@ -351,7 +361,9 @@ export function ModalContaCartao({
                   <Campo
                     inputMode="numeric"
                     value={fechamento}
-                    onChange={(e) => setFechamento(e.target.value)}
+                    onChange={(e) => setFechamento(formatar_dia_digitacao(e.target.value))}
+                    placeholder="1–31"
+                    maxLength={2}
                     disabled={sincronizada}
                   />
                 </label>
@@ -360,7 +372,9 @@ export function ModalContaCartao({
                   <Campo
                     inputMode="numeric"
                     value={vencimento}
-                    onChange={(e) => setVencimento(e.target.value)}
+                    onChange={(e) => setVencimento(formatar_dia_digitacao(e.target.value))}
+                    placeholder="1–31"
+                    maxLength={2}
                     disabled={sincronizada}
                   />
                 </label>
