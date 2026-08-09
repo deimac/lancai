@@ -27,6 +27,7 @@ import {
   ErroMovimentoNaoEncontrado,
 } from "@lancai/conhecimento";
 import { ErroVisaoAgregadaSomenteLeitura } from "@lancai/banco";
+import { ErroValidacaoSenhaIndisponivel } from "./verificar-senha-usuario";
 
 function registrar_falha_ia(provedores: unknown) {
   const linha = `${new Date().toISOString()} ${JSON.stringify(provedores)}\n`;
@@ -70,6 +71,10 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     erro instanceof ErroConhecimentoInvalido
   ) {
     return resposta.status(422).send({ erro: erro.message });
+  }
+
+  if (erro instanceof ErroValidacaoSenhaIndisponivel) {
+    return resposta.status(503).send({ erro: erro.message });
   }
 
   if (erro instanceof ErroProvedorIndisponivel) {

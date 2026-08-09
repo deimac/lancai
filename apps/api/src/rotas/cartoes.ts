@@ -9,8 +9,6 @@ import {
 } from "@lancai/banco";
 import {
   decifrar_dados_plasticos,
-  ErroCifragemCartao,
-  ErroDadosPlasticosInvalidos,
   mascara_final4_do_payload,
   preparar_persistencia_plasticos,
 } from "@lancai/ia";
@@ -134,18 +132,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     return linhas.map((linha) => cartao_publico(linha, origem.get(linha.id), nomes));
   });
 
-  app.get("/:id", async (requisicao, resposta) => {
-    const { id } = requisicao.params as { id: string };
-    const banco = obter_banco();
-    const [encontrado] = await banco.select().from(cartao).where(eq(cartao.id, id)).limit(1);
-    if (!encontrado || !encontrado.ativo) {
-      return resposta.status(404).send({ erro: "Cartão não encontrado." });
-    }
-    const origem = await mapear_origem_cartoes([encontrado.id]);
-    const nomes = await mapear_nomes_workspaces(banco, [encontrado.workspaceId]);
-    return cartao_publico(encontrado, origem.get(encontrado.id), nomes);
-  });
-
+  /** Registrar antes de `/:id` para evitar ambiguidade de rota. */
   app.post("/:id/revelar", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const dados = schemaRevelarPlasticoApi.parse(requisicao.body);
@@ -190,11 +177,25 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       const plasticos = decifrar_dados_plasticos(existente.dadosPlasticosCifrados);
       return { numero: plasticos.numero, validade: plasticos.validade, cvv: plasticos.cvv };
     } catch (erro) {
-      if (erro instanceof ErroCifragemCartao || erro instanceof ErroDadosPlasticosInvalidos) {
-        return resposta.status(422).send({ erro: erro.message });
-      }
-      throw erro;
+      const mensagem =
+        erro instanceof Error
+          ? erro.message
+          : "Não foi possível decifrar os dados do plástico.";
+      requisicao.log.error({ err: erro }, "falha ao decifrar plástico");
+      return resposta.status(422).send({ erro: mensagem });
     }
+  });
+
+  app.get("/:id", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const banco = obter_banco();
+    const [encontrado] = await banco.select().from(cartao).where(eq(cartao.id, id)).limit(1);
+    if (!encontrado || !encontrado.ativo) {
+      return resposta.status(404).send({ erro: "Cartão não encontrado." });
+    }
+    const origem = await mapear_origem_cartoes([encontrado.id]);
+    const nomes = await mapear_nomes_workspaces(banco, [encontrado.workspaceId]);
+    return cartao_publico(encontrado, origem.get(encontrado.id), nomes);
   });
 
   app.patch("/:id", async (requisicao, resposta) => {
