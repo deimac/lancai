@@ -342,8 +342,11 @@ export function TelaExtrato() {
                           <span className="text-[10px] uppercase text-texto-suave">Cancelado</span>
                         )}
                         {movimento.parcelaNumero && movimento.parcelaTotal && (
-                          <span className="text-[10px] text-texto-suave">
-                            {movimento.parcelaNumero}/{movimento.parcelaTotal}
+                          <span
+                            className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
+                            title="Parcela da compra no cartão"
+                          >
+                            Parcela {movimento.parcelaNumero}/{movimento.parcelaTotal}
                           </span>
                         )}
                       </div>

@@ -126,7 +126,7 @@ Movimentação de conta externa que ninguém associou a uma conta local é **des
 
 Em conta conectada, o saldo exibido é o que a **instituição informa** (`balance` da conta no provedor), tratado como Fato. A soma das movimentações fica como detalhe auditável, não como verdade.
 
-Isso resolve a divergência que a seção 10 listava como risco, e tem uma consequência de implementação: para conta sincronizada, o Core **atribui** o saldo que veio do provedor em vez de acumulá-lo a partir dos eventos, como faz no lançamento manual. Enquanto o adaptador não existir, `ingerir_eventos` ainda acumula.
+Isso resolve a divergência que a seção 10 listava como risco, e tem uma consequência de implementação: para conta sincronizada, o Core **atribui** o saldo que veio do provedor (`atualizar_saldo_institucional_conta`) e `ingerir_eventos` / atualização / remoção de Fato `open_finance` **não** acumulam em `saldo_atual` — ao contrário do lançamento manual.
 
 ---
 
@@ -264,7 +264,7 @@ Além dos cinco, `item/waiting_user_input` e `item/waiting_user_action` também 
 | `valor` | `Math.abs(amount)` | `amount` vem com sinal; nosso schema exige positivo e a direção está em `tipo` |
 | `tipo` | `type` | `DEBIT` → despesa, `CREDIT` → receita. A Pluggy já normaliza a inversão do cartão: compra é sempre `DEBIT` |
 | `statusFonte` | `status` | `POSTED` → confirmado, `PENDING` → pendente |
-| `ocorridoEm` | `date` | Vem em ISO com hora; nós guardamos só a data |
+| `ocorridoEm` | `date` (ou `creditCardMetadata.billForecastDate` em parcela PENDING) | ISO → só a data. Em parcela ainda não faturada o `date` costuma repetir a compra; aí usamos o mês previsto da fatura (`YYYY-MM-01`) para o extrato não empilhar todas no mesmo dia |
 | `favorecidoFonte` | `merchant.name` ou `paymentData.receiver.name` | Qual usar é configuração por conexão, e é conceito de provedor — fica no módulo |
 | `provedor` | fixo `"pluggy"` | Rótulo opaco, ninguém fora do módulo interpreta |
 
@@ -284,7 +284,7 @@ Para a observabilidade da seção 7, os campos são `status`, `executionStatus`,
 
 `transactions/deleted` existe: a Pluggy remove transações depois do merge de dados. Nosso trigger **proíbe** `DELETE` em movimentação de `open_finance`, e proibir isso foi decisão consciente ([ADR-009](adr/009-fato-vs-conhecimento.md)).
 
-**Decidido:** desaparecimento registrado. `status_fonte` passa a `removido` e `status` passa a `cancelado`. O saldo volta, a linha permanece no histórico, e nada do Conhecimento é perdido.
+**Decidido:** desaparecimento registrado. `status_fonte` passa a `removido` e `status` passa a `cancelado`. A linha permanece no histórico e nada do Conhecimento é perdido. Em conta sincronizada o `saldo_atual` não é derivado do Fato (é o `balance` institucional); a próxima sync reatribui se a instituição mudou o número.
 
 A divisão entre as duas colunas é o ponto. `status_fonte = 'removido'` é o que a instituição afirma, e por isso é Fato — a mesma coluna protegida pelo mesmo trigger. `status = 'cancelado'` é a nossa consequência disso. Nenhuma marca de Conhecimento é inventada para carregar essa informação, o que evita que o Core escreva na metade mutável do registro.
 

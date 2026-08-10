@@ -51,12 +51,16 @@ function dia_do_mes(iso: string | null | undefined): number | undefined {
 
 export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExterna {
   const favorecido = transacao.merchant?.name ?? transacao.paymentData?.receiver?.name ?? undefined;
+  const statusFonte = traduzir_status_transacao(transacao.status);
 
   return {
     idExterno: transacao.id,
     contaExternaId: transacao.accountId,
-    /** Vem ISO com hora; o Fato guarda só a data. */
-    ocorridoEm: transacao.date.slice(0, 10),
+    /**
+     * Em parcelas PENDING o `date` costuma repetir a data da compra; o período
+     * da fatura prevista (`billForecastDate`) espalha as parcelas no extrato.
+     */
+    ocorridoEm: data_do_movimento(transacao, statusFonte),
     /** `amount` vem com sinal; a direção mora em `tipo`. */
     valor: Math.abs(transacao.amount),
     /** A Pluggy já normaliza a inversão do cartão: compra é sempre DEBIT. */
@@ -68,9 +72,21 @@ export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExte
      */
     descricaoFonte: transacao.descriptionRaw ?? transacao.description ?? "(sem descrição)",
     favorecidoFonte: favorecido ?? undefined,
-    statusFonte: traduzir_status_transacao(transacao.status),
+    statusFonte,
     parcelamento: traduzir_parcelamento(transacao.creditCardMetadata),
   };
+}
+
+/**
+ * Para parcela ainda não faturada, prefere o mês previsto da fatura (dia 1).
+ * Confirmadas seguem o `date` que a instituição/Pluggy já amarra à fatura.
+ */
+function data_do_movimento(transacao: TransacaoPluggy, status: StatusFonte): string {
+  const forecast = transacao.creditCardMetadata?.billForecastDate;
+  if (status === "pendente" && forecast && /^\d{4}-\d{2}$/.test(forecast)) {
+    return `${forecast}-01`;
+  }
+  return transacao.date.slice(0, 10);
 }
 
 /**

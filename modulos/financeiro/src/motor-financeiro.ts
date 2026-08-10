@@ -328,12 +328,14 @@ export class MotorFinanceiro {
       };
       novosMovimentos.push(novoMovimento);
 
-      // Mesma regra de saldo dos lançamentos manuais, para não existirem duas
-      // verdades sobre saldo no motor. Em conta sincronizada isso é provisório:
-      // o saldo que a instituição informa é Fato e passa a ser atribuído em vez
-      // de acumulado, quando o adaptador do provedor existir (13-OPEN_FINANCE,
-      // seção 4).
-      if (novoMovimento.status === "realizado" && evento.contaId) {
+      // Conta sincronizada: o saldo é o `balance` da instituição (atribuído em
+      // `atualizar_saldo_institucional_conta`), não a soma dos Fatos — ver
+      // 13-OPEN_FINANCE §4. Acumular aqui inflava o saldo após cada importação.
+      if (
+        evento.fonte !== "open_finance" &&
+        novoMovimento.status === "realizado" &&
+        evento.contaId
+      ) {
         const saldoBase =
           saldosPorConta.get(evento.contaId) ?? (await this.obter_saldo_atual(evento.contaId));
         saldosPorConta.set(evento.contaId, calcular_saldo(saldoBase, evento.tipo, evento.valor));
@@ -423,7 +425,8 @@ export class MotorFinanceiro {
       }
 
       const contaId = atual.contaId;
-      if (contaId && !atual.cartaoId) {
+      // Mesma regra da ingestão: Fato de open_finance não mexe em saldo_atual.
+      if (atual.fonte !== "open_finance" && contaId && !atual.cartaoId) {
         const saldoBase = saldosPorConta.get(contaId) ?? (await this.obter_saldo_atual(contaId));
         const delta =
           efeito_no_saldo({
@@ -473,8 +476,8 @@ export class MotorFinanceiro {
    *
    * O tratamento é **desaparecimento registrado**: `status_fonte` passa a
    * `removido`, que é o que a instituição afirma, e `status` passa a
-   * `cancelado`, que é a consequência disso aqui. O saldo volta e a linha fica
-   * no histórico.
+   * `cancelado`, que é a consequência disso aqui. A linha fica no histórico.
+   * Em `open_finance` o `saldo_atual` não é ajustado (é o balance institucional).
    *
    * As duas alternativas foram descartadas por motivo explícito. Apagar de
    * verdade contradiz o ADR-009 e destrói a auditoria de algo que existiu.
@@ -511,7 +514,8 @@ export class MotorFinanceiro {
        */
       if (atual.status !== "cancelado") campos.status = "cancelado";
 
-      if (atual.contaId && !atual.cartaoId) {
+      // Saldo institucional não é derivado dos Fatos; a próxima sync reatribui.
+      if (atual.fonte !== "open_finance" && atual.contaId && !atual.cartaoId) {
         const saldoBase =
           saldosPorConta.get(atual.contaId) ?? (await this.obter_saldo_atual(atual.contaId));
         const delta = -efeito_no_saldo(atual);

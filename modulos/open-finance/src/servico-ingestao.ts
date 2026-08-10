@@ -406,10 +406,20 @@ export class ServicoIngestaoOpenFinance {
       resumo.semDestino += semDestino;
 
       if (eventos.length > 0) {
-        const resultado = await this.motor.ingerir_eventos(eventos, contexto);
-        resumo.criados += resultado.criados.length;
-        resumo.duplicados += resultado.duplicados;
-        resumo.movimentoIdsCriados.push(...resultado.criados.map((m) => m.id));
+        /**
+         * Atualiza o que já existe (ex.: data da parcela PENDING com
+         * `billForecastDate`) e só cria o desconhecido — reimportar o histórico
+         * deixa de ser “só duplicados”.
+         */
+        const alteracao = await this.motor.atualizar_fatos_da_fonte(eventos, contexto);
+        resumo.atualizados += alteracao.atualizados.length;
+
+        if (alteracao.desconhecidos.length > 0) {
+          const resultado = await this.motor.ingerir_eventos(alteracao.desconhecidos, contexto);
+          resumo.criados += resultado.criados.length;
+          resumo.duplicados += resultado.duplicados;
+          resumo.movimentoIdsCriados.push(...resultado.criados.map((m) => m.id));
+        }
       }
 
       opcoes.aoPagina?.({ paginas: resumo.paginas, criados: resumo.criados });

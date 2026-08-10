@@ -47,6 +47,11 @@ export interface TransacaoPluggy {
     totalInstallments?: number | null;
     totalAmount?: number | null;
     purchaseDate?: string | null;
+    /**
+     * Período previsto da fatura (`YYYY-MM`). Vem também em parcelas futuras
+     * PENDING — ao contrário de `billId`, que só aparece depois do fechamento.
+     */
+    billForecastDate?: string | null;
   } | null;
 }
 

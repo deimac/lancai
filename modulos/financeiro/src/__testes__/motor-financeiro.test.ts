@@ -843,7 +843,7 @@ describe("MotorFinanceiro", () => {
       expect(repositorio.movimentos.size).toBe(2);
     });
 
-    it("aplica o saldo uma vez só quando o lote é reprocessado", async () => {
+    it("não acumula saldo_atual na conta — o saldo vem da instituição", async () => {
       const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
       repositorio.contas.set(conta.id, conta);
 
@@ -851,7 +851,7 @@ describe("MotorFinanceiro", () => {
       await motor.ingerir_eventos(lote, contexto());
       await motor.ingerir_eventos(lote, contexto());
 
-      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(910);
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
     });
 
     /**
@@ -994,22 +994,22 @@ describe("MotorFinanceiro", () => {
       expect(movimento?.observacoes).toBe("dividido com a Ana");
     });
 
-    it("ajusta o saldo pela diferença de valor", async () => {
+    it("não mexe em saldo_atual ao corrigir valor de Fato open_finance", async () => {
       const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
       repositorio.contas.set(conta.id, conta);
       await ingerir(conta.id);
-      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(910);
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
 
       await motor.atualizar_fatos_da_fonte(
         [evento({ contaId: conta.id, valor: 95.5 })],
         contexto(),
       );
 
-      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(904.5);
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
     });
 
-    /** O caso mais comum de todos: a compra sai do "pendente" e entra no saldo. */
-    it("aplica no saldo a pendente que a instituição confirmou", async () => {
+    /** Pendente → confirmado muda o status do Fato; o saldo institucional não deriva disso. */
+    it("confirma pendente sem alterar saldo_atual", async () => {
       const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
       repositorio.contas.set(conta.id, conta);
       await ingerir(conta.id, { statusFonte: "pendente" });
@@ -1021,10 +1021,10 @@ describe("MotorFinanceiro", () => {
       );
 
       expect(atualizados[0]?.status).toBe("realizado");
-      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(910);
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
     });
 
-    it("tira do saldo a confirmada que voltou a pendente", async () => {
+    it("mantém saldo_atual quando a confirmada volta a pendente", async () => {
       const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
       repositorio.contas.set(conta.id, conta);
       await ingerir(conta.id);
@@ -1055,7 +1055,7 @@ describe("MotorFinanceiro", () => {
       expect(resultado.inalterados).toBe(1);
       expect(resultado.atualizados).toHaveLength(0);
       expect(repositorio.auditorias).toHaveLength(auditoriasAntes);
-      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(910);
+      expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
     });
 
     it("devolve como desconhecido o que nunca foi ingerido, sem criar nada", async () => {
@@ -1149,8 +1149,8 @@ describe("MotorFinanceiro", () => {
         };
       }
 
-      /** Desaparecimento registrado: a linha fica, o saldo volta. Ver 8.6. */
-      it("cancela o movimento e devolve o saldo, sem apagar a linha", async () => {
+      /** Desaparecimento registrado: a linha fica; saldo institucional não deriva do Fato. */
+      it("cancela o movimento sem apagar a linha nem mexer no saldo_atual", async () => {
         const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
         repositorio.contas.set(conta.id, conta);
         await ingerir(conta.id);

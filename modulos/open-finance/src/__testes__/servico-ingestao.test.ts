@@ -178,7 +178,7 @@ describe("ServicoIngestaoOpenFinance", () => {
       expect(financeiro.movimentos.size).toBe(1);
     });
 
-    it("deduplica no Core quando o provedor reenvia a mesma transação em evento novo", async () => {
+    it("não cria de novo quando o provedor reenvia a mesma transação em evento novo", async () => {
       provedor.semear(CONEXAO_EXTERNA, [movimentacao()]);
 
       const primeira = await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-1"));
@@ -186,7 +186,7 @@ describe("ServicoIngestaoOpenFinance", () => {
 
       expect(primeira.resumo?.criados).toBe(1);
       expect(segunda.resumo?.criados).toBe(0);
-      expect(segunda.resumo?.duplicados).toBe(1);
+      expect(segunda.resumo?.atualizados).toBe(0);
       expect(financeiro.movimentos.size).toBe(1);
     });
   });
@@ -320,13 +320,13 @@ describe("ServicoIngestaoOpenFinance", () => {
     });
 
     /**
-     * Desaparecimento registrado, seção 8.6 de 13-OPEN_FINANCE.md: a linha fica,
-     * o saldo volta. Apagar destruiria a auditoria de algo que existiu.
+     * Desaparecimento registrado, seção 8.6 de 13-OPEN_FINANCE.md: a linha fica.
+     * Saldo institucional não deriva do Fato — não sobe/desce na remoção.
      */
-    it("cancela e devolve o saldo quando a instituição remove a transação", async () => {
+    it("cancela o movimento sem mexer no saldo_atual quando a instituição remove", async () => {
       provedor.semear(CONEXAO_EXTERNA, [movimentacao()]);
       await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-1"));
-      expect(Number(financeiro.contas.get(conta.id)?.saldoAtual)).toBe(910);
+      expect(Number(financeiro.contas.get(conta.id)?.saldoAtual)).toBe(1000);
 
       const { resumo } = await entregar(provedor.anunciar_remocao(CONEXAO_EXTERNA, "ev-2", ["tx-1"]));
 
