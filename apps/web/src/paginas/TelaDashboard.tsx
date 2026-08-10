@@ -4,8 +4,6 @@ import { motion } from "framer-motion";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -104,10 +102,6 @@ export function TelaDashboard() {
   const fluxoChart = dados.fluxoSaldo.map((ponto) => ({
     ...ponto,
     rotulo: formatar_data_curta(ponto.data),
-  }));
-  const categoriasChart = dados.gastosPorCategoria.map((item) => ({
-    nome: item.categoriaNome,
-    total: item.total,
   }));
 
   return (
@@ -250,51 +244,27 @@ export function TelaDashboard() {
           className="rounded-2xl border border-borda bg-superficie/80 p-4"
         >
           <h2 className="mb-4 text-sm font-medium text-texto">Gastos por categoria</h2>
-          {categoriasChart.length === 0 ? (
+          {dados.gastosPorCategoria.length === 0 ? (
             <p className="py-10 text-center text-sm text-texto-suave">Nenhuma despesa no mês.</p>
           ) : (
-            <>
-              <div className="mb-4 h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoriasChart} layout="vertical" margin={{ left: 8 }}>
-                    <XAxis type="number" hide />
-                    <YAxis
-                      type="category"
-                      dataKey="nome"
-                      width={90}
-                      tick={{ fill: "#8b9aaf", fontSize: 11 }}
-                      axisLine={false}
-                      tickLine={false}
+            <ul className="space-y-3">
+              {dados.gastosPorCategoria.map((item) => (
+                <li key={item.categoriaNome} className="text-xs text-texto-suave">
+                  <div className="mb-1 flex justify-between gap-2">
+                    <span className="truncate text-sm text-texto">{item.categoriaNome}</span>
+                    <span className="shrink-0 tabular-nums text-texto">
+                      {formatar_moeda(item.total)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-borda">
+                    <div
+                      className="h-full rounded-full bg-primaria"
+                      style={{ width: `${(item.total / maxCategoria) * 100}%` }}
                     />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#12181f",
-                        border: "1px solid #2a3441",
-                        borderRadius: 12,
-                      }}
-                      formatter={(valor) => formatar_moeda(Number(valor))}
-                    />
-                    <Bar dataKey="total" fill="#2dd4a0" radius={[0, 6, 6, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <ul className="space-y-2">
-                {dados.gastosPorCategoria.map((item) => (
-                  <li key={item.categoriaNome} className="text-xs text-texto-suave">
-                    <div className="mb-1 flex justify-between gap-2">
-                      <span className="truncate text-texto">{item.categoriaNome}</span>
-                      <span>{formatar_moeda(item.total)}</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-borda">
-                      <div
-                        className="h-full rounded-full bg-primaria"
-                        style={{ width: `${(item.total / maxCategoria) * 100}%` }}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </motion.section>
       </div>
