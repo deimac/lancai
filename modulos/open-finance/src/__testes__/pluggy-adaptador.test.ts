@@ -226,7 +226,7 @@ describe("AdaptadorPluggy", () => {
       expect(contas).toEqual([
         {
           idExterno: "a658c848-e475-457b-8565-d1fffba127c4",
-          nome: "GOLD Conta Corrente",
+          nome: "Conta Corrente",
           tipo: "CHECKING_ACCOUNT",
           saldo: 120950,
         },

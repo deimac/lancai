@@ -382,6 +382,7 @@ export class ServicoConexaoOpenFinance {
 
       if (recurso.cartaoId) {
         await this.motor.atualizar_dados_institucionais_cartao(recurso.cartaoId, {
+          nome: externa.nome,
           saldo: numero_finito(externa.saldo),
           limite: numero_finito(externa.limite),
           fechamento: externa.fechamento,
@@ -390,10 +391,10 @@ export class ServicoConexaoOpenFinance {
       }
 
       if (recurso.contaId) {
-        const saldo = numero_finito(externa.saldo);
-        if (saldo !== undefined) {
-          await this.motor.atualizar_saldo_institucional_conta(recurso.contaId, saldo);
-        }
+        await this.motor.atualizar_dados_institucionais_conta(recurso.contaId, {
+          nome: externa.nome,
+          saldoAtual: numero_finito(externa.saldo),
+        });
       }
     }
   }

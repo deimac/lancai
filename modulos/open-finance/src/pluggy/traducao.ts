@@ -18,7 +18,12 @@ export function traduzir_conta(conta: ContaPluggy): ContaExterna {
   const credito = conta.creditData;
   return {
     idExterno: conta.id,
-    nome: conta.marketingName ?? conta.name ?? conta.number ?? conta.id,
+    /**
+     * `name` é o rótulo que a Pluggy/instituição mostram na UI (ex. "Mercado Pago",
+     * "Conta Corrente"). `marketingName` é nome de produto/nível e costuma divergir
+     * do que o usuário vê no dashboard — por isso fica só como fallback.
+     */
+    nome: nome_da_conta(conta),
     /**
      * `subtype` é mais específico que `type` (CHECKING_ACCOUNT contra BANK) e é
      * o que ajuda o usuário a reconhecer a conta na tela de associação.
@@ -29,6 +34,16 @@ export function traduzir_conta(conta: ContaPluggy): ContaExterna {
     fechamento: dia_do_mes(credito?.balanceCloseDate),
     vencimento: dia_do_mes(credito?.balanceDueDate),
   };
+}
+
+function nome_da_conta(conta: ContaPluggy): string {
+  const nome = conta.name?.trim();
+  if (nome) return nome;
+  const marketing = conta.marketingName?.trim();
+  if (marketing) return marketing;
+  const numero = conta.number?.trim();
+  if (numero) return numero;
+  return conta.id;
 }
 
 function numero_finito(valor: number | null | undefined): number | undefined {

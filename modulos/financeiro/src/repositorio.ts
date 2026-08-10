@@ -125,14 +125,18 @@ export interface RepositorioFinanceiro {
   atualizarDadosInstitucionaisCartao(
     cartaoId: string,
     dados: {
+      nome?: string;
       saldo?: number;
       limite?: number;
       fechamento?: number;
       vencimento?: number;
     },
   ): Promise<void>;
-  /** Atribui o saldo informado pela instituição em conta sincronizada. */
-  atualizarSaldoInstitucionalConta(contaId: string, saldoAtual: number): Promise<void>;
+  /** Atribui saldo/nome informados pela instituição em conta sincronizada. */
+  atualizarDadosInstitucionaisConta(
+    contaId: string,
+    dados: { saldoAtual?: number; nome?: string },
+  ): Promise<void>;
 }
 
 export type { Auditoria, Cartao, Categoria, Conta, Movimento, NovoMovimento, Parcela, Pessoa };

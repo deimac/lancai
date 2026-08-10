@@ -250,6 +250,7 @@ export class MotorFinanceiro {
   async atualizar_dados_institucionais_cartao(
     cartaoId: string,
     dados: {
+      nome?: string;
       saldo?: number;
       limite?: number;
       fechamento?: number;
@@ -259,8 +260,11 @@ export class MotorFinanceiro {
     await this.repositorio.atualizarDadosInstitucionaisCartao(cartaoId, dados);
   }
 
-  async atualizar_saldo_institucional_conta(contaId: string, saldoAtual: number): Promise<void> {
-    await this.repositorio.atualizarSaldoInstitucionalConta(contaId, saldoAtual);
+  async atualizar_dados_institucionais_conta(
+    contaId: string,
+    dados: { saldoAtual?: number; nome?: string },
+  ): Promise<void> {
+    await this.repositorio.atualizarDadosInstitucionaisConta(contaId, dados);
   }
 
   /**
@@ -329,7 +333,7 @@ export class MotorFinanceiro {
       novosMovimentos.push(novoMovimento);
 
       // Conta sincronizada: o saldo é o `balance` da instituição (atribuído em
-      // `atualizar_saldo_institucional_conta`), não a soma dos Fatos — ver
+      // `atualizar_dados_institucionais_conta`), não a soma dos Fatos — ver
       // 13-OPEN_FINANCE §4. Acumular aqui inflava o saldo após cada importação.
       if (
         evento.fonte !== "open_finance" &&

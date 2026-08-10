@@ -126,7 +126,7 @@ Movimentação de conta externa que ninguém associou a uma conta local é **des
 
 Em conta conectada, o saldo exibido é o que a **instituição informa** (`balance` da conta no provedor), tratado como Fato. A soma das movimentações fica como detalhe auditável, não como verdade.
 
-Isso resolve a divergência que a seção 10 listava como risco, e tem uma consequência de implementação: para conta sincronizada, o Core **atribui** o saldo que veio do provedor (`atualizar_saldo_institucional_conta`) e `ingerir_eventos` / atualização / remoção de Fato `open_finance` **não** acumulam em `saldo_atual` — ao contrário do lançamento manual.
+Isso resolve a divergência que a seção 10 listava como risco, e tem uma consequência de implementação: para conta sincronizada, o Core **atribui** o saldo (e o `name` da instituição) via `atualizar_dados_institucionais_*` e `ingerir_eventos` / atualização / remoção de Fato `open_finance` **não** acumulam em `saldo_atual` — ao contrário do lançamento manual. O rótulo local segue o campo `name` da Pluggy (não o `marketingName`).
 
 ---
 

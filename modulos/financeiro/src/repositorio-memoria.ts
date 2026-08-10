@@ -345,6 +345,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
   async atualizarDadosInstitucionaisCartao(
     cartaoId: string,
     dados: {
+      nome?: string;
       saldo?: number;
       limite?: number;
       fechamento?: number;
@@ -357,8 +358,10 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
       typeof dados.fechamento === "number" && dados.fechamento >= 1 && dados.fechamento <= 31
         ? dados.fechamento
         : cartao.fechamento;
+    const nome = dados.nome?.trim();
     this.cartoes.set(cartaoId, {
       ...cartao,
+      nome: nome || cartao.nome,
       saldo:
         typeof dados.saldo === "number" && Number.isFinite(dados.saldo)
           ? String(dados.saldo)
@@ -377,12 +380,20 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     });
   }
 
-  async atualizarSaldoInstitucionalConta(contaId: string, saldoAtual: number): Promise<void> {
+  async atualizarDadosInstitucionaisConta(
+    contaId: string,
+    dados: { saldoAtual?: number; nome?: string },
+  ): Promise<void> {
     const conta = this.contas.get(contaId);
-    if (!conta || !Number.isFinite(saldoAtual)) return;
+    if (!conta) return;
+    const nome = dados.nome?.trim();
     this.contas.set(contaId, {
       ...conta,
-      saldoAtual: String(saldoAtual),
+      nome: nome || conta.nome,
+      saldoAtual:
+        typeof dados.saldoAtual === "number" && Number.isFinite(dados.saldoAtual)
+          ? String(dados.saldoAtual)
+          : conta.saldoAtual,
       dataAtualizacao: new Date(),
     });
   }

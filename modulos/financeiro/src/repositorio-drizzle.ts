@@ -273,6 +273,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
   async atualizarDadosInstitucionaisCartao(
     cartaoId: string,
     dados: {
+      nome?: string;
       saldo?: number;
       limite?: number;
       fechamento?: number;
@@ -280,6 +281,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     },
   ): Promise<void> {
     const patch: {
+      nome?: string;
       saldo?: string;
       limite?: string;
       fechamento?: number;
@@ -287,6 +289,8 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       melhorDiaCompra?: number;
       dataAtualizacao: Date;
     } = { dataAtualizacao: new Date() };
+    const nome = dados.nome?.trim();
+    if (nome) patch.nome = nome;
     if (typeof dados.saldo === "number" && Number.isFinite(dados.saldo)) {
       patch.saldo = String(dados.saldo);
     }
@@ -303,11 +307,19 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     await this.banco.update(cartaoTabela).set(patch).where(eq(cartaoTabela.id, cartaoId));
   }
 
-  async atualizarSaldoInstitucionalConta(contaId: string, saldoAtual: number): Promise<void> {
-    if (!Number.isFinite(saldoAtual)) return;
-    await this.banco
-      .update(contaTabela)
-      .set({ saldoAtual: String(saldoAtual), dataAtualizacao: new Date() })
-      .where(eq(contaTabela.id, contaId));
+  async atualizarDadosInstitucionaisConta(
+    contaId: string,
+    dados: { saldoAtual?: number; nome?: string },
+  ): Promise<void> {
+    const patch: { saldoAtual?: string; nome?: string; dataAtualizacao: Date } = {
+      dataAtualizacao: new Date(),
+    };
+    const nome = dados.nome?.trim();
+    if (nome) patch.nome = nome;
+    if (typeof dados.saldoAtual === "number" && Number.isFinite(dados.saldoAtual)) {
+      patch.saldoAtual = String(dados.saldoAtual);
+    }
+    if (patch.nome === undefined && patch.saldoAtual === undefined) return;
+    await this.banco.update(contaTabela).set(patch).where(eq(contaTabela.id, contaId));
   }
 }
