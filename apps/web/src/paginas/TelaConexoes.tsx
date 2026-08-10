@@ -126,6 +126,8 @@ export function TelaConexoes() {
   const [carregando, setCarregando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  /** Atalho de teste Meu Pluggy: colar itemId sem abrir o widget. */
+  const [itemIdManual, setItemIdManual] = useState("");
   const widgetRef = useRef<WidgetAberto | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
@@ -219,6 +221,54 @@ export function TelaConexoes() {
       }
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível sincronizar o lote de mentira.");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function registrar_item_manual() {
+    if (!usuario) return;
+    const itemId = itemIdManual.trim();
+    if (!itemId) {
+      setErro("Informe o itemId da Pluggy / Meu Pluggy.");
+      return;
+    }
+    // Um ID por vez — como conectar um banco; espaços/quebras indicam cola acidental.
+    if (/\s/.test(itemId) || itemId.includes(",")) {
+      setErro("Informe um único itemId por vez. Salve, depois registre o próximo.");
+      return;
+    }
+    setOcupado(true);
+    setErro(null);
+    try {
+      const registrada = await clienteApi.registrar_conexao({
+        usuarioId: usuario.id,
+        conexaoExterna: itemId,
+      });
+      try {
+        await clienteApi.atualizar_conexao(registrada.conexao.id, usuario.id);
+      } catch (syncErro) {
+        // Conexão já gravada; sync pode falhar se o item ainda não sincronizou na Pluggy.
+        toast.erro(
+          syncErro instanceof ErroApi
+            ? syncErro.message
+            : "Conexão salva, mas não consegui pedir o sync agora.",
+        );
+      }
+      setItemIdManual("");
+      setDetalhe(null);
+      await carregar();
+      contexto?.invalidar("conexoes", "contas", "cartoes", "extrato");
+      const nome = registrada.conexao.instituicao ?? "Conexão";
+      toast.sucesso(
+        `${nome} salva na lista. Sync pedido — o extrato chega pelo webhook. Pode registrar outro itemId.`,
+      );
+    } catch (e) {
+      setErro(
+        e instanceof ErroApi
+          ? e.message
+          : "Não foi possível registrar o itemId. Confira se a Application enxerga esse item.",
+      );
     } finally {
       setOcupado(false);
     }
@@ -449,6 +499,36 @@ export function TelaConexoes() {
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
           {erro}
         </div>
+      )}
+
+      {fonte?.id === "pluggy" && !visaoGeral && !detalhe && (
+        <Cartao className="flex flex-col gap-3">
+          <div>
+            <p className="text-sm font-medium text-texto">Conectar Meu Pluggy (itemId)</p>
+            <p className="mt-1 text-xs text-texto-suave">
+              Um banco por vez: cole o itemId, salve — a conexão entra na lista e o sync é
+              pedido. Depois cole o próximo ID (Itaú, Mercado Pago…).
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              className="min-w-0 flex-1 rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-sm text-texto"
+              placeholder="uuid do item (um por vez)"
+              value={itemIdManual}
+              disabled={ocupado}
+              onChange={(e) => setItemIdManual(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void registrar_item_manual();
+              }}
+            />
+            <Botao
+              disabled={ocupado || !itemIdManual.trim()}
+              onClick={() => void registrar_item_manual()}
+            >
+              Salvar conexão
+            </Botao>
+          </div>
+        </Cartao>
       )}
 
       {carregando ? (

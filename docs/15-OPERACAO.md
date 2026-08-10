@@ -111,7 +111,38 @@ Web (já existentes): `VITE_API_URL=https://<dominio-api-https>`, `VITE_SUPABASE
 2. Pelo Web: `/conexoes` → **+ Conectar conta ou cartão** → Pluggy Connect → Nubank → autorizar.
 3. Detalhe da conexão mostra instituição, contas/cartões; **Atualizar agora** traz transações (lista no detalhe + Extrato, `fonte=open_finance`).
 
-Sem Meu Pluggy no fluxo do usuário. Domínio da API e do Web em HTTPS.
+Domínio da API e do Web em HTTPS. O fluxo de produto definitivo é Pluggy Connect no app; Meu Pluggy é só ferramenta de teste (abaixo).
+
+### Checklist: Meu Pluggy → LançAI (teste com dados reais em Development)
+
+Enquanto a Application Pluggy estiver em sandbox/Development, o [Meu Pluggy](https://meu.pluggy.ai/api-guide) funciona como proxy LGPD dos seus próprios bancos (Nubank etc.).
+
+1. Conta no Meu Pluggy → conectar Nubank (e o que for).
+2. No Dashboard Pluggy da **mesma Application** cujas chaves estão no Coolify, vincular/proxyar o item Meu Pluggy.
+3. Webhook já cadastrado: `https://api.lancai.xploreia.com/api/webhooks/pluggy` + header `X-Lancai-Webhook` + eventos `all`.
+4. Copiar o `itemId` do item (Dashboard / `GET /items` com API Key).
+5. **Reset financeiro do usuário de teste** (recomendado antes da 1ª ingestão), para não misturar contas manuais com sincronizadas:
+
+```bash
+# na raiz, com DATABASE_URL no ambiente
+USUARIO_ID=<uuid-do-usuario> CONFIRMAR=1 pnpm --filter @lancai/banco db:reset-financeiro
+```
+
+Mantém login, workspaces e categorias. Apaga movimentos, parcelas, conexões OF, contas e cartões desse usuário; zera vínculos de orçamento/recorrência.
+
+6. Registrar o item no LançAI (webhook **não** cria conexão sozinho). Comandos também em [`pacotes/banco/scripts/registrar-item-pluggy.md`](../pacotes/banco/scripts/registrar-item-pluggy.md):
+
+```bash
+curl -X POST https://api.lancai.xploreia.com/open-finance/conexoes \
+  -H 'Content-Type: application/json' \
+  -d '{"usuarioId":"<uuid>","conexaoExterna":"<itemId>"}'
+```
+
+Ou em `/conexoes`, campo **Registrar itemId** (atalho de teste).
+
+7. Web → Contas/Conexões → **Atualizar agora** → conferir contas materializadas e Extrato com `fonte=open_finance`.
+
+Credenciais: as mesmas `PLUGGY_CLIENT_ID` / `PLUGGY_CLIENT_SECRET` da Application que enxerga o item. `OPEN_FINANCE_WEBHOOK_URL` deve ser a URL `/pluggy` acima.
 
 ### Cron
 `CRON_SECRET`, enviado como `Authorization: Bearer <CRON_SECRET>`.

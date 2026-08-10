@@ -13,6 +13,7 @@
     "db:migrate": "tsx src/migrar.ts",
     "db:seed": "tsx src/seed.ts",
     "db:studio": "drizzle-kit studio",
+    "db:reset-financeiro": "tsx scripts/reset-financeiro-usuario.mts",
     "verificar:trigger": "tsx verificar-trigger.mts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
