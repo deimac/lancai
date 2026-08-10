@@ -121,6 +121,7 @@ export async function montar_dashboard(
       limite: cartao.limite,
       comprometido: cartao.comprometido,
       disponivel: cartao.disponivel,
+      sincronizada: cartao.sincronizada,
     })),
   };
 }

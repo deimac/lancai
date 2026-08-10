@@ -160,6 +160,9 @@ export function TelaDashboard() {
             valor: formatar_moeda(dados.resumo.despesasMes),
             icone: ArrowDownRight,
             tom: "text-despesa",
+            nota: dados.cartoes.some((c) => c.sincronizada)
+              ? "Cartão OF: fatura aberta pode vir incompleta até fechar"
+              : undefined,
           },
           {
             rotulo: "Taxa de economia",
@@ -182,6 +185,9 @@ export function TelaDashboard() {
             <p className={unir_classes("text-xl font-semibold tracking-tight", card.tom)}>
               {card.valor}
             </p>
+            {"nota" in card && card.nota ? (
+              <p className="mt-2 text-[11px] leading-snug text-texto-suave">{card.nota}</p>
+            ) : null}
           </motion.div>
         ))}
       </div>
@@ -345,6 +351,8 @@ export function TelaDashboard() {
                   <p className="font-medium">{cartao.nome}</p>
                   <p className="text-xs text-texto-suave">
                     Disponível {formatar_moeda(cartao.disponivel)}
+                    {" · "}
+                    Usado {formatar_moeda(cartao.comprometido)}
                   </p>
                 </div>
                 <span className="text-texto-suave">{formatar_moeda(cartao.limite)}</span>

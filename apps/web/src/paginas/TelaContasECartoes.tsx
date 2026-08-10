@@ -454,8 +454,18 @@ export function TelaContasECartoes() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-texto-suave">
-                      Limite {formatar_moeda(para_numero(cartao.limite))} · Fecha dia{" "}
-                      {cartao.fechamento ?? "—"} · Vence dia {cartao.vencimento}
+                      Limite {formatar_moeda(para_numero(cartao.limite))}
+                      {cartao.sincronizada ? (
+                        <>
+                          {" · "}
+                          Disponível{" "}
+                          {formatar_moeda(
+                            para_numero(cartao.limite) - para_numero(cartao.saldo),
+                          )}
+                        </>
+                      ) : null}
+                      {" · "}
+                      Fecha dia {cartao.fechamento ?? "—"} · Vence dia {cartao.vencimento}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

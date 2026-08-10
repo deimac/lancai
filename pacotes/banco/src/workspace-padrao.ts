@@ -581,6 +581,22 @@ async function acompanhar_membros_no_workspace(
         );
     }
 
+    // Categoria é por workspace — ao mudar o pouso do Fato, reaponte para a
+    // homônima no destino (senão "Não classificado" de outro workspace vaza no ranking).
+    await tx.execute(sql`
+      UPDATE movimento AS m
+      SET categoria_id = destino.id
+      FROM categoria AS origem
+      INNER JOIN categoria AS destino
+        ON destino.usuario_id = origem.usuario_id
+       AND destino.workspace_id = ${destinoWorkspaceId}
+       AND destino.nome = origem.nome
+      WHERE m.usuario_id = ${usuarioId}
+        AND m.workspace_id = ${destinoWorkspaceId}
+        AND m.categoria_id = origem.id
+        AND origem.workspace_id IS DISTINCT FROM ${destinoWorkspaceId}
+    `);
+
     const filtrosVinculo = [];
     if (contaIds.length > 0) filtrosVinculo.push(inArray(contaExternaTabela.contaId, contaIds));
     if (cartaoIds.length > 0) filtrosVinculo.push(inArray(contaExternaTabela.cartaoId, cartaoIds));

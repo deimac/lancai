@@ -253,6 +253,7 @@ export interface DashboardResposta {
     limite: number;
     comprometido: number;
     disponivel: number;
+    sincronizada?: boolean;
   }>;
 }
 

@@ -106,11 +106,25 @@ export class ModuloRelatorios {
 
     const linhas = await Promise.all(
       cartoes.map(async (cartao) => {
-        const parcelas = await this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: cartao.id });
-        const saldoDevido = paraNumero(cartao.saldo);
-        const parcelasSoma = parcelas.length ? somar(...parcelas.map((parcela) => parcela.valor)) : 0;
-        const comprometido = somar(saldoDevido, parcelasSoma);
         const limite = paraNumero(cartao.limite);
+        const saldoDevido = paraNumero(cartao.saldo);
+
+        // Open Finance: `saldo` já é o limite usado (inclui parcelas futuras).
+        // Somar parcelas de novo infla o comprometido e inventa disponível negativo.
+        // Manual: não há saldo institucional confiável — usa parcelas em aberto.
+        let comprometido: number;
+        if (cartao.sincronizada) {
+          comprometido = saldoDevido;
+        } else {
+          const parcelas = await this.repositorio.listarParcelas(filtros.usuarioId, {
+            cartaoId: cartao.id,
+          });
+          const parcelasSoma = parcelas.length
+            ? somar(...parcelas.map((parcela) => parcela.valor))
+            : 0;
+          comprometido = somar(saldoDevido, parcelasSoma);
+        }
+
         return {
           nome: cartao.nome,
           perfil: cartao.perfil,
@@ -119,6 +133,7 @@ export class ModuloRelatorios {
           disponivel: somar(limite, -comprometido),
           fechamento: cartao.fechamento,
           vencimento: cartao.vencimento,
+          sincronizada: cartao.sincronizada,
         };
       }),
     );
@@ -201,14 +216,16 @@ export class ModuloRelatorios {
     ]);
     const mapaCategorias = new Map(categorias.map((categoria) => [categoria.id, categoria.nome]));
 
-    const totalPorCategoria = new Map<string, number>();
+    // Agrega por nome: o mesmo rótulo pode existir em mais de um workspace
+    // ("Não classificado" de Pessoal + Empresa) e o ranking não deve repetir linha.
+    const totalPorNome = new Map<string, number>();
     for (const movimento of movimentosDespesa) {
-      const atual = totalPorCategoria.get(movimento.categoriaId) ?? 0;
-      totalPorCategoria.set(movimento.categoriaId, somar(atual, movimento.valor));
+      const nome = mapaCategorias.get(movimento.categoriaId) ?? "Sem categoria";
+      totalPorNome.set(nome, somar(totalPorNome.get(nome) ?? 0, movimento.valor));
     }
 
-    const ranking: CategoriaComTotal[] = [...totalPorCategoria.entries()]
-      .map(([categoriaId, total]) => ({ categoriaNome: mapaCategorias.get(categoriaId) ?? "Sem categoria", total }))
+    const ranking: CategoriaComTotal[] = [...totalPorNome.entries()]
+      .map(([categoriaNome, total]) => ({ categoriaNome, total }))
       .sort((a, b) => b.total - a.total)
       .slice(0, QUANTIDADE_ITENS_RANKING_CATEGORIA);
 

@@ -188,7 +188,7 @@ describe("ModuloRelatorios", () => {
   });
 
   describe("cartoes", () => {
-    it("calcula o limite disponível a partir das parcelas em aberto", async () => {
+    it("calcula o limite disponível a partir das parcelas em aberto (cartão manual)", async () => {
       const conta = criarConta(usuarioId);
       const cartao = criarCartao(usuarioId, conta.id, { limite: "5000.00" });
       repositorio.contas.set(conta.id, conta);
@@ -203,7 +203,39 @@ describe("ModuloRelatorios", () => {
       const dados = resultado.dados as ResultadoCartoes;
 
       expect(dados.cartoes).toHaveLength(1);
-      expect(dados.cartoes[0]).toMatchObject({ nome: "Inter Black", limite: 5000, comprometido: 1500, disponivel: 3500 });
+      expect(dados.cartoes[0]).toMatchObject({
+        nome: "Inter Black",
+        limite: 5000,
+        comprometido: 1500,
+        disponivel: 3500,
+        sincronizada: false,
+      });
+    });
+
+    it("no cartão Open Finance usa o saldo institucional (não soma parcelas)", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, {
+        limite: "20000.00",
+        saldo: "16084.40",
+        sincronizada: true,
+      });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const movimento = criarMovimento(usuarioId, categoria.id, { cartaoId: cartao.id, valor: "1500.00" });
+      repositorio.movimentos.set(movimento.id, movimento);
+      repositorio.parcelas.set(randomUUID(), criarParcela(movimento.id, { valor: "750.00", numeroParcela: 1 }));
+      repositorio.parcelas.set(randomUUID(), criarParcela(movimento.id, { valor: "750.00", numeroParcela: 2 }));
+
+      const resultado = await relatorios.consultar_visao("cartoes", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoCartoes;
+
+      expect(dados.cartoes[0]).toMatchObject({
+        limite: 20000,
+        comprometido: 16084.4,
+        disponivel: 3915.6,
+        sincronizada: true,
+      });
     });
 
     it("ignora parcelas canceladas no cálculo do comprometido", async () => {
@@ -325,6 +357,27 @@ describe("ModuloRelatorios", () => {
       expect(dados.categoriaNome).toBeNull();
       expect(dados.ranking[0]).toEqual({ categoriaNome: "Alimentação", total: 300 });
       expect(dados.totalDespesas).toBe(400);
+    });
+
+    it("soma no ranking categorias homônimas de ids diferentes", async () => {
+      const naoA = criarCategoria(usuarioId, { nome: "Não classificado" });
+      const naoB = criarCategoria(usuarioId, { nome: "Não classificado" });
+      repositorio.categorias.set(naoA.id, naoA);
+      repositorio.categorias.set(naoB.id, naoB);
+
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, naoA.id, { valor: "100.00", dataMovimento: "2026-08-05" }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, naoB.id, { valor: "50.00", dataMovimento: "2026-08-06" }),
+      );
+
+      const resultado = await relatorios.consultar_visao("categoria", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoCategoria;
+
+      expect(dados.ranking).toEqual([{ categoriaNome: "Não classificado", total: 150 }]);
     });
   });
 

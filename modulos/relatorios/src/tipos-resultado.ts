@@ -14,6 +14,8 @@ export interface ResultadoCartoes {
     disponivel: number;
     fechamento: number;
     vencimento: number;
+    /** Quando true, comprometido/disponível vêm do saldo institucional (OF). */
+    sincronizada: boolean;
   }>;
 }
 
