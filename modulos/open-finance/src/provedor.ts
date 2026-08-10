@@ -118,8 +118,12 @@ export interface ProvedorOpenFinance {
   /** Rótulo gravado em `provedor`. Opaco para todo mundo. */
   readonly id: string;
 
-  /** Token de curta duração que o Web usa para abrir o widget. Não lê dados. */
-  criar_token_conexao(entrada: { workspaceId: string; conexaoExterna?: string }): Promise<TokenConexao>;
+  /**
+   * Token de curta duração que o Web usa para abrir o widget. Não lê dados.
+   * `usuarioId` vira `clientUserId` no provedor — a conexão bancária pertence
+   * ao usuário; workspace é só visão/pouso técnico no schema atual.
+   */
+  criar_token_conexao(entrada: { usuarioId: string; conexaoExterna?: string }): Promise<TokenConexao>;
 
   /** Contas e cartões de uma conexão, para o usuário associar às contas locais. */
   listar_contas_externas(conexaoExterna: string): Promise<ContaExterna[]>;

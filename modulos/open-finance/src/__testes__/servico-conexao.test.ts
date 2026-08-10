@@ -92,15 +92,15 @@ describe("ServicoConexaoOpenFinance", () => {
     });
 
     it("entrega um token de curta duração para o widget", async () => {
-      const token = await servico.iniciar_conexao({ workspaceId: WORKSPACE });
+      const token = await servico.iniciar_conexao({ usuarioId });
 
-      expect(token.token).toContain(WORKSPACE);
+      expect(token.token).toContain(usuarioId);
       expect(token.expiraEm.getTime()).toBeGreaterThan(Date.now());
     });
 
     it("recusa reconectar uma conexão que não existe", async () => {
       await expect(
-        servico.iniciar_conexao({ workspaceId: WORKSPACE, conexaoId: randomUUID() }),
+        servico.iniciar_conexao({ usuarioId, conexaoId: randomUUID() }),
       ).rejects.toThrow(ErroConexaoNaoEncontrada);
     });
   });

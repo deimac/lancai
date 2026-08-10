@@ -121,15 +121,15 @@ describe("AdaptadorPluggy", () => {
   });
 
   describe("token de conexão", () => {
-    it("pede o token amarrado ao workspace e ao nosso webhook", async () => {
+    it("pede o token amarrado ao usuarioId e ao nosso webhook", async () => {
       rede.responder("/connect_token", { accessToken: "token-do-widget" });
 
-      const token = await adaptador.criar_token_conexao({ workspaceId: "ws-1" });
+      const token = await adaptador.criar_token_conexao({ usuarioId: "user-1" });
 
       const pedido = rede.chamadas.find((c) => c.url.includes("/connect_token"));
       expect(pedido?.corpo).toEqual({
         options: {
-          clientUserId: "ws-1",
+          clientUserId: "user-1",
           webhookUrl: "https://lancai.exemplo/api/webhooks/open-finance",
           avoidDuplicates: true,
         },
@@ -142,7 +142,7 @@ describe("AdaptadorPluggy", () => {
     it("manda o item quando é reconexão", async () => {
       rede.responder("/connect_token", { accessToken: "token" });
 
-      await adaptador.criar_token_conexao({ workspaceId: "ws-1", conexaoExterna: ITEM });
+      await adaptador.criar_token_conexao({ usuarioId: "user-1", conexaoExterna: ITEM });
 
       const pedido = rede.chamadas.find((c) => c.url.includes("/connect_token"));
       expect((pedido?.corpo as { itemId?: string }).itemId).toBe(ITEM);

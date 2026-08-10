@@ -249,6 +249,8 @@ export interface MovimentoResumo {
   tipo: string;
   status: "previsto" | "realizado" | "cancelado";
   fonte: string;
+  provedor: string | null;
+  idExterno: string | null;
   dataMovimento: string;
   contaId: string | null;
   cartaoId: string | null;

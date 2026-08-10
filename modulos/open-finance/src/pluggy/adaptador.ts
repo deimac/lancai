@@ -54,7 +54,7 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
   }
 
   async criar_token_conexao(entrada: {
-    workspaceId: string;
+    usuarioId: string;
     conexaoExterna?: string;
   }): Promise<TokenConexao> {
     const corpo = await this.cliente.postar<{ accessToken: string }>("/connect_token", {
@@ -62,10 +62,10 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
       ...(entrada.conexaoExterna ? { itemId: entrada.conexaoExterna } : {}),
       options: {
         /**
-         * O workspace, não o usuário: é ele que delimita os dados (ADR-013), e
-         * na F6 a mesma conexão é vista por mais de uma pessoa.
+         * Usuário LançAI, não workspace: a conexão bancária pertence à conta
+         * principal. Workspace continua só como visão/pouso técnico no schema.
          */
-        clientUserId: entrada.workspaceId,
+        clientUserId: entrada.usuarioId,
         ...(this.config.webhookUrl ? { webhookUrl: this.config.webhookUrl } : {}),
         /** O provedor recusa conectar duas vezes a mesma credencial. */
         avoidDuplicates: true,

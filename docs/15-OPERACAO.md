@@ -84,6 +84,34 @@ As rotas `POST /open-finance/duble/conexoes` e `POST /open-finance/duble/conexoe
 6. Em sandbox não há auto-sync: em `/conexoes`, **Atualizar agora** (`POST /open-finance/conexoes/:id/atualizar` → `PATCH /items/{id}` no provedor). O extrato chega pelo webhook; a UI marca `sincronizando` até lá.
 7. Casos de falha úteis: `user-locked`, `user-logged` (credencial / sessão) — a UI deve cair em `precisa_atencao` com motivo legível.
 
+### Checklist: Coolify + Pluggy Connect real (Nubank PF)
+
+Variáveis **só no serviço da API** (nunca no Web / nunca com prefixo `VITE_`):
+
+```env
+OPEN_FINANCE_PROVEDOR=pluggy
+PLUGGY_CLIENT_ID=<Application Pluggy>
+PLUGGY_CLIENT_SECRET=<Application Pluggy>
+OPEN_FINANCE_WEBHOOK_URL=https://<dominio-api-https>/api/webhooks/open-finance
+OPEN_FINANCE_WEBHOOK_SEGREDO=<string longa aleatória>
+```
+
+Web (já existentes): `VITE_API_URL=https://<dominio-api-https>`, `VITE_SUPABASE_*`.
+
+**Dashboard Pluggy (Application):**
+
+1. Webhook URL = o mesmo `OPEN_FINANCE_WEBHOOK_URL` (HTTPS obrigatório).
+2. Header customizado `X-Lancai-Webhook` = o mesmo valor de `OPEN_FINANCE_WEBHOOK_SEGREDO` (sem isso a API responde 401).
+3. O Connect Token usa `clientUserId = usuarioId` LançAI (não workspace).
+
+**Smoke após deploy:**
+
+1. `GET https://<api>/open-finance/fonte` → `{ "id": "pluggy", "disponivel": true }` (ou só `disponivel` conforme response).
+2. Pelo Web: `/conexoes` → **+ Conectar conta ou cartão** → Pluggy Connect → Nubank → autorizar.
+3. Detalhe da conexão mostra instituição, contas/cartões; **Atualizar agora** traz transações (lista no detalhe + Extrato, `fonte=open_finance`).
+
+Sem Meu Pluggy no fluxo do usuário. Domínio da API e do Web em HTTPS.
+
 ### Cron
 `CRON_SECRET`, enviado como `Authorization: Bearer <CRON_SECRET>`.
 

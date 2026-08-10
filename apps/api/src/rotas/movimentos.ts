@@ -33,6 +33,8 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         tipo: movimento.tipo,
         status: movimento.status,
         fonte: movimento.fonte,
+        provedor: movimento.provedor,
+        idExterno: movimento.idExterno,
         dataMovimento: movimento.dataMovimento,
         contaId: movimento.contaId,
         cartaoId: movimento.cartaoId,

@@ -190,9 +190,9 @@ export class ProvedorDuble implements ProvedorOpenFinance {
     return this.contas.get(conexaoExterna) ?? [];
   }
 
-  async criar_token_conexao(entrada: { workspaceId: string }): Promise<TokenConexao> {
+  async criar_token_conexao(entrada: { usuarioId: string }): Promise<TokenConexao> {
     return {
-      token: `duble-token-${entrada.workspaceId}`,
+      token: `duble-token-${entrada.usuarioId}`,
       expiraEm: new Date(Date.now() + 30 * 60 * 1000),
     };
   }

@@ -61,14 +61,18 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if (!servico) return fonte_desativada(resposta);
 
     const dados = schemaIniciarConexao.parse(requisicao.body);
-    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
+    // Confirma workspace ativo (pouso técnico no schema); clientUserId = usuarioId.
+    await exigir_workspace_escrita(dados.usuarioId);
 
     if (dados.conexaoId) {
       const acesso = await exigir_conexao_do_usuario(servico, dados.conexaoId, dados.usuarioId);
       if ("erro" in acesso) return resposta.status(404).send(acesso);
     }
 
-    const token = await servico.iniciar_conexao({ workspaceId, conexaoId: dados.conexaoId });
+    const token = await servico.iniciar_conexao({
+      usuarioId: dados.usuarioId,
+      conexaoId: dados.conexaoId,
+    });
     return resposta.send(token);
   });
 

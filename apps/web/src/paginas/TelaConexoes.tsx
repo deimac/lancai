@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Link2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Link2, Plus, RefreshCw } from "lucide-react";
 import {
   abrir_widget_conexao,
   ErroWidgetIndisponivel,
@@ -19,8 +19,10 @@ import {
   type ContaResumo,
   type DescritorFonte,
   type MotivoAtencao,
+  type MovimentoResumo,
   type StatusConexao,
 } from "../lib/api";
+import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -31,6 +33,26 @@ import {
   texto_ultimo_sync,
 } from "../lib/observabilidade-sync";
 import { unir_classes } from "../lib/unir-classes";
+
+function eh_cartao_externo(tipo: string): boolean {
+  const n = tipo.trim().toUpperCase();
+  return (
+    n.includes("CREDIT_CARD") ||
+    n === "CREDIT" ||
+    n.includes("CARTAO") ||
+    n.includes("CARTÃO")
+  );
+}
+
+function contar_recursos(contas: ContaExternaRegistrada[]) {
+  let cartoes = 0;
+  let contasCorrentes = 0;
+  for (const c of contas) {
+    if (eh_cartao_externo(c.tipo)) cartoes += 1;
+    else contasCorrentes += 1;
+  }
+  return { contas: contasCorrentes, cartoes };
+}
 
 const ROTULO_STATUS: Record<StatusConexao, string> = {
   ativa: "Ativa",
@@ -211,6 +233,7 @@ export function TelaConexoes() {
       if (detalhe?.conexao.id === conexaoId) setDetalhe(atualizado);
       await carregar();
       contexto?.invalidar("conexoes");
+      contexto?.invalidar("conexoes", "extrato");
       toast.sucesso("Atualização pedida ao banco. O extrato chega em instantes pelo webhook.");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível pedir a atualização.");
@@ -258,7 +281,8 @@ export function TelaConexoes() {
               });
               setDetalhe(registrada);
               await carregar();
-              contexto?.invalidar("conexoes");
+              contexto?.invalidar("conexoes", "contas", "cartoes");
+              toast.sucesso("Conexão realizada. Contas e cartões foram recuperados.");
             } catch (e) {
               setErro(
                 e instanceof ErroApi
@@ -416,8 +440,8 @@ export function TelaConexoes() {
                 : undefined
           }
         >
-          <Link2 size={14} />
-          {fonte?.id === "duble" ? "Conectar banco de mentira" : "Conectar banco"}
+          {fonte?.id === "duble" ? <Link2 size={14} /> : <Plus size={14} />}
+          {fonte?.id === "duble" ? "Conectar banco de mentira" : "Conectar conta ou cartão"}
         </Botao>
       </div>
 
@@ -431,6 +455,7 @@ export function TelaConexoes() {
         <p className="text-sm text-texto-suave">Carregando...</p>
       ) : detalhe ? (
         <DetalheConexao
+          usuarioId={usuario.id}
           detalhe={detalhe}
           contas={contas}
           cartoes={cartoes}
@@ -545,6 +570,7 @@ function ListaConexoes({
 }
 
 function DetalheConexao({
+  usuarioId,
   detalhe,
   contas,
   cartoes,
@@ -558,6 +584,7 @@ function DetalheConexao({
   aoDesassociar,
   aoDesconectar,
 }: {
+  usuarioId: string;
   detalhe: ConexaoComContas;
   contas: ContaResumo[];
   cartoes: CartaoResumo[];
@@ -574,6 +601,63 @@ function DetalheConexao({
   const { conexao } = detalhe;
   const semDestinoLocal = contas.length === 0 && cartoes.length === 0;
   const temAssociacao = detalhe.contas.some((c) => c.contaId || c.cartaoId);
+  const contagem = contar_recursos(detalhe.contas);
+  const [transacoes, setTransacoes] = useState<MovimentoResumo[]>([]);
+  const [carregandoTx, setCarregandoTx] = useState(false);
+
+  const idsConta = useMemo(() => {
+    const ids = new Set(
+      detalhe.contas.map((c) => c.contaId).filter((id): id is string => Boolean(id)),
+    );
+    for (const c of contas) {
+      if (c.conexaoId === conexao.id) ids.add(c.id);
+    }
+    return ids;
+  }, [contas, conexao.id, detalhe.contas]);
+
+  const idsCartao = useMemo(() => {
+    const ids = new Set(
+      detalhe.contas.map((c) => c.cartaoId).filter((id): id is string => Boolean(id)),
+    );
+    for (const c of cartoes) {
+      if (c.conexaoId === conexao.id) ids.add(c.id);
+    }
+    return ids;
+  }, [cartoes, conexao.id, detalhe.contas]);
+
+  useEffect(() => {
+    let cancelado = false;
+    setCarregandoTx(true);
+    void clienteApi
+      .listar_movimentos(usuarioId)
+      .then((lista) => {
+        if (cancelado) return;
+        const filtrados = lista
+          .filter(
+            (m) =>
+              m.fonte === "open_finance" &&
+              ((m.contaId && idsConta.has(m.contaId)) ||
+                (m.cartaoId && idsCartao.has(m.cartaoId))),
+          )
+          .slice(0, 20);
+        setTransacoes(filtrados);
+      })
+      .catch(() => {
+        if (!cancelado) setTransacoes([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoTx(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [usuarioId, conexao.id, conexao.ultimoSyncEm, idsConta, idsCartao]);
+
+  function nome_origem(m: MovimentoResumo): string {
+    if (m.contaId) return contas.find((c) => c.id === m.contaId)?.nome ?? "Conta";
+    if (m.cartaoId) return cartoes.find((c) => c.id === m.cartaoId)?.nome ?? "Cartão";
+    return "—";
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -624,13 +708,30 @@ function DetalheConexao({
       </div>
 
       <Cartao>
-        <p className="text-sm font-medium text-texto">
-          {conexao.instituicao ?? "Instituição conectada"}
-        </p>
-        <p className="mt-1 text-xs text-texto-suave">
-          {ROTULO_STATUS[conexao.status]}
-          {conexao.motivoAtencao ? ` · ${ROTULO_MOTIVO[conexao.motivoAtencao]}` : ""}
-        </p>
+        <p className="text-sm font-semibold text-texto">Conexão realizada</p>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-texto-suave">Instituição</dt>
+            <dd className="font-medium text-texto">
+              {conexao.instituicao ?? "Instituição conectada"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-texto-suave">Status</dt>
+            <dd className="font-medium text-texto">
+              {ROTULO_STATUS[conexao.status]}
+              {conexao.motivoAtencao ? ` · ${ROTULO_MOTIVO[conexao.motivoAtencao]}` : ""}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-texto-suave">Contas encontradas</dt>
+            <dd className="font-medium text-texto">{contagem.contas}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-texto-suave">Cartões encontrados</dt>
+            <dd className="font-medium text-texto">{contagem.cartoes}</dd>
+          </div>
+        </dl>
         <LinhaSync conexao={conexao} />
       </Cartao>
 
@@ -707,6 +808,48 @@ function DetalheConexao({
           </p>
         </Cartao>
       )}
+
+      <Cartao>
+        <p className="text-sm font-semibold text-texto">Transações recentes</p>
+        <p className="mt-1 text-xs text-texto-suave">
+          Fonte externa (Open Finance). Use &quot;Atualizar agora&quot; para pedir sync ao banco.
+        </p>
+        {carregandoTx ? (
+          <p className="mt-3 text-sm text-texto-suave">Carregando transações...</p>
+        ) : transacoes.length === 0 ? (
+          <p className="mt-3 text-sm text-texto-suave">
+            Nenhuma transação ingerida ainda para esta conexão.
+          </p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2">
+            {transacoes.map((m) => (
+              <li
+                key={m.id}
+                className="flex flex-col gap-0.5 border-t border-borda/60 pt-2 text-sm first:border-t-0 first:pt-0"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium text-texto">
+                    {m.descricaoFonte || m.descricao}
+                  </span>
+                  <span
+                    className={unir_classes(
+                      "tabular-nums",
+                      m.tipo === "receita" ? "text-sucesso" : "text-texto",
+                    )}
+                  >
+                    {m.tipo === "despesa" ? "−" : "+"}
+                    {formatar_moeda(Number(m.valor))}
+                  </span>
+                </div>
+                <p className="text-xs text-texto-suave">
+                  {formatar_data_curta(m.dataMovimento)} · {m.tipo} · {nome_origem(m)}
+                  {m.idExterno ? ` · ${m.idExterno}` : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Cartao>
     </div>
   );
 }

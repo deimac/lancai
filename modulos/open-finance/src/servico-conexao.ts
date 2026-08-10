@@ -51,7 +51,7 @@ export class ServicoConexaoOpenFinance {
    * abrir o widget. Ele não lê dados — a credencial que lê fica no backend.
    */
   async iniciar_conexao(entrada: {
-    workspaceId: string;
+    usuarioId: string;
     /** Preenchido quando é reconexão de uma conexão que precisa de atenção. */
     conexaoId?: string;
   }): Promise<TokenConexao> {
@@ -60,7 +60,7 @@ export class ServicoConexaoOpenFinance {
       : undefined;
 
     return this.provedor.criar_token_conexao({
-      workspaceId: entrada.workspaceId,
+      usuarioId: entrada.usuarioId,
       conexaoExterna,
     });
   }

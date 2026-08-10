@@ -11,17 +11,26 @@ import { workspace } from "./workspace";
  * do Core — a fronteira do ADR-011 é de dependência de código, não de arquivo.
  */
 
-/** Uma conexão do usuário com uma instituição, na conta dele no provedor. */
+/**
+ * Uma conexão do usuário com uma instituição, na conta dele no provedor.
+ *
+ * Modelo de produto: a conexão pertence ao usuário (`criado_por` / clientUserId
+ * Pluggy = usuarioId). `workspace_id` é pouso técnico do workspace ativo no
+ * registro — necessário hoje para materializar Conta/Cartão/Movimento — e não
+ * deve ser lido como “dono” da conexão. Follow-up: ownership só no usuário.
+ */
 export const openFinanceConexao = pgTable(
   "open_finance_conexao",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** Pouso técnico (workspace ativo no registro). Não é o dono da conexão. */
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspace.id),
     /**
-     * Quem conectou. A ingestão precisa de um autor para o Fato e para a
-     * auditoria, e webhook não tem usuário logado.
+     * Quem conectou (= dono da conexão no modelo de produto). A ingestão
+     * precisa de um autor para o Fato e para a auditoria; webhook não tem
+     * usuário logado.
      */
     criadoPor: uuid("criado_por")
       .notNull()
