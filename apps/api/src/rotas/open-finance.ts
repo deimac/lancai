@@ -205,9 +205,14 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         });
       }
     } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : "Falha ao atualizar conexão.";
+      const bruto = erro instanceof Error ? erro.message : "Falha ao atualizar conexão.";
       requisicao.log.error({ err: erro, conexaoId: id }, "[open-finance] falha no atualizar");
-      escrever({ tipo: "erro", erro: mensagem });
+      escrever({
+        tipo: "erro",
+        erro: bruto.startsWith("provedor indisponível:")
+          ? "Não foi possível ler o extrato no banco agora. Tente de novo em instantes."
+          : bruto,
+      });
     } finally {
       resposta.raw.end();
     }

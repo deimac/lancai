@@ -254,6 +254,7 @@ export function TelaConexoes() {
         usuarioId: usuario.id,
         conexaoExterna: itemId,
       });
+      let importou = false;
       try {
         await clienteApi.atualizar_conexao(
           registrada.conexao.id,
@@ -266,6 +267,7 @@ export function TelaConexoes() {
             });
           },
         );
+        importou = true;
       } catch (syncErro) {
         toast.erro(
           syncErro instanceof ErroApi
@@ -278,9 +280,11 @@ export function TelaConexoes() {
       await carregar();
       contexto?.invalidar("conexoes", "contas", "cartoes", "extrato");
       const nome = registrada.conexao.instituicao ?? "Conexão";
-      toast.sucesso(
-        `${nome} salva. Saldos e extrato importados. Pode registrar outro itemId.`,
-      );
+      if (importou) {
+        toast.sucesso(
+          `${nome} salva. Saldos e extrato importados. Pode registrar outro itemId.`,
+        );
+      }
     } catch (e) {
       setErro(
         e instanceof ErroApi

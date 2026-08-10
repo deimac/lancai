@@ -183,8 +183,9 @@ describe("AdaptadorPluggy", () => {
 
       expect(refs).toHaveLength(2);
       expect(refs[0]).toContain("accountId=acc-a");
-      expect(refs[0]).toContain("from=");
-      expect(refs[0]).toContain("pageSize=500");
+      expect(refs[0]).toContain("dateFrom=");
+      expect(refs[0]).not.toContain("pageSize=");
+      expect(refs[0]).not.toMatch(/[?&]from=/);
       expect(refs[1]).toContain("accountId=acc-b");
     });
   });
