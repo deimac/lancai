@@ -109,6 +109,8 @@ export class ServicoConexaoOpenFinance {
       instituicao: estado.instituicao ?? null,
     });
 
+    await this.aplicar_saldos_institucionais(conexao.id, encontradas);
+
     return this.detalhar(conexao.id);
   }
 
@@ -176,6 +178,13 @@ export class ServicoConexaoOpenFinance {
     }
 
     await this.provedor.solicitar_atualizacao(conexao.idExterno);
+    /**
+     * Snapshot atual da instituição (saldo/limite) já disponível na listagem —
+     * não espera o webhook. O extrato novo continua chegando depois.
+     */
+    const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
+    await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+
     await this.repositorio.atualizarEstadoConexao(conexaoId, {
       status: "sincronizando",
       motivoAtencao: null,
@@ -221,6 +230,63 @@ export class ServicoConexaoOpenFinance {
       return this.detalhar(conexaoId);
     }
 
+    await this.desligar_recursos_da_conexao(conexaoId);
+
+    await this.repositorio.atualizarEstadoConexao(conexaoId, {
+      status: "removida",
+      motivoAtencao: null,
+    });
+
+    return this.detalhar(conexaoId);
+  }
+
+  /**
+   * Excluir no Core uma conta/cartão sincronizado: desliga a conexão inteira
+   * (conta + cartões da mesma instituição) e devolve os IDs locais para
+   * soft-delete. Sem associação OF, devolve só o destino pedido.
+   */
+  async excluir_por_destino(destino: {
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<{
+    conexaoId: string | null;
+    contaIds: string[];
+    cartaoIds: string[];
+  }> {
+    if (!destino.contaId && !destino.cartaoId) {
+      return { conexaoId: null, contaIds: [], cartaoIds: [] };
+    }
+
+    const conexaoId = await this.repositorio.encontrarConexaoIdPorDestino(destino);
+    if (!conexaoId) {
+      return {
+        conexaoId: null,
+        contaIds: destino.contaId ? [destino.contaId] : [],
+        cartaoIds: destino.cartaoId ? [destino.cartaoId] : [],
+      };
+    }
+
+    const recursos = await this.repositorio.listarContasExternas(conexaoId);
+    const contaIds = new Set<string>();
+    const cartaoIds = new Set<string>();
+    for (const recurso of recursos) {
+      if (recurso.contaId) contaIds.add(recurso.contaId);
+      if (recurso.cartaoId) cartaoIds.add(recurso.cartaoId);
+    }
+    if (destino.contaId) contaIds.add(destino.contaId);
+    if (destino.cartaoId) cartaoIds.add(destino.cartaoId);
+
+    await this.desligar_recursos_da_conexao(conexaoId);
+    await this.repositorio.apagarConexao(conexaoId);
+
+    return {
+      conexaoId,
+      contaIds: [...contaIds],
+      cartaoIds: [...cartaoIds],
+    };
+  }
+
+  private async desligar_recursos_da_conexao(conexaoId: string): Promise<void> {
     const contas = await this.repositorio.listarContasExternas(conexaoId);
     for (const conta of contas) {
       if (conta.contaId || conta.cartaoId) {
@@ -234,13 +300,6 @@ export class ServicoConexaoOpenFinance {
         });
       }
     }
-
-    await this.repositorio.atualizarEstadoConexao(conexaoId, {
-      status: "removida",
-      motivoAtencao: null,
-    });
-
-    return this.detalhar(conexaoId);
   }
 
   /**
@@ -255,9 +314,7 @@ export class ServicoConexaoOpenFinance {
     instituicao: string | null;
   }): Promise<void> {
     const registradas = await this.repositorio.listarContasExternas(entrada.conexaoId);
-    const saldoPorExterno = new Map(
-      entrada.encontradas.map((item) => [item.idExterno, item.saldo] as const),
-    );
+    const porExterno = new Map(entrada.encontradas.map((item) => [item.idExterno, item] as const));
 
     for (const recurso of registradas) {
       if (recurso.contaId || recurso.cartaoId) continue;
@@ -266,6 +323,7 @@ export class ServicoConexaoOpenFinance {
         recurso.nome.trim() ||
         entrada.instituicao?.trim() ||
         (recurso_externo_eh_cartao(recurso.tipo) ? "Cartão sincronizado" : "Conta sincronizada");
+      const externa = porExterno.get(recurso.contaExternaId);
 
       if (recurso_externo_eh_cartao(recurso.tipo)) {
         const cartao = await this.motor.criar_cartao_sincronizado({
@@ -273,6 +331,10 @@ export class ServicoConexaoOpenFinance {
           usuarioId: entrada.usuarioId,
           nome,
           perfil: entrada.perfil,
+          saldo: numero_finito(externa?.saldo) ?? 0,
+          limite: numero_finito(externa?.limite) ?? 0,
+          fechamento: externa?.fechamento,
+          vencimento: externa?.vencimento,
         });
         await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
           contaId: null,
@@ -281,18 +343,50 @@ export class ServicoConexaoOpenFinance {
         continue;
       }
 
-      const saldo = saldoPorExterno.get(recurso.contaExternaId);
       const conta = await this.motor.criar_conta_sincronizada({
         workspaceId: entrada.workspaceId,
         usuarioId: entrada.usuarioId,
         nome,
         perfil: entrada.perfil,
-        saldoAtual: typeof saldo === "number" && Number.isFinite(saldo) ? saldo : 0,
+        saldoAtual: numero_finito(externa?.saldo) ?? 0,
       });
       await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
         contaId: conta.id,
         cartaoId: null,
       });
+    }
+  }
+
+  /**
+   * Espelha saldo/limite/ciclo da instituição nas contas e cartões já associados.
+   * Cobre cartões criados antes do mapeamento de creditData (saldo/limite zerados).
+   */
+  private async aplicar_saldos_institucionais(
+    conexaoId: string,
+    encontradas: ContaExterna[],
+  ): Promise<void> {
+    const registradas = await this.repositorio.listarContasExternas(conexaoId);
+    const porExterno = new Map(encontradas.map((item) => [item.idExterno, item] as const));
+
+    for (const recurso of registradas) {
+      const externa = porExterno.get(recurso.contaExternaId);
+      if (!externa) continue;
+
+      if (recurso.cartaoId) {
+        await this.motor.atualizar_dados_institucionais_cartao(recurso.cartaoId, {
+          saldo: numero_finito(externa.saldo),
+          limite: numero_finito(externa.limite),
+          fechamento: externa.fechamento,
+          vencimento: externa.vencimento,
+        });
+      }
+
+      if (recurso.contaId) {
+        const saldo = numero_finito(externa.saldo);
+        if (saldo !== undefined) {
+          await this.motor.atualizar_saldo_institucional_conta(recurso.contaId, saldo);
+        }
+      }
     }
   }
 
@@ -320,4 +414,8 @@ export class ServicoConexaoOpenFinance {
     if (!conta) throw new ErroContaExternaNaoEncontrada(contaExternaId);
     return conta;
   }
+}
+
+function numero_finito(valor: number | undefined): number | undefined {
+  return typeof valor === "number" && Number.isFinite(valor) ? valor : undefined;
 }

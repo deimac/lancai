@@ -74,7 +74,15 @@ describe("ServicoConexaoOpenFinance", () => {
 
     provedor.registrarContas(CONEXAO_EXTERNA, [
       { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 2500 },
-      { idExterno: "card-1", nome: "Cartão Platinum", tipo: "CREDIT" },
+      {
+        idExterno: "card-1",
+        nome: "Cartão Platinum",
+        tipo: "CREDIT",
+        saldo: 11740.87,
+        limite: 30000,
+        fechamento: 5,
+        vencimento: 12,
+      },
     ]);
   });
 
@@ -126,7 +134,59 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(financeiro.contas.size).toBe(1);
       expect(financeiro.cartoes.size).toBe(1);
       expect([...financeiro.contas.values()][0]?.sincronizada).toBe(true);
-      expect([...financeiro.cartoes.values()][0]?.sincronizada).toBe(true);
+      expect([...financeiro.contas.values()][0]?.saldoAtual).toBe("2500");
+      const cartaoLocal = [...financeiro.cartoes.values()][0];
+      expect(cartaoLocal?.sincronizada).toBe(true);
+      expect(cartaoLocal?.saldo).toBe("11740.87");
+      expect(cartaoLocal?.limite).toBe("30000");
+      expect(cartaoLocal?.fechamento).toBe(5);
+      expect(cartaoLocal?.vencimento).toBe(12);
+    });
+
+    it("excluir por destino apaga a conexão e devolve conta e cartão da instituição", async () => {
+      const { conexao, contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      expect(contaId).toBeTruthy();
+      expect(cartaoId).toBeTruthy();
+
+      const resultado = await servico.excluir_por_destino({ cartaoId: cartaoId! });
+
+      expect(resultado.conexaoId).toBe(conexao.id);
+      expect(resultado.contaIds).toContain(contaId);
+      expect(resultado.cartaoIds).toContain(cartaoId);
+      expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(false);
+      expect(financeiro.cartoes.get(cartaoId!)?.sincronizada).toBe(false);
+      await expect(servico.detalhar(conexao.id)).rejects.toThrow(ErroConexaoNaoEncontrada);
+    });
+
+    it("atualiza saldo e limite de cartão já associado ao relistar a Fonte", async () => {
+      const { contas } = await registrar();
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      expect(cartaoId).toBeTruthy();
+
+      provedor.registrarContas(CONEXAO_EXTERNA, [
+        { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 2600 },
+        {
+          idExterno: "card-1",
+          nome: "Cartão Platinum",
+          tipo: "CREDIT",
+          saldo: 9000,
+          limite: 35000,
+          fechamento: 8,
+          vencimento: 15,
+        },
+      ]);
+
+      await registrar();
+
+      const cartaoLocal = financeiro.cartoes.get(cartaoId!);
+      expect(cartaoLocal?.saldo).toBe("9000");
+      expect(cartaoLocal?.limite).toBe("35000");
+      expect(cartaoLocal?.fechamento).toBe(8);
+      expect(cartaoLocal?.vencimento).toBe(15);
+      expect(financeiro.contas.get(contas.find((c) => c.contaExternaId === "acc-1")!.contaId!)
+        ?.saldoAtual).toBe("2600");
     });
 
     it("é idempotente: reabrir o widget não cria conexão nova", async () => {

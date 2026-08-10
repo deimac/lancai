@@ -12,6 +12,7 @@ import {
   schemaPatchContaApi,
 } from "@lancai/tipos";
 import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
+import { excluir_destino_financeiro } from "../servicos/excluir-destino-financeiro";
 import { mapear_origem_contas, type MetaOrigem } from "../servicos/origem-conta-cartao";
 
 function com_meta<T extends { id: string; sincronizada: boolean; workspaceId: string }>(
@@ -179,12 +180,13 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
       return resposta.status(404).send({ erro: "Conta não encontrada." });
     }
 
-    const [removida] = await banco
-      .update(conta)
-      .set({ ativo: false, dataAtualizacao: new Date() })
-      .where(eq(conta.id, id))
-      .returning();
+    await excluir_destino_financeiro({
+      usuarioId: dados.usuarioId,
+      workspaceIds: escopo.workspaceIds,
+      contaId: id,
+    });
 
-    return removida;
+    // Entidade já apagada — devolve o snapshot pré-exclusão para o cliente.
+    return { ...existente, ativo: false, dataAtualizacao: new Date() };
   });
 }

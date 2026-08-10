@@ -187,6 +187,24 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
     return this.contasExternas.get(conexaoId) ?? [];
   }
 
+  async encontrarConexaoIdPorDestino(destino: {
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<string | undefined> {
+    for (const [conexaoId, contas] of this.contasExternas) {
+      for (const conta of contas) {
+        if (destino.contaId && conta.contaId === destino.contaId) return conexaoId;
+        if (destino.cartaoId && conta.cartaoId === destino.cartaoId) return conexaoId;
+      }
+    }
+    return undefined;
+  }
+
+  async apagarConexao(conexaoId: string): Promise<void> {
+    this.contasExternas.delete(conexaoId);
+    this.conexoes.delete(conexaoId);
+  }
+
   async sincronizarContasExternas(
     conexaoId: string,
     contas: ContaExternaDescoberta[],

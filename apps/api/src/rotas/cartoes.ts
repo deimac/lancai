@@ -20,6 +20,7 @@ import {
   schemaRevelarPlasticoApi,
 } from "@lancai/tipos";
 import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
+import { excluir_destino_financeiro } from "../servicos/excluir-destino-financeiro";
 import { mapear_origem_cartoes, type MetaOrigem } from "../servicos/origem-conta-cartao";
 import { verificar_senha_usuario } from "../verificar-senha-usuario";
 
@@ -223,15 +224,10 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
 
     if (
       existente.sincronizada &&
-      (dados.limite != null ||
-        dados.saldo != null ||
-        dados.fechamento != null ||
-        dados.vencimento != null ||
-        dados.contaId !== undefined ||
-        dados.plastico != null)
+      (dados.limite != null || dados.saldo != null || dados.contaId !== undefined)
     ) {
       return resposta.status(400).send({
-        erro: "Cartão sincronizado: limite, saldo, datas, plástico e conta vinculada vêm do banco.",
+        erro: "Cartão sincronizado: saldo, limite e conta vinculada vêm do banco.",
       });
     }
 
@@ -288,13 +284,18 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       return resposta.status(404).send({ erro: "Cartão não encontrado." });
     }
 
-    const [removido] = await banco
-      .update(cartao)
-      .set({ ativo: false, dataAtualizacao: new Date() })
-      .where(eq(cartao.id, id))
-      .returning();
+    await excluir_destino_financeiro({
+      usuarioId: dados.usuarioId,
+      workspaceIds: escopo.workspaceIds,
+      cartaoId: id,
+    });
 
-    const nomes = await mapear_nomes_workspaces(banco, [removido!.workspaceId]);
-    return cartao_publico(removido!, undefined, nomes);
+    // Entidade já apagada — devolve o snapshot pré-exclusão para o cliente.
+    const nomes = await mapear_nomes_workspaces(banco, [existente.workspaceId]);
+    return cartao_publico(
+      { ...existente, ativo: false, dataAtualizacao: new Date() },
+      undefined,
+      nomes,
+    );
   });
 }

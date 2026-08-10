@@ -239,11 +239,28 @@ export class MotorFinanceiro {
     usuarioId: string;
     nome: string;
     perfil: Cartao["perfil"];
+    saldo?: number;
     limite?: number;
     fechamento?: number;
     vencimento?: number;
   }): Promise<Cartao> {
     return this.repositorio.criarCartaoSincronizado(entrada);
+  }
+
+  async atualizar_dados_institucionais_cartao(
+    cartaoId: string,
+    dados: {
+      saldo?: number;
+      limite?: number;
+      fechamento?: number;
+      vencimento?: number;
+    },
+  ): Promise<void> {
+    await this.repositorio.atualizarDadosInstitucionaisCartao(cartaoId, dados);
+  }
+
+  async atualizar_saldo_institucional_conta(contaId: string, saldoAtual: number): Promise<void> {
+    await this.repositorio.atualizarSaldoInstitucionalConta(contaId, saldoAtual);
   }
 
   /**

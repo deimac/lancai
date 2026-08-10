@@ -311,6 +311,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     usuarioId: string;
     nome: string;
     perfil: Cartao["perfil"];
+    saldo?: number;
     limite?: number;
     fechamento?: number;
     vencimento?: number;
@@ -325,7 +326,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
       nome: entrada.nome,
       perfil: entrada.perfil,
       limite: String(entrada.limite ?? 0),
-      saldo: "0",
+      saldo: String(entrada.saldo ?? 0),
       fechamento,
       vencimento,
       melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,
@@ -339,5 +340,50 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     };
     this.cartoes.set(criado.id, criado);
     return criado;
+  }
+
+  async atualizarDadosInstitucionaisCartao(
+    cartaoId: string,
+    dados: {
+      saldo?: number;
+      limite?: number;
+      fechamento?: number;
+      vencimento?: number;
+    },
+  ): Promise<void> {
+    const cartao = this.cartoes.get(cartaoId);
+    if (!cartao) return;
+    const fechamento =
+      typeof dados.fechamento === "number" && dados.fechamento >= 1 && dados.fechamento <= 31
+        ? dados.fechamento
+        : cartao.fechamento;
+    this.cartoes.set(cartaoId, {
+      ...cartao,
+      saldo:
+        typeof dados.saldo === "number" && Number.isFinite(dados.saldo)
+          ? String(dados.saldo)
+          : cartao.saldo,
+      limite:
+        typeof dados.limite === "number" && Number.isFinite(dados.limite)
+          ? String(dados.limite)
+          : cartao.limite,
+      fechamento,
+      vencimento:
+        typeof dados.vencimento === "number" && dados.vencimento >= 1 && dados.vencimento <= 31
+          ? dados.vencimento
+          : cartao.vencimento,
+      melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,
+      dataAtualizacao: new Date(),
+    });
+  }
+
+  async atualizarSaldoInstitucionalConta(contaId: string, saldoAtual: number): Promise<void> {
+    const conta = this.contas.get(contaId);
+    if (!conta || !Number.isFinite(saldoAtual)) return;
+    this.contas.set(contaId, {
+      ...conta,
+      saldoAtual: String(saldoAtual),
+      dataAtualizacao: new Date(),
+    });
   }
 }

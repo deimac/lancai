@@ -120,19 +120,21 @@ export function TelaContasECartoes() {
 
   async function excluir_conta(conta: ContaResumo) {
     if (!usuario) return;
+    const sincronizada = conta.origem === "open_finance" || conta.sincronizada;
     const ok = await confirmar({
-      titulo: "Excluir conta?",
-      mensagem:
-        `Esta ação é irreversível. A conta "${conta.nome}" some das listagens, ` +
-        "mas o histórico de lançamentos vinculados é preservado.",
-      confirmarRotulo: "Excluir",
+      titulo: sincronizada ? "Excluir conexão e limpar?" : "Excluir conta?",
+      mensagem: sincronizada
+        ? `Isso apaga a conexão, contas/cartões sincronizados dela (incluindo "${conta.nome}") ` +
+          "e o extrato ligado. Depois você pode registrar o itemId de novo."
+        : `Apaga a conta "${conta.nome}" e o extrato ligado a ela. Irreversível.`,
+      confirmarRotulo: "Excluir tudo",
     });
     if (!ok) return;
     try {
       await clienteApi.excluir_conta(conta.id, usuario.id);
-      toast.sucesso("Conta excluída.");
+      toast.sucesso(sincronizada ? "Conexão e extrato limpos." : "Conta e extrato excluídos.");
       await carregar();
-      contexto?.invalidar("contas", "dashboard");
+      contexto?.invalidar("tudo");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível excluir a conta.");
     }
@@ -140,19 +142,21 @@ export function TelaContasECartoes() {
 
   async function excluir_cartao(cartao: CartaoResumo) {
     if (!usuario) return;
+    const sincronizada = cartao.origem === "open_finance" || cartao.sincronizada;
     const ok = await confirmar({
-      titulo: "Excluir cartão?",
-      mensagem:
-        `Esta ação é irreversível. O cartão "${cartao.nome}" some das listagens, ` +
-        "mas o histórico de lançamentos vinculados é preservado.",
-      confirmarRotulo: "Excluir",
+      titulo: sincronizada ? "Excluir conexão e limpar?" : "Excluir cartão?",
+      mensagem: sincronizada
+        ? `Isso apaga a conexão, contas/cartões sincronizados dela (incluindo "${cartao.nome}") ` +
+          "e o extrato ligado. Depois você pode registrar o itemId de novo."
+        : `Apaga o cartão "${cartao.nome}" e o extrato ligado a ele. Irreversível.`,
+      confirmarRotulo: "Excluir tudo",
     });
     if (!ok) return;
     try {
       await clienteApi.excluir_cartao(cartao.id, usuario.id);
-      toast.sucesso("Cartão excluído.");
+      toast.sucesso(sincronizada ? "Conexão e extrato limpos." : "Cartão e extrato excluídos.");
       await carregar();
-      contexto?.invalidar("cartoes", "dashboard");
+      contexto?.invalidar("tudo");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível excluir o cartão.");
     }
@@ -424,13 +428,18 @@ export function TelaContasECartoes() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-texto-suave">
-                      Saldo {formatar_moeda(para_numero(cartao.saldo))} · Fecha dia{" "}
+                      Limite {formatar_moeda(para_numero(cartao.limite))} · Fecha dia{" "}
                       {cartao.fechamento ?? "—"} · Vence dia {cartao.vencimento}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <p className="text-base font-semibold tabular-nums text-texto">
-                      {formatar_moeda(para_numero(cartao.limite))}
+                    <p
+                      className={unir_classes(
+                        "text-base font-semibold tabular-nums",
+                        para_numero(cartao.saldo) > 0 ? "text-despesa" : "text-texto",
+                      )}
+                    >
+                      {formatar_moeda(para_numero(cartao.saldo))}
                     </p>
                     <Botao
                       variante="fantasma"

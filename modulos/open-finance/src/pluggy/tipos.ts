@@ -18,6 +18,16 @@ export interface ContaPluggy {
   marketingName?: string | null;
   number?: string | null;
   balance?: number | null;
+  /** Presente em cartão de crédito — limite, datas de fatura etc. */
+  creditData?: {
+    creditLimit?: number | null;
+    availableCreditLimit?: number | null;
+    balanceCloseDate?: string | null;
+    balanceDueDate?: string | null;
+    minimumPayment?: number | null;
+    brand?: string | null;
+    level?: string | null;
+  } | null;
 }
 
 export interface TransacaoPluggy {

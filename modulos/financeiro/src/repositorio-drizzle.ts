@@ -243,6 +243,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     usuarioId: string;
     nome: string;
     perfil: Cartao["perfil"];
+    saldo?: number;
     limite?: number;
     fechamento?: number;
     vencimento?: number;
@@ -257,7 +258,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
         nome: entrada.nome,
         perfil: entrada.perfil,
         limite: String(entrada.limite ?? 0),
-        saldo: "0",
+        saldo: String(entrada.saldo ?? 0),
         fechamento,
         vencimento,
         melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,
@@ -267,5 +268,46 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       .returning();
     if (!criado) throw new Error("Falha ao criar cartão sincronizado.");
     return criado;
+  }
+
+  async atualizarDadosInstitucionaisCartao(
+    cartaoId: string,
+    dados: {
+      saldo?: number;
+      limite?: number;
+      fechamento?: number;
+      vencimento?: number;
+    },
+  ): Promise<void> {
+    const patch: {
+      saldo?: string;
+      limite?: string;
+      fechamento?: number;
+      vencimento?: number;
+      melhorDiaCompra?: number;
+      dataAtualizacao: Date;
+    } = { dataAtualizacao: new Date() };
+    if (typeof dados.saldo === "number" && Number.isFinite(dados.saldo)) {
+      patch.saldo = String(dados.saldo);
+    }
+    if (typeof dados.limite === "number" && Number.isFinite(dados.limite)) {
+      patch.limite = String(dados.limite);
+    }
+    if (typeof dados.fechamento === "number" && dados.fechamento >= 1 && dados.fechamento <= 31) {
+      patch.fechamento = dados.fechamento;
+      patch.melhorDiaCompra = dados.fechamento === 31 ? 1 : dados.fechamento + 1;
+    }
+    if (typeof dados.vencimento === "number" && dados.vencimento >= 1 && dados.vencimento <= 31) {
+      patch.vencimento = dados.vencimento;
+    }
+    await this.banco.update(cartaoTabela).set(patch).where(eq(cartaoTabela.id, cartaoId));
+  }
+
+  async atualizarSaldoInstitucionalConta(contaId: string, saldoAtual: number): Promise<void> {
+    if (!Number.isFinite(saldoAtual)) return;
+    await this.banco
+      .update(contaTabela)
+      .set({ saldoAtual: String(saldoAtual), dataAtualizacao: new Date() })
+      .where(eq(contaTabela.id, contaId));
   }
 }

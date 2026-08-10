@@ -227,14 +227,14 @@ export function ModalContaCartao({
             usuarioId: usuario.id,
             nome: nome.trim(),
             perfil,
+            fechamento: diaFechamento!,
+            vencimento: diaVencimento!,
+            ...(plastico ? { plastico } : {}),
             ...(sincronizada
               ? {}
               : {
                   limite: limiteNum!,
                   saldo: saldoNum,
-                  fechamento: diaFechamento!,
-                  vencimento: diaVencimento!,
-                  ...(plastico ? { plastico } : {}),
                 }),
           });
         } else {
@@ -364,7 +364,6 @@ export function ModalContaCartao({
                     onChange={(e) => setFechamento(formatar_dia_digitacao(e.target.value))}
                     placeholder="1–31"
                     maxLength={2}
-                    disabled={sincronizada}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-texto-suave">
@@ -375,95 +374,93 @@ export function ModalContaCartao({
                     onChange={(e) => setVencimento(formatar_dia_digitacao(e.target.value))}
                     placeholder="1–31"
                     maxLength={2}
-                    disabled={sincronizada}
                   />
                 </label>
               </div>
 
-              {!sincronizada && (
-                <fieldset className="flex flex-col gap-3 rounded-xl border border-borda p-3">
-                  <legend className="flex items-center gap-2 px-1 text-xs text-texto-suave">
-                    Dados do plástico
-                    {temPlasticoSalvo && plasticoBloqueado && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPedindoSenha(true);
-                          setErro(null);
-                        }}
-                        className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[11px] text-texto hover:bg-superficie-alta"
-                        title="Desbloquear com senha para ver e alterar"
-                      >
-                        <Lock size={12} />
-                        Desbloquear
-                      </button>
-                    )}
-                    {temPlasticoSalvo && !plasticoBloqueado && (
-                      <button
-                        type="button"
-                        onClick={() => setPlasticoVisivel((v) => !v)}
-                        className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[11px] text-texto hover:bg-superficie-alta"
-                        title={plasticoVisivel ? "Ocultar dados" : "Mostrar dados"}
-                      >
-                        {plasticoVisivel ? <EyeOff size={12} /> : <Eye size={12} />}
-                        {plasticoVisivel ? "Ocultar" : "Mostrar"}
-                      </button>
-                    )}
-                  </legend>
-
-                  {plasticoBloqueado && (
-                    <p className="text-[11px] text-texto-suave">
-                      Dados ocultos. Use o cadeado e a senha da sua conta para ver e alterar.
-                    </p>
+              <fieldset className="flex flex-col gap-3 rounded-xl border border-borda p-3">
+                <legend className="flex items-center gap-2 px-1 text-xs text-texto-suave">
+                  Dados do plástico
+                  {temPlasticoSalvo && plasticoBloqueado && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPedindoSenha(true);
+                        setErro(null);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[11px] text-texto hover:bg-superficie-alta"
+                      title="Desbloquear com senha para ver e alterar"
+                    >
+                      <Lock size={12} />
+                      Desbloquear
+                    </button>
                   )}
+                  {temPlasticoSalvo && !plasticoBloqueado && (
+                    <button
+                      type="button"
+                      onClick={() => setPlasticoVisivel((v) => !v)}
+                      className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[11px] text-texto hover:bg-superficie-alta"
+                      title={plasticoVisivel ? "Ocultar dados" : "Mostrar dados"}
+                    >
+                      {plasticoVisivel ? <EyeOff size={12} /> : <Eye size={12} />}
+                      {plasticoVisivel ? "Ocultar" : "Mostrar"}
+                    </button>
+                  )}
+                </legend>
 
+                {plasticoBloqueado && (
+                  <p className="text-[11px] text-texto-suave">
+                    Dados ocultos. Use o cadeado e a senha da sua conta para ver e alterar.
+                  </p>
+                )}
+
+                <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                  Número do cartão
+                  <Campo
+                    inputMode="numeric"
+                    autoComplete="cc-number"
+                    value={numeroExibido}
+                    onChange={(e) => setNumero(formatar_numero_grupos(e.target.value))}
+                    placeholder="0000 0000 0000 0000"
+                    disabled={plasticoBloqueado}
+                    type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                    Número do cartão
+                    Validade
                     <Campo
                       inputMode="numeric"
-                      autoComplete="cc-number"
-                      value={numeroExibido}
-                      onChange={(e) => setNumero(formatar_numero_grupos(e.target.value))}
-                      placeholder="0000 0000 0000 0000"
+                      autoComplete="cc-exp"
+                      value={validadeExibida}
+                      onChange={(e) => setValidade(formatar_validade_digitacao(e.target.value))}
+                      placeholder="MM/AA"
+                      maxLength={5}
                       disabled={plasticoBloqueado}
                       type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
                     />
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                      Validade
-                      <Campo
-                        inputMode="numeric"
-                        autoComplete="cc-exp"
-                        value={validadeExibida}
-                        onChange={(e) => setValidade(formatar_validade_digitacao(e.target.value))}
-                        placeholder="MM/AA"
-                        maxLength={5}
-                        disabled={plasticoBloqueado}
-                        type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                      CVV
-                      <Campo
-                        inputMode="numeric"
-                        autoComplete="cc-csc"
-                        value={cvvExibido}
-                        onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                        placeholder="•••"
-                        disabled={plasticoBloqueado}
-                        type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
-                      />
-                    </label>
-                  </div>
-                </fieldset>
-              )}
+                  <label className="flex flex-col gap-1 text-xs text-texto-suave">
+                    CVV
+                    <Campo
+                      inputMode="numeric"
+                      autoComplete="cc-csc"
+                      value={cvvExibido}
+                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="•••"
+                      disabled={plasticoBloqueado}
+                      type={!plasticoBloqueado && !plasticoVisivel && temPlasticoSalvo ? "password" : "text"}
+                    />
+                  </label>
+                </div>
+              </fieldset>
             </>
           )}
 
           {sincronizada && (
             <p className="text-xs text-texto-suave">
-              Item sincronizado: valores financeiros vêm do banco — só nome e perfil podem mudar.
+              Sincronizado: saldo e limite vêm do banco. Nome, perfil (PF/PJ), datas da fatura e
+              dados do plástico você pode complementar aqui.
             </p>
           )}
 

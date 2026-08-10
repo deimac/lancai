@@ -15,6 +15,7 @@ import type { ContaPluggy, ItemPluggy, TransacaoPluggy } from "./tipos";
  */
 
 export function traduzir_conta(conta: ContaPluggy): ContaExterna {
+  const credito = conta.creditData;
   return {
     idExterno: conta.id,
     nome: conta.marketingName ?? conta.name ?? conta.number ?? conta.id,
@@ -24,7 +25,28 @@ export function traduzir_conta(conta: ContaPluggy): ContaExterna {
      */
     tipo: conta.subtype ?? conta.type ?? "DESCONHECIDO",
     saldo: conta.balance ?? undefined,
+    limite: numero_finito(credito?.creditLimit),
+    fechamento: dia_do_mes(credito?.balanceCloseDate),
+    vencimento: dia_do_mes(credito?.balanceDueDate),
   };
+}
+
+function numero_finito(valor: number | null | undefined): number | undefined {
+  return typeof valor === "number" && Number.isFinite(valor) ? valor : undefined;
+}
+
+/** Extrai o dia do mês sem deslocar por fuso (datas Pluggy vêm como YYYY-MM-DD). */
+function dia_do_mes(iso: string | null | undefined): number | undefined {
+  if (!iso) return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (match) {
+    const dia = Number(match[3]);
+    return dia >= 1 && dia <= 31 ? dia : undefined;
+  }
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return undefined;
+  const dia = data.getUTCDate();
+  return dia >= 1 && dia <= 31 ? dia : undefined;
 }
 
 export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExterna {

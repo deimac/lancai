@@ -113,10 +113,26 @@ export interface RepositorioFinanceiro {
     usuarioId: string;
     nome: string;
     perfil: Cartao["perfil"];
+    saldo?: number;
     limite?: number;
     fechamento?: number;
     vencimento?: number;
   }): Promise<Cartao>;
+  /**
+   * Atribui saldo/limite/ciclo informados pela instituição em cartão sincronizado.
+   * Não passa pelo fluxo de compra — é Fato da Fonte, como o saldo da conta.
+   */
+  atualizarDadosInstitucionaisCartao(
+    cartaoId: string,
+    dados: {
+      saldo?: number;
+      limite?: number;
+      fechamento?: number;
+      vencimento?: number;
+    },
+  ): Promise<void>;
+  /** Atribui o saldo informado pela instituição em conta sincronizada. */
+  atualizarSaldoInstitucionalConta(contaId: string, saldoAtual: number): Promise<void>;
 }
 
 export type { Auditoria, Cartao, Categoria, Conta, Movimento, NovoMovimento, Parcela, Pessoa };

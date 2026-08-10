@@ -191,6 +191,12 @@ describe("AdaptadorPluggy", () => {
             marketingName: null,
             number: "1234",
             balance: 142.41,
+            creditData: {
+              creditLimit: 51800,
+              availableCreditLimit: 51657.59,
+              balanceCloseDate: "2020-10-20",
+              balanceDueDate: "2020-10-27",
+            },
           },
         ],
       });
@@ -209,6 +215,9 @@ describe("AdaptadorPluggy", () => {
           nome: "Itau Uniclass 2.0 Mastercard Platinum",
           tipo: "CREDIT_CARD",
           saldo: 142.41,
+          limite: 51800,
+          fechamento: 20,
+          vencimento: 27,
         },
       ]);
     });

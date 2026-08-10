@@ -131,6 +131,21 @@ export interface RepositorioOpenFinance {
   listarContasExternas(conexaoId: string): Promise<ContaExternaRegistrada[]>;
 
   /**
+   * Acha a conexão Open Finance que aponta para esta conta ou cartão local.
+   * Usado ao excluir no Core para desligar a instituição inteira.
+   */
+  encontrarConexaoIdPorDestino(destino: {
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<string | undefined>;
+
+  /**
+   * Apaga a conexão e o mapa de contas externas. Usado na exclusão total
+   * (limpar para reconectar), não no desconectar suave.
+   */
+  apagarConexao(conexaoId: string): Promise<void>;
+
+  /**
    * Registra o que o provedor encontrou, preservando as associações já feitas.
    * Conta que sumiu do provedor **não** é apagada: ela pode ter Fato associado,
    * e apagar o mapa deixaria esse Fato órfão de explicação.

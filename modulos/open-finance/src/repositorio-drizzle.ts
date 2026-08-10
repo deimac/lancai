@@ -249,6 +249,36 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
       .where(eq(contaExternaTabela.conexaoId, conexaoId));
   }
 
+  async encontrarConexaoIdPorDestino(destino: {
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<string | undefined> {
+    if (destino.contaId) {
+      const [linha] = await this.banco
+        .select({ conexaoId: contaExternaTabela.conexaoId })
+        .from(contaExternaTabela)
+        .where(eq(contaExternaTabela.contaId, destino.contaId))
+        .limit(1);
+      if (linha) return linha.conexaoId;
+    }
+    if (destino.cartaoId) {
+      const [linha] = await this.banco
+        .select({ conexaoId: contaExternaTabela.conexaoId })
+        .from(contaExternaTabela)
+        .where(eq(contaExternaTabela.cartaoId, destino.cartaoId))
+        .limit(1);
+      if (linha) return linha.conexaoId;
+    }
+    return undefined;
+  }
+
+  async apagarConexao(conexaoId: string): Promise<void> {
+    await this.banco
+      .delete(contaExternaTabela)
+      .where(eq(contaExternaTabela.conexaoId, conexaoId));
+    await this.banco.delete(conexaoTabela).where(eq(conexaoTabela.id, conexaoId));
+  }
+
   async sincronizarContasExternas(
     conexaoId: string,
     contas: ContaExternaDescoberta[],

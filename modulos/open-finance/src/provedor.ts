@@ -59,8 +59,14 @@ export interface ContaExterna {
   nome: string;
   /** Tipo como o provedor chama. Opaco de propósito. */
   tipo: string;
-  /** Saldo informado pela instituição — Fato, em conta sincronizada. */
+  /** Saldo informado pela instituição — Fato (conta: disponível; cartão: em aberto). */
   saldo?: number;
+  /** Limite total do cartão, quando a instituição informa. */
+  limite?: number;
+  /** Dia do mês de fechamento da fatura (1–31). */
+  fechamento?: number;
+  /** Dia do mês de vencimento da fatura (1–31). */
+  vencimento?: number;
 }
 
 export interface EstadoConexao {
