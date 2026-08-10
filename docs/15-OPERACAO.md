@@ -191,6 +191,17 @@ Rodar sempre de dentro de cada pacote, nunca da raiz. Ver [14-TESTES.md](14-TEST
 
 Stack de infraestrutura: Docker, Coolify, VPS Hostinger e Caddy.
 
+### Deploy da API no Coolify (Nixpacks)
+
+O serviço da API usa `nixpacks.toml` na raiz: install com `pnpm install --frozen-lockfile`, build com `pnpm build:api` (typecheck), start com `pnpm start:api` (`tsx`).
+
+No painel Coolify deste serviço:
+
+1. **Build Command** vazio (usa o `nixpacks.toml`) ou explicitamente `pnpm build:api`.
+2. Não use `pnpm build:all` nem o build do Vite neste serviço — a Web é outro app.
+3. O script raiz `pnpm build` aponta para `pnpm build:api` (defesa se o painel ainda mandar `pnpm build`).
+4. `package.json` permite scripts de build do `esbuild` (`pnpm.onlyBuiltDependencies`) — o `tsx` depende disso em runtime.
+
 ### Ollama no servidor
 O plano de referência é uma KVM2 com 2 vCPU e 8 GB. Se for habilitar o Ollama lá:
 

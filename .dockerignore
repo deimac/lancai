@@ -1,0 +1,14 @@
+.git
+.github
+.tmp-analise
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+apps/web/dist
+*.md
+!docs/**
+.DS_Store

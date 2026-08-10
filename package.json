@@ -11,8 +11,10 @@
     "dev": "pnpm --parallel -r dev",
     "dev:api": "pnpm --filter @lancai/api dev",
     "dev:web": "pnpm --filter @lancai/web dev",
-    "build": "pnpm -r build",
+    "build": "pnpm build:api",
+    "build:all": "pnpm -r build",
     "build:api": "pnpm --filter @lancai/api build",
+    "build:web": "pnpm --filter @lancai/web build",
     "start:api": "pnpm --filter @lancai/api start",
     "test": "pnpm -r test",
     "lint": "eslint .",
@@ -21,6 +23,9 @@
     "db:generate": "pnpm --filter @lancai/banco db:generate",
     "db:migrate": "pnpm --filter @lancai/banco db:migrate",
     "db:seed": "pnpm --filter @lancai/banco db:seed"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
