@@ -36,7 +36,18 @@ describe("montar_resposta_visao", () => {
     const texto = montar_resposta_visao({
       tipo: "cartoes",
       dados: {
-        cartoes: [{ nome: "Inter Black", perfil: "pf", limite: 5000, comprometido: 1500, disponivel: 3500, fechamento: 20, vencimento: 27 }],
+        cartoes: [
+          {
+            nome: "Inter Black",
+            perfil: "pf",
+            limite: 5000,
+            comprometido: 1500,
+            disponivel: 3500,
+            fechamento: 20,
+            vencimento: 27,
+            sincronizada: false,
+          },
+        ],
       },
     });
     expect(texto).toContain("Inter Black");
