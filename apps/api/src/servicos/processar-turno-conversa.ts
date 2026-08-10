@@ -58,6 +58,23 @@ const TAMANHO_HISTORICO_RECENTE = 8;
 
 const orquestrador = new OrquestradorIA();
 const interpretador = new InterpretadorIntencoes(orquestrador);
+
+/** Esqueleto para slot-filling de recorrência — o normalizador completa com a mensagem. */
+function esqueleto_slot_recorrencia(
+  parciais: Record<string, unknown> | null | undefined,
+): IntencaoDetectada {
+  const p = parciais ?? {};
+  return {
+    intencao: "CRIAR_RECORRENCIA",
+    descricao: typeof p.descricao === "string" && p.descricao.trim() ? p.descricao : "Recorrência",
+    valor: typeof p.valor === "number" ? p.valor : null,
+    dia_do_mes: typeof p.dia_do_mes === "number" ? p.dia_do_mes : null,
+    tipo_movimento: p.tipo_movimento === "receita" ? "receita" : "despesa",
+    categoria_nome: typeof p.categoria_nome === "string" ? p.categoria_nome : null,
+    conta_nome: typeof p.conta_nome === "string" ? p.conta_nome : null,
+    cartao_nome: typeof p.cartao_nome === "string" ? p.cartao_nome : null,
+  };
+}
 const repositorioContexto = new RepositorioContextoDrizzle();
 const resolvedor = new ResolvedorIntencao(repositorioContexto);
 const motor = new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
@@ -368,7 +385,14 @@ export async function processar_turno_conversa(
       ultimaIntencaoIa,
     );
 
+  // Slot de recorrência: nunca manda pro LLM — mescla parciais + mensagem no normalizador.
+  const slotRecorrencia =
+    contexto.intencaoPendente?.intencao_pendente === "CRIAR_RECORRENCIA"
+      ? esqueleto_slot_recorrencia(contexto.intencaoPendente.dados_parciais)
+      : null;
+
   const intencaoBruta =
+    slotRecorrencia ??
     entrada.intencaoPrevia ??
     intencaoConfirmacao ??
     interpretar_pedido_detalhe_historico(entrada.mensagem, ultimaIntencaoIa) ??

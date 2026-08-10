@@ -1,5 +1,5 @@
 import type { IntencaoDetectada } from "@lancai/tipos";
-import type { ContextoInterpretacao } from "@lancai/ia";
+import { extrair_dia_do_mes_mensagem, type ContextoInterpretacao } from "@lancai/ia";
 
 const ACAO_ESCRITA_FORTE =
   /\b(corrige|corrigir|apague|apaga|cancela lançamento|exclui lançamento)\b/i;
@@ -73,17 +73,22 @@ export function interpretar_recorrencia_rapida(
     }
   }
 
-  // Resposta curta ao slot-filling (ex.: "55,90" após "qual é o valor?").
+  // Resposta curta ao slot-filling (ex.: "55,90" / "hoje" / "10").
   if (contexto?.intencaoPendente?.intencao_pendente === "CRIAR_RECORRENCIA") {
     const parciais = contexto.intencaoPendente.dados_parciais ?? {};
+    const valorJaConhecido = typeof parciais.valor === "number";
     const valorMsg = extrair_valor_ignorando_dia(lower);
+    const diaMsg = extrair_dia_do_mes_mensagem(texto, contexto.dataAtual, {
+      permitirNumeroIsolado: valorJaConhecido,
+    });
     const origemMsg = extrair_origem_no_na(texto, contexto);
     const temSinal =
       valorMsg != null ||
+      diaMsg != null ||
       Boolean(origemMsg.conta_nome || origemMsg.cartao_nome) ||
       texto.length <= 40;
 
-    if (temSinal && (typeof parciais.descricao === "string" || valorMsg != null)) {
+    if (temSinal && (typeof parciais.descricao === "string" || valorMsg != null || diaMsg != null)) {
       return {
         intencao: "CRIAR_RECORRENCIA",
         descricao:
@@ -92,7 +97,8 @@ export function interpretar_recorrencia_rapida(
             : "Recorrência",
         valor: valorMsg ?? (typeof parciais.valor === "number" ? parciais.valor : null),
         dia_do_mes:
-          typeof parciais.dia_do_mes === "number" ? parciais.dia_do_mes : null,
+          diaMsg ??
+          (typeof parciais.dia_do_mes === "number" ? parciais.dia_do_mes : null),
         tipo_movimento:
           parciais.tipo_movimento === "receita" ? "receita" : "despesa",
         categoria_nome:
@@ -213,7 +219,9 @@ function extrair_valor(texto: string): number | null {
 }
 
 function extrair_valor_ignorando_dia(texto: string): number | null {
-  const limpo = texto.replace(/\bdia\s+\d{1,2}\b/gi, " ");
+  const limpo = texto
+    .replace(/\bdia\s+\d{1,2}\b/gi, " ")
+    .replace(/\b(?:hoje|hj)\b/gi, " ");
   return extrair_valor(limpo);
 }
 
@@ -252,15 +260,21 @@ function extrair_origem_no_na(
   if (!m?.[1]) return { conta_nome: null, cartao_nome: null };
   const nome = m[1].trim().replace(/\s+/g, " ");
   const nomeLower = nome.toLocaleLowerCase("pt-BR");
+  const pediuCartao = /\bcart[aã]o\b/i.test(texto);
 
   const cartao = contexto?.cartoes.find((c) => c.nome.toLocaleLowerCase("pt-BR") === nomeLower
     || c.nome.toLocaleLowerCase("pt-BR").includes(nomeLower)
     || nomeLower.includes(c.nome.toLocaleLowerCase("pt-BR")));
-  if (cartao) return { conta_nome: null, cartao_nome: cartao.nome };
-
   const conta = contexto?.contas.find((c) => c.nome.toLocaleLowerCase("pt-BR") === nomeLower
     || c.nome.toLocaleLowerCase("pt-BR").includes(nomeLower)
     || nomeLower.includes(c.nome.toLocaleLowerCase("pt-BR")));
+
+  if (pediuCartao) {
+    if (cartao) return { conta_nome: null, cartao_nome: cartao.nome };
+    return { conta_nome: null, cartao_nome: capitalizar(nome) };
+  }
+
+  if (cartao) return { conta_nome: null, cartao_nome: cartao.nome };
   if (conta) return { conta_nome: conta.nome, cartao_nome: null };
 
   // Sem match no cadastro: tenta como cartão (assinaturas costumam ir no cartão).

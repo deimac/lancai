@@ -383,14 +383,27 @@ export async function montar_resposta_chat(
       if (!categoria) {
         return "Não consegui definir a categoria da recorrência.";
       }
-      const contaId = await contexto.resolvedor.resolver_conta_nome(
+      let contaId = await contexto.resolvedor.resolver_conta_nome(
         contexto.usuarioId,
         intencao.conta_nome,
       );
-      const cartaoId = await contexto.resolvedor.resolver_cartao_nome(
+      let cartaoId = await contexto.resolvedor.resolver_cartao_nome(
         contexto.usuarioId,
         intencao.cartao_nome,
       );
+      // "Nubank" às vezes cai em conta_nome embora o usuário tenha dito cartão.
+      if (!contaId && !cartaoId && intencao.conta_nome) {
+        cartaoId = await contexto.resolvedor.resolver_cartao_nome(
+          contexto.usuarioId,
+          intencao.conta_nome,
+        );
+      }
+      if (!cartaoId && !contaId && intencao.cartao_nome) {
+        contaId = await contexto.resolvedor.resolver_conta_nome(
+          contexto.usuarioId,
+          intencao.cartao_nome,
+        );
+      }
       if (!contaId && !cartaoId) {
         return "Em qual conta ou cartão?";
       }

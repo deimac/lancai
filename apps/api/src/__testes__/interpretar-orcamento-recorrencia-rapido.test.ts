@@ -79,6 +79,33 @@ describe("interpretar_recorrencia_rapida", () => {
     });
   });
 
+  it("completa dia com 'hoje' na resposta curta", () => {
+    const r = interpretar_recorrencia_rapida("hoje", {
+      dataAtual: "2026-08-09",
+      contas: [],
+      cartoes: [{ nome: "Nubank", perfil: "pf", modalidade: "credito", temConta: false }],
+      categorias: [],
+      pessoas: [],
+      habitos: [],
+      historicoRecente: [],
+      intencaoPendente: {
+        intencao_pendente: "CRIAR_RECORRENCIA",
+        dados_parciais: {
+          descricao: "Netflix",
+          valor: 28,
+          cartao_nome: "Nubank",
+        },
+      },
+    });
+    expect(r).toMatchObject({
+      intencao: "CRIAR_RECORRENCIA",
+      descricao: "Netflix",
+      valor: 28,
+      dia_do_mes: 9,
+      cartao_nome: "Nubank",
+    });
+  });
+
   it("lista recorrências", () => {
     expect(interpretar_recorrencia_rapida("listar recorrências")).toMatchObject({
       intencao: "LISTAR_RECORRENCIAS",

@@ -88,4 +88,45 @@ describe("normalizar_intencao_recorrencia", () => {
     if (r.intencao !== "SOLICITAR_INFORMACAO") return;
     expect(r.dados_parciais?.valor).toBeUndefined();
   });
+
+  it.each([
+    ["hoje", 9],
+    ["hj", 9],
+    ["esse mes", 9],
+    ["este mês", 9],
+    ["agosto", 9],
+    ["dia 09", 9],
+    ["dia 9", 9],
+    ["10", 10],
+  ])("aceita %s como dia do mês na resposta ao slot", (resposta, dia) => {
+    const r = normalizar_intencao_recorrencia(
+      {
+        intencao: "CRIAR_RECORRENCIA",
+        descricao: "Recorrência",
+        valor: null,
+        dia_do_mes: null,
+        tipo_movimento: "despesa",
+      },
+      contexto({
+        dataAtual: "2026-08-09",
+        intencaoPendente: {
+          intencao_pendente: "CRIAR_RECORRENCIA",
+          dados_parciais: {
+            descricao: "Netflix",
+            valor: 28,
+            cartao_nome: "Nubank",
+            tipo_movimento: "despesa",
+          },
+        },
+      }),
+      resposta,
+    );
+    expect(r).toMatchObject({
+      intencao: "CRIAR_RECORRENCIA",
+      descricao: "Netflix",
+      valor: 28,
+      dia_do_mes: dia,
+      cartao_nome: "Nubank",
+    });
+  });
 });

@@ -15,10 +15,11 @@ function parciais_da_pendente(pendente: IntencaoPendenteSlot | null | undefined)
 }
 
 function extrair_valor_mensagem(mensagem: string): number | null {
-  // Evita confundir "dia 10" com o valor da assinatura.
+  // Evita confundir "dia 10" / "hoje" com o valor da assinatura.
   const texto = mensagem
     .trim()
     .replace(/\bdia\s+\d{1,2}\b/gi, " ")
+    .replace(/\b(?:hoje|hj)\b/gi, " ")
     .replace(/\b(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\b/gi, " ");
   if (!texto.trim()) return null;
   const m =
@@ -32,20 +33,100 @@ function extrair_valor_mensagem(mensagem: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function dia_de_data_iso(dataAtual?: string | null): number | null {
+  if (!dataAtual || !/^\d{4}-\d{2}-\d{2}/.test(dataAtual)) return null;
+  const dia = Number(dataAtual.slice(8, 10));
+  return dia >= 1 && dia <= 31 ? dia : null;
+}
+
+function numero_parcial(valor: unknown): number | null {
+  if (typeof valor === "number" && Number.isFinite(valor)) return valor;
+  if (typeof valor === "string" && valor.trim()) {
+    const n = Number(valor.trim().replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+const MESES_PT: Record<string, number> = {
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  março: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12,
+};
+
+/**
+ * Resolve o dia do mês a partir da mensagem: "hoje", "esse mês", "agosto",
+ * "dia 10"/"dia 09", ou "10" (número isolado só com valor já conhecido).
+ */
+export function extrair_dia_do_mes_mensagem(
+  mensagem: string,
+  dataAtual?: string | null,
+  opcoes: { permitirNumeroIsolado?: boolean } = {},
+): number | null {
+  const texto = mensagem
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (!texto) return null;
+
+  if (
+    /\b(hoje|hj)\b/.test(texto) ||
+    /\b(esse|este|neste)\s+mes\b/.test(texto) ||
+    /\b(a\s+partir\s+de\s+agora|ainda\s+esse\s+mes)\b/.test(texto)
+  ) {
+    return dia_de_data_iso(dataAtual);
+  }
+
+  // Nome do mês sozinho (ex.: "agosto") → dia de hoje no calendário atual.
+  const soMes = texto.replace(/[.!?,]/g, "").trim();
+  if (MESES_PT[soMes] != null) {
+    return dia_de_data_iso(dataAtual);
+  }
+
+  const comRotulo = /\bdia\s+(\d{1,2})\b/.exec(texto);
+  if (comRotulo) {
+    const n = Number(comRotulo[1]);
+    return n >= 1 && n <= 31 ? n : null;
+  }
+
+  if (opcoes.permitirNumeroIsolado && /^\d{1,2}\s*[.!?]?\s*$/.test(texto)) {
+    const n = Number(texto.replace(/\D/g, ""));
+    return n >= 1 && n <= 31 ? n : null;
+  }
+
+  return null;
+}
+
 function mesclar_criar_recorrencia(
   atual: Partial<IntencaoCriarRecorrencia>,
   pendentes: Record<string, unknown>,
   mensagem: string,
+  dataAtual?: string | null,
 ): IntencaoCriarRecorrencia {
+  const valorPendente = numero_parcial(pendentes.valor);
+  const valorAtual = numero_parcial(atual.valor);
+  const valorJaConhecido = valorAtual != null || valorPendente != null;
   const valorMensagem = extrair_valor_mensagem(mensagem);
-  const valor =
-    atual.valor ??
-    (typeof pendentes.valor === "number" ? pendentes.valor : null) ??
-    valorMensagem;
+  const valor = valorAtual ?? valorPendente ?? valorMensagem;
 
+  const diaMensagem = extrair_dia_do_mes_mensagem(mensagem, dataAtual, {
+    permitirNumeroIsolado: valorJaConhecido,
+  });
   const diaBruto =
-    atual.dia_do_mes ??
-    (typeof pendentes.dia_do_mes === "number" ? pendentes.dia_do_mes : null);
+    numero_parcial(atual.dia_do_mes) ??
+    diaMensagem ??
+    numero_parcial(pendentes.dia_do_mes);
   const dia =
     typeof diaBruto === "number" && diaBruto >= 1 && diaBruto <= 31 ? diaBruto : null;
 
@@ -103,7 +184,7 @@ function dados_parciais_de(completa: IntencaoCriarRecorrencia): Record<string, u
 function montar_pergunta(faltantes: CampoFaltante[], nomeUsuario?: string | null): string {
   const perguntas: Record<CampoFaltante, string> = {
     valor: "Qual é o valor?",
-    dia: "Em qual dia do mês?",
+    dia: "Em qual dia do mês (1 a 31)? Pode ser “hoje” ou “dia 10”.",
     descricao: "Qual é a descrição?",
     conta: "Em qual conta ou cartão?",
   };
@@ -148,6 +229,7 @@ export function normalizar_intencao_recorrencia(
       dados_de_parcial(intencao.dados_parciais) as Partial<IntencaoCriarRecorrencia>,
       pendentes,
       mensagem,
+      contexto.dataAtual,
     );
     const faltantes = faltantes_recorrencia(completa);
     if (faltantes.length === 0) {
@@ -167,7 +249,12 @@ export function normalizar_intencao_recorrencia(
 
   if (intencao.intencao !== "CRIAR_RECORRENCIA") return intencao;
 
-  const completa = mesclar_criar_recorrencia(intencao, pendentes, mensagem);
+  const completa = mesclar_criar_recorrencia(
+    intencao,
+    pendentes,
+    mensagem,
+    contexto.dataAtual,
+  );
   const faltantes = faltantes_recorrencia(completa);
   if (faltantes.length > 0) return solicitar(completa, faltantes, nome);
 

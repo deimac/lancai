@@ -73,7 +73,7 @@ Intenções do ramo pedido:
 4) CRIAR_* — só se nome NÃO existe no contexto. Senão CORRIGIR_*.
 5) CONSULTAR_DADOS_CARTAO — ver número/CVV.
 6) SOLICITAR_INFORMACAO — falta dado (valor, conta, dia…); copie intencaoPendente.dados_parciais. Nunca invente valor nem diga "valor não informado".
-7) CRIAR_RECORRENCIA — "todo mês dia N …"; se faltar valor/conta/dia use SOLICITAR_INFORMACAO (pergunte "qual é o valor?").
+7) CRIAR_RECORRENCIA — "todo mês dia N …"; se faltar valor/conta/dia use SOLICITAR_INFORMACAO (pergunte "qual é o valor?"). "hoje"/"hj" no dia = dia do mês de dataAtual.
 8) NAO_RECONHECIDA — só fora do domínio (saudação, pergunta genérica); motivo curto. Nunca para “não” em confirmação.
 
 Datas via dataAtual. Números BR: "12.889,00"=12889. Use nomes do contexto. JSON do schema apenas.`;
