@@ -257,6 +257,17 @@ export class ServicoIngestaoOpenFinance {
       case "movimentacoes_removidas":
         return this.remover(conexao, notificacao.idsExternos);
 
+      case "conexao_estado": {
+        const estado = await this.provedor.obter_estado(notificacao.conexaoExterna);
+        await this.repositorio.atualizarEstadoConexao(conexao.id, {
+          status: estado.status,
+          motivoAtencao: estado.motivoAtencao ?? null,
+          consentimentoExpiraEm: estado.consentimentoExpiraEm ?? null,
+          ultimoSyncEm: estado.ultimoSyncEm ?? undefined,
+        });
+        return resumo_vazio();
+      }
+
       case "conexao_precisa_atencao":
         await this.repositorio.atualizarEstadoConexao(conexao.id, {
           status: "precisa_atencao",

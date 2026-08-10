@@ -177,6 +177,22 @@ describe("ServicoIngestaoOpenFinance", () => {
     });
   });
 
+  describe("estado da conexão (item/created|updated)", () => {
+    it("sincroniza status quando a conexão já está registrada", async () => {
+      provedor.definir_estado(CONEXAO_EXTERNA, {
+        status: "sincronizando",
+        instituicao: "Banco de Mentira",
+      });
+
+      const { resumo } = await entregar(provedor.anunciar_estado(CONEXAO_EXTERNA, "ev-estado"));
+
+      expect(resumo?.criados).toBe(0);
+      const gravado = repositorio.estadosGravados.at(-1);
+      expect(gravado?.conexaoId).toBe(conexaoId);
+      expect(gravado?.estado.status).toBe("sincronizando");
+    });
+  });
+
   describe("paginação", () => {
     it("percorre todas as páginas do lote", async () => {
       provedor = new ProvedorDuble({ tamanhoPagina: 2 });

@@ -91,6 +91,11 @@ export type NotificacaoFonte =
   | { tipo: "movimentacoes_alteradas"; conexaoExterna: string; idsExternos: string[] }
   /** A instituição removeu movimentações que já viraram Fato aqui. Ver seção 8.6 de 13-OPEN_FINANCE.md. */
   | { tipo: "movimentacoes_removidas"; conexaoExterna: string; idsExternos: string[] }
+  /**
+   * Item criado/atualizado no provedor — só sincroniza estado se a conexão já
+   * estiver registrada (widget → POST /conexoes). Não cria conexão sozinho.
+   */
+  | { tipo: "conexao_estado"; conexaoExterna: string }
   | { tipo: "conexao_precisa_atencao"; conexaoExterna: string; motivo: MotivoAtencao }
   | { tipo: "conexao_removida"; conexaoExterna: string }
   /** Evento que o provedor manda e não nos interessa. Registrado, não processado. */

@@ -98,6 +98,14 @@ export class ProvedorDuble implements ProvedorOpenFinance {
     return { eventoId, evento: "conexao_precisa_atencao", conexao: conexaoExterna, motivo };
   }
 
+  anunciar_estado(conexaoExterna: string, eventoId: string): CorpoWebhookDuble {
+    return { eventoId, evento: "conexao_estado", conexao: conexaoExterna };
+  }
+
+  definir_estado(conexaoExterna: string, estado: EstadoConexao): void {
+    this.estados.set(conexaoExterna, estado);
+  }
+
   // ----- a porta -----
 
   interpretar_notificacao(corpo: unknown): WebhookInterpretado {
@@ -150,6 +158,10 @@ export class ProvedorDuble implements ProvedorOpenFinance {
       case "conexao_removida":
         if (!conexao) throw new ErroWebhookInvalido("remoção de conexão sem conexão");
         return { ...envelope, notificacao: { tipo: "conexao_removida", conexaoExterna: conexao } };
+
+      case "conexao_estado":
+        if (!conexao) throw new ErroWebhookInvalido("estado sem conexão");
+        return { ...envelope, notificacao: { tipo: "conexao_estado", conexaoExterna: conexao } };
 
       default:
         return { ...envelope, notificacao: { tipo: "ignorada", descricao: evento } };

@@ -58,7 +58,7 @@ Valores válidos hoje: `pluggy` e `duble`.
 
 `OPEN_FINANCE_WEBHOOK_SEGREDO` é o segredo esperado no header `X-Lancai-Webhook`. **Sem ela a rota fica fechada**, mesmo com provedor ativo: webhook aberto é porta para gravar Fato falso no extrato de alguém. Com o dublê a UI dispara a ingestão pela API (`/open-finance/duble/...`) e **não** precisa do webhook externo — o segredo só importa quando o provedor real posta em `/api/webhooks/open-finance`.
 
-O webhook receptor é `POST /api/webhooks/open-finance`. Ele responde 2XX antes de processar, e a Pluggy exige isso em menos de cinco segundos — ver seção 8.3 de [13-OPEN_FINANCE.md](13-OPEN_FINANCE.md).
+O webhook receptor é `POST /api/webhooks/open-finance` (alias `POST /api/webhooks/pluggy` para o Dashboard Pluggy). Ele responde 2XX antes de processar, e a Pluggy exige isso em menos de cinco segundos — ver seção 8.3 de [13-OPEN_FINANCE.md](13-OPEN_FINANCE.md).
 
 As rotas de conexão vivem sob `/open-finance` e respondem 503 quando a Fonte está desligada, com exceção de `GET /open-finance/fonte`, que responde `disponivel: false` — é assim que a interface sabe não oferecer o botão de conectar em vez de oferecer um botão que quebra.
 
@@ -100,9 +100,10 @@ Web (já existentes): `VITE_API_URL=https://<dominio-api-https>`, `VITE_SUPABASE
 
 **Dashboard Pluggy (Application):**
 
-1. Webhook URL = o mesmo `OPEN_FINANCE_WEBHOOK_URL` (HTTPS obrigatório).
+1. Webhook URL (produção): `https://api.lancai.xploreia.com/api/webhooks/pluggy` — deve coincidir com `OPEN_FINANCE_WEBHOOK_URL` (HTTPS obrigatório). O path `/api/webhooks/open-finance` é alias do mesmo handler.
 2. Header customizado `X-Lancai-Webhook` = o mesmo valor de `OPEN_FINANCE_WEBHOOK_SEGREDO` (sem isso a API responde 401).
-3. O Connect Token usa `clientUserId = usuarioId` LançAI (não workspace).
+3. Eventos: `all` ou pelo menos `item/created`, `item/updated`, `transactions/created`, `transactions/updated`, `transactions/deleted`.
+4. O Connect Token usa `clientUserId = usuarioId` LançAI (não workspace).
 
 **Smoke após deploy:**
 

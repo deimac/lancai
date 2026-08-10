@@ -595,6 +595,24 @@ describe("AdaptadorPluggy", () => {
       ).toMatchObject({ tipo: "conexao_precisa_atencao", motivo: "aguardando_usuario" });
     });
 
+    it("traduz criação e atualização do item para sync de estado", () => {
+      expect(
+        adaptador.interpretar_notificacao({
+          event: "item/created",
+          eventId: "e-created",
+          itemId: ITEM,
+        }).notificacao,
+      ).toEqual({ tipo: "conexao_estado", conexaoExterna: ITEM });
+
+      expect(
+        adaptador.interpretar_notificacao({
+          event: "item/updated",
+          eventId: "e-updated",
+          itemId: ITEM,
+        }).notificacao,
+      ).toEqual({ tipo: "conexao_estado", conexaoExterna: ITEM });
+    });
+
     it("traduz remoção do item", () => {
       expect(
         adaptador.interpretar_notificacao({ event: "item/deleted", eventId: "e-1", itemId: ITEM })

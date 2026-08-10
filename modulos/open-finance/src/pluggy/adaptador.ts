@@ -219,6 +219,13 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
           idsExternos: webhook.transactionIds,
         };
 
+      case "item/created":
+      case "item/updated":
+        if (!conexaoExterna) {
+          return { tipo: "ignorada", descricao: `${webhook.event} sem itemId` };
+        }
+        return { tipo: "conexao_estado", conexaoExterna };
+
       case "item/error":
         if (!conexaoExterna) return { tipo: "ignorada", descricao: "item/error sem itemId" };
         return {
