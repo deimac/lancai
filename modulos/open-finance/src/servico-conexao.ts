@@ -3,6 +3,7 @@ import {
   ErroAssociacaoInvalida,
   ErroConexaoNaoEncontrada,
   ErroContaExternaNaoEncontrada,
+  ErroProvedorIndisponivel,
 } from "./erros";
 import type { ContaExterna, EstadoConexao, ProvedorOpenFinance, TokenConexao } from "./provedor";
 import type {
@@ -168,8 +169,11 @@ export class ServicoConexaoOpenFinance {
   }
 
   /**
-   * “Atualizar agora”: pede sync pontual ao provedor. O extrato novo chega
-   * depois, por webhook — aqui só marcamos `sincronizando` para a UI.
+   * “Atualizar agora”:
+   * 1) refresca saldo/limite com o snapshot atual da instituição (sempre);
+   * 2) pede sync pontual — best-effort: a Pluggy recusa com frequência
+   *    (já atualizando / limite de 1h em apps de desenvolvimento).
+   * Extrato novo, quando o sync for aceito, chega depois por webhook.
    */
   async solicitar_atualizacao(conexaoId: string): Promise<ConexaoComContas> {
     const conexao = await this.exigir_conexao(conexaoId);
@@ -177,18 +181,22 @@ export class ServicoConexaoOpenFinance {
       throw new ErroAssociacaoInvalida("Esta conexão foi removida e não pode ser atualizada.");
     }
 
-    await this.provedor.solicitar_atualizacao(conexao.idExterno);
-    /**
-     * Snapshot atual da instituição (saldo/limite) já disponível na listagem —
-     * não espera o webhook. O extrato novo continua chegando depois.
-     */
     const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
     await this.aplicar_saldos_institucionais(conexaoId, encontradas);
 
-    await this.repositorio.atualizarEstadoConexao(conexaoId, {
-      status: "sincronizando",
-      motivoAtencao: null,
-    });
+    try {
+      await this.provedor.solicitar_atualizacao(conexao.idExterno);
+      await this.repositorio.atualizarEstadoConexao(conexaoId, {
+        status: "sincronizando",
+        motivoAtencao: null,
+      });
+    } catch (erro) {
+      if (!(erro instanceof ErroProvedorIndisponivel)) throw erro;
+      /**
+       * Sync recusado não é falha da ação: o snapshot de saldo/limite já foi
+       * aplicado. Extrato continua o que já tínhamos até o próximo sync aceito.
+       */
+    }
 
     return this.detalhar(conexaoId);
   }

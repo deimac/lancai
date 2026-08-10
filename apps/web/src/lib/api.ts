@@ -206,6 +206,24 @@ export interface ConexaoComContas {
   contas: ContaExternaRegistrada[];
 }
 
+export interface ProgressoImportacaoApi {
+  percentual: number;
+  mensagem: string;
+  criados: number;
+  duplicados: number;
+  contaAtual: number;
+  contasTotal: number;
+}
+
+type EventoAtualizarConexao =
+  | ({ tipo: "progresso" } & ProgressoImportacaoApi)
+  | {
+      tipo: "fim";
+      detalhe: ConexaoComContas;
+      resumo: { criados: number; duplicados: number; semDestino: number; paginas: number };
+    }
+  | { tipo: "erro"; erro: string };
+
 export interface DashboardResposta {
   mes: string;
   periodo: { de: string; ate: string };
@@ -633,12 +651,90 @@ export const clienteApi = {
     );
   },
 
-  /** Pede sync pontual ao provedor; o extrato chega depois no webhook. */
-  atualizar_conexao(conexaoId: string, usuarioId: string): Promise<ConexaoComContas> {
-    return requisitar<ConexaoComContas>(`/open-finance/conexoes/${conexaoId}/atualizar`, {
+  /**
+   * Atualiza saldos e importa extrato. Consome NDJSON com progresso
+   * (`aoProgresso`) e devolve o detalhe final da conexão.
+   */
+  async atualizar_conexao(
+    conexaoId: string,
+    usuarioId: string,
+    aoProgresso?: (progresso: ProgressoImportacaoApi) => void,
+  ): Promise<ConexaoComContas> {
+    const resposta = await fetch(`${URL_BASE}/open-finance/conexoes/${conexaoId}/atualizar`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+      },
       body: JSON.stringify({ usuarioId }),
     });
+
+    if (!resposta.ok) {
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        erro?: string;
+        message?: string;
+      };
+      throw new ErroApi(
+        corpo.erro ?? corpo.message ?? "Não foi possível atualizar a conexão.",
+        resposta.status,
+      );
+    }
+
+    if (!resposta.body) {
+      throw new ErroApi("Resposta sem corpo na importação.", 502);
+    }
+
+    const leitor = resposta.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let detalhe: ConexaoComContas | null = null;
+
+    while (true) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const linhas = buffer.split("\n");
+      buffer = linhas.pop() ?? "";
+
+      for (const linha of linhas) {
+        const texto = linha.trim();
+        if (!texto) continue;
+        let evento: EventoAtualizarConexao;
+        try {
+          evento = JSON.parse(texto) as EventoAtualizarConexao;
+        } catch {
+          continue;
+        }
+
+        if (evento.tipo === "progresso") {
+          aoProgresso?.({
+            percentual: evento.percentual,
+            mensagem: evento.mensagem,
+            criados: evento.criados,
+            duplicados: evento.duplicados,
+            contaAtual: evento.contaAtual,
+            contasTotal: evento.contasTotal,
+          });
+        } else if (evento.tipo === "fim") {
+          detalhe = evento.detalhe;
+          aoProgresso?.({
+            percentual: 100,
+            mensagem: "Importação concluída.",
+            criados: evento.resumo.criados,
+            duplicados: evento.resumo.duplicados,
+            contaAtual: evento.resumo.criados > 0 ? 1 : 0,
+            contasTotal: 0,
+          });
+        } else if (evento.tipo === "erro") {
+          throw new ErroApi(evento.erro, 502);
+        }
+      }
+    }
+
+    if (!detalhe) {
+      throw new ErroApi("Importação terminou sem resultado.", 502);
+    }
+    return detalhe;
   },
 
   desconectar_conexao(conexaoId: string, usuarioId: string): Promise<ConexaoComContas> {

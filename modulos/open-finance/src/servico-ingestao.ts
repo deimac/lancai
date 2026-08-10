@@ -1,6 +1,6 @@
 import type { ContextoIngestao, MotorFinanceiro } from "@lancai/financeiro";
 import type { EventoFinanceiroNormalizado } from "@lancai/tipos";
-import { ErroLoteInterminavel } from "./erros";
+import { ErroConexaoNaoEncontrada, ErroLoteInterminavel } from "./erros";
 import type {
   MovimentacaoExterna,
   NotificacaoFonte,
@@ -58,6 +58,16 @@ export interface ResumoReprocessamento {
   falhas: number;
   movimentoIdsCriados: string[];
   detalhes: DetalheReprocessamento[];
+}
+
+/** Relatado durante `importar_historico` para a barra de progresso da UI. */
+export interface ProgressoImportacao {
+  percentual: number;
+  mensagem: string;
+  criados: number;
+  duplicados: number;
+  contaAtual: number;
+  contasTotal: number;
 }
 
 /** Função, e não constante, para que nenhum chamador possa mutar o resumo devolvido. */
@@ -141,6 +151,93 @@ export class ServicoIngestaoOpenFinance {
       });
       throw erro;
     }
+  }
+
+  /**
+   * Puxa o extrato já coletado no provedor (GET), sem esperar webhook.
+   * Cobre registro de itemId existente (Meu Pluggy) e “Atualizar agora”
+   * quando o PATCH de sync é recusado.
+   */
+  async importar_historico(
+    conexaoId: string,
+    opcoes: { aoProgresso?: (progresso: ProgressoImportacao) => void } = {},
+  ): Promise<ResumoIngestao> {
+    const conexao = await this.repositorio.obterConexaoPorId(conexaoId);
+    if (!conexao) throw new ErroConexaoNaoEncontrada(conexaoId);
+    if (conexao.status === "removida") return resumo_vazio();
+
+    const referencias = await this.provedor.listar_referencias_historico(conexao.idExterno);
+    const total = resumo_vazio();
+    const contasTotal = Math.max(referencias.length, 1);
+    const basePercentual = 12;
+    const faixaImportacao = 88;
+
+    const emitir = (entrada: {
+      percentual: number;
+      mensagem: string;
+      contaAtual: number;
+    }) => {
+      opcoes.aoProgresso?.({
+        percentual: Math.max(0, Math.min(100, Math.round(entrada.percentual))),
+        mensagem: entrada.mensagem,
+        criados: total.criados,
+        duplicados: total.duplicados,
+        contaAtual: entrada.contaAtual,
+        contasTotal: referencias.length,
+      });
+    };
+
+    if (referencias.length === 0) {
+      emitir({ percentual: 100, mensagem: "Nenhum lançamento novo para importar.", contaAtual: 0 });
+      await this.registrar_resumo_sync(conexao.id, total);
+      return total;
+    }
+
+    for (let i = 0; i < referencias.length; i++) {
+      const referencia = referencias[i]!;
+      const contaAtual = i + 1;
+      const inicioFaixa = basePercentual + (i / contasTotal) * faixaImportacao;
+      const larguraFaixa = faixaImportacao / contasTotal;
+
+      emitir({
+        percentual: inicioFaixa,
+        mensagem: `Importando extrato (${contaAtual}/${referencias.length})…`,
+        contaAtual,
+      });
+
+      const parte = await this.ingerir_lote(conexao, referencia, {
+        aoPagina: ({ paginas }) => {
+          const frac = 1 - 1 / (1 + paginas * 0.4);
+          emitir({
+            percentual: inicioFaixa + larguraFaixa * frac * 0.95,
+            mensagem: `Importando extrato (${contaAtual}/${referencias.length})…`,
+            contaAtual,
+          });
+        },
+      });
+
+      total.criados += parte.criados;
+      total.duplicados += parte.duplicados;
+      total.atualizados += parte.atualizados;
+      total.removidos += parte.removidos;
+      total.semDestino += parte.semDestino;
+      total.paginas += parte.paginas;
+      total.movimentoIdsCriados.push(...parte.movimentoIdsCriados);
+
+      emitir({
+        percentual: basePercentual + ((i + 1) / contasTotal) * faixaImportacao,
+        mensagem: `Importando extrato (${contaAtual}/${referencias.length})…`,
+        contaAtual,
+      });
+    }
+
+    emitir({
+      percentual: 100,
+      mensagem: "Importação concluída.",
+      contaAtual: referencias.length,
+    });
+
+    return total;
   }
 
   /** Lista eventos com erro, sem processar — útil para `?dryRun=1` do cron. */
@@ -287,6 +384,7 @@ export class ServicoIngestaoOpenFinance {
   private async ingerir_lote(
     conexao: ConexaoRegistrada,
     inicio: string,
+    opcoes: { aoPagina?: (estado: { paginas: number; criados: number }) => void } = {},
   ): Promise<ResumoIngestao> {
     const mapa = await this.mapa_de_contas(conexao.id);
     const contexto = await this.contexto_de_ingestao(conexao);
@@ -313,6 +411,8 @@ export class ServicoIngestaoOpenFinance {
         resumo.duplicados += resultado.duplicados;
         resumo.movimentoIdsCriados.push(...resultado.criados.map((m) => m.id));
       }
+
+      opcoes.aoPagina?.({ paginas: resumo.paginas, criados: resumo.criados });
 
       referencia = lote.proxima;
     }

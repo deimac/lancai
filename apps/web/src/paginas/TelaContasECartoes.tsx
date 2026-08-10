@@ -12,10 +12,15 @@ import {
   type CartaoResumo,
   type ContaResumo,
   type DescritorFonte,
+  type ProgressoImportacaoApi,
 } from "../lib/api";
 import { conectar_banco } from "../lib/conectar-banco";
 import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
+import {
+  BarraProgressoImportacao,
+  type ProgressoImportacaoUi,
+} from "../componentes/BarraProgressoImportacao";
 import { Botao } from "../componentes/ui/Botao";
 import { Cartao } from "../componentes/ui/Cartao";
 import { ModalContaCartao, type TipoCadastro } from "../componentes/ModalContaCartao";
@@ -66,6 +71,9 @@ export function TelaContasECartoes() {
   const [modalTipo, setModalTipo] = useState<TipoCadastro>("conta");
   const [modalAlvo, setModalAlvo] = useState<ContaResumo | CartaoResumo | null>(null);
   const [itemIdManual, setItemIdManual] = useState("");
+  const [progressoImportacao, setProgressoImportacao] = useState<ProgressoImportacaoUi | null>(
+    null,
+  );
 
   const deps = chave_dependencia(contexto?.versoes, "contas", "cartoes", "conexoes");
 
@@ -190,18 +198,29 @@ export function TelaContasECartoes() {
       return;
     }
     setOcupado(true);
+    setProgressoImportacao({ percentual: 2, mensagem: "Registrando conexão…" });
     try {
       const registrada = await clienteApi.registrar_conexao({
         usuarioId: usuario.id,
         conexaoExterna: itemId,
       });
       try {
-        await clienteApi.atualizar_conexao(registrada.conexao.id, usuario.id);
+        await clienteApi.atualizar_conexao(
+          registrada.conexao.id,
+          usuario.id,
+          (p: ProgressoImportacaoApi) => {
+            setProgressoImportacao({
+              percentual: p.percentual,
+              mensagem: p.mensagem,
+              criados: p.criados,
+            });
+          },
+        );
       } catch (syncErro) {
         toast.erro(
           syncErro instanceof ErroApi
             ? syncErro.message
-            : "Conexão salva, mas não consegui pedir o sync agora.",
+            : "Conexão salva, mas não consegui importar o extrato agora.",
         );
       }
       setItemIdManual("");
@@ -209,7 +228,7 @@ export function TelaContasECartoes() {
       contexto?.invalidar("conexoes", "contas", "cartoes", "extrato");
       const nome = registrada.conexao.instituicao ?? "Conexão";
       toast.sucesso(
-        `${nome} salva. Sync pedido — o extrato chega pelo webhook. Pode registrar outro itemId.`,
+        `${nome} salva. Saldos e extrato importados do banco. Pode registrar outro itemId.`,
       );
     } catch (e) {
       toast.erro(
@@ -219,6 +238,7 @@ export function TelaContasECartoes() {
       );
     } finally {
       setOcupado(false);
+      setProgressoImportacao(null);
     }
   }
 
@@ -299,9 +319,10 @@ export function TelaContasECartoes() {
               disabled={ocupado || !itemIdManual.trim()}
               onClick={() => void registrar_item_manual()}
             >
-              Salvar conexão
+              {ocupado ? "Importando…" : "Salvar conexão"}
             </Botao>
           </div>
+          <BarraProgressoImportacao progresso={progressoImportacao} />
         </Cartao>
       )}
 

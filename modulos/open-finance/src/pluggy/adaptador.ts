@@ -83,6 +83,23 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
     return (corpo.results ?? []).map(traduzir_conta);
   }
 
+  /**
+   * Lê até 365 dias já materializados na Pluggy. Não chama PATCH — só GET.
+   * Usado ao registrar itemId do Meu Pluggy, cujo webhook de criação já passou.
+   */
+  async listar_referencias_historico(conexaoExterna: string): Promise<ReferenciaLote[]> {
+    const contas = await this.listar_contas_externas(conexaoExterna);
+    const desde = new Date();
+    desde.setUTCDate(desde.getUTCDate() - 365);
+    const from = desde.toISOString().slice(0, 10);
+
+    return contas.map(
+      (conta) =>
+        `/v2/transactions?accountId=${encodeURIComponent(conta.idExterno)}` +
+        `&from=${from}&pageSize=500`,
+    );
+  }
+
   async coletar_lote(referencia: ReferenciaLote): Promise<LoteMovimentacoes> {
     const corpo = await this.cliente.obter<RespostaPaginada<TransacaoPluggy>>(referencia);
 

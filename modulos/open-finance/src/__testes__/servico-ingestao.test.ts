@@ -92,6 +92,20 @@ describe("ServicoIngestaoOpenFinance", () => {
     return { novo, resumo: await servico.processar(interpretado) };
   }
 
+  describe("importar histórico sem webhook", () => {
+    it("puxa o extrato já semeado no provedor para a conta associada", async () => {
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({ idExterno: "tx-1" }),
+        movimentacao({ idExterno: "tx-2", valor: 45 }),
+      ]);
+
+      const resumo = await servico.importar_historico(conexaoId);
+
+      expect(resumo.criados).toBe(2);
+      expect(financeiro.movimentos.size).toBe(2);
+    });
+  });
+
   describe("o caminho principal", () => {
     it("transforma o lote anunciado em Fato na conta associada", async () => {
       provedor.semear(CONEXAO_EXTERNA, [movimentacao()]);

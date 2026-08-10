@@ -17,7 +17,8 @@ import {
   sincronizar_conexao_duble,
 } from "../servicos/duble-open-finance";
 import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
-import { obter_servico_conexao } from "../servicos/open-finance";
+import { obter_servico_conexao, obter_servico_ingestao } from "../servicos/open-finance";
+import { enriquecer_apos_ingestao } from "../servicos/pos-ingestao-open-finance";
 
 function fonte_desativada(resposta: FastifyReply) {
   return resposta.status(503).send({ erro: "Fonte Open Finance desativada." });
@@ -116,8 +117,9 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
   });
 
   /**
-   * “Atualizar agora”: pede sync pontual ao provedor. O Fato chega no webhook.
-   * No sandbox Pluggy é o gatilho principal — não há auto-sync.
+   * “Atualizar agora”: refresca saldo/limite, tenta sync pontual (best-effort)
+   * e importa o extrato via GET. Resposta em NDJSON com progresso percentual
+   * (`tipo: progresso` / `fim` / `erro`) para a barra da UI.
    */
   app.post("/conexoes/:id/atualizar", async (requisicao, resposta) => {
     const servico = obter_servico_conexao();
@@ -129,7 +131,86 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     const acesso = await exigir_conexao_do_usuario(servico, id, usuarioId);
     if ("erro" in acesso) return resposta.status(404).send(acesso);
 
-    return resposta.send(await servico.solicitar_atualizacao(id));
+    resposta.hijack();
+    resposta.raw.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    });
+
+    const escrever = (evento: Record<string, unknown>) => {
+      resposta.raw.write(`${JSON.stringify(evento)}\n`);
+    };
+
+    try {
+      escrever({
+        tipo: "progresso",
+        percentual: 4,
+        mensagem: "Atualizando saldos…",
+        criados: 0,
+        duplicados: 0,
+        contaAtual: 0,
+        contasTotal: 0,
+      });
+
+      await servico.solicitar_atualizacao(id);
+
+      escrever({
+        tipo: "progresso",
+        percentual: 12,
+        mensagem: "Importando extrato…",
+        criados: 0,
+        duplicados: 0,
+        contaAtual: 0,
+        contasTotal: 0,
+      });
+
+      const ingestao = obter_servico_ingestao();
+      if (ingestao) {
+        const resumo = await ingestao.importar_historico(id, {
+          aoProgresso: (progresso) => {
+            escrever({ tipo: "progresso", ...progresso });
+          },
+        });
+        requisicao.log.info(
+          {
+            conexaoId: id,
+            criados: resumo.criados,
+            duplicados: resumo.duplicados,
+            semDestino: resumo.semDestino,
+            paginas: resumo.paginas,
+          },
+          "[open-finance] histórico importado",
+        );
+        await enriquecer_apos_ingestao({
+          eventoId: `importar-historico:${id}:${Date.now()}`,
+          resumo,
+          log: requisicao.log,
+        });
+        escrever({
+          tipo: "fim",
+          detalhe: await servico.detalhar(id),
+          resumo: {
+            criados: resumo.criados,
+            duplicados: resumo.duplicados,
+            semDestino: resumo.semDestino,
+            paginas: resumo.paginas,
+          },
+        });
+      } else {
+        escrever({
+          tipo: "fim",
+          detalhe: await servico.detalhar(id),
+          resumo: { criados: 0, duplicados: 0, semDestino: 0, paginas: 0 },
+        });
+      }
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : "Falha ao atualizar conexão.";
+      requisicao.log.error({ err: erro, conexaoId: id }, "[open-finance] falha no atualizar");
+      escrever({ tipo: "erro", erro: mensagem });
+    } finally {
+      resposta.raw.end();
+    }
   });
 
   /**

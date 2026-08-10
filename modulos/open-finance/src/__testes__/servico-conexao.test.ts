@@ -354,6 +354,31 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(detalhe.conexao.motivoAtencao).toBeNull();
     });
 
+    it("mesmo com sync recusado, atualiza saldo e limite do snapshot", async () => {
+      const { conexao, contas } = await registrar();
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      expect(cartaoId).toBeTruthy();
+
+      provedor.registrarContas(CONEXAO_EXTERNA, [
+        { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 27000 },
+        {
+          idExterno: "card-1",
+          nome: "Cartão Platinum",
+          tipo: "CREDIT",
+          saldo: 11740.87,
+          limite: 30000,
+        },
+      ]);
+      provedor.falharAtualizacao = true;
+
+      const detalhe = await servico.solicitar_atualizacao(conexao.id);
+
+      expect(provedor.atualizacoesPedidas).toHaveLength(0);
+      expect(detalhe.conexao.status).not.toBe("sincronizando");
+      expect(financeiro.cartoes.get(cartaoId!)?.saldo).toBe("11740.87");
+      expect(financeiro.cartoes.get(cartaoId!)?.limite).toBe("30000");
+    });
+
     it("recusa atualizar conexão inexistente", async () => {
       await expect(servico.solicitar_atualizacao(randomUUID())).rejects.toThrow(
         ErroConexaoNaoEncontrada,

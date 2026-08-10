@@ -170,6 +170,25 @@ describe("AdaptadorPluggy", () => {
     });
   });
 
+  describe("histórico", () => {
+    it("monta referências GET por conta com janela de 365 dias", async () => {
+      rede.responder("/accounts", {
+        results: [
+          { id: "acc-a", subtype: "CHECKING_ACCOUNT", name: "Corrente", balance: 1 },
+          { id: "acc-b", subtype: "CREDIT_CARD", name: "Cartão", balance: 2 },
+        ],
+      });
+
+      const refs = await adaptador.listar_referencias_historico(ITEM);
+
+      expect(refs).toHaveLength(2);
+      expect(refs[0]).toContain("accountId=acc-a");
+      expect(refs[0]).toContain("from=");
+      expect(refs[0]).toContain("pageSize=500");
+      expect(refs[1]).toContain("accountId=acc-b");
+    });
+  });
+
   describe("contas", () => {
     it("traduz conta corrente e cartão preservando o que o usuário reconhece", async () => {
       rede.responder("/accounts", {

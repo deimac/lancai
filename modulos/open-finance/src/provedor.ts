@@ -139,6 +139,13 @@ export interface ProvedorOpenFinance {
   /** Contas e cartões de uma conexão, para o usuário associar às contas locais. */
   listar_contas_externas(conexaoExterna: string): Promise<ContaExterna[]>;
 
+  /**
+   * Referências para ler o extrato **já coletado** no provedor (GET), sem
+   * disparar sync com o banco. Necessário ao registrar um itemId existente
+   * (Meu Pluggy): o histórico não chega de novo por webhook.
+   */
+  listar_referencias_historico(conexaoExterna: string): Promise<ReferenciaLote[]>;
+
   /** Traduz a página que o webhook anunciou. O cursor vem do provedor. */
   coletar_lote(referencia: ReferenciaLote): Promise<LoteMovimentacoes>;
 

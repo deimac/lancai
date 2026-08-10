@@ -1,4 +1,4 @@
-import { ErroWebhookInvalido } from "./erros";
+import { ErroProvedorIndisponivel, ErroWebhookInvalido } from "./erros";
 import type {
   ContaExterna,
   EstadoConexao,
@@ -42,6 +42,9 @@ export class ProvedorDuble implements ProvedorOpenFinance {
 
   /** Conexões para as quais pediram “atualizar agora”. */
   readonly atualizacoesPedidas: string[] = [];
+
+  /** Quando true, `solicitar_atualizacao` falha (simula 409 da Pluggy). */
+  falharAtualizacao = false;
 
   constructor(
     private readonly opcoes: { id?: string; tamanhoPagina?: number } = {},
@@ -202,6 +205,11 @@ export class ProvedorDuble implements ProvedorOpenFinance {
     return this.contas.get(conexaoExterna) ?? [];
   }
 
+  async listar_referencias_historico(conexaoExterna: string): Promise<string[]> {
+    const todas = this.movimentacoes.get(conexaoExterna) ?? [];
+    return todas.length > 0 ? [`${conexaoExterna}#0`] : [];
+  }
+
   async criar_token_conexao(entrada: { usuarioId: string }): Promise<TokenConexao> {
     return {
       token: `duble-token-${entrada.usuarioId}`,
@@ -220,6 +228,9 @@ export class ProvedorDuble implements ProvedorOpenFinance {
   }
 
   async solicitar_atualizacao(conexaoExterna: string): Promise<void> {
+    if (this.falharAtualizacao) {
+      throw new ErroProvedorIndisponivel("PATCH /items devolveu HTTP 409");
+    }
     this.atualizacoesPedidas.push(conexaoExterna);
     this.estados.set(conexaoExterna, {
       ...(await this.obter_estado(conexaoExterna)),
