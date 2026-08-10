@@ -189,6 +189,28 @@ describe("interpretar_pedido_detalhe_historico", () => {
     });
   });
 
+  it("reaproveita o dia ao pedir detalhamento em frase natural", () => {
+    const consultaHoje = {
+      intencao: "CONSULTAR_VISAO" as const,
+      tipo_visao: "historico" as const,
+      detalhado: false,
+      filtros: { periodo: { de: "2026-08-10", ate: "2026-08-10" } },
+    };
+    expect(
+      interpretar_pedido_detalhe_historico("Faça o detalhamento dos lançamentos.", consultaHoje),
+    ).toEqual({
+      ...consultaHoje,
+      detalhado: true,
+      deslocamento: 0,
+    });
+    expect(
+      interpretar_pedido_detalhe_historico("quero o detalhamento", consultaHoje),
+    ).toMatchObject({
+      detalhado: true,
+      filtros: { periodo: { de: "2026-08-10", ate: "2026-08-10" } },
+    });
+  });
+
   it("ignora se não houver consulta de histórico anterior", () => {
     expect(interpretar_pedido_detalhe_historico("detalhado", null)).toBeNull();
     expect(
