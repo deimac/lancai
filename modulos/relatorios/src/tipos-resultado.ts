@@ -99,6 +99,14 @@ export interface ItemHistorico {
   /** Prefixo amigável fica na formatação ("cartão X"); aqui só o nome. */
   cartaoNome: string | null;
   categoriaNome: string | null;
+  /** Parcela OF/manual no próprio movimento (`parcela_numero`). */
+  parcelaNumero?: number | null;
+  parcelaTotal?: number | null;
+  /**
+   * Total da compra parcelada (informativo — não entra na soma do período).
+   * Vem de `parcela_compra_valor` ou estimativa valor×N.
+   */
+  parcelaCompraValor?: number | null;
 }
 
 export interface DiaHistorico {

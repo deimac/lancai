@@ -106,6 +106,11 @@ export const schemaFiltrosVisao = z.object({
     .object({ de: dataISOSchema, ate: dataISOSchema })
     .nullable()
     .optional(),
+  /**
+   * Lado do fluxo: "gastei/despesa" → `["despesa"]`; "recebi/entrou" → `["receita"]`.
+   * Omitido = extrato completo (receitas e despesas).
+   */
+  tipos: z.array(tipoMovimentoSchema).min(1).nullable().optional(),
 });
 export type FiltrosVisao = z.infer<typeof schemaFiltrosVisao>;
 

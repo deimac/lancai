@@ -1,4 +1,4 @@
-import { formatar_codigo_movimento } from "@lancai/ia";
+import { formatar_codigo_movimento, type EscopoFluxoConsulta } from "@lancai/ia";
 import { formatarMoeda } from "@lancai/tipos";
 import type { ResultadoVisao } from "@lancai/relatorios";
 
@@ -22,6 +22,8 @@ function sinal_valor_historico(tipo: string): "+" | "-" {
 export type OpcoesRespostaVisao = {
   /** Histórico: false = só totais; true/omit = lista lançamentos. */
   detalhado?: boolean;
+  /** Lado da pergunta (gastei vs recebi); omitido = extrato completo. */
+  escopoFluxo?: EscopoFluxoConsulta;
 };
 
 /**
@@ -119,10 +121,15 @@ export function montar_resposta_visao(
         deslocamento = 0,
         dias,
       } = resultado.dados;
+      const escopo = opcoes.escopoFluxo ?? "ambos";
+
       if (totalItens === 0) {
-        return filtroDescricao
-          ? `Não encontrei lançamentos de "${filtroDescricao}" nesse período.`
-          : "Não encontrei lançamentos nesse período.";
+        if (filtroDescricao) {
+          return `Não encontrei lançamentos de "${filtroDescricao}" nesse período.`;
+        }
+        if (escopo === "despesa") return "Não encontrei despesas nesse período.";
+        if (escopo === "receita") return "Não encontrei receitas nesse período.";
+        return "Não encontrei lançamentos nesse período.";
       }
 
       const periodoTexto =
@@ -136,16 +143,24 @@ export function montar_resposta_visao(
 
       const detalhado = opcoes.detalhado !== false;
       const itensNaPagina = dias.reduce((total, dia) => total + dia.itens.length, 0);
+      const plural = totalItens === 1 ? "" : "s";
 
       if (!detalhado) {
-        if (rotuloDescricao) {
+        if (rotuloDescricao || escopo === "despesa") {
+          const comDescricao = rotuloDescricao ? ` com "${rotuloDescricao}"` : "";
           return [
-            `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
+            `Você gastou ${formatarMoeda(totalDespesas)}${comDescricao} em ${periodoTexto} (${totalItens} lançamento${plural}).`,
+            'Para ver cada lançamento, diga "detalhado".',
+          ].join("\n");
+        }
+        if (escopo === "receita") {
+          return [
+            `Você recebeu ${formatarMoeda(totalReceitas)} em ${periodoTexto} (${totalItens} lançamento${plural}).`,
             'Para ver cada lançamento, diga "detalhado".',
           ].join("\n");
         }
         return [
-          `Em ${periodoTexto}: receitas ${formatarMoeda(totalReceitas)} · despesas ${formatarMoeda(totalDespesas)} · saldo ${formatarMoeda(saldoPeriodo)} (${totalItens} lançamento${totalItens === 1 ? "" : "s"}).`,
+          `Em ${periodoTexto}: receitas ${formatarMoeda(totalReceitas)} · despesas ${formatarMoeda(totalDespesas)} · saldo ${formatarMoeda(saldoPeriodo)} (${totalItens} lançamento${plural}).`,
           'Para ver cada lançamento, diga "detalhado".',
         ].join("\n");
       }
@@ -162,10 +177,22 @@ export function montar_resposta_visao(
               ? item.contaNome
               : null;
           const valorComSinal = `${sinal_valor_historico(item.tipo)} ${formatarMoeda(item.valor)}`;
+          const parcelaInfo =
+            item.parcelaNumero != null &&
+            item.parcelaTotal != null &&
+            item.parcelaTotal >= 2
+              ? [
+                  `${item.parcelaNumero}/${item.parcelaTotal}`,
+                  ...(item.parcelaCompraValor != null
+                    ? [`total ${formatarMoeda(item.parcelaCompraValor)}`]
+                    : []),
+                ]
+              : [];
           const partes = [
             formatar_codigo_movimento(item.id),
             item.descricao,
             valorComSinal,
+            ...parcelaInfo,
             ...(origem ? [origem] : []),
           ];
           return `- ${partes.join(" · ")}`;
@@ -178,17 +205,22 @@ export function montar_resposta_visao(
           ? `mostrando ${deslocamento + 1}–${deslocamento + itensNaPagina} de ${totalItens}`
           : `${totalItens}`;
 
-      const cabecalho =
-        deslocamento > 0
-          ? [`Próximos lançamentos de ${periodoTexto} (${faixa}):`]
-          : rotuloDescricao
-            ? [
-                `Você gastou ${formatarMoeda(totalDespesas)} com "${rotuloDescricao}" em ${periodoTexto} (${faixa}).`,
-              ]
-            : [
-                `Lançamentos de ${periodoTexto} (${faixa}):`,
-                `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
-              ];
+      let cabecalho: string[];
+      if (deslocamento > 0) {
+        cabecalho = [`Próximos lançamentos de ${periodoTexto} (${faixa}):`];
+      } else if (rotuloDescricao || escopo === "despesa") {
+        const comDescricao = rotuloDescricao ? ` com "${rotuloDescricao}"` : "";
+        cabecalho = [
+          `Você gastou ${formatarMoeda(totalDespesas)}${comDescricao} em ${periodoTexto} (${faixa}).`,
+        ];
+      } else if (escopo === "receita") {
+        cabecalho = [`Você recebeu ${formatarMoeda(totalReceitas)} em ${periodoTexto} (${faixa}).`];
+      } else {
+        cabecalho = [
+          `Lançamentos de ${periodoTexto} (${faixa}):`,
+          `Receitas ${formatarMoeda(totalReceitas)} · Despesas ${formatarMoeda(totalDespesas)} · Saldo do período ${formatarMoeda(saldoPeriodo)}`,
+        ];
+      }
 
       const rodape = [
         ...(itensOmitidos > 0

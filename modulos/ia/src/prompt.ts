@@ -64,6 +64,11 @@ Intenções do ramo pedido:
 2) CONSULTAR_VISAO — saldos|cartoes|parcelamentos|categoria|futuro|fluxo|evolucao|historico.
    Estabelecimento → historico+descricao. "esse mês" → periodo vazio. Um dia → de=ate.
    historico: "quanto gastei/total/resumo" → detalhado=false; "extrato/liste/quais/detalhado/mostra lançamentos" → detalhado=true.
+   Escopo do fluxo em filtros.tipos (obrigatório entender o lado da pergunta):
+   - despesa → tipos=["despesa"]: gastei, gastou, gasto(s), despesa(s), paguei, comprei, saídas.
+   - receita → tipos=["receita"]: ganhei, recebi, receita(s), entrou, entradas, renda, faturamento.
+   - omitir tipos: lançamentos/extrato/movimentações sem lado, ou "gastei e recebi".
+   Nunca misture receitas numa pergunta de gasto, nem despesas numa pergunta de quanto entrou.
 3) CORRIGIR_* — ALTERAR dados OU excluir. São ações distintas:
    - corrige/altera/muda/troca descrição/valor/categoria → campos_alterados com o novo valor; NUNCA status cancelado.
    - "não considera nos relatórios"/"esconde dos totais" → ignorado_em_relatorio=true (não cancela).

@@ -246,6 +246,72 @@ describe("montar_resposta_visao", () => {
     expect(texto).not.toContain("Cancela o");
   });
 
+  it("histórico detalhado informa N/M e total da compra parcelada", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-10", ate: "2026-08-10" },
+          totalReceitas: 0,
+          totalDespesas: 434.38,
+          saldoPeriodo: -434.38,
+          totalItens: 1,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [
+            {
+              data: "2026-08-10",
+              itens: [
+                {
+                  id: "aaaaaaaa-1111-2222-3333-444455556666",
+                  descricao: "E AGENCIAS*416333",
+                  tipo: "despesa",
+                  valor: 434.38,
+                  perfil: "pf",
+                  contaNome: null,
+                  cartaoNome: "Mercado Pago",
+                  categoriaNome: "Outros",
+                  parcelaNumero: 1,
+                  parcelaTotal: 10,
+                  parcelaCompraValor: 4343.8,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { escopoFluxo: "despesa" },
+    );
+
+    expect(texto).toContain(`Você gastou ${formatarMoeda(434.38)}`);
+    expect(texto).toContain("1/10");
+    expect(texto).toContain(`total ${formatarMoeda(4343.8)}`);
+    expect(texto).toContain("cartão Mercado Pago");
+    expect(texto).not.toContain(`Receitas ${formatarMoeda(0)}`);
+  });
+
+  it("escopo despesa não menciona receitas no resumo", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-10", ate: "2026-08-10" },
+          totalReceitas: 0,
+          totalDespesas: 120,
+          saldoPeriodo: -120,
+          totalItens: 1,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [],
+        },
+      },
+      { detalhado: false, escopoFluxo: "despesa" },
+    );
+
+    expect(texto).toContain(`Você gastou ${formatarMoeda(120)}`);
+    expect(texto).not.toContain("receitas");
+  });
+
   it("informa quando o histórico do período está vazio", () => {
     const texto = montar_resposta_visao({
       tipo: "historico",

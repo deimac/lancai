@@ -250,6 +250,7 @@ export class ResolvedorIntencao {
       pessoaId,
       descricao: filtros.descricao?.trim() || undefined,
       periodo: filtros.periodo ?? undefined,
+      tipos: filtros.tipos?.length ? [...filtros.tipos] : undefined,
     };
   }
 

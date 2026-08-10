@@ -7,6 +7,7 @@ import {
 } from "@lancai/tipos";
 import type { FiltrosVisaoResolvidos, TipoVisao } from "@lancai/tipos";
 import { fimDoAno, inicioFimMesAtual, listarMesesEntre, ultimosMeses } from "./datas-relatorio";
+import { total_compra_parcela } from "./metadados-parcela";
 import type { RepositorioRelatorios } from "./repositorio-relatorios";
 import type {
   CategoriaComTotal,
@@ -368,6 +369,7 @@ export class ModuloRelatorios {
         categoriaId: filtros.categoriaId,
         pessoaId: filtros.pessoaId,
         periodo,
+        tipos: filtros.tipos,
       }),
       this.repositorio.listarContas(filtros.usuarioId),
       this.repositorio.listarCartoes(filtros.usuarioId),
@@ -402,15 +404,26 @@ export class ModuloRelatorios {
 
     const porDia = new Map<string, ItemHistorico[]>();
     for (const movimento of exibidos) {
+      const valor = paraNumero(movimento.valor);
+      const parcelaNumero = movimento.parcelaNumero ?? null;
+      const parcelaTotal = movimento.parcelaTotal ?? null;
+      const parcelaCompraValor = total_compra_parcela({
+        valorParcela: valor,
+        parcelaTotal,
+        parcelaCompraValor: movimento.parcelaCompraValor,
+      });
       const item: ItemHistorico = {
         id: movimento.id,
         descricao: movimento.descricao,
         tipo: movimento.tipo,
-        valor: paraNumero(movimento.valor),
+        valor,
         perfil: movimento.perfil,
         contaNome: movimento.contaId ? (mapaContas.get(movimento.contaId) ?? null) : null,
         cartaoNome: movimento.cartaoId ? (mapaCartoes.get(movimento.cartaoId) ?? null) : null,
         categoriaNome: mapaCategorias.get(movimento.categoriaId) ?? null,
+        parcelaNumero,
+        parcelaTotal,
+        parcelaCompraValor,
       };
       const itensDoDia = porDia.get(movimento.dataMovimento) ?? [];
       itensDoDia.push(item);

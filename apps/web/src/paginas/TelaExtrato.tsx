@@ -33,10 +33,16 @@ function formatar_data(valor: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+function formatar_moeda_br(valor: number | string): string {
+  const numero = typeof valor === "number" ? valor : Number(valor);
+  if (Number.isNaN(numero)) return String(valor);
+  return numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function formatar_valor(tipo: string, valor: string): string {
   const numero = Number(valor);
   if (Number.isNaN(numero)) return valor;
-  const absoluto = numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const absoluto = formatar_moeda_br(numero);
   if (tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte") {
     return `+ ${absoluto}`;
   }
@@ -45,6 +51,29 @@ function formatar_valor(tipo: string, valor: string): string {
   }
   return absoluto;
 }
+
+function formatar_mes_competencia(dataISO: string): string {
+  const [ano, mes] = dataISO.split("-");
+  if (!ano || !mes) return dataISO;
+  const rotulos = [
+    "jan",
+    "fev",
+    "mar",
+    "abr",
+    "mai",
+    "jun",
+    "jul",
+    "ago",
+    "set",
+    "out",
+    "nov",
+    "dez",
+  ];
+  const indice = Number(mes) - 1;
+  return `${rotulos[indice] ?? mes}/${ano.slice(2)}`;
+}
+
+type ParcelasIrmasResposta = Awaited<ReturnType<typeof clienteApi.listar_parcelas_irmas>>;
 
 function cor_valor(tipo: string, status: MovimentoResumo["status"]): string {
   if (status === "cancelado") return "text-texto-suave line-through";
@@ -93,6 +122,11 @@ export function TelaExtrato() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
+  const [parcelasExpandidasId, setParcelasExpandidasId] = useState<string | null>(null);
+  const [parcelasPorMovimento, setParcelasPorMovimento] = useState<
+    Record<string, ParcelasIrmasResposta>
+  >({});
+  const [carregandoParcelasId, setCarregandoParcelasId] = useState<string | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "extrato",
@@ -159,6 +193,26 @@ export function TelaExtrato() {
 
   function escolher_mes(proximo: string) {
     sincronizar_params({ mes: proximo });
+  }
+
+  async function alternar_parcelas(movimentoId: string) {
+    if (!usuario) return;
+    if (parcelasExpandidasId === movimentoId) {
+      setParcelasExpandidasId(null);
+      return;
+    }
+    setParcelasExpandidasId(movimentoId);
+    if (parcelasPorMovimento[movimentoId]) return;
+    setCarregandoParcelasId(movimentoId);
+    try {
+      const resposta = await clienteApi.listar_parcelas_irmas(movimentoId, usuario.id);
+      setParcelasPorMovimento((atual) => ({ ...atual, [movimentoId]: resposta }));
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível carregar as parcelas.");
+      setParcelasExpandidasId(null);
+    } finally {
+      setCarregandoParcelasId(null);
+    }
   }
 
   const quantidadeRevisar = useMemo(
@@ -359,12 +413,17 @@ export function TelaExtrato() {
                         {movimento.status === "cancelado" && (
                           <span className="text-[10px] uppercase text-texto-suave">Cancelado</span>
                         )}
-                        {movimento.parcelaNumero && movimento.parcelaTotal && (
+                        {movimento.parcelaNumero &&
+                          movimento.parcelaTotal &&
+                          movimento.parcelaTotal >= 2 && (
                           <span
                             className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
-                            title="Parcela da compra no cartão"
+                            title="Parcela da compra no cartão (competência da fatura)"
                           >
                             Parcela {movimento.parcelaNumero}/{movimento.parcelaTotal}
+                            {movimento.parcelaCompraValor
+                              ? ` · total ${formatar_moeda_br(movimento.parcelaCompraValor)}`
+                              : ""}
                           </span>
                         )}
                       </div>
@@ -385,6 +444,68 @@ export function TelaExtrato() {
                       {formatar_valor(movimento.tipo, movimento.valor)}
                     </p>
                   </div>
+
+                  {movimento.parcelaNumero &&
+                    movimento.parcelaTotal &&
+                    movimento.parcelaTotal >= 2 && (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => void alternar_parcelas(movimento.id)}
+                          className="text-xs text-primaria hover:underline"
+                        >
+                          {parcelasExpandidasId === movimento.id
+                            ? "Ocultar parcelas"
+                            : "Ver parcelas"}
+                        </button>
+                        {parcelasExpandidasId === movimento.id && (
+                          <div className="mt-2 rounded-xl border border-borda bg-fundo/40 px-3 py-2">
+                            {carregandoParcelasId === movimento.id ? (
+                              <p className="text-xs text-texto-suave">Carregando parcelas…</p>
+                            ) : (parcelasPorMovimento[movimento.id]?.parcelas.length ?? 0) === 0 ? (
+                              <p className="text-xs text-texto-suave">
+                                Não encontrei as outras parcelas deste parcelamento.
+                              </p>
+                            ) : (
+                              <>
+                                {parcelasPorMovimento[movimento.id]?.totalCompra != null && (
+                                  <p className="mb-1.5 text-[11px] text-texto-suave">
+                                    Compra em{" "}
+                                    {movimento.parcelaTotal}x · total{" "}
+                                    {formatar_moeda_br(
+                                      parcelasPorMovimento[movimento.id]!.totalCompra!,
+                                    )}{" "}
+                                    (só a parcela do mês entra no total do extrato)
+                                  </p>
+                                )}
+                                <ul className="flex flex-col gap-1">
+                                  {parcelasPorMovimento[movimento.id]!.parcelas.map((parcela) => (
+                                    <li
+                                      key={parcela.id}
+                                      className={unir_classes(
+                                        "flex items-center justify-between gap-2 text-xs",
+                                        parcela.id === movimento.id
+                                          ? "font-medium text-texto"
+                                          : "text-texto-suave",
+                                      )}
+                                    >
+                                      <span>
+                                        {parcela.parcelaNumero}/{parcela.parcelaTotal} ·{" "}
+                                        {formatar_mes_competencia(parcela.dataMovimento)}
+                                        {parcela.status === "previsto" ? " · pendente" : ""}
+                                      </span>
+                                      <span className="tabular-nums">
+                                        {formatar_moeda_br(parcela.valor)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                   {movimento.status !== "cancelado" && (
                     <div className="mt-3 flex flex-wrap items-center gap-2">

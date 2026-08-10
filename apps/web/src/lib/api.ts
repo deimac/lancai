@@ -276,6 +276,10 @@ export interface MovimentoResumo {
   statusFonte: string;
   parcelaNumero: number | null;
   parcelaTotal: number | null;
+  /** Data da compra do parcelamento (YYYY-MM-DD), quando OF. */
+  parcelaCompraEm?: string | null;
+  /** Total informativo da compra (string decimal), quando parcelado. */
+  parcelaCompraValor?: string | null;
   ignoradoEmRelatorio: boolean;
   categoriaId: string;
   categoriaNome: string;
@@ -582,6 +586,27 @@ export const clienteApi = {
 
   listar_movimentos(usuarioId: string): Promise<MovimentoResumo[]> {
     return requisitar<MovimentoResumo[]>(`/movimentos?usuarioId=${usuarioId}`);
+  },
+
+  listar_parcelas_irmas(
+    movimentoId: string,
+    usuarioId: string,
+  ): Promise<{
+    ancoraId: string;
+    totalCompra: number | null;
+    parcelas: Array<{
+      id: string;
+      descricao: string;
+      valor: string;
+      status: MovimentoResumo["status"];
+      dataMovimento: string;
+      parcelaNumero: number | null;
+      parcelaTotal: number | null;
+    }>;
+  }> {
+    return requisitar(
+      `/movimentos/${movimentoId}/parcelas-irmas?usuarioId=${encodeURIComponent(usuarioId)}`,
+    );
   },
 
   /** Escrita explícita de Conhecimento — nunca envia Fato. */

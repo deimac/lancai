@@ -18,6 +18,7 @@ export * from "./datas-relativas";
 export * from "./extrair-termo-referencia";
 export * from "./montar-lista-semelhantes";
 export * from "./consulta-historico-detalhada";
+export * from "./escopo-fluxo-consulta";
 export * from "./interpretar-consulta-rapida";
 export * from "./interpretar-correcao-rapida";
 export * from "./interpretar-enriquecimento-rapido";

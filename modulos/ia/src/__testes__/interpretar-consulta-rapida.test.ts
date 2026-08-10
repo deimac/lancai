@@ -47,6 +47,7 @@ describe("interpretar_consulta_rapida", () => {
       filtros: {
         periodo: { de: "2026-08-02", ate: "2026-08-02" },
         cartao_nome: "Azul Itaú",
+        tipos: ["despesa"],
       },
     });
   });
@@ -60,6 +61,18 @@ describe("interpretar_consulta_rapida", () => {
         periodo: { de: "2026-08-01", ate: "2026-08-31" },
         conta_nome: null,
         cartao_nome: null,
+        tipos: ["despesa"],
+      },
+    });
+  });
+
+  it("quanto recebi filtra só receita", () => {
+    expect(interpretar_consulta_rapida("quanto recebi hoje?", contexto())).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      filtros: {
+        periodo: { de: "2026-08-03", ate: "2026-08-03" },
+        tipos: ["receita"],
       },
     });
   });
@@ -95,6 +108,7 @@ describe("interpretar_consulta_rapida", () => {
         conta_nome: null,
         cartao_nome: null,
         descricao: "uber",
+        tipos: ["despesa"],
       },
     });
   });
@@ -108,6 +122,7 @@ describe("interpretar_consulta_rapida", () => {
       filtros: {
         periodo: { de: "2026-08-01", ate: "2026-08-31" },
         descricao: "ifood",
+        tipos: ["despesa"],
       },
     });
   });

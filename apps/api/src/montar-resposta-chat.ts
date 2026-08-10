@@ -16,6 +16,7 @@ import {
   ErroEntidadeJaExiste,
   ErroReferenciaNaoEncontrada,
   consulta_historico_detalhada,
+  escopo_dos_tipos,
   extrair_codigo_da_mensagem,
   mascara_final4_do_payload,
   preferir_termo_referencia,
@@ -338,7 +339,11 @@ export async function montar_resposta_chat(
         intencao.tipo_visao === "historico"
           ? (intencao.detalhado ?? consulta_historico_detalhada(contexto.mensagem ?? ""))
           : true;
-      return montar_resposta_visao(resultado, { detalhado });
+      const escopoFluxo =
+        intencao.tipo_visao === "historico"
+          ? escopo_dos_tipos(intencao.filtros.tipos)
+          : "ambos";
+      return montar_resposta_visao(resultado, { detalhado, escopoFluxo });
     }
 
     case "DEFINIR_ORCAMENTO": {

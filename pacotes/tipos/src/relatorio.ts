@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { perfilSchema } from "./cadastro";
+import { tipoMovimentoSchema } from "./movimento";
 
 /** Máximo de lançamentos por página no extrato conversacional (`historico`). */
 export const LIMITE_ITENS_HISTORICO = 40;
@@ -25,5 +26,7 @@ export const schemaFiltrosVisaoResolvidos = z.object({
   /** Filtro por descrição/estabelecimento (substring normalizada). */
   descricao: z.string().min(1).optional(),
   periodo: z.object({ de: dataISOSchema, ate: dataISOSchema }).optional(),
+  /** Quando informado, restringe o histórico a esses tipos (ex.: só despesa). */
+  tipos: z.array(tipoMovimentoSchema).min(1).optional(),
 });
 export type FiltrosVisaoResolvidos = z.infer<typeof schemaFiltrosVisaoResolvidos>;

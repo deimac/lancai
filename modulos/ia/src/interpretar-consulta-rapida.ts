@@ -1,6 +1,7 @@
 import { LIMITE_ITENS_HISTORICO } from "@lancai/tipos";
 import type { IntencaoConsultarVisao, IntencaoDetectada, Perfil, TipoVisao } from "@lancai/tipos";
 import { consulta_historico_detalhada } from "./consulta-historico-detalhada";
+import { aplicar_escopo_fluxo_na_consulta } from "./escopo-fluxo-consulta";
 import { inicio_fim_mes_iso, somar_dias_iso_local } from "./datas-relativas";
 import { inferir_origem_da_mensagem } from "./inferir-origem-movimento";
 import { inferir_perfil_da_mensagem } from "./normalizar-intencao-movimento";
@@ -40,7 +41,7 @@ const PEDIDO_MAIS_HISTORICO =
   /^(?:(?:mostra|mostre|ver|veja|liste|listar|quero)\s+)?(?:mais|continuar|continua|pr[oó]ximos?)\??\.?$/i;
 
 const PEDIDO_HISTORICO =
-  /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|gastos?|despesas?|gastei|paguei|resumo)\b/i;
+  /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|gastos?|despesas?|gastei|paguei|recebi|ganhei|receitas?|entrou|entradas?|resumo)\b/i;
 
 const PEDIDO_SALDO =
   /\b(saldo|quanto\s+tenho|quanto\s+tem|quanto\s+resta|dinheiro\s+na\s+conta)\b/i;
@@ -223,7 +224,7 @@ export function interpretar_consulta_rapida(
       ...(estabelecimento ? { descricao: estabelecimento } : {}),
     },
   };
-  return intencao;
+  return aplicar_escopo_fluxo_na_consulta(intencao, texto);
 }
 
 /** `null` no periodo = mês atual no ModuloRelatorios; objeto = dia ou intervalo. */
@@ -261,8 +262,8 @@ function resolver_periodo_consulta(
     return { de: dataAtual, ate: dataAtual };
   }
 
-  // "quanto gastei?" sem período → mês atual (retrieve-first)
-  if (/^quanto\s+(gastei|paguei|despendi)\??$/i.test(texto.trim())) {
+  // "quanto gastei/recebi?" sem período → mês atual (retrieve-first)
+  if (/^quanto\s+(gastei|paguei|despendi|recebi|ganhei|entrou)\??$/i.test(texto.trim())) {
     return inicio_fim_mes_iso(dataAtual);
   }
 

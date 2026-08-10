@@ -21,6 +21,7 @@ import {
   ResolvedorIntencao,
   decifrar_dados_plasticos,
   garantir_categorias_padrao,
+  aplicar_escopo_fluxo_na_consulta,
   interpretar_consulta_rapida,
   interpretar_correcao_rapida,
   interpretar_enriquecimento_rapido,
@@ -428,6 +429,11 @@ export async function processar_turno_conversa(
       ),
       entrada.mensagem,
     );
+  }
+
+  // "quanto gastei" ≠ extrato: força tipos despesa/receita por sinônimos da mensagem.
+  if (intencao.intencao === "CONSULTAR_VISAO") {
+    intencao = aplicar_escopo_fluxo_na_consulta(intencao, entrada.mensagem);
   }
 
   if (!viaAtalho) {

@@ -563,6 +563,63 @@ describe("ModuloRelatorios", () => {
       });
     });
 
+    it("parcela OF no histórico soma só a competência e expõe N/M + total", async () => {
+      const conta = criarConta(usuarioId, { nome: "MP Conta" });
+      repositorio.contas.set(conta.id, conta);
+      const cartao = criarCartao(usuarioId, conta.id, { nome: "Mercado Pago" });
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "E AGENCIAS*416333",
+          tipo: "despesa",
+          valor: "434.38",
+          dataMovimento: "2026-08-10",
+          cartaoId: cartao.id,
+          parcelaNumero: 1,
+          parcelaTotal: 10,
+          parcelaCompraEm: "2026-08-10",
+          parcelaCompraValor: null,
+          status: "previsto",
+          fonte: "open_finance",
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "E AGENCIAS*416333",
+          tipo: "despesa",
+          valor: "434.35",
+          dataMovimento: "2026-09-01",
+          cartaoId: cartao.id,
+          parcelaNumero: 2,
+          parcelaTotal: 10,
+          parcelaCompraEm: "2026-08-10",
+          parcelaCompraValor: null,
+          status: "previsto",
+          fonte: "open_finance",
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, { periodo: { de: "2026-08-10", ate: "2026-08-10" } }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+
+      expect(dados.totalItens).toBe(1);
+      expect(dados.totalDespesas).toBe(434.38);
+      expect(dados.dias[0]?.itens[0]).toMatchObject({
+        descricao: "E AGENCIAS*416333",
+        parcelaNumero: 1,
+        parcelaTotal: 10,
+        parcelaCompraValor: 4343.8,
+        cartaoNome: "Mercado Pago",
+      });
+    });
+
     it("filtra por descrição/estabelecimento (ex.: Uber)", async () => {
       repositorio.movimentos.set(
         randomUUID(),
