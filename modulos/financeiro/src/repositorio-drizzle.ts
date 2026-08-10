@@ -80,6 +80,20 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     return linha;
   }
 
+  async listarMovimentosParceladosDoCartao(cartaoId: string): Promise<Movimento[]> {
+    return this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.cartaoId, cartaoId),
+          sql`${movimentoTabela.parcelaTotal} is not null`,
+          sql`${movimentoTabela.parcelaTotal} >= 2`,
+          ne(movimentoTabela.status, "cancelado"),
+        ),
+      );
+  }
+
   async listarParcelasDoMovimento(movimentoId: string) {
     return this.banco
       .select()

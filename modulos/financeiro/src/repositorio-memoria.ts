@@ -56,6 +56,16 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     );
   }
 
+  async listarMovimentosParceladosDoCartao(cartaoId: string) {
+    return [...this.movimentos.values()].filter(
+      (movimento) =>
+        movimento.cartaoId === cartaoId &&
+        movimento.status !== "cancelado" &&
+        movimento.parcelaTotal != null &&
+        movimento.parcelaTotal >= 2,
+    );
+  }
+
   async listarParcelasDoMovimento(movimentoId: string) {
     return [...this.parcelas.values()].filter(
       (parcela) => parcela.movimentoId === movimentoId && parcela.status !== "cancelado",

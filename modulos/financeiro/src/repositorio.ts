@@ -79,6 +79,11 @@ export interface RepositorioFinanceiro {
     provedor?: string;
     idExterno: string;
   }): Promise<Movimento | undefined>;
+  /**
+   * Movimentos de cartão com metadados de parcelamento — usados para completar
+   * séries que o Open Finance entrega incompletas.
+   */
+  listarMovimentosParceladosDoCartao(cartaoId: string): Promise<Movimento[]>;
   /** Parcelas não canceladas de um movimento (para regenerar em correções). */
   listarParcelasDoMovimento(movimentoId: string): Promise<Parcela[]>;
   /** Soma de parcelas com status 'previsto' ou 'realizado' (não canceladas) de um cartão. */

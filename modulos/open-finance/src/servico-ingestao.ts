@@ -7,6 +7,11 @@ import type {
   ProvedorOpenFinance,
   WebhookInterpretado,
 } from "./provedor";
+import {
+  agrupar_series_parcelamento,
+  eh_id_parcela_projetada,
+  planejar_parcelas_faltantes,
+} from "./projetar-parcelas";
 import type {
   ConexaoRegistrada,
   ContaExternaRegistrada,
@@ -415,6 +420,7 @@ export class ServicoIngestaoOpenFinance {
         resumo.atualizados += alteracao.atualizados.length;
 
         if (alteracao.desconhecidos.length > 0) {
+          await this.cancelar_projetadas_substituidas(alteracao.desconhecidos, contexto, resumo);
           const resultado = await this.motor.ingerir_eventos(alteracao.desconhecidos, contexto);
           resumo.criados += resultado.criados.length;
           resumo.duplicados += resultado.duplicados;
@@ -426,6 +432,8 @@ export class ServicoIngestaoOpenFinance {
 
       referencia = lote.proxima;
     }
+
+    await this.completar_parcelas_projetadas(conexao, mapa, contexto, resumo);
 
     await this.repositorio.atualizarEstadoConexao(conexao.id, {
       status: "ativa",
@@ -468,11 +476,14 @@ export class ServicoIngestaoOpenFinance {
     const resumo = { ...resumo_vazio(), semDestino, atualizados: alteracao.atualizados.length };
 
     if (alteracao.desconhecidos.length > 0) {
+      await this.cancelar_projetadas_substituidas(alteracao.desconhecidos, contexto, resumo);
       const criacao = await this.motor.ingerir_eventos(alteracao.desconhecidos, contexto);
       resumo.criados = criacao.criados.length;
       resumo.duplicados = criacao.duplicados;
       resumo.movimentoIdsCriados = criacao.criados.map((m) => m.id);
     }
+
+    await this.completar_parcelas_projetadas(conexao, mapa, contexto, resumo);
 
     await this.registrar_resumo_sync(conexao.id, resumo);
     return resumo;
@@ -536,6 +547,130 @@ export class ServicoIngestaoOpenFinance {
       categoriaIdNaoClassificado: categoriaId,
       perfilPadrao: conexao.perfilPadrao,
     };
+  }
+
+  /**
+   * Quando a instituição finalmente manda a parcela real, cancela a projetada
+   * homônima para o relatório não duplicar.
+   */
+  private async cancelar_projetadas_substituidas(
+    eventos: EventoFinanceiroNormalizado[],
+    contexto: ContextoIngestao,
+    resumo: ResumoIngestao,
+  ): Promise<void> {
+    const remocoes: Array<{
+      workspaceId: string;
+      fonte: "open_finance";
+      provedor?: string;
+      idExterno: string;
+    }> = [];
+    const vistos = new Set<string>();
+
+    for (const evento of eventos) {
+      if (eh_id_parcela_projetada(evento.idExterno)) continue;
+      const parc = evento.parcelamento;
+      if (!evento.cartaoId || !parc?.compraEm || !parc.total || !parc.numero) continue;
+
+      const movimentos = await this.motor.listar_movimentos_parcelados_do_cartao(evento.cartaoId);
+      const projetada = movimentos.find(
+        (m) =>
+          eh_id_parcela_projetada(m.idExterno) &&
+          m.status !== "cancelado" &&
+          m.statusFonte !== "removido" &&
+          m.parcelaCompraEm === parc.compraEm &&
+          m.parcelaTotal === parc.total &&
+          m.parcelaNumero === parc.numero,
+      );
+      if (!projetada?.idExterno || vistos.has(projetada.idExterno)) continue;
+      vistos.add(projetada.idExterno);
+      remocoes.push({
+        workspaceId: evento.workspaceId,
+        fonte: "open_finance",
+        provedor: evento.provedor ?? this.provedor.id,
+        idExterno: projetada.idExterno,
+      });
+    }
+
+    if (remocoes.length === 0) return;
+    const { removidos } = await this.motor.remover_fatos_da_fonte(remocoes, contexto);
+    resumo.removidos += removidos.length;
+  }
+
+  /**
+   * Completa buracos em séries parceladas: o Open Finance (Mercado Pago etc.)
+   * às vezes só devolve parcelas já POSTED e omite as futuras — o app do banco
+   * já as mostra. Projetamos o restante com id `lancai:proj:…`.
+   */
+  private async completar_parcelas_projetadas(
+    conexao: ConexaoRegistrada,
+    mapa: Map<string, ContaExternaRegistrada>,
+    contexto: ContextoIngestao,
+    resumo: ResumoIngestao,
+  ): Promise<void> {
+    const cartaoIds = [
+      ...new Set(
+        [...mapa.values()]
+          .map((conta) => conta.cartaoId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (cartaoIds.length === 0) return;
+
+    const eventos: EventoFinanceiroNormalizado[] = [];
+
+    for (const cartaoId of cartaoIds) {
+      const movimentos = await this.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+      const entradas = movimentos
+        .filter((m) => m.parcelaNumero != null && m.parcelaTotal != null && m.parcelaCompraEm)
+        .map((m) => ({
+          parcelaNumero: m.parcelaNumero!,
+          parcelaTotal: m.parcelaTotal!,
+          parcelaCompraEm: m.parcelaCompraEm!,
+          parcelaCompraValor: m.parcelaCompraValor,
+          valor: m.valor,
+          dataMovimento: m.dataMovimento,
+          descricao: m.descricao,
+          idExterno: m.idExterno,
+          status: m.status,
+          statusFonte: m.statusFonte,
+        }));
+
+      const series = agrupar_series_parcelamento(entradas);
+      const faltantes = planejar_parcelas_faltantes({
+        workspaceId: conexao.workspaceId,
+        cartaoId,
+        series,
+      });
+
+      for (const parcela of faltantes) {
+        eventos.push({
+          workspaceId: conexao.workspaceId,
+          fonte: "open_finance",
+          provedor: this.provedor.id,
+          idExterno: parcela.idExterno,
+          ocorridoEm: parcela.ocorridoEm,
+          valor: parcela.valor,
+          tipo: "despesa",
+          descricaoFonte: parcela.descricaoFonte,
+          cartaoId,
+          statusFonte: "pendente",
+          parcelamento: {
+            numero: parcela.numero,
+            total: parcela.total,
+            valorTotal: parcela.valorCompra > 0 ? parcela.valorCompra : undefined,
+            compraEm: parcela.compraEm,
+          },
+          fatoImutavel: true,
+        });
+      }
+    }
+
+    if (eventos.length === 0) return;
+
+    const criacao = await this.motor.ingerir_eventos(eventos, contexto);
+    resumo.criados += criacao.criados.length;
+    resumo.duplicados += criacao.duplicados;
+    resumo.movimentoIdsCriados.push(...criacao.criados.map((m) => m.id));
   }
 
   /**

@@ -267,6 +267,11 @@ export class MotorFinanceiro {
     await this.repositorio.atualizarDadosInstitucionaisConta(contaId, dados);
   }
 
+  /** Leitura usada pela projeção de parcelas Open Finance incompletas. */
+  async listar_movimentos_parcelados_do_cartao(cartaoId: string) {
+    return this.repositorio.listarMovimentosParceladosDoCartao(cartaoId);
+  }
+
   /**
    * Entrada de movimentações vindas de uma Fonte Financeira (ADR-010). O Core
    * não sabe qual fonte é nem o que é "pluggy" — recebe eventos já normalizados

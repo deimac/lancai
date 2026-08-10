@@ -13,4 +13,5 @@ export * from "./repositorio-memoria";
 export * from "./registro";
 export * from "./servico-conexao";
 export * from "./servico-ingestao";
+export * from "./projetar-parcelas";
 export * from "./tipo-recurso";
