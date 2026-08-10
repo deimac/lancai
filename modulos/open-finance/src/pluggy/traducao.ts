@@ -56,10 +56,7 @@ export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExte
   return {
     idExterno: transacao.id,
     contaExternaId: transacao.accountId,
-    /**
-     * Em parcelas PENDING o `date` costuma repetir a data da compra; o período
-     * da fatura prevista (`billForecastDate`) espalha as parcelas no extrato.
-     */
+    /** Competência = mês da fatura (`billForecastDate`), não a data da compra. */
     ocorridoEm: data_do_movimento(transacao, statusFonte),
     /** `amount` vem com sinal; a direção mora em `tipo`. */
     valor: Math.abs(transacao.amount),
@@ -78,15 +75,43 @@ export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExte
 }
 
 /**
- * Para parcela ainda não faturada, prefere o mês previsto da fatura (dia 1).
- * Confirmadas seguem o `date` que a instituição/Pluggy já amarra à fatura.
+ * Mês da fatura (`billForecastDate`) é a verdade para o navegador de competências.
+ * Sem ele, parcela PENDING cai em compra + (N−1) meses — o `date` da Pluggy
+ * costuma repetir a data da compra em todas as parcelas futuras.
  */
 function data_do_movimento(transacao: TransacaoPluggy, status: StatusFonte): string {
-  const forecast = transacao.creditCardMetadata?.billForecastDate;
-  if (status === "pendente" && forecast && /^\d{4}-\d{2}$/.test(forecast)) {
+  const meta = transacao.creditCardMetadata;
+  const forecast = meta?.billForecastDate;
+  if (forecast && /^\d{4}-\d{2}$/.test(forecast)) {
+    const diaDoProvedor = transacao.date.slice(0, 10);
+    if (diaDoProvedor.startsWith(`${forecast}-`)) return diaDoProvedor;
     return `${forecast}-01`;
   }
+
+  const numero = meta?.installmentNumber;
+  const compra = meta?.purchaseDate?.slice(0, 10);
+  if (status === "pendente" && numero && numero >= 1 && compra && /^\d{4}-\d{2}-\d{2}$/.test(compra)) {
+    return somar_meses(compra, numero - 1);
+  }
+
   return transacao.date.slice(0, 10);
+}
+
+/** Soma meses calendário preservando o dia (ajusta 31→último dia do mês destino). */
+export function somar_meses(yyyyMmDd: string, meses: number): string {
+  const [anoS, mesS, diaS] = yyyyMmDd.split("-");
+  const ano = Number(anoS);
+  const mes = Number(mesS);
+  const dia = Number(diaS);
+  if (!ano || !mes || !dia) return yyyyMmDd;
+
+  const base = new Date(Date.UTC(ano, mes - 1 + meses, 1));
+  const ultimoDia = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  const diaFinal = Math.min(dia, ultimoDia);
+  const y = base.getUTCFullYear();
+  const m = String(base.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(diaFinal).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 /**

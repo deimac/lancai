@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Area,
@@ -18,6 +18,7 @@ import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
 import { formatar_data_curta, formatar_mes, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
+import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import { unir_classes } from "../lib/unir-classes";
 
@@ -33,6 +34,8 @@ function eh_entrada(tipo: string): boolean {
 export function TelaDashboard() {
   const { usuario } = useAutenticacao();
   const contexto = useContextoLayout();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
   const [dados, setDados] = useState<DashboardResposta | null>(null);
   const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
@@ -50,7 +53,7 @@ export function TelaDashboard() {
     setErro(null);
     try {
       const [dash, workspaces] = await Promise.all([
-        clienteApi.obter_dashboard(usuario.id),
+        clienteApi.obter_dashboard(usuario.id, `${mes}-01`),
         clienteApi.listar_workspaces(usuario.id).catch(() => []),
       ]);
       setDados(dash);
@@ -61,11 +64,18 @@ export function TelaDashboard() {
     } finally {
       setCarregando(false);
     }
-  }, [usuario]);
+  }, [usuario, mes]);
 
   useEffect(() => {
     void carregar();
   }, [carregar, depsDados]);
+
+  function escolher_mes(proximo: string) {
+    const params = new URLSearchParams(searchParams);
+    if (proximo === mes_de_hoje()) params.delete("mes");
+    else params.set("mes", proximo);
+    setSearchParams(params, { replace: true });
+  }
 
   if (!usuario) return null;
 
@@ -102,14 +112,17 @@ export function TelaDashboard() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
-      <div>
-        <p className="text-xs uppercase tracking-wider text-texto-suave">Cockpit</p>
-        <h1 className="text-2xl font-semibold capitalize tracking-tight">
-          {formatar_mes(dados.mes)}
-        </h1>
-        {visaoGeral ? (
-          <p className="text-sm text-texto-suave">Todos os workspaces</p>
-        ) : null}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-texto-suave">Cockpit</p>
+          <h1 className="text-2xl font-semibold capitalize tracking-tight">
+            {formatar_mes(dados.mes)}
+          </h1>
+          {visaoGeral ? (
+            <p className="text-sm text-texto-suave">Todos os workspaces</p>
+          ) : null}
+        </div>
+        <SeletorMes mes={mes} onChange={escolher_mes} />
       </div>
 
       {dados.naoClassificado.quantidade > 0 && (

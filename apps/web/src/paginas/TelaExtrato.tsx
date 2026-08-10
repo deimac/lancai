@@ -15,6 +15,7 @@ import {
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
 import { Cartao } from "../componentes/ui/Cartao";
+import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import {
   eh_nao_classificado,
@@ -80,6 +81,7 @@ export function TelaExtrato() {
   const toast = useToast();
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
+  const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
@@ -141,28 +143,41 @@ export function TelaExtrato() {
     setFiltro(daUrl);
   }, [searchParams]);
 
+  function sincronizar_params(entrada: { filtro?: FiltroExtrato; mes?: string }) {
+    const proximoFiltro = entrada.filtro ?? filtro;
+    const proximoMes = entrada.mes ?? mes;
+    const params = new URLSearchParams();
+    if (proximoFiltro !== "todas") params.set("fila", proximoFiltro);
+    if (proximoMes !== mes_de_hoje()) params.set("mes", proximoMes);
+    setSearchParams(params, { replace: true });
+  }
+
   function escolher_filtro(proximo: FiltroExtrato) {
     setFiltro(proximo);
-    if (proximo === "todas") {
-      setSearchParams({}, { replace: true });
-    } else {
-      setSearchParams({ fila: proximo }, { replace: true });
-    }
+    sincronizar_params({ filtro: proximo });
+  }
+
+  function escolher_mes(proximo: string) {
+    sincronizar_params({ mes: proximo });
   }
 
   const quantidadeRevisar = useMemo(
-    () => movimentos.filter(precisa_revisao).length,
-    [movimentos],
+    () =>
+      movimentos.filter(
+        (m) => m.dataMovimento.startsWith(`${mes}-`) && precisa_revisao(m),
+      ).length,
+    [movimentos, mes],
   );
 
   const visiveis = useMemo(() => {
     return movimentos.filter((movimento) => {
+      if (!movimento.dataMovimento.startsWith(`${mes}-`)) return false;
       if (filtro === "banco") return movimento.fonte === "open_finance";
       if (filtro === "manual") return movimento.fonte !== "open_finance";
       if (filtro === "revisar") return precisa_revisao(movimento);
       return true;
     });
-  }, [movimentos, filtro]);
+  }, [movimentos, filtro, mes]);
 
   async function classificar(movimentoId: string, categoriaId: string) {
     if (!usuario || !categoriaId) return;
@@ -208,13 +223,16 @@ export function TelaExtrato() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
-        <p className="text-sm text-texto-suave">
-          {visaoGeral
-            ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"
-            : "Classifique e revise o que veio do banco ou do assistente"}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
+          <p className="text-sm text-texto-suave">
+            {visaoGeral
+              ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"
+              : "Classifique e revise o que veio do banco ou do assistente"}
+          </p>
+        </div>
+        <SeletorMes mes={mes} onChange={escolher_mes} />
       </div>
 
       {quantidadeRevisar > 0 && filtro !== "revisar" && (

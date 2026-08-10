@@ -264,7 +264,7 @@ Além dos cinco, `item/waiting_user_input` e `item/waiting_user_action` também 
 | `valor` | `Math.abs(amount)` | `amount` vem com sinal; nosso schema exige positivo e a direção está em `tipo` |
 | `tipo` | `type` | `DEBIT` → despesa, `CREDIT` → receita. A Pluggy já normaliza a inversão do cartão: compra é sempre `DEBIT` |
 | `statusFonte` | `status` | `POSTED` → confirmado, `PENDING` → pendente |
-| `ocorridoEm` | `date` (ou `creditCardMetadata.billForecastDate` em parcela PENDING) | ISO → só a data. Em parcela ainda não faturada o `date` costuma repetir a compra; aí usamos o mês previsto da fatura (`YYYY-MM-01`) para o extrato não empilhar todas no mesmo dia |
+| `ocorridoEm` | `creditCardMetadata.billForecastDate` (preferência) ou `date` | Mês da fatura prevista manda no navegador de competências. Sem forecast, parcela PENDING usa compra+(N−1) meses — o `date` sozinho empilha todas as parcelas futuras no dia da compra |
 | `favorecidoFonte` | `merchant.name` ou `paymentData.receiver.name` | Qual usar é configuração por conexão, e é conceito de provedor — fica no módulo |
 | `provedor` | fixo `"pluggy"` | Rótulo opaco, ninguém fora do módulo interpreta |
 
