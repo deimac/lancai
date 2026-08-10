@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import type { Banco } from "./cliente";
 import {
   cartao as cartaoTabela,
@@ -7,6 +7,7 @@ import {
   memoria as memoriaTabela,
   movimento as movimentoTabela,
   openFinanceConexao as conexaoTabela,
+  openFinanceContaExterna as contaExternaTabela,
   orcamento as orcamentoTabela,
   pessoa as pessoaTabela,
   recorrencia as recorrenciaTabela,
@@ -410,6 +411,8 @@ export async function atualizar_workspace_do_usuario(
 /**
  * Define quais contas/cartões pertencem ao workspace.
  * Selecionados → este workspace; os que estavam aqui e saíram → Principal (se diferente).
+ * Movimentos e conexões OF dessas contas/cartões acompanham o destino — senão o
+ * extrato/dashboard do workspace ficam vazios (leituras filtram por workspace_id).
  */
 export async function definir_membros_workspace(
   banco: Banco,
@@ -442,9 +445,13 @@ export async function definir_membros_workspace(
     }
   }
 
+  const contasParaDestino: string[] = [];
+  const contasParaPrincipal: string[] = [];
+
   for (const conta of contasDoUsuario) {
     const selecionada = setContas.has(conta.id);
     if (selecionada && conta.workspaceId !== workspaceId) {
+      contasParaDestino.push(conta.id);
       await banco
         .update(contaTabela)
         .set({ workspaceId, dataAtualizacao: agora })
@@ -454,6 +461,7 @@ export async function definir_membros_workspace(
       conta.workspaceId === workspaceId &&
       workspaceId !== principalId
     ) {
+      contasParaPrincipal.push(conta.id);
       await banco
         .update(contaTabela)
         .set({ workspaceId: principalId, dataAtualizacao: agora })
@@ -473,9 +481,13 @@ export async function definir_membros_workspace(
     }
   }
 
+  const cartoesParaDestino: string[] = [];
+  const cartoesParaPrincipal: string[] = [];
+
   for (const cartao of cartoesDoUsuario) {
     const selecionado = setCartoes.has(cartao.id);
     if (selecionado && cartao.workspaceId !== workspaceId) {
+      cartoesParaDestino.push(cartao.id);
       await banco
         .update(cartaoTabela)
         .set({ workspaceId, dataAtualizacao: agora })
@@ -485,6 +497,7 @@ export async function definir_membros_workspace(
       cartao.workspaceId === workspaceId &&
       workspaceId !== principalId
     ) {
+      cartoesParaPrincipal.push(cartao.id);
       await banco
         .update(cartaoTabela)
         .set({ workspaceId: principalId, dataAtualizacao: agora })
@@ -518,7 +531,74 @@ export async function definir_membros_workspace(
       );
   }
 
+  await acompanhar_membros_no_workspace(banco, usuarioId, workspaceId, {
+    contaIds: contasParaDestino,
+    cartaoIds: cartoesParaDestino,
+  });
+  if (workspaceId !== principalId) {
+    await acompanhar_membros_no_workspace(banco, usuarioId, principalId, {
+      contaIds: contasParaPrincipal,
+      cartaoIds: cartoesParaPrincipal,
+    });
+  }
+
   return atualizar_workspace_do_usuario(banco, usuarioId, workspaceId, {});
+}
+
+/**
+ * Extrato/dashboard/conexões filtram por `workspace_id` próprio — não pelo da
+ * conta. Ao vincular membros, movimentos e conexões OF precisam ir junto.
+ */
+async function acompanhar_membros_no_workspace(
+  banco: Banco,
+  usuarioId: string,
+  destinoWorkspaceId: string,
+  membros: { contaIds: string[]; cartaoIds: string[] },
+): Promise<void> {
+  const { contaIds, cartaoIds } = membros;
+  if (contaIds.length === 0 && cartaoIds.length === 0) return;
+
+  await banco.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL "lancai.sincronizacao" = 'on'`);
+
+    if (contaIds.length > 0) {
+      await tx
+        .update(movimentoTabela)
+        .set({ workspaceId: destinoWorkspaceId })
+        .where(
+          and(eq(movimentoTabela.usuarioId, usuarioId), inArray(movimentoTabela.contaId, contaIds)),
+        );
+    }
+    if (cartaoIds.length > 0) {
+      await tx
+        .update(movimentoTabela)
+        .set({ workspaceId: destinoWorkspaceId })
+        .where(
+          and(
+            eq(movimentoTabela.usuarioId, usuarioId),
+            inArray(movimentoTabela.cartaoId, cartaoIds),
+          ),
+        );
+    }
+
+    const filtrosVinculo = [];
+    if (contaIds.length > 0) filtrosVinculo.push(inArray(contaExternaTabela.contaId, contaIds));
+    if (cartaoIds.length > 0) filtrosVinculo.push(inArray(contaExternaTabela.cartaoId, cartaoIds));
+    if (filtrosVinculo.length === 0) return;
+
+    const vinculos = await tx
+      .selectDistinct({ conexaoId: contaExternaTabela.conexaoId })
+      .from(contaExternaTabela)
+      .where(or(...filtrosVinculo));
+
+    const conexaoIds = vinculos.map((v) => v.conexaoId);
+    if (conexaoIds.length === 0) return;
+
+    await tx
+      .update(conexaoTabela)
+      .set({ workspaceId: destinoWorkspaceId, dataAtualizacao: new Date() })
+      .where(inArray(conexaoTabela.id, conexaoIds));
+  });
 }
 
 async function reatribuir_tudo(
@@ -528,19 +608,31 @@ async function reatribuir_tudo(
 ): Promise<void> {
   if (de === para) return;
   const agora = new Date();
-  await banco.update(contaTabela).set({ workspaceId: para, dataAtualizacao: agora }).where(eq(contaTabela.workspaceId, de));
-  await banco.update(cartaoTabela).set({ workspaceId: para, dataAtualizacao: agora }).where(eq(cartaoTabela.workspaceId, de));
-  await banco.update(conexaoTabela).set({ workspaceId: para }).where(eq(conexaoTabela.workspaceId, de));
-  await banco.update(movimentoTabela).set({ workspaceId: para }).where(eq(movimentoTabela.workspaceId, de));
-  await banco.update(categoriaTabela).set({ workspaceId: para }).where(eq(categoriaTabela.workspaceId, de));
-  await banco.update(pessoaTabela).set({ workspaceId: para }).where(eq(pessoaTabela.workspaceId, de));
-  await banco.update(regraTabela).set({ workspaceId: para }).where(eq(regraTabela.workspaceId, de));
-  await banco.update(memoriaTabela).set({ workspaceId: para }).where(eq(memoriaTabela.workspaceId, de));
-  await banco.update(orcamentoTabela).set({ workspaceId: para }).where(eq(orcamentoTabela.workspaceId, de));
-  await banco
-    .update(recorrenciaTabela)
-    .set({ workspaceId: para })
-    .where(eq(recorrenciaTabela.workspaceId, de));
+  await banco.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL "lancai.sincronizacao" = 'on'`);
+    await tx
+      .update(contaTabela)
+      .set({ workspaceId: para, dataAtualizacao: agora })
+      .where(eq(contaTabela.workspaceId, de));
+    await tx
+      .update(cartaoTabela)
+      .set({ workspaceId: para, dataAtualizacao: agora })
+      .where(eq(cartaoTabela.workspaceId, de));
+    await tx.update(conexaoTabela).set({ workspaceId: para }).where(eq(conexaoTabela.workspaceId, de));
+    await tx
+      .update(movimentoTabela)
+      .set({ workspaceId: para })
+      .where(eq(movimentoTabela.workspaceId, de));
+    await tx.update(categoriaTabela).set({ workspaceId: para }).where(eq(categoriaTabela.workspaceId, de));
+    await tx.update(pessoaTabela).set({ workspaceId: para }).where(eq(pessoaTabela.workspaceId, de));
+    await tx.update(regraTabela).set({ workspaceId: para }).where(eq(regraTabela.workspaceId, de));
+    await tx.update(memoriaTabela).set({ workspaceId: para }).where(eq(memoriaTabela.workspaceId, de));
+    await tx.update(orcamentoTabela).set({ workspaceId: para }).where(eq(orcamentoTabela.workspaceId, de));
+    await tx
+      .update(recorrenciaTabela)
+      .set({ workspaceId: para })
+      .where(eq(recorrenciaTabela.workspaceId, de));
+  });
 }
 
 export async function excluir_workspace_do_usuario(

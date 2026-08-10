@@ -83,8 +83,9 @@ export function TelaContasECartoes() {
     setErro(null);
     try {
       const [contasCarregadas, cartoesCarregados, fonteDesc] = await Promise.all([
-        clienteApi.listar_contas(usuario.id, true),
-        clienteApi.listar_cartoes(usuario.id, true),
+        // Respeita o workspace ativo (sem `todos`): visão Geral agrega; workspace específico filtra.
+        clienteApi.listar_contas(usuario.id),
+        clienteApi.listar_cartoes(usuario.id),
         clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
       ]);
       setContas(contasCarregadas);
