@@ -157,6 +157,50 @@ function mesclar_criar_recorrencia(
   };
 }
 
+function eh_lixo_origem(nome: string): boolean {
+  const lower = nome.trim().toLocaleLowerCase("pt-BR");
+  if (!lower) return true;
+  if (/^valor(\s|$|de\b)/i.test(lower)) return true;
+  if (/^r\$/.test(lower)) return true;
+  if (/^\d+[.,]?\d*$/.test(lower)) return true;
+  return false;
+}
+
+function origem_existe_no_cadastro(
+  nome: string,
+  contexto: ContextoInterpretacao,
+): boolean {
+  const lower = nome.toLocaleLowerCase("pt-BR");
+  const casa = (cadastro: string) => {
+    const a = cadastro.toLocaleLowerCase("pt-BR");
+    return a === lower || a.includes(lower) || lower.includes(a);
+  };
+  return (
+    contexto.cartoes.some((c) => casa(c.nome)) || contexto.contas.some((c) => casa(c.nome))
+  );
+}
+
+/** Descarta origem inventada ("Valor de 28") ou inexistente no cadastro. */
+function sanitizar_origem(
+  completa: IntencaoCriarRecorrencia,
+  contexto: ContextoInterpretacao,
+): IntencaoCriarRecorrencia {
+  let conta_nome = completa.conta_nome?.trim() || null;
+  let cartao_nome = completa.cartao_nome?.trim() || null;
+
+  if (conta_nome && (eh_lixo_origem(conta_nome) || !origem_existe_no_cadastro(conta_nome, contexto))) {
+    conta_nome = null;
+  }
+  if (
+    cartao_nome &&
+    (eh_lixo_origem(cartao_nome) || !origem_existe_no_cadastro(cartao_nome, contexto))
+  ) {
+    cartao_nome = null;
+  }
+
+  return { ...completa, conta_nome, cartao_nome };
+}
+
 function faltantes_recorrencia(completa: IntencaoCriarRecorrencia): CampoFaltante[] {
   const faltantes: CampoFaltante[] = [];
   if (completa.valor == null) faltantes.push("valor");
@@ -225,11 +269,14 @@ export function normalizar_intencao_recorrencia(
         pergunta: personalizar_pergunta(intencao.pergunta, nome),
       };
     }
-    const completa = mesclar_criar_recorrencia(
-      dados_de_parcial(intencao.dados_parciais) as Partial<IntencaoCriarRecorrencia>,
-      pendentes,
-      mensagem,
-      contexto.dataAtual,
+    const completa = sanitizar_origem(
+      mesclar_criar_recorrencia(
+        dados_de_parcial(intencao.dados_parciais) as Partial<IntencaoCriarRecorrencia>,
+        pendentes,
+        mensagem,
+        contexto.dataAtual,
+      ),
+      contexto,
     );
     const faltantes = faltantes_recorrencia(completa);
     if (faltantes.length === 0) {
@@ -241,19 +288,16 @@ export function normalizar_intencao_recorrencia(
     }
     return {
       ...solicitar(completa, faltantes, nome),
-      pergunta: intencao.pergunta
-        ? personalizar_pergunta(intencao.pergunta, nome)
-        : montar_pergunta(faltantes, nome),
+      // Sempre a pergunta do próximo faltante real (não ecoar pergunta velha de dia).
+      pergunta: montar_pergunta(faltantes, nome),
     };
   }
 
   if (intencao.intencao !== "CRIAR_RECORRENCIA") return intencao;
 
-  const completa = mesclar_criar_recorrencia(
-    intencao,
-    pendentes,
-    mensagem,
-    contexto.dataAtual,
+  const completa = sanitizar_origem(
+    mesclar_criar_recorrencia(intencao, pendentes, mensagem, contexto.dataAtual),
+    contexto,
   );
   const faltantes = faltantes_recorrencia(completa);
   if (faltantes.length > 0) return solicitar(completa, faltantes, nome);

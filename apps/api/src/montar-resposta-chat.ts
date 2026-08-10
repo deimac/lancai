@@ -14,6 +14,7 @@ import type { Memoria, ServicoConhecimento, SugeridorCategoria } from "@lancai/c
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import {
   ErroEntidadeJaExiste,
+  ErroReferenciaNaoEncontrada,
   consulta_historico_detalhada,
   extrair_codigo_da_mensagem,
   mascara_final4_do_payload,
@@ -383,26 +384,29 @@ export async function montar_resposta_chat(
       if (!categoria) {
         return "Não consegui definir a categoria da recorrência.";
       }
-      let contaId = await contexto.resolvedor.resolver_conta_nome(
-        contexto.usuarioId,
-        intencao.conta_nome,
-      );
-      let cartaoId = await contexto.resolvedor.resolver_cartao_nome(
-        contexto.usuarioId,
-        intencao.cartao_nome,
-      );
-      // "Nubank" às vezes cai em conta_nome embora o usuário tenha dito cartão.
+      // Nome inexistente = slot faltante (não erro técnico de referência).
+      const resolver_origem_suave = async (
+        nome: string | null | undefined,
+        tipo: "conta" | "cartao",
+      ): Promise<string | undefined> => {
+        if (!nome?.trim()) return undefined;
+        try {
+          return tipo === "conta"
+            ? await contexto.resolvedor.resolver_conta_nome(contexto.usuarioId, nome)
+            : await contexto.resolvedor.resolver_cartao_nome(contexto.usuarioId, nome);
+        } catch (erro) {
+          if (erro instanceof ErroReferenciaNaoEncontrada) return undefined;
+          throw erro;
+        }
+      };
+      let contaId = await resolver_origem_suave(intencao.conta_nome, "conta");
+      let cartaoId = await resolver_origem_suave(intencao.cartao_nome, "cartao");
+      // Fallback cruzado só se o nome existir no outro tipo.
       if (!contaId && !cartaoId && intencao.conta_nome) {
-        cartaoId = await contexto.resolvedor.resolver_cartao_nome(
-          contexto.usuarioId,
-          intencao.conta_nome,
-        );
+        cartaoId = await resolver_origem_suave(intencao.conta_nome, "cartao");
       }
       if (!cartaoId && !contaId && intencao.cartao_nome) {
-        contaId = await contexto.resolvedor.resolver_conta_nome(
-          contexto.usuarioId,
-          intencao.cartao_nome,
-        );
+        contaId = await resolver_origem_suave(intencao.cartao_nome, "conta");
       }
       if (!contaId && !cartaoId) {
         return "Em qual conta ou cartão?";

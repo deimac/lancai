@@ -143,19 +143,17 @@ export function interpretar_recorrencia_rapida(
     if (criada) return criada;
   }
 
-  // Incompleta: "todo mês dia 10 Netflix no Nubank" (sem valor) → normalizador pergunta.
-  if (/\b(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\b/.test(lower)) {
+  // Incompleta: "recorrente Netflix no valor de 28" / "todo mês Netflix no Nubank".
+  if (/\b(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente|assinatura)\b/.test(lower)) {
     const m = lower.match(
-      /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+(?:dia\s+(\d{1,2})\s+)?(.+)/i,
+      /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente|assinatura(?:\s+recorrente)?)\s+(?:dia\s+(\d{1,2})\s+)?(.+)/i,
     );
     if (m?.[2]) {
       const diaBruto = m[1] ? Number(m[1]) : null;
       const dia =
         diaBruto != null && diaBruto >= 1 && diaBruto <= 31 ? diaBruto : null;
-      const trecho = m[2]
-        .replace(/\bdia\s+\d{1,2}\b/i, "")
-        .replace(/(?:r\$\s*)?\d+[.,]?\d*/g, "")
-        .trim();
+      const valor = extrair_valor_recorrencia(texto);
+      const trecho = limpar_trecho_descricao(m[2]);
       const { descricao, conta_nome, cartao_nome } = separar_descricao_e_origem(
         trecho,
         texto,
@@ -165,7 +163,7 @@ export function interpretar_recorrencia_rapida(
         return {
           intencao: "CRIAR_RECORRENCIA",
           descricao: capitalizar(descricao),
-          valor: null,
+          valor,
           dia_do_mes: dia,
           tipo_movimento: "despesa",
           conta_nome,
@@ -215,7 +213,24 @@ function extrair_valor(texto: string): number | null {
   const m = texto.match(/(?:r\$\s*)?(\d+[.,]?\d*)/);
   if (!m) return null;
   const n = Number(m[1]!.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Prefere "no valor de 28"; evita confundir com dia. */
+function extrair_valor_recorrencia(texto: string): number | null {
+  const lower = texto.toLocaleLowerCase("pt-BR");
+  const comRotulo =
+    /\b(?:no\s+)?valor\s*(?:de\s+)?(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+[.,]?\d*)\b/i.exec(
+      lower,
+    );
+  if (comRotulo?.[1]) {
+    const bruto = comRotulo[1];
+    const n = bruto.includes(",")
+      ? Number(bruto.replace(/\./g, "").replace(",", "."))
+      : Number(bruto.replace(",", "."));
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return extrair_valor_ignorando_dia(lower);
 }
 
 function extrair_valor_ignorando_dia(texto: string): number | null {
@@ -223,6 +238,16 @@ function extrair_valor_ignorando_dia(texto: string): number | null {
     .replace(/\bdia\s+\d{1,2}\b/gi, " ")
     .replace(/\b(?:hoje|hj)\b/gi, " ");
   return extrair_valor(limpo);
+}
+
+function limpar_trecho_descricao(trecho: string): string {
+  return trecho
+    .replace(/\bdia\s+\d{1,2}\b/gi, " ")
+    .replace(/\b(?:no\s+)?valor\s*(?:de\s+)?(?:r\$\s*)?\d+[.,]?\d*\b/gi, " ")
+    .replace(/(?:r\$\s*)?\d+[.,]?\d*/g, " ")
+    .replace(/\b(?:lancamento|lançamento|de|da|do|assinatura|recorrente)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** "Netflix no Nubank" → descrição + conta/cartão textual. */
@@ -233,7 +258,8 @@ function separar_descricao_e_origem(
 ): { descricao: string; conta_nome: string | null; cartao_nome: string | null } {
   const origem = extrair_origem_no_na(textoOriginal, contexto);
   let descricao = trechoLower
-    .replace(/\b(?:no|na|em)\s+[a-záàâãéêíóôõúç0-9][\wáàâãéêíóôõúç0-9\s.-]{1,40}$/i, "")
+    .replace(/\b(?:no|na|em)\s+(?:cart[aã]o\s+|conta\s+)?[a-záàâãéêíóôõúç0-9][\wáàâãéêíóôõúç0-9\s.-]{1,40}$/i, "")
+    .replace(/\b(?:no\s+)?valor\s*(?:de\s+)?(?:r\$\s*)?\d+[.,]?\d*\b/gi, " ")
     .replace(/\b(?:cart[aã]o|conta|banco)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -249,6 +275,26 @@ function separar_descricao_e_origem(
   };
 }
 
+function eh_lixo_origem(nome: string): boolean {
+  const lower = nome.trim().toLocaleLowerCase("pt-BR");
+  if (!lower) return true;
+  if (/^valor(\s|$|de\b)/i.test(lower)) return true;
+  if (/^r\$/.test(lower)) return true;
+  if (/^\d+[.,]?\d*$/.test(lower)) return true;
+  if (/^(de|da|do|dos|das)$/i.test(lower)) return true;
+  return false;
+}
+
+function nome_casa(cadastro: string, buscado: string): boolean {
+  const a = cadastro.toLocaleLowerCase("pt-BR");
+  const b = buscado.toLocaleLowerCase("pt-BR");
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+/**
+ * Origem só com match no cadastro ou "cartão/conta X" explícito (não lixo).
+ * Nunca inventa cartão a partir de "no valor de 28".
+ */
 function extrair_origem_no_na(
   texto: string,
   contexto?: ContextoInterpretacao | null,
@@ -256,29 +302,42 @@ function extrair_origem_no_na(
   conta_nome: string | null;
   cartao_nome: string | null;
 } {
-  const m = texto.match(/\b(?:no|na|em)\s+(?:cart[aã]o\s+)?([A-Za-zÁ-ú0-9][\wÁ-ú0-9 .-]{1,40})\s*$/i);
-  if (!m?.[1]) return { conta_nome: null, cartao_nome: null };
-  const nome = m[1].trim().replace(/\s+/g, " ");
-  const nomeLower = nome.toLocaleLowerCase("pt-BR");
-  const pediuCartao = /\bcart[aã]o\b/i.test(texto);
+  const semValor = texto
+    .replace(/\b(?:no\s+)?valor\s*(?:de\s+)?(?:r\$\s*)?\d+[.,]?\d*\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  const cartao = contexto?.cartoes.find((c) => c.nome.toLocaleLowerCase("pt-BR") === nomeLower
-    || c.nome.toLocaleLowerCase("pt-BR").includes(nomeLower)
-    || nomeLower.includes(c.nome.toLocaleLowerCase("pt-BR")));
-  const conta = contexto?.contas.find((c) => c.nome.toLocaleLowerCase("pt-BR") === nomeLower
-    || c.nome.toLocaleLowerCase("pt-BR").includes(nomeLower)
-    || nomeLower.includes(c.nome.toLocaleLowerCase("pt-BR")));
+  const m = semValor.match(
+    /\b(?:no|na|em)\s+(?:(cart[aã]o|conta)\s+)?([A-Za-zÁ-ú0-9][\wÁ-ú0-9 .-]{1,40})\s*$/i,
+  );
+  if (!m?.[2]) return { conta_nome: null, cartao_nome: null };
+
+  const nome = m[2].trim().replace(/\s+/g, " ");
+  if (eh_lixo_origem(nome)) return { conta_nome: null, cartao_nome: null };
+
+  const nomeLower = nome.toLocaleLowerCase("pt-BR");
+  const tipoExplicito = m[1]?.toLocaleLowerCase("pt-BR") ?? "";
+  const pediuCartao = tipoExplicito.startsWith("cart") || /\bcart[aã]o\b/i.test(texto);
+  const pediuConta = tipoExplicito === "conta" || /\bconta\b/i.test(texto);
+
+  const cartao = contexto?.cartoes.find((c) => nome_casa(c.nome, nomeLower));
+  const conta = contexto?.contas.find((c) => nome_casa(c.nome, nomeLower));
 
   if (pediuCartao) {
     if (cartao) return { conta_nome: null, cartao_nome: cartao.nome };
+    // Explícito "cartão X" — guarda o nome; o normalizador valida no cadastro.
     return { conta_nome: null, cartao_nome: capitalizar(nome) };
+  }
+  if (pediuConta) {
+    if (conta) return { conta_nome: conta.nome, cartao_nome: null };
+    return { conta_nome: capitalizar(nome), cartao_nome: null };
   }
 
   if (cartao) return { conta_nome: null, cartao_nome: cartao.nome };
   if (conta) return { conta_nome: conta.nome, cartao_nome: null };
 
-  // Sem match no cadastro: tenta como cartão (assinaturas costumam ir no cartão).
-  return { conta_nome: null, cartao_nome: capitalizar(nome) };
+  // Sem palavra cartão/conta e sem match: não inventa origem.
+  return { conta_nome: null, cartao_nome: null };
 }
 
 function capitalizar(texto: string): string {

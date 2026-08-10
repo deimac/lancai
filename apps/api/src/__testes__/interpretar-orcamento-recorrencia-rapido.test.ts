@@ -111,4 +111,47 @@ describe("interpretar_recorrencia_rapida", () => {
       intencao: "LISTAR_RECORRENCIAS",
     });
   });
+
+  it("não inventa cartão a partir de 'no valor de 28'", () => {
+    const r = interpretar_recorrencia_rapida(
+      "faca um lancamento recorrente de assinatura da netflix no valor de 28",
+      {
+        dataAtual: "2026-08-09",
+        contas: [],
+        cartoes: [{ nome: "Nubank", perfil: "pf", modalidade: "credito", temConta: false }],
+        categorias: [],
+        pessoas: [],
+        habitos: [],
+        historicoRecente: [],
+        intencaoPendente: null,
+      },
+    );
+    expect(r).toMatchObject({
+      intencao: "CRIAR_RECORRENCIA",
+      valor: 28,
+      dia_do_mes: null,
+      conta_nome: null,
+      cartao_nome: null,
+    });
+    expect(r && "descricao" in r ? r.descricao.toLowerCase() : "").toContain("netflix");
+  });
+
+  it("aceita cartão explícito Nubank", () => {
+    const r = interpretar_recorrencia_rapida("recorrente Netflix 55 no cartao Nubank", {
+      dataAtual: "2026-08-09",
+      contas: [],
+      cartoes: [{ nome: "Nubank", perfil: "pf", modalidade: "credito", temConta: false }],
+      categorias: [],
+      pessoas: [],
+      habitos: [],
+      historicoRecente: [],
+      intencaoPendente: null,
+    });
+    expect(r).toMatchObject({
+      intencao: "CRIAR_RECORRENCIA",
+      valor: 55,
+      cartao_nome: "Nubank",
+      conta_nome: null,
+    });
+  });
 });
