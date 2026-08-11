@@ -1,6 +1,28 @@
 import type { IntencaoDetectada, Perfil } from "@lancai/tipos";
 
-const URL_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3333";
+/**
+ * Se o front abre por IP da LAN/VPN (ex.: 192.168.x.x:5173) mas VITE_API_URL
+ * aponta para localhost, o browser bloqueia (CORS / rede). Alinha o host.
+ */
+function resolver_url_api(): string {
+  const configurada = (import.meta.env.VITE_API_URL ?? "http://localhost:3333").replace(/\/$/, "");
+  if (typeof window === "undefined") return configurada;
+  try {
+    const api = new URL(configurada);
+    const hostPagina = window.location.hostname;
+    const apiLocal = api.hostname === "localhost" || api.hostname === "127.0.0.1";
+    const paginaLocal = hostPagina === "localhost" || hostPagina === "127.0.0.1";
+    if (apiLocal && !paginaLocal) {
+      api.hostname = hostPagina;
+      return api.origin;
+    }
+  } catch {
+    /* mantém configurada */
+  }
+  return configurada;
+}
+
+const URL_BASE = resolver_url_api();
 
 export type OrigemFinanceira = "manual" | "open_finance";
 
@@ -325,8 +347,8 @@ function mensagem_falha_rede(erro: unknown, acao: string): string {
   if (/failed to fetch|networkerror|load failed/i.test(texto)) {
     return (
       `${acao}: não consegui falar com a API (${URL_BASE}). ` +
-      "Confira se ela está rodando e se você abriu o app em http://localhost:5173 " +
-      "(não misture com http://127.0.0.1:5173)."
+      "Confira se a API está rodando (porta 3333). Em VPN/LAN, use o mesmo host do front " +
+      "(ex.: http://SEU_IP:5173) e reinicie o Vite com host liberado."
     );
   }
   return texto || `Falha ao ${acao.toLowerCase()}.`;

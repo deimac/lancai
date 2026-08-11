@@ -18,29 +18,61 @@ import { registrar_rotas_cron } from "./rotas/cron";
 import { registrar_rotas_workspaces } from "./rotas/workspaces";
 import { tratar_erro } from "./tratar-erro";
 
-function origens_cors_permitidas(): string[] | boolean {
+function eh_ip_privado(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(hostname);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  return false;
+}
+
+/**
+ * Libera o front local (localhost / 127.0.0.1 / IP da LAN/VPN nas portas do Vite).
+ * Em produção só URL_WEB + CORS_ORIGENS.
+ */
+function origem_cors_permitida(
+  origem: string,
+  callback: (erro: Error | null, permitir?: boolean) => void,
+): void {
   const urlWeb = process.env.URL_WEB ?? "http://localhost:5173";
   const extras = (process.env.CORS_ORIGENS ?? "")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
-  // Dev: localhost e 127.0.0.1 são origens distintas no browser — CORS falha
-  // com "Failed to fetch" se só uma estiver liberada.
-  const locais = [
-    urlWeb,
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-    ...extras,
-  ];
-  return [...new Set(locais)];
+  const listaFixa = new Set([urlWeb, ...extras]);
+  if (listaFixa.has(origem)) {
+    callback(null, true);
+    return;
+  }
+
+  const emProducao = process.env.NODE_ENV === "production";
+  if (emProducao) {
+    callback(null, false);
+    return;
+  }
+
+  try {
+    const url = new URL(origem);
+    const porta = url.port === "" ? (url.protocol === "https:" ? "443" : "80") : url.port;
+    const portaNum = Number(porta);
+    // Vite usa 5173; se ocupada, sobe 5174+. Preview usa 4173.
+    const portaOk =
+      portaNum === 4173 || (portaNum >= 5173 && portaNum <= 5199);
+    const hostOk = eh_ip_privado(url.hostname);
+    callback(null, url.protocol === "http:" && portaOk && hostOk);
+  } catch {
+    callback(null, false);
+  }
 }
 
 export function criar_servidor() {
   const app = Fastify({ logger: true });
 
-  app.register(cors, { origin: origens_cors_permitidas() });
+  app.register(cors, { origin: origem_cors_permitida });
 
   app.get("/saude", async () => ({ status: "ok", servico: "lancai-api" }));
   app.get("/health", async () => {

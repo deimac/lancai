@@ -9,6 +9,7 @@ export default defineConfig({
   // de exigir um apps/web/.env separado.
   envDir: fileURLToPath(new URL("../..", import.meta.url)),
   server: {
+    host: true,
     port: 5173,
   },
 });
