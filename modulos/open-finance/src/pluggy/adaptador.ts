@@ -1,4 +1,4 @@
-import { ErroWebhookInvalido } from "../erros";
+import { ErroProvedorIndisponivel, ErroWebhookInvalido } from "../erros";
 import type {
   ContaExterna,
   EstadoConexao,
@@ -176,9 +176,23 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
   /**
    * Dispara sync pontual no provedor. O Fato só chega quando o webhook anunciar
    * o lote — este método não coleta extrato (ADR-015).
+   *
+   * Itens **Meu Pluggy** (proxy OAuth) recusam PATCH com
+   * `MeuPluggy item cant be updated`: o sync é só no app Meu Pluggy; o LançAI
+   * importa via GET depois. Tratar isso como no-op, não como falha.
    */
   async solicitar_atualizacao(conexaoExterna: string): Promise<void> {
-    await this.cliente.remendar(`/items/${encodeURIComponent(conexaoExterna)}`, {});
+    try {
+      await this.cliente.remendar(`/items/${encodeURIComponent(conexaoExterna)}`, {});
+    } catch (erro) {
+      if (
+        erro instanceof ErroProvedorIndisponivel &&
+        /MeuPluggy item cant be updated/i.test(erro.message)
+      ) {
+        return;
+      }
+      throw erro;
+    }
   }
 
   interpretar_notificacao(corpo: unknown): WebhookInterpretado {

@@ -112,7 +112,7 @@ A sincronização é **iniciada pelo provedor**, não por nós. A pesquisa da se
 
 Os passos 1 a 4 estão implementados em `ServicoIngestaoOpenFinance`, com a etapa síncrona separada da assíncrona: `receber` interpreta e grava, `processar` busca e ingere. A separação não é estética — é o que faz a idempotência funcionar, porque o registro do `eventoId` precisa acontecer antes de qualquer trabalho.
 
-Um cron continua existindo, com papel menor: reprocessar lote que falhou. É rede de segurança, não o mecanismo. Falha no processamento fica gravada na coluna `erro` do evento; `POST /cron/open-finance-reprocessar` (Bearer `CRON_SECRET`) relê o payload, chama `processar` de novo e enriquece no composition root. Ver [15-OPERACAO.md](15-OPERACAO.md).
+Um cron continua existindo, com papel menor: reprocessar lote que falhou e **importar via GET** o extrato já coletado (sem disparar sync/`PATCH` — isso a Pluggy proíbe em lote). É rede de segurança, não o mecanismo principal (webhook). Falha no processamento fica gravada na coluna `erro` do evento; `POST /cron/open-finance-reprocessar` e `POST /cron/open-finance-importar-historico` (Bearer `CRON_SECRET`). Ver [15-OPERACAO.md](15-OPERACAO.md).
 
 ### Onde a movimentação pousa
 

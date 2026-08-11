@@ -302,11 +302,13 @@ export function TelaConexoes() {
     setOcupado(true);
     setErro(null);
     setProgressoImportacao({ percentual: 2, mensagem: "Atualizando saldos…" });
+    let criados = 0;
     try {
       const atualizado = await clienteApi.atualizar_conexao(
         conexaoId,
         usuario.id,
         (p: ProgressoImportacaoApi) => {
+          if (typeof p.criados === "number") criados = p.criados;
           setProgressoImportacao({
             percentual: p.percentual,
             mensagem: p.mensagem,
@@ -318,9 +320,19 @@ export function TelaConexoes() {
       await carregar();
       contexto?.invalidar("conexoes");
       contexto?.invalidar("conexoes", "extrato");
-      toast.sucesso("Saldos e extrato atualizados com o banco.");
+      toast.sucesso(
+        criados > 0
+          ? `Extrato importado: ${criados} lançamento(s) novo(s).`
+          : "Saldos e extrato conferidos com o banco (nada novo).",
+      );
     } catch (e) {
-      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível pedir a atualização.");
+      const mensagem =
+        e instanceof ErroApi
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Não foi possível importar o extrato agora.";
+      toast.erro(mensagem);
     } finally {
       setOcupado(false);
       setProgressoImportacao(null);

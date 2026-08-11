@@ -168,6 +168,16 @@ describe("AdaptadorPluggy", () => {
         ErroProvedorIndisponivel,
       );
     });
+
+    it("ignora recusa Meu Pluggy (sync só no app; importação GET continua)", async () => {
+      rede.responder(`/items/${ITEM}`, {
+        message: "MeuPluggy item cant be updated",
+        code: 400,
+      });
+      rede.falhar(`/items/${ITEM}`, [400]);
+
+      await expect(adaptador.solicitar_atualizacao(ITEM)).resolves.toBeUndefined();
+    });
   });
 
   describe("histórico", () => {

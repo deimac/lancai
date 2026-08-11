@@ -119,6 +119,15 @@ export interface RepositorioOpenFinance {
 
   listarConexoes(workspaceIds: string | string[]): Promise<ConexaoDetalhada[]>;
 
+  /**
+   * Conexões elegíveis ao cron de importação GET (não removidas).
+   * Ordena pelas mais antigas em `ultimoSyncEm` (null primeiro).
+   */
+  listarConexoesImportaveis(entrada: {
+    provedor: string;
+    limite: number;
+  }): Promise<ConexaoDetalhada[]>;
+
   /** Idempotente por `(provedor, idExterno)`: reabrir o widget não cria conexão nova. */
   registrarConexao(conexao: {
     provedor: string;

@@ -149,6 +149,24 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
     return [...this.conexoes.values()].filter((conexao) => ids.has(conexao.workspaceId));
   }
 
+  async listarConexoesImportaveis(entrada: {
+    provedor: string;
+    limite: number;
+  }): Promise<ConexaoDetalhada[]> {
+    if (entrada.provedor !== this.provedorPadrao) return [];
+    const limite = Math.max(1, Math.min(Math.floor(entrada.limite), 200));
+    return [...this.conexoes.values()]
+      .filter((conexao) => conexao.status !== "removida")
+      .sort((a, b) => {
+        if (a.ultimoSyncEm == null && b.ultimoSyncEm == null) return a.id.localeCompare(b.id);
+        if (a.ultimoSyncEm == null) return -1;
+        if (b.ultimoSyncEm == null) return 1;
+        const porData = a.ultimoSyncEm.getTime() - b.ultimoSyncEm.getTime();
+        return porData !== 0 ? porData : a.id.localeCompare(b.id);
+      })
+      .slice(0, limite);
+  }
+
   async registrarConexao(conexao: {
     provedor: string;
     idExterno: string;

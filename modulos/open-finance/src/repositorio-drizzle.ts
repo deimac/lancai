@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import {
   CATEGORIA_NAO_CLASSIFICADO,
   categoria as categoriaTabela,
@@ -193,6 +193,37 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
       })
       .from(conexaoTabela)
       .where(inArray(conexaoTabela.workspaceId, ids));
+
+    return linhas.map((conexao) => ({
+      ...conexao,
+      perfilPadrao: "pf" as const,
+    }));
+  }
+
+  async listarConexoesImportaveis(entrada: {
+    provedor: string;
+    limite: number;
+  }): Promise<ConexaoDetalhada[]> {
+    const limite = Math.max(1, Math.min(Math.floor(entrada.limite), 200));
+    const linhas = await this.banco
+      .select({
+        id: conexaoTabela.id,
+        workspaceId: conexaoTabela.workspaceId,
+        criadoPor: conexaoTabela.criadoPor,
+        idExterno: conexaoTabela.idExterno,
+        status: conexaoTabela.status,
+        instituicao: conexaoTabela.instituicao,
+        motivoAtencao: conexaoTabela.motivoAtencao,
+        ultimoSyncEm: conexaoTabela.ultimoSyncEm,
+        consentimentoExpiraEm: conexaoTabela.consentimentoExpiraEm,
+        ultimoResumoIngestao: conexaoTabela.ultimoResumoIngestao,
+      })
+      .from(conexaoTabela)
+      .where(
+        and(eq(conexaoTabela.provedor, entrada.provedor), ne(conexaoTabela.status, "removida")),
+      )
+      .orderBy(sql`${conexaoTabela.ultimoSyncEm} ASC NULLS FIRST`, asc(conexaoTabela.id))
+      .limit(limite);
 
     return linhas.map((conexao) => ({
       ...conexao,

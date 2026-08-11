@@ -119,6 +119,25 @@ export class ServicoConexaoOpenFinance {
     return this.repositorio.listarConexoes(workspaceIds);
   }
 
+  /** Conexões não removidas do provedor ativo — usadas pelo cron de importação GET. */
+  async listar_conexoes_importaveis(limite: number): Promise<ConexaoDetalhada[]> {
+    return this.repositorio.listarConexoesImportaveis({
+      provedor: this.provedor.id,
+      limite,
+    });
+  }
+
+  /**
+   * Atualiza saldo/limite a partir do snapshot atual no provedor, sem pedir sync
+   * (sem PATCH). Usado pelo cron de importação e por fluxos que só precisam ler.
+   */
+  async atualizar_saldos(conexaoId: string): Promise<void> {
+    const conexao = await this.exigir_conexao(conexaoId);
+    if (conexao.status === "removida") return;
+    const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
+    await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+  }
+
   async detalhar(conexaoId: string): Promise<ConexaoComContas> {
     const conexao = await this.exigir_conexao(conexaoId);
     return { conexao, contas: await this.repositorio.listarContasExternas(conexaoId) };
@@ -172,8 +191,8 @@ export class ServicoConexaoOpenFinance {
    * “Atualizar agora”:
    * 1) refresca saldo/limite com o snapshot atual da instituição (sempre);
    * 2) pede sync pontual — best-effort: a Pluggy recusa com frequência
-   *    (já atualizando / limite de 1h em apps de desenvolvimento).
-   * Extrato novo, quando o sync for aceito, chega depois por webhook.
+   *    (já atualizando / limite de 1h / item Meu Pluggy que só synca no app).
+   * Extrato novo: importação GET no request da API (e webhook, quando chegar).
    */
   async solicitar_atualizacao(conexaoId: string): Promise<ConexaoComContas> {
     const conexao = await this.exigir_conexao(conexaoId);

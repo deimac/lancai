@@ -81,7 +81,7 @@ As rotas `POST /open-finance/duble/conexoes` e `POST /open-finance/duble/conexoe
 3. Subir um túnel HTTPS apontando para a API local (ex.: Cloudflare Tunnel / ngrok → `localhost:3333`). Localhost puro é recusado pelo provedor.
 4. `pnpm dev` (API + web). Em `/conexoes`, conectar o conector **Pluggy Bank** com `user-ok` / `password-ok` e MFA `123456`.
 5. Associar conta externa → conta/cartão local; confirmar movimentos no `/extrato` e classificação (regra/IA/fila Revisar).
-6. Em sandbox não há auto-sync: em `/conexoes`, **Atualizar agora** (`POST /open-finance/conexoes/:id/atualizar` → `PATCH /items/{id}` no provedor). O extrato chega pelo webhook; a UI marca `sincronizando` até lá.
+6. Em `/conexoes`, **Atualizar agora** (`POST /open-finance/conexoes/:id/atualizar`): tenta `PATCH /items/{id}` (best-effort; itens **Meu Pluggy** recusam com `MeuPluggy item cant be updated` e o LançAI ignora) e **sempre importa** o extrato via GET. Itens Meu Pluggy sincronizam no app Meu Pluggy; o LançAI só lê. Webhook continua o caminho ideal; o cron `open-finance-importar-historico` cobre silêncio.
 7. Casos de falha úteis: `user-locked`, `user-logged` (credencial / sessão) — a UI deve cair em `precisa_atencao` com motivo legível.
 
 ### Checklist: Coolify + Pluggy Connect real (Nubank PF)
@@ -221,9 +221,21 @@ O padrão do projeto é **endpoint HTTP protegido, chamado por agendador externo
 - `POST /cron/recorrencias` materializa as recorrências do dia. A idempotência vem de `ultima_geracao` na tabela `recorrencia`, que guarda o último mês gerado.
 - `POST /cron/resumo-baixa-confianca` envia pelo WhatsApp o resumo diário da fila de revisão (não classificado + IA abaixo de 0,7). Idempotência por usuário/dia no hábito `resumo_baixa_confianca_dia`. Agendar 1×/dia (ex. 20h). `?dryRun=1` lista sem enviar.
 - `POST /cron/open-finance-reprocessar` — rede de segurança Open Finance: reprocessa `open_finance_evento` com `erro` preenchido (não substitui o webhook; [ADR-015](adr/015-ingestao-por-webhook.md)). Idempotente via `id_externo`. Após sucesso, aplica classificação/conciliação como no webhook. `?dryRun=1` só lista; `?limite=N` (máx. 200, padrão 50). Agendar a cada 15–60 min. Sem Fonte ativa responde `fonteAtiva: false` sem erro.
+- `POST /cron/open-finance-importar-historico` — **importa extrato via GET** (já coletado no provedor). **Não** chama `PATCH /items` nem sync em lote (proibido pela Pluggy). Cobre Meu Pluggy (item que recusa update via API) e webhooks silenciosos. Atualiza saldos institucionais + `importar_historico` + pós-processo (classificação/conciliação). Idempotente via `id_externo`. `?dryRun=1` só lista conexões; `?limite=N` (máx. 200, padrão 50). **Agendar a cada 6 h** no Coolify. Sem Fonte ativa responde `fonteAtiva: false` sem erro.
 - `POST /cron/open-finance-retencao` — LGPD: anonimiza payload de eventos OF processados com sucesso há mais de `OPEN_FINANCE_RETENCAO_DIAS` (padrão 30). Mantém a linha por idempotência. Agendar 1×/dia.
 
 Toda tarefa agendada precisa ser idempotente: o agendador pode chamar duas vezes.
+
+#### Coolify — importar histórico OF (a cada 6 h)
+
+No agendador do serviço da API:
+
+```bash
+curl -sS -X POST "https://api.lancai.xploreia.com/cron/open-finance-importar-historico" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Cron sugerido: `0 */6 * * *` (00:00, 06:00, 12:00, 18:00 UTC — ajuste ao fuso se quiser). Smoke: `?dryRun=1` deve listar conexões ativas sem importar.
 
 ---
 

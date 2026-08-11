@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
+import { importar_historico_conexoes_open_finance } from "../servicos/importar-historico-open-finance";
 import { gerar_recorrencias_do_dia } from "../servicos/recorrencia-servico";
 import { reprocessar_eventos_open_finance } from "../servicos/reprocessar-open-finance";
 import { aplicar_retencao_open_finance } from "../servicos/retencao-open-finance";
@@ -65,6 +66,25 @@ export async function registrar_rotas_cron(app: FastifyInstance) {
       limite: limite_da_query(query),
     });
     requisicao.log.info(resultado, "[cron] open-finance reprocessar");
+    return { ok: true, ...resultado };
+  });
+
+  /**
+   * Importa extrato via GET (já coletado no provedor). Não dispara PATCH/sync.
+   * Cobre Meu Pluggy e webhooks silenciosos. Agendar a cada ~6 h.
+   */
+  app.post("/open-finance-importar-historico", async (requisicao, resposta) => {
+    if (!autorizar_cron(requisicao)) {
+      return resposta.status(401).send({ erro: "Não autorizado." });
+    }
+    const query = requisicao.query as { dryRun?: string; limite?: string };
+    const dryRun = query.dryRun === "1" || query.dryRun === "true";
+    const resultado = await importar_historico_conexoes_open_finance({
+      log: requisicao.log,
+      dryRun,
+      limite: limite_da_query(query),
+    });
+    requisicao.log.info(resultado, "[cron] open-finance importar histórico");
     return { ok: true, ...resultado };
   });
 
