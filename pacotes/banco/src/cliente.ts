@@ -16,7 +16,14 @@ export function obter_banco() {
     throw new Error("DATABASE_URL não configurada.");
   }
 
-  const conexao = postgres(urlBanco, { prepare: false });
+  // Pooler Supabase em session mode (porta 5432) tem teto baixo (~15).
+  // postgres.js default max=10 esgota o pool com 1–2 processos + MCP/tools.
+  const conexao = postgres(urlBanco, {
+    prepare: false,
+    max: 3,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
   instanciaBanco = drizzle(conexao, { schema });
   return instanciaBanco;
 }

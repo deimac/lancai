@@ -105,6 +105,25 @@ export function TelaDashboard() {
 
   if (!dados) return null;
 
+  const quantidadeContas = dados.resumo.quantidadeContas ?? dados.contas.length;
+  const quantidadeCartoes = dados.resumo.quantidadeCartoes ?? dados.cartoes.length;
+  const cartoesUsado =
+    dados.resumo.cartoesUsado ??
+    dados.cartoes.reduce((soma, cartao) => soma + cartao.comprometido, 0);
+  const cartoesDisponivel =
+    dados.resumo.cartoesDisponivel ??
+    dados.cartoes.reduce((soma, cartao) => soma + cartao.disponivel, 0);
+  const cartoesLimite =
+    dados.resumo.cartoesLimite ??
+    dados.cartoes.reduce((soma, cartao) => soma + cartao.limite, 0);
+  const percentualUtilizadoCartoes =
+    dados.resumo.percentualUtilizadoCartoes ??
+    (cartoesLimite > 0
+      ? Math.round((cartoesUsado / cartoesLimite) * 1000) / 10
+      : null);
+  const resultadoMes =
+    dados.resumo.resultadoMes ?? dados.resumo.receitasMes - dados.resumo.despesasMes;
+
   const maxCategoria = Math.max(...dados.gastosPorCategoria.map((c) => c.total), 1);
   const fluxoChart = dados.fluxoSaldo.map((ponto) => ({
     ...ponto,
@@ -164,15 +183,15 @@ export function TelaDashboard() {
             {formatar_moeda(dados.resumo.saldoTotal)}
           </p>
           <p className="mt-2 text-xs text-texto-suave">
-            {dados.resumo.quantidadeContas === 0
+            {quantidadeContas === 0
               ? "Nenhuma conta cadastrada"
-              : dados.resumo.quantidadeContas === 1
+              : quantidadeContas === 1
                 ? "1 conta"
-                : `${dados.resumo.quantidadeContas} contas`}
+                : `${quantidadeContas} contas`}
           </p>
         </motion.div>
 
-        {dados.resumo.quantidadeCartoes === 0 ? (
+        {quantidadeCartoes === 0 ? (
           <motion.div
             {...fade}
             transition={{ delay: 0.05 }}
@@ -206,30 +225,26 @@ export function TelaDashboard() {
                 <CreditCard size={16} className="text-primaria" />
               </div>
               <p className="text-xl font-semibold tracking-tight text-despesa tabular-nums">
-                {formatar_moeda(dados.resumo.cartoesUsado)}{" "}
+                {formatar_moeda(cartoesUsado)}{" "}
                 <span className="text-sm font-medium text-texto-suave">usado</span>
               </p>
               <p className="mt-1 text-sm font-medium text-receita tabular-nums">
-                {formatar_moeda(dados.resumo.cartoesDisponivel)} disponível
+                {formatar_moeda(cartoesDisponivel)} disponível
               </p>
               <p className="mt-2 text-xs text-texto-suave">
-                {dados.resumo.quantidadeCartoes === 1
-                  ? "1 cartão"
-                  : `${dados.resumo.quantidadeCartoes} cartões`}
-                {dados.resumo.percentualUtilizadoCartoes != null
-                  ? ` · ${dados.resumo.percentualUtilizadoCartoes.toFixed(1)}% utilizado`
+                {quantidadeCartoes === 1 ? "1 cartão" : `${quantidadeCartoes} cartões`}
+                {percentualUtilizadoCartoes != null
+                  ? ` · ${percentualUtilizadoCartoes.toFixed(1)}% utilizado`
                   : ""}
               </p>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda/60">
                 <div
                   className={unir_classes(
                     "h-full rounded-full transition-all",
-                    (dados.resumo.percentualUtilizadoCartoes ?? 0) >= 80
-                      ? "bg-despesa"
-                      : "bg-primaria",
+                    (percentualUtilizadoCartoes ?? 0) >= 80 ? "bg-despesa" : "bg-primaria",
                   )}
                   style={{
-                    width: `${Math.min(100, dados.resumo.percentualUtilizadoCartoes ?? 0)}%`,
+                    width: `${Math.min(100, percentualUtilizadoCartoes ?? 0)}%`,
                   }}
                 />
               </div>
@@ -286,12 +301,12 @@ export function TelaDashboard() {
           <div
             className={unir_classes(
               "flex h-10 w-10 items-center justify-center rounded-xl",
-              dados.resumo.resultadoMes >= 0 ? "bg-receita/15" : "bg-despesa/15",
+              resultadoMes >= 0 ? "bg-receita/15" : "bg-despesa/15",
             )}
           >
             <Activity
               size={18}
-              className={dados.resumo.resultadoMes >= 0 ? "text-receita" : "text-despesa"}
+              className={resultadoMes >= 0 ? "text-receita" : "text-despesa"}
             />
           </div>
           <div>
@@ -304,11 +319,11 @@ export function TelaDashboard() {
         <p
           className={unir_classes(
             "text-2xl font-semibold tracking-tight tabular-nums",
-            dados.resumo.resultadoMes >= 0 ? "text-receita" : "text-despesa",
+            resultadoMes >= 0 ? "text-receita" : "text-despesa",
           )}
         >
-          {dados.resumo.resultadoMes >= 0 ? "+" : "−"}
-          {formatar_moeda(Math.abs(dados.resumo.resultadoMes))}
+          {resultadoMes >= 0 ? "+" : "−"}
+          {formatar_moeda(Math.abs(resultadoMes))}
         </p>
       </motion.div>
 

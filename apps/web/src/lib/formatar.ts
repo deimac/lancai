@@ -1,5 +1,6 @@
 export function formatar_moeda(valor: number): string {
-  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const seguro = Number.isFinite(valor) ? valor : 0;
+  return seguro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export function formatar_data_curta(valor: string): string {

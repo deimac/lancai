@@ -9,11 +9,14 @@ interface ContextoAutenticacaoValor {
   sessao: Session | null;
   usuario: Usuario | null;
   carregando: boolean;
+  /** Falha ao sincronizar o usuário com a API (ex.: banco indisponível). */
+  erroSincronizacao: string | null;
   entrar: (email: string, senha: string) => Promise<void>;
   cadastrar: (nome: string, email: string, senha: string) => Promise<void>;
   sair: () => Promise<void>;
   /** Atualiza o usuário em memória após PATCH de Configurações. */
   definir_usuario: (usuario: Usuario) => void;
+  tentar_sincronizar_de_novo: () => Promise<void>;
 }
 
 const ContextoAutenticacao = createContext<ContextoAutenticacaoValor | undefined>(undefined);
@@ -22,14 +25,26 @@ export function AutenticacaoProvedor({ children }: { children: ReactNode }) {
   const [sessao, setSessao] = useState<Session | null>(null);
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [erroSincronizacao, setErroSincronizacao] = useState<string | null>(null);
 
   async function sincronizar_usuario_do_banco(sessaoAtual: Session) {
-    const dados = await clienteApi.sincronizar_usuario({
-      id: sessaoAtual.user.id,
-      nome: (sessaoAtual.user.user_metadata?.nome as string | undefined) ?? sessaoAtual.user.email ?? "Usuário",
-      email: sessaoAtual.user.email ?? "",
-    });
-    setUsuario(dados);
+    try {
+      const dados = await clienteApi.sincronizar_usuario({
+        id: sessaoAtual.user.id,
+        nome:
+          (sessaoAtual.user.user_metadata?.nome as string | undefined) ??
+          sessaoAtual.user.email ??
+          "Usuário",
+        email: sessaoAtual.user.email ?? "",
+      });
+      setUsuario(dados);
+      setErroSincronizacao(null);
+    } catch (e) {
+      setUsuario(null);
+      setErroSincronizacao(
+        e instanceof Error ? e.message : "Não foi possível carregar seu usuário.",
+      );
+    }
   }
 
   useEffect(() => {
@@ -45,14 +60,22 @@ export function AutenticacaoProvedor({ children }: { children: ReactNode }) {
     const { data: assinatura } = clienteSupabase.auth.onAuthStateChange((_evento, novaSessao) => {
       setSessao(novaSessao);
       if (novaSessao) {
-        sincronizar_usuario_do_banco(novaSessao);
+        void sincronizar_usuario_do_banco(novaSessao);
       } else {
         setUsuario(null);
+        setErroSincronizacao(null);
       }
     });
 
     return () => assinatura.subscription.unsubscribe();
   }, []);
+
+  async function tentar_sincronizar_de_novo() {
+    if (!sessao) return;
+    setCarregando(true);
+    await sincronizar_usuario_do_banco(sessao);
+    setCarregando(false);
+  }
 
   async function entrar(email: string, senha: string) {
     const { error } = await clienteSupabase.auth.signInWithPassword({ email, password: senha });
@@ -78,7 +101,17 @@ export function AutenticacaoProvedor({ children }: { children: ReactNode }) {
 
   return (
     <ContextoAutenticacao.Provider
-      value={{ sessao, usuario, carregando, entrar, cadastrar, sair, definir_usuario }}
+      value={{
+        sessao,
+        usuario,
+        carregando,
+        erroSincronizacao,
+        entrar,
+        cadastrar,
+        sair,
+        definir_usuario,
+        tentar_sincronizar_de_novo,
+      }}
     >
       {children}
     </ContextoAutenticacao.Provider>
