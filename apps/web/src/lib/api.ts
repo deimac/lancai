@@ -320,11 +320,28 @@ class ErroApi extends Error {
   }
 }
 
+function mensagem_falha_rede(erro: unknown, acao: string): string {
+  const texto = erro instanceof Error ? erro.message : String(erro);
+  if (/failed to fetch|networkerror|load failed/i.test(texto)) {
+    return (
+      `${acao}: não consegui falar com a API (${URL_BASE}). ` +
+      "Confira se ela está rodando e se você abriu o app em http://localhost:5173 " +
+      "(não misture com http://127.0.0.1:5173)."
+    );
+  }
+  return texto || `Falha ao ${acao.toLowerCase()}.`;
+}
+
 async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
-  const resposta = await fetch(`${URL_BASE}${caminho}`, {
-    ...opcoes,
-    headers: { "Content-Type": "application/json", ...opcoes.headers },
-  });
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${URL_BASE}${caminho}`, {
+      ...opcoes,
+      headers: { "Content-Type": "application/json", ...opcoes.headers },
+    });
+  } catch (erro) {
+    throw new ErroApi(mensagem_falha_rede(erro, "Chamada à API"), 0);
+  }
 
   if (!resposta.ok) {
     const corpo = (await resposta.json().catch(() => ({}))) as {
@@ -705,14 +722,19 @@ export const clienteApi = {
     usuarioId: string,
     aoProgresso?: (progresso: ProgressoImportacaoApi) => void,
   ): Promise<ConexaoComContas> {
-    const resposta = await fetch(`${URL_BASE}/open-finance/conexoes/${conexaoId}/atualizar`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/x-ndjson",
-      },
-      body: JSON.stringify({ usuarioId }),
-    });
+    let resposta: Response;
+    try {
+      resposta = await fetch(`${URL_BASE}/open-finance/conexoes/${conexaoId}/atualizar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/x-ndjson",
+        },
+        body: JSON.stringify({ usuarioId }),
+      });
+    } catch (erro) {
+      throw new ErroApi(mensagem_falha_rede(erro, "Atualizar conexão"), 0);
+    }
 
     if (!resposta.ok) {
       const corpo = (await resposta.json().catch(() => ({}))) as {

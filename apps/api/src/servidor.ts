@@ -18,10 +18,29 @@ import { registrar_rotas_cron } from "./rotas/cron";
 import { registrar_rotas_workspaces } from "./rotas/workspaces";
 import { tratar_erro } from "./tratar-erro";
 
+function origens_cors_permitidas(): string[] | boolean {
+  const urlWeb = process.env.URL_WEB ?? "http://localhost:5173";
+  const extras = (process.env.CORS_ORIGENS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  // Dev: localhost e 127.0.0.1 são origens distintas no browser — CORS falha
+  // com "Failed to fetch" se só uma estiver liberada.
+  const locais = [
+    urlWeb,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    ...extras,
+  ];
+  return [...new Set(locais)];
+}
+
 export function criar_servidor() {
   const app = Fastify({ logger: true });
 
-  app.register(cors, { origin: process.env.URL_WEB ?? "http://localhost:5173" });
+  app.register(cors, { origin: origens_cors_permitidas() });
 
   app.get("/saude", async () => ({ status: "ok", servico: "lancai-api" }));
   app.get("/health", async () => {
