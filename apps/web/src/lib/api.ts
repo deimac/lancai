@@ -224,6 +224,22 @@ type EventoAtualizarConexao =
     }
   | { tipo: "erro"; erro: string };
 
+export interface DashboardCartao {
+  id: string;
+  nome: string;
+  perfil: string;
+  limite: number;
+  comprometido: number;
+  disponivel: number;
+  fechamento: number;
+  vencimento: number;
+  sincronizada: boolean;
+  instituicao: string | null;
+  final4: string | null;
+  gastoMes: number;
+  quantidadeLancamentos: number;
+}
+
 export interface DashboardResposta {
   mes: string;
   periodo: { de: string; ate: string };
@@ -235,6 +251,8 @@ export interface DashboardResposta {
     cartoesLimite: number;
     quantidadeCartoes: number;
     percentualUtilizadoCartoes: number | null;
+    gastoCartoesMes: number;
+    quantidadeLancamentosCartoesMes: number;
     receitasMes: number;
     despesasMes: number;
     resultadoMes: number;
@@ -253,14 +271,7 @@ export interface DashboardResposta {
     origemNome: string | null;
   }>;
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
-  cartoes: Array<{
-    nome: string;
-    perfil: string;
-    limite: number;
-    comprometido: number;
-    disponivel: number;
-    sincronizada?: boolean;
-  }>;
+  cartoes: DashboardCartao[];
 }
 
 export type ClassificadoPor = "regra" | "ia" | "usuario";

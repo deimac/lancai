@@ -1,13 +1,31 @@
 import { CATEGORIA_NAO_CLASSIFICADO } from "@lancai/banco";
+import { mascara_final4_do_payload } from "@lancai/ia";
 import {
   ModuloRelatorios,
   RepositorioRelatoriosDrizzle,
   inicioFimMesAtual,
 } from "@lancai/relatorios";
 import { hojeISO } from "@lancai/tipos";
+import { mapear_origem_cartoes } from "./origem-conta-cartao";
 
 const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
 const repositorio = new RepositorioRelatoriosDrizzle();
+
+export interface DashboardCartao {
+  id: string;
+  nome: string;
+  perfil: string;
+  limite: number;
+  comprometido: number;
+  disponivel: number;
+  fechamento: number;
+  vencimento: number;
+  sincronizada: boolean;
+  instituicao: string | null;
+  final4: string | null;
+  gastoMes: number;
+  quantidadeLancamentos: number;
+}
 
 export interface DashboardResposta {
   mes: string;
@@ -22,6 +40,9 @@ export interface DashboardResposta {
     quantidadeCartoes: number;
     /** 0–100; null se não houver limite. */
     percentualUtilizadoCartoes: number | null;
+    /** Soma das despesas em cartão no mês (competência). */
+    gastoCartoesMes: number;
+    quantidadeLancamentosCartoesMes: number;
     receitasMes: number;
     despesasMes: number;
     /** Receitas − despesas do mês. */
@@ -45,13 +66,7 @@ export interface DashboardResposta {
     origemNome: string | null;
   }>;
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
-  cartoes: Array<{
-    nome: string;
-    perfil: string;
-    limite: number;
-    comprometido: number;
-    disponivel: number;
-  }>;
+  cartoes: DashboardCartao[];
 }
 
 /**
@@ -64,12 +79,15 @@ export async function montar_dashboard(
   const periodo = inicioFimMesAtual(dataAtual);
   const filtros = { usuarioId, periodo };
 
-  const [saldosVisao, categoriaVisao, historicoVisao, cartoesVisao] = await Promise.all([
-    relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
-    relatorios.consultar_visao("categoria", filtros, dataAtual),
-    relatorios.consultar_visao("historico", filtros, dataAtual),
-    relatorios.consultar_visao("cartoes", { usuarioId }, dataAtual),
-  ]);
+  const [saldosVisao, categoriaVisao, historicoVisao, cartoesVisao, despesasCartaoMes, cartoesDb] =
+    await Promise.all([
+      relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
+      relatorios.consultar_visao("categoria", filtros, dataAtual),
+      relatorios.consultar_visao("historico", filtros, dataAtual),
+      relatorios.consultar_visao("cartoes", { usuarioId }, dataAtual),
+      repositorio.listarMovimentos(usuarioId, { periodo, tipos: ["despesa"] }),
+      repositorio.listarCartoes(usuarioId),
+    ]);
 
   if (
     saldosVisao.tipo !== "saldos" ||
@@ -85,19 +103,60 @@ export async function montar_dashboard(
   const historico = historicoVisao.dados;
   const cartoes = cartoesVisao.dados;
 
+  const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
+  for (const movimento of despesasCartaoMes) {
+    if (!movimento.cartaoId) continue;
+    const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
+    atual.gasto += Number(movimento.valor);
+    atual.quantidade += 1;
+    gastoPorCartao.set(movimento.cartaoId, atual);
+  }
+
+  const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
+  const origens = await mapear_origem_cartoes(idsCartoes);
+  const plasticoPorId = new Map(
+    cartoesDb.map((cartao) => [cartao.id, cartao.dadosPlasticosCifrados] as const),
+  );
+
+  const cartoesDetalhe: DashboardCartao[] = cartoes.cartoes.map((cartao) => {
+    const mes = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+    return {
+      id: cartao.id,
+      nome: cartao.nome,
+      perfil: cartao.perfil,
+      limite: cartao.limite,
+      comprometido: cartao.comprometido,
+      disponivel: cartao.disponivel,
+      fechamento: cartao.fechamento,
+      vencimento: cartao.vencimento,
+      sincronizada: cartao.sincronizada,
+      instituicao: origens.get(cartao.id)?.instituicao ?? null,
+      final4: mascara_final4_do_payload(plasticoPorId.get(cartao.id)),
+      gastoMes: arredondar(mes.gasto),
+      quantidadeLancamentos: mes.quantidade,
+    };
+  });
+
   const cartoesUsado = arredondar(
-    cartoes.cartoes.reduce((soma, cartao) => soma + cartao.comprometido, 0),
+    cartoesDetalhe.reduce((soma, cartao) => soma + cartao.comprometido, 0),
   );
   const cartoesDisponivel = arredondar(
-    cartoes.cartoes.reduce((soma, cartao) => soma + cartao.disponivel, 0),
+    cartoesDetalhe.reduce((soma, cartao) => soma + cartao.disponivel, 0),
   );
   const cartoesLimite = arredondar(
-    cartoes.cartoes.reduce((soma, cartao) => soma + cartao.limite, 0),
+    cartoesDetalhe.reduce((soma, cartao) => soma + cartao.limite, 0),
   );
   const percentualUtilizadoCartoes =
     cartoesLimite > 0
       ? Math.round((cartoesUsado / cartoesLimite) * 1000) / 10
       : null;
+  const gastoCartoesMes = arredondar(
+    cartoesDetalhe.reduce((soma, cartao) => soma + cartao.gastoMes, 0),
+  );
+  const quantidadeLancamentosCartoesMes = cartoesDetalhe.reduce(
+    (soma, cartao) => soma + cartao.quantidadeLancamentos,
+    0,
+  );
   const resultadoMes = arredondar(categoria.totalReceitas - categoria.totalDespesas);
 
   const naoClassificado = await contar_nao_classificados(usuarioId, periodo);
@@ -126,8 +185,10 @@ export async function montar_dashboard(
       cartoesUsado,
       cartoesDisponivel,
       cartoesLimite,
-      quantidadeCartoes: cartoes.cartoes.length,
+      quantidadeCartoes: cartoesDetalhe.length,
       percentualUtilizadoCartoes,
+      gastoCartoesMes,
+      quantidadeLancamentosCartoesMes,
       receitasMes: categoria.totalReceitas,
       despesasMes: categoria.totalDespesas,
       resultadoMes,
@@ -138,14 +199,7 @@ export async function montar_dashboard(
     fluxoSaldo,
     recentes,
     contas: saldos.contas,
-    cartoes: cartoes.cartoes.map((cartao) => ({
-      nome: cartao.nome,
-      perfil: cartao.perfil,
-      limite: cartao.limite,
-      comprometido: cartao.comprometido,
-      disponivel: cartao.disponivel,
-      sincronizada: cartao.sincronizada,
-    })),
+    cartoes: cartoesDetalhe,
   };
 }
 

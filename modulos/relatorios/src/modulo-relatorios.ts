@@ -127,6 +127,7 @@ export class ModuloRelatorios {
         }
 
         return {
+          id: cartao.id,
           nome: cartao.nome,
           perfil: cartao.perfil,
           limite,

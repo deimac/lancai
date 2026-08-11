@@ -7,6 +7,7 @@ export interface ResultadoSaldos {
 
 export interface ResultadoCartoes {
   cartoes: Array<{
+    id: string;
     nome: string;
     perfil: Perfil;
     limite: number;

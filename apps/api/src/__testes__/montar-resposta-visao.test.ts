@@ -38,6 +38,7 @@ describe("montar_resposta_visao", () => {
       dados: {
         cartoes: [
           {
+            id: "cartao-1",
             nome: "Inter Black",
             perfil: "pf",
             limite: 5000,

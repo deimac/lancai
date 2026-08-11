@@ -13,6 +13,7 @@ import {
 import {
   Activity,
   AlertTriangle,
+  ChevronRight,
   CreditCard,
   TrendingDown,
   TrendingUp,
@@ -22,6 +23,7 @@ import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
 import { formatar_data_curta, formatar_mes, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
+import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
 import { Botao } from "../componentes/ui/Botao";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
@@ -45,6 +47,7 @@ export function TelaDashboard() {
   const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [drawerCartoesAberto, setDrawerCartoesAberto] = useState(false);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "dashboard",
@@ -107,20 +110,12 @@ export function TelaDashboard() {
 
   const quantidadeContas = dados.resumo.quantidadeContas ?? dados.contas.length;
   const quantidadeCartoes = dados.resumo.quantidadeCartoes ?? dados.cartoes.length;
-  const cartoesUsado =
-    dados.resumo.cartoesUsado ??
-    dados.cartoes.reduce((soma, cartao) => soma + cartao.comprometido, 0);
   const cartoesDisponivel =
     dados.resumo.cartoesDisponivel ??
     dados.cartoes.reduce((soma, cartao) => soma + cartao.disponivel, 0);
-  const cartoesLimite =
-    dados.resumo.cartoesLimite ??
-    dados.cartoes.reduce((soma, cartao) => soma + cartao.limite, 0);
-  const percentualUtilizadoCartoes =
-    dados.resumo.percentualUtilizadoCartoes ??
-    (cartoesLimite > 0
-      ? Math.round((cartoesUsado / cartoesLimite) * 1000) / 10
-      : null);
+  const gastoCartoesMes =
+    dados.resumo.gastoCartoesMes ??
+    dados.cartoes.reduce((soma, cartao) => soma + (cartao.gastoMes ?? 0), 0);
   const resultadoMes =
     dados.resumo.resultadoMes ?? dados.resumo.receitasMes - dados.resumo.despesasMes;
 
@@ -204,52 +199,44 @@ export function TelaDashboard() {
               <CreditCard size={16} className="text-texto-suave" />
             </div>
             <p className="text-base font-medium text-texto">Nenhum cartão cadastrado</p>
+            <p className="mt-1 text-xs text-texto-suave">
+              Adicione um cartão para acompanhar limite, utilização e gastos mensais.
+            </p>
             <Link
               to="/contas#cartoes"
               className="mt-3 inline-block text-sm font-medium text-primaria hover:underline"
             >
-              Adicionar cartão
+              + Adicionar cartão
             </Link>
           </motion.div>
         ) : (
-          <Link to="/contas#cartoes" className="block">
-            <motion.div
-              {...fade}
-              transition={{ delay: 0.05 }}
-              className="h-full rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20 transition-colors hover:border-primaria/40"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-                  Cartões
-                </span>
-                <CreditCard size={16} className="text-primaria" />
-              </div>
-              <p className="text-xl font-semibold tracking-tight text-despesa tabular-nums">
-                {formatar_moeda(cartoesUsado)}{" "}
-                <span className="text-sm font-medium text-texto-suave">usado</span>
-              </p>
-              <p className="mt-1 text-sm font-medium text-receita tabular-nums">
-                {formatar_moeda(cartoesDisponivel)} disponível
-              </p>
-              <p className="mt-2 text-xs text-texto-suave">
-                {quantidadeCartoes === 1 ? "1 cartão" : `${quantidadeCartoes} cartões`}
-                {percentualUtilizadoCartoes != null
-                  ? ` · ${percentualUtilizadoCartoes.toFixed(1)}% utilizado`
-                  : ""}
-              </p>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda/60">
-                <div
-                  className={unir_classes(
-                    "h-full rounded-full transition-all",
-                    (percentualUtilizadoCartoes ?? 0) >= 80 ? "bg-despesa" : "bg-primaria",
-                  )}
-                  style={{
-                    width: `${Math.min(100, percentualUtilizadoCartoes ?? 0)}%`,
-                  }}
-                />
-              </div>
-            </motion.div>
-          </Link>
+          <motion.button
+            type="button"
+            {...fade}
+            transition={{ delay: 0.05 }}
+            onClick={() => setDrawerCartoesAberto(true)}
+            className="h-full rounded-2xl border border-borda bg-superficie/80 p-4 text-left shadow-sm shadow-black/20 transition-colors hover:border-primaria/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primaria/50"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+                Cartões
+              </span>
+              <CreditCard size={16} className="text-primaria" />
+            </div>
+            <p className="text-2xl font-semibold tracking-tight text-despesa tabular-nums">
+              {formatar_moeda(gastoCartoesMes)}
+            </p>
+            <p className="mt-1 text-xs text-texto-suave">gasto no mês</p>
+            <p className="mt-2 text-sm font-medium text-receita tabular-nums">
+              {formatar_moeda(cartoesDisponivel)} disponível
+            </p>
+            <p className="mt-3 flex items-center gap-1 text-xs font-medium text-primaria">
+              {quantidadeCartoes === 1 ? "1 cartão" : `${quantidadeCartoes} cartões`}
+              <span className="text-texto-suave">·</span>
+              Ver cartões
+              <ChevronRight size={14} />
+            </p>
+          </motion.button>
         )}
 
         <motion.div
@@ -503,6 +490,13 @@ export function TelaDashboard() {
           </ul>
         </motion.section>
       </div>
+
+      <DrawerCartoesDashboard
+        aberto={drawerCartoesAberto}
+        aoFechar={() => setDrawerCartoesAberto(false)}
+        dados={dados}
+        visaoGeral={visaoGeral}
+      />
     </div>
   );
 }
