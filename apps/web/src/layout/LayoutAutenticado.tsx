@@ -91,7 +91,7 @@ export function LayoutAutenticado() {
   const recarregar_contexto = useCallback(async () => {
     if (!usuario) return;
     try {
-      const contas = await clienteApi.listar_contas(usuario.id);
+      const contas = await clienteApi.listar_contas(usuario.id, true);
       setTemContas(contas.length > 0);
     } catch {
       /* painel ainda funciona sem isso */

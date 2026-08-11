@@ -156,8 +156,8 @@ export function TelaConexoes() {
             if (e instanceof ErroApi && e.status === 503) return [] as ConexaoDetalhada[];
             throw e;
           }),
-          clienteApi.listar_contas(usuario.id),
-          clienteApi.listar_cartoes(usuario.id),
+          clienteApi.listar_contas(usuario.id, true),
+          clienteApi.listar_cartoes(usuario.id, true),
           clienteApi.listar_workspaces(usuario.id).catch(() => []),
         ]);
       setFonte(fonteCarregada);

@@ -49,8 +49,8 @@ export function TelaCartoes() {
     setErro(null);
     try {
       const [cartoesCarregados, contasCarregadas] = await Promise.all([
-        clienteApi.listar_cartoes(usuario.id),
-        clienteApi.listar_contas(usuario.id),
+        clienteApi.listar_cartoes(usuario.id, true),
+        clienteApi.listar_contas(usuario.id, true),
       ]);
       setCartoes(cartoesCarregados);
       setContas(contasCarregadas);

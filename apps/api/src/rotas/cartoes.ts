@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   cartao,
   mapear_nomes_workspaces,
@@ -19,7 +19,11 @@ import {
   schemaPatchCartaoApi,
   schemaRevelarPlasticoApi,
 } from "@lancai/tipos";
-import { exigir_workspace_escrita } from "../servicos/escopo-workspace";
+import {
+  exigir_workspace_escrita,
+  obter_escopo_leitura,
+  obter_workspaces_do_usuario,
+} from "../servicos/escopo-workspace";
 import { excluir_destino_financeiro } from "../servicos/excluir-destino-financeiro";
 import { mapear_origem_cartoes, type MetaOrigem } from "../servicos/origem-conta-cartao";
 import { verificar_senha_usuario } from "../verificar-senha-usuario";
@@ -101,17 +105,29 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId } = requisicao.query as { usuarioId?: string };
+    const { usuarioId, todos } = requisicao.query as { usuarioId?: string; todos?: string };
     const banco = obter_banco();
     if (!usuarioId) {
       const linhas = await banco.select().from(cartao).where(eq(cartao.ativo, true));
       return linhas.map((linha) => cartao_publico(linha, undefined, new Map()));
     }
-    // Cartão é global do usuário — nunca filtrar por workspace ativo.
+    // Default: escopo do workspace (extrato/relatórios). `todos=1`: menu Contas (global).
+    const workspaceIds =
+      todos === "1"
+        ? await obter_workspaces_do_usuario(usuarioId)
+        : (await obter_escopo_leitura(usuarioId)).workspaceIds;
+    if (workspaceIds.length === 0) return [];
+
     const linhas = await banco
       .select()
       .from(cartao)
-      .where(and(eq(cartao.usuarioId, usuarioId), eq(cartao.ativo, true)));
+      .where(
+        and(
+          eq(cartao.usuarioId, usuarioId),
+          inArray(cartao.workspaceId, workspaceIds),
+          eq(cartao.ativo, true),
+        ),
+      );
     const origem = await mapear_origem_cartoes(linhas.map((item) => item.id));
     const nomes = await mapear_nomes_workspaces(
       banco,

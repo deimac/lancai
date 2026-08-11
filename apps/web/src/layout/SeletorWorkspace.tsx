@@ -90,8 +90,8 @@ export function SeletorWorkspace({ aoMudar }: Props) {
     setErro(null);
     try {
       const [contas, cartoes] = await Promise.all([
-        clienteApi.listar_contas(usuario.id),
-        clienteApi.listar_cartoes(usuario.id),
+        clienteApi.listar_contas(usuario.id, true),
+        clienteApi.listar_cartoes(usuario.id, true),
       ]);
       if (contas.length + cartoes.length === 0) {
         setInduzir(true);

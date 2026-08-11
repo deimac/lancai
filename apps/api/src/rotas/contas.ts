@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   conta,
   mapear_nomes_workspaces,
@@ -11,7 +11,11 @@ import {
   schemaExcluirContaApi,
   schemaPatchContaApi,
 } from "@lancai/tipos";
-import { exigir_workspace_escrita } from "../servicos/escopo-workspace";
+import {
+  exigir_workspace_escrita,
+  obter_escopo_leitura,
+  obter_workspaces_do_usuario,
+} from "../servicos/escopo-workspace";
 import { excluir_destino_financeiro } from "../servicos/excluir-destino-financeiro";
 import { mapear_origem_contas, type MetaOrigem } from "../servicos/origem-conta-cartao";
 
@@ -65,16 +69,28 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId } = requisicao.query as { usuarioId?: string };
+    const { usuarioId, todos } = requisicao.query as { usuarioId?: string; todos?: string };
     const banco = obter_banco();
     if (!usuarioId) {
       return banco.select().from(conta).where(eq(conta.ativo, true));
     }
-    // Conta é global do usuário — nunca filtrar por workspace ativo.
+    // Default: escopo do workspace (extrato/relatórios). `todos=1`: menu Contas (global).
+    const workspaceIds =
+      todos === "1"
+        ? await obter_workspaces_do_usuario(usuarioId)
+        : (await obter_escopo_leitura(usuarioId)).workspaceIds;
+    if (workspaceIds.length === 0) return [];
+
     const linhas = await banco
       .select()
       .from(conta)
-      .where(and(eq(conta.usuarioId, usuarioId), eq(conta.ativo, true)));
+      .where(
+        and(
+          eq(conta.usuarioId, usuarioId),
+          inArray(conta.workspaceId, workspaceIds),
+          eq(conta.ativo, true),
+        ),
+      );
     const origem = await mapear_origem_contas(linhas.map((item) => item.id));
     const nomes = await mapear_nomes_workspaces(
       banco,

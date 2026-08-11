@@ -6,7 +6,10 @@ import { workspace } from "./workspace";
 
 export const cartao = pgTable("cartao", {
   id: uuid("id").primaryKey().defaultRandom(),
-  /** Pouso técnico / agrupador; cartão é global do usuário — leituras não filtram por isto. */
+  /**
+   * Pouso/agrupador para relatórios. Menu Contas lista todos (`?todos=1`);
+   * dashboard/extrato/IA filtram por este campo no escopo ativo.
+   */
   workspaceId: uuid("workspace_id")
     .notNull()
     .references(() => workspace.id),

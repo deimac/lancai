@@ -45,8 +45,8 @@ export function ModalWorkspace({ aberto, workspace, aoFechar, aoSalvar }: Props)
     void (async () => {
       try {
         const [todasContas, todosCartoes] = await Promise.all([
-          clienteApi.listar_contas(usuario.id),
-          clienteApi.listar_cartoes(usuario.id),
+          clienteApi.listar_contas(usuario.id, true),
+          clienteApi.listar_cartoes(usuario.id, true),
         ]);
         setContas(todasContas);
         setCartoes(todosCartoes);

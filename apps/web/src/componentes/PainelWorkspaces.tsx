@@ -68,8 +68,8 @@ export function PainelWorkspaces({ aoVoltar, aoMudar }: Props) {
   async function ao_novo() {
     if (!usuario) return;
     const [contas, cartoes] = await Promise.all([
-      clienteApi.listar_contas(usuario.id),
-      clienteApi.listar_cartoes(usuario.id),
+      clienteApi.listar_contas(usuario.id, true),
+      clienteApi.listar_cartoes(usuario.id, true),
     ]);
     if (contas.length + cartoes.length === 0) {
       setInduzirContas(true);

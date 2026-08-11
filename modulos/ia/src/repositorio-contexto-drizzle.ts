@@ -27,19 +27,35 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async listarContas(usuarioId: string): Promise<Conta[]> {
-    // Conta é global do usuário — nunca filtrar por workspace.
+    // IA/WhatsApp seguem o workspace ativo (menu Contas lista com ?todos=1).
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(contaTabela)
-      .where(and(eq(contaTabela.usuarioId, usuarioId), eq(contaTabela.ativo, true)));
+      .where(
+        and(
+          eq(contaTabela.usuarioId, usuarioId),
+          inArray(contaTabela.workspaceId, escopo.workspaceIds),
+          eq(contaTabela.ativo, true),
+        ),
+      );
   }
 
   async listarCartoes(usuarioId: string): Promise<Cartao[]> {
-    // Cartão é global do usuário — nunca filtrar por workspace.
+    // IA/WhatsApp seguem o workspace ativo (menu Contas lista com ?todos=1).
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(cartaoTabela)
-      .where(and(eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true)));
+      .where(
+        and(
+          eq(cartaoTabela.usuarioId, usuarioId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
+          eq(cartaoTabela.ativo, true),
+        ),
+      );
   }
 
   async listarCategorias(usuarioId: string): Promise<Categoria[]> {
@@ -73,12 +89,15 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async buscarContaPorNome(usuarioId: string, nome: string): Promise<Conta | undefined> {
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(contaTabela)
       .where(
         and(
           eq(contaTabela.usuarioId, usuarioId),
+          inArray(contaTabela.workspaceId, escopo.workspaceIds),
           eq(contaTabela.ativo, true),
           ilike(contaTabela.nome, `%${nome}%`),
         ),
@@ -88,12 +107,15 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async buscarCartaoPorNome(usuarioId: string, nome: string): Promise<Cartao | undefined> {
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(cartaoTabela)
       .where(
         and(
           eq(cartaoTabela.usuarioId, usuarioId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
           eq(cartaoTabela.ativo, true),
           ilike(cartaoTabela.nome, `%${nome}%`),
         ),
@@ -202,6 +224,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async atualizarConta(usuarioId: string, contaId: string, dados: EntradaAtualizarConta): Promise<Conta> {
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
     const valores: Partial<typeof contaTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.saldoAtual != null) valores.saldoAtual = String(dados.saldoAtual);
@@ -211,7 +234,13 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const linhas = await this.banco
       .update(contaTabela)
       .set(valores)
-      .where(and(eq(contaTabela.id, contaId), eq(contaTabela.usuarioId, usuarioId)))
+      .where(
+        and(
+          eq(contaTabela.id, contaId),
+          eq(contaTabela.usuarioId, usuarioId),
+          inArray(contaTabela.workspaceId, escopo.workspaceIds),
+        ),
+      )
       .returning();
     const conta = linhas[0];
     if (!conta) throw new Error("Falha ao atualizar conta — conta não encontrada.");
@@ -219,6 +248,7 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async atualizarCartao(usuarioId: string, cartaoId: string, dados: EntradaAtualizarCartao): Promise<Cartao> {
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
     const valores: Partial<typeof cartaoTabela.$inferInsert> = { dataAtualizacao: new Date() };
     if (dados.nome != null) valores.nome = dados.nome;
     if (dados.limite != null) valores.limite = String(dados.limite);
@@ -241,7 +271,13 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     const linhas = await this.banco
       .update(cartaoTabela)
       .set(valores)
-      .where(and(eq(cartaoTabela.id, cartaoId), eq(cartaoTabela.usuarioId, usuarioId)))
+      .where(
+        and(
+          eq(cartaoTabela.id, cartaoId),
+          eq(cartaoTabela.usuarioId, usuarioId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
+        ),
+      )
       .returning();
     const cartao = linhas[0];
     if (!cartao) throw new Error("Falha ao atualizar cartão — cartão não encontrado.");

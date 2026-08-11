@@ -39,7 +39,7 @@ export function TelaContas() {
     setCarregando(true);
     setErro(null);
     try {
-      setContas(await clienteApi.listar_contas(usuario.id));
+      setContas(await clienteApi.listar_contas(usuario.id, true));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar as contas.");
     } finally {

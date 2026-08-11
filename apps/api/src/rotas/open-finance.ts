@@ -29,8 +29,9 @@ function fonte_desativada(resposta: FastifyReply) {
 }
 
 /**
- * Conexão pertence ao usuário. Checamos se o pouso técnico (`workspace_id`)
- * está em algum workspace em que ele é dono — não no workspace ativo da UI.
+ * Conexão é global do menu Contas (pertence ao usuário). Checamos se o pouso
+ * técnico (`workspace_id`) está em algum workspace em que ele é dono — não no
+ * workspace ativo da UI.
  */
 async function exigir_conexao_do_usuario(
   servico: ServicoConexaoOpenFinance,
@@ -100,6 +101,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if (!servico) return fonte_desativada(resposta);
 
     const { usuarioId } = schemaUsuarioDaRequisicao.parse(requisicao.query);
+    // Global: todas as conexões do usuário (fluxo do menu Contas).
     const workspaceIds = await obter_workspaces_do_usuario(usuarioId);
 
     return resposta.send(await servico.listar_conexoes(workspaceIds));

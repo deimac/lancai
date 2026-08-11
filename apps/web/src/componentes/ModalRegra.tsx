@@ -88,8 +88,8 @@ export function ModalRegra({ aberto, regra, categorias, aoFechar, aoSalvar }: Pr
     setErro(null);
     setAplicarExistentes(false);
     void Promise.all([
-      clienteApi.listar_contas(usuario.id),
-      clienteApi.listar_cartoes(usuario.id),
+      clienteApi.listar_contas(usuario.id, true),
+      clienteApi.listar_cartoes(usuario.id, true),
       clienteApi.listar_pessoas(usuario.id).catch(() => [] as PessoaResumo[]),
     ]).then(([c, k, p]) => {
       setContas(c);

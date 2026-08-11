@@ -93,8 +93,8 @@ export function TelaContasECartoes() {
     setErro(null);
     try {
       const [contasCarregadas, cartoesCarregados, fonteDesc] = await Promise.all([
-        clienteApi.listar_contas(usuario.id),
-        clienteApi.listar_cartoes(usuario.id),
+        clienteApi.listar_contas(usuario.id, true),
+        clienteApi.listar_cartoes(usuario.id, true),
         clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
       ]);
       setContas(contasCarregadas);
@@ -277,7 +277,7 @@ export function TelaContasECartoes() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
         <p className="text-sm text-texto-suave">
-          Contas e cartões do usuário (globais). Workspace só agrupa filtros e relatórios.
+          Contas, cartões e conexões do usuário. Workspace agrupa filtros e relatórios.
         </p>
       </div>
 
@@ -378,14 +378,6 @@ export function TelaContasECartoes() {
                       >
                         {perfilBadge.rotulo}
                       </span>
-                      {conta.workspaceNome ? (
-                        <span
-                          className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
-                          title="Workspace: agrupador para filtros e relatórios"
-                        >
-                          {conta.workspaceNome}
-                        </span>
-                      ) : null}
                       <span
                         className={unir_classes(
                           "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
@@ -471,14 +463,6 @@ export function TelaContasECartoes() {
                       >
                         {perfilBadge.rotulo}
                       </span>
-                      {cartao.workspaceNome ? (
-                        <span
-                          className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
-                          title="Workspace: agrupador para filtros e relatórios"
-                        >
-                          {cartao.workspaceNome}
-                        </span>
-                      ) : null}
                       <span
                         className={unir_classes(
                           "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
