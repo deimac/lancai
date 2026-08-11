@@ -229,10 +229,16 @@ export interface DashboardResposta {
   periodo: { de: string; ate: string };
   resumo: {
     saldoTotal: number;
+    quantidadeContas: number;
+    cartoesUsado: number;
+    cartoesDisponivel: number;
+    cartoesLimite: number;
+    quantidadeCartoes: number;
+    percentualUtilizadoCartoes: number | null;
     receitasMes: number;
     despesasMes: number;
+    resultadoMes: number;
     saldoPeriodo: number;
-    taxaEconomia: number | null;
   };
   naoClassificado: { quantidade: number; total: number };
   gastosPorCategoria: Array<{ categoriaNome: string; total: number }>;

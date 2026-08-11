@@ -10,7 +10,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CreditCard,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
 import { formatar_data_curta, formatar_mes, formatar_moeda } from "../lib/formatar";
@@ -142,55 +149,168 @@ export function TelaDashboard() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          {
-            rotulo: "Saldo em contas",
-            valor: formatar_moeda(dados.resumo.saldoTotal),
-            icone: Wallet,
-            tom: "text-texto",
-          },
-          {
-            rotulo: "Receitas do mês",
-            valor: formatar_moeda(dados.resumo.receitasMes),
-            icone: ArrowUpRight,
-            tom: "text-receita",
-          },
-          {
-            rotulo: "Despesas do mês",
-            valor: formatar_moeda(dados.resumo.despesasMes),
-            icone: ArrowDownRight,
-            tom: "text-despesa",
-            nota: dados.cartoes.some((c) => c.sincronizada)
-              ? "Cartão OF: fatura aberta pode vir incompleta até fechar"
-              : undefined,
-          },
-          {
-            rotulo: "Taxa de economia",
-            valor:
-              dados.resumo.taxaEconomia == null ? "—" : `${dados.resumo.taxaEconomia.toFixed(1)}%`,
-            icone: Wallet,
-            tom: "text-primaria",
-          },
-        ].map((card, indice) => (
+        <motion.div
+          {...fade}
+          transition={{ delay: 0 }}
+          className="rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+              Saldo disponível
+            </span>
+            <Wallet size={16} className="text-primaria" />
+          </div>
+          <p className="text-2xl font-semibold tracking-tight text-texto tabular-nums">
+            {formatar_moeda(dados.resumo.saldoTotal)}
+          </p>
+          <p className="mt-2 text-xs text-texto-suave">
+            {dados.resumo.quantidadeContas === 0
+              ? "Nenhuma conta cadastrada"
+              : dados.resumo.quantidadeContas === 1
+                ? "1 conta"
+                : `${dados.resumo.quantidadeContas} contas`}
+          </p>
+        </motion.div>
+
+        {dados.resumo.quantidadeCartoes === 0 ? (
           <motion.div
-            key={card.rotulo}
             {...fade}
-            transition={{ delay: indice * 0.05 }}
+            transition={{ delay: 0.05 }}
             className="rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20"
           >
-            <div className="mb-3 flex items-center justify-between text-texto-suave">
-              <span className="text-xs uppercase tracking-wide">{card.rotulo}</span>
-              <card.icone size={16} className={card.tom} />
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+                Cartões
+              </span>
+              <CreditCard size={16} className="text-texto-suave" />
             </div>
-            <p className={unir_classes("text-xl font-semibold tracking-tight", card.tom)}>
-              {card.valor}
-            </p>
-            {"nota" in card && card.nota ? (
-              <p className="mt-2 text-[11px] leading-snug text-texto-suave">{card.nota}</p>
-            ) : null}
+            <p className="text-base font-medium text-texto">Nenhum cartão cadastrado</p>
+            <Link
+              to="/contas#cartoes"
+              className="mt-3 inline-block text-sm font-medium text-primaria hover:underline"
+            >
+              Adicionar cartão
+            </Link>
           </motion.div>
-        ))}
+        ) : (
+          <Link to="/contas#cartoes" className="block">
+            <motion.div
+              {...fade}
+              transition={{ delay: 0.05 }}
+              className="h-full rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20 transition-colors hover:border-primaria/40"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+                  Cartões
+                </span>
+                <CreditCard size={16} className="text-primaria" />
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-despesa tabular-nums">
+                {formatar_moeda(dados.resumo.cartoesUsado)}{" "}
+                <span className="text-sm font-medium text-texto-suave">usado</span>
+              </p>
+              <p className="mt-1 text-sm font-medium text-receita tabular-nums">
+                {formatar_moeda(dados.resumo.cartoesDisponivel)} disponível
+              </p>
+              <p className="mt-2 text-xs text-texto-suave">
+                {dados.resumo.quantidadeCartoes === 1
+                  ? "1 cartão"
+                  : `${dados.resumo.quantidadeCartoes} cartões`}
+                {dados.resumo.percentualUtilizadoCartoes != null
+                  ? ` · ${dados.resumo.percentualUtilizadoCartoes.toFixed(1)}% utilizado`
+                  : ""}
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda/60">
+                <div
+                  className={unir_classes(
+                    "h-full rounded-full transition-all",
+                    (dados.resumo.percentualUtilizadoCartoes ?? 0) >= 80
+                      ? "bg-despesa"
+                      : "bg-primaria",
+                  )}
+                  style={{
+                    width: `${Math.min(100, dados.resumo.percentualUtilizadoCartoes ?? 0)}%`,
+                  }}
+                />
+              </div>
+            </motion.div>
+          </Link>
+        )}
+
+        <motion.div
+          {...fade}
+          transition={{ delay: 0.1 }}
+          className="rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+              Receitas do mês
+            </span>
+            <TrendingUp size={16} className="text-receita" />
+          </div>
+          <p className="text-2xl font-semibold tracking-tight text-receita tabular-nums">
+            {formatar_moeda(dados.resumo.receitasMes)}
+          </p>
+          <p className="mt-2 text-xs text-texto-suave">no mês</p>
+        </motion.div>
+
+        <motion.div
+          {...fade}
+          transition={{ delay: 0.15 }}
+          className="rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+              Despesas do mês
+            </span>
+            <TrendingDown size={16} className="text-despesa" />
+          </div>
+          <p className="text-2xl font-semibold tracking-tight text-despesa tabular-nums">
+            {formatar_moeda(dados.resumo.despesasMes)}
+          </p>
+          <p className="mt-2 text-xs text-texto-suave">
+            no mês
+            {dados.cartoes.some((c) => c.sincronizada)
+              ? " · cartão OF pode vir incompleto até fechar a fatura"
+              : ""}
+          </p>
+        </motion.div>
       </div>
+
+      <motion.div
+        {...fade}
+        transition={{ delay: 0.2 }}
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-5 py-4 shadow-sm shadow-black/20"
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={unir_classes(
+              "flex h-10 w-10 items-center justify-center rounded-xl",
+              dados.resumo.resultadoMes >= 0 ? "bg-receita/15" : "bg-despesa/15",
+            )}
+          >
+            <Activity
+              size={18}
+              className={dados.resumo.resultadoMes >= 0 ? "text-receita" : "text-despesa"}
+            />
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+              Resultado do mês
+            </p>
+            <p className="text-sm text-texto-suave">Receitas − despesas</p>
+          </div>
+        </div>
+        <p
+          className={unir_classes(
+            "text-2xl font-semibold tracking-tight tabular-nums",
+            dados.resumo.resultadoMes >= 0 ? "text-receita" : "text-despesa",
+          )}
+        >
+          {dados.resumo.resultadoMes >= 0 ? "+" : "−"}
+          {formatar_moeda(Math.abs(dados.resumo.resultadoMes))}
+        </p>
+      </motion.div>
 
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <motion.section

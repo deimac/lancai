@@ -13,12 +13,21 @@ export interface DashboardResposta {
   mes: string;
   periodo: { de: string; ate: string };
   resumo: {
+    /** Soma dos saldos das contas do escopo (não inclui cartões). */
     saldoTotal: number;
+    quantidadeContas: number;
+    cartoesUsado: number;
+    cartoesDisponivel: number;
+    cartoesLimite: number;
+    quantidadeCartoes: number;
+    /** 0–100; null se não houver limite. */
+    percentualUtilizadoCartoes: number | null;
     receitasMes: number;
     despesasMes: number;
+    /** Receitas − despesas do mês. */
+    resultadoMes: number;
+    /** Usado no gráfico de fluxo; não é KPI da área superior. */
     saldoPeriodo: number;
-    /** 0–100; null se não houve receita no mês. */
-    taxaEconomia: number | null;
   };
   naoClassificado: {
     quantidade: number;
@@ -76,12 +85,20 @@ export async function montar_dashboard(
   const historico = historicoVisao.dados;
   const cartoes = cartoesVisao.dados;
 
-  const taxaEconomia =
-    categoria.totalReceitas > 0
-      ? Math.round(
-          ((categoria.totalReceitas - categoria.totalDespesas) / categoria.totalReceitas) * 1000,
-        ) / 10
+  const cartoesUsado = arredondar(
+    cartoes.cartoes.reduce((soma, cartao) => soma + cartao.comprometido, 0),
+  );
+  const cartoesDisponivel = arredondar(
+    cartoes.cartoes.reduce((soma, cartao) => soma + cartao.disponivel, 0),
+  );
+  const cartoesLimite = arredondar(
+    cartoes.cartoes.reduce((soma, cartao) => soma + cartao.limite, 0),
+  );
+  const percentualUtilizadoCartoes =
+    cartoesLimite > 0
+      ? Math.round((cartoesUsado / cartoesLimite) * 1000) / 10
       : null;
+  const resultadoMes = arredondar(categoria.totalReceitas - categoria.totalDespesas);
 
   const naoClassificado = await contar_nao_classificados(usuarioId, periodo);
   const fluxoSaldo = montar_fluxo_saldo(saldos.totalGeral, historico.saldoPeriodo, historico.dias);
@@ -105,10 +122,16 @@ export async function montar_dashboard(
     periodo,
     resumo: {
       saldoTotal: saldos.totalGeral,
+      quantidadeContas: saldos.contas.length,
+      cartoesUsado,
+      cartoesDisponivel,
+      cartoesLimite,
+      quantidadeCartoes: cartoes.cartoes.length,
+      percentualUtilizadoCartoes,
       receitasMes: categoria.totalReceitas,
       despesasMes: categoria.totalDespesas,
+      resultadoMes,
       saldoPeriodo: historico.saldoPeriodo,
-      taxaEconomia,
     },
     naoClassificado,
     gastosPorCategoria: categoria.ranking,
@@ -124,6 +147,10 @@ export async function montar_dashboard(
       sincronizada: cartao.sincronizada,
     })),
   };
+}
+
+function arredondar(valor: number): number {
+  return Math.round(valor * 100) / 100;
 }
 
 async function contar_nao_classificados(
