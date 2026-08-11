@@ -112,7 +112,7 @@ A sincronização é **iniciada pelo provedor**, não por nós. A pesquisa da se
 
 Os passos 1 a 4 estão implementados em `ServicoIngestaoOpenFinance`, com a etapa síncrona separada da assíncrona: `receber` interpreta e grava, `processar` busca e ingere. A separação não é estética — é o que faz a idempotência funcionar, porque o registro do `eventoId` precisa acontecer antes de qualquer trabalho.
 
-Um cron continua existindo, com papel menor: reprocessar lote que falhou e **importar via GET** o extrato já coletado (sem disparar sync/`PATCH` — isso a Pluggy proíbe em lote). É rede de segurança, não o mecanismo principal (webhook). Falha no processamento fica gravada na coluna `erro` do evento; `POST /cron/open-finance-reprocessar` e `POST /cron/open-finance-importar-historico` (Bearer `CRON_SECRET`). Ver [15-OPERACAO.md](15-OPERACAO.md).
+Um cron continua existindo, com papel menor: reprocessar lote que falhou e **importar via GET** o extrato já coletado (sem disparar sync/`PATCH` — isso a Pluggy proíbe em lote). É rede de segurança, não o mecanismo principal (webhook) — e em **Meu Pluggy / Development** vira o caminho prático, porque o auto-sync de Production não existe e o `PATCH` do item é recusado. O cron GET filtra conexões stale, usa lookback configurável e lock por conexão. Falha no processamento fica gravada na coluna `erro` do evento; `POST /cron/open-finance-reprocessar` e `POST /cron/open-finance-importar-historico` (Bearer `CRON_SECRET`). Ver [15-OPERACAO.md](15-OPERACAO.md).
 
 ### Onde a movimentação pousa
 
@@ -223,11 +223,13 @@ Este documento dizia “o cron chama o endpoint de sync”. A Pluggy é explíci
 
 > *Batch process are prohibited due to abusive usage of the API, the sync process is owned and maintained by Pluggy.*
 
-A Pluggy sincroniza sozinha a cada 24, 12 ou 8 horas conforme o plano — e **auto-sync existe só em aplicação de produção**, não em sandbox. Nós não puxamos: reagimos ao webhook.
+A Pluggy sincroniza sozinha a cada 24, 12 ou 8 horas conforme o plano — e **auto-sync existe só em aplicação de produção**, não em sandbox nem em itens **Meu Pluggy**. Nós não fazemos batch de `PATCH`: reagimos ao webhook e, como rede de segurança, **lemos** (GET) o extrato já coletado.
 
-O que sobra para o nosso cron é reprocessar lote que falhou (`POST /cron/open-finance-reprocessar`). Isso é rede de segurança, não o mecanismo. Ver [ADR-015](adr/015-ingestao-por-webhook.md).
+Itens Meu Pluggy recusam `PATCH /items/{id}` (`MeuPluggy item cant be updated`). O LançAI trata isso como no-op em “Atualizar agora” e sempre completa com GET. Quem atualiza o dado no provedor é o app Meu Pluggy; o LançAI só espelha.
 
-A consequência boa: a regra “sync nunca dentro do turno de conversa” fica trivial de respeitar, porque a ingestão não é mais iniciada por nós em momento nenhum.
+O cron nosso: `POST /cron/open-finance-reprocessar` (eventos com erro) e `POST /cron/open-finance-importar-historico` (GET saldos + extrato, stale/lookback/lock). Ver [ADR-015](adr/015-ingestao-por-webhook.md) e [15-OPERACAO.md](15-OPERACAO.md).
+
+A regra “sync nunca dentro do turno de conversa” continua: GET periódico e webhook ficam fora do chat.
 
 ### 8.3 Eventos que interessam
 

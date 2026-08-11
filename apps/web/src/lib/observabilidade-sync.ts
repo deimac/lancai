@@ -2,8 +2,10 @@
  * Textos de observabilidade do sync (13-OPEN_FINANCE §7): atraso desde o
  * último sucesso e aviso quando a conexão ativa parece parada.
  *
- * Limiar 36h: em produção a Pluggy sincroniza a cada 8–24h; passar disso sem
- * sync sugere falha silenciosa ou sandbox sem auto-sync.
+ * Limiar 36h: em Production a Pluggy auto-synca a cada 8–24h; passar disso
+ * sem sync sugere falha silenciosa. Em Meu Pluggy / Development não há
+ * auto-sync empresarial — o atraso pode só significar que o app Meu Pluggy
+ * não coletou de novo (o LançAI só faz GET do que já existe).
  */
 export const HORAS_SYNC_ATRASADO = 36;
 

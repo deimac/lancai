@@ -198,6 +198,22 @@ describe("AdaptadorPluggy", () => {
       expect(refs[0]).not.toMatch(/[?&]from=/);
       expect(refs[1]).toContain("accountId=acc-b");
     });
+
+    it("respeita lookbackDias no dateFrom", async () => {
+      rede.responder("/accounts", {
+        results: [{ id: "acc-a", subtype: "CHECKING_ACCOUNT", name: "Corrente", balance: 1 }],
+      });
+
+      const refs = await adaptador.listar_referencias_historico(ITEM, { lookbackDias: 14 });
+      const match = refs[0]?.match(/dateFrom=(\d{4}-\d{2}-\d{2})/);
+      expect(match).toBeTruthy();
+      const desde = new Date(`${match![1]}T00:00:00.000Z`);
+      const hoje = new Date();
+      hoje.setUTCHours(0, 0, 0, 0);
+      const dias = Math.round((hoje.getTime() - desde.getTime()) / (24 * 60 * 60 * 1000));
+      expect(dias).toBeGreaterThanOrEqual(13);
+      expect(dias).toBeLessThanOrEqual(15);
+    });
   });
 
   describe("contas", () => {

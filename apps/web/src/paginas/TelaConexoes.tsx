@@ -73,15 +73,30 @@ const ROTULO_MOTIVO: Record<MotivoAtencao, string> = {
   erro_no_provedor: "Erro temporário na sincronização",
 };
 
+const COR_STATUS: Record<StatusConexao, string> = {
+  ativa: "text-texto-suave",
+  sincronizando: "text-aviso",
+  precisa_atencao: "text-aviso",
+  removida: "text-texto-suave",
+};
+
 function LinhaSync({ conexao }: { conexao: ConexaoDetalhada }) {
   const sync = texto_ultimo_sync(conexao.ultimoSyncEm);
   const lote = texto_ultimo_lote(conexao.ultimoResumoIngestao ?? null);
   const consentimento = texto_consentimento(conexao.consentimentoExpiraEm);
   const destacar =
     sync.atrasado && (conexao.status === "ativa" || conexao.status === "sincronizando");
+  const motivo =
+    conexao.motivoAtencao && conexao.status !== "removida"
+      ? ROTULO_MOTIVO[conexao.motivoAtencao]
+      : null;
 
   return (
     <>
+      <p className={unir_classes("mt-1 text-xs", COR_STATUS[conexao.status])}>
+        Status: {ROTULO_STATUS[conexao.status]}
+        {motivo ? ` · ${motivo}` : ""}
+      </p>
       <p
         className={unir_classes(
           "mt-1 text-xs",
@@ -89,8 +104,8 @@ function LinhaSync({ conexao }: { conexao: ConexaoDetalhada }) {
         )}
         title={
           destacar
-            ? "Sem sync há mais de 36 h — em produção o banco costuma atualizar sozinho"
-            : undefined
+            ? "Sem sync há mais de 36 h. Em Production a Pluggy costuma atualizar sozinha; em Meu Pluggy / sandbox o LançAI só lê o que o app já coletou — sincronize lá ou use Atualizar agora."
+            : "Última importação GET bem-sucedida no LançAI (não é o sync do banco)."
         }
       >
         {sync.linha}
@@ -655,10 +670,6 @@ function ListaConexoes({
               <p className="text-sm font-medium text-texto">
                 {conexao.instituicao ?? "Instituição conectada"}
               </p>
-              <p className="mt-1 text-xs text-texto-suave">
-                {ROTULO_STATUS[conexao.status]}
-                {conexao.motivoAtencao ? ` · ${ROTULO_MOTIVO[conexao.motivoAtencao]}` : ""}
-              </p>
               <LinhaSync conexao={conexao} />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -667,7 +678,7 @@ function ListaConexoes({
                   variante="fantasma"
                   disabled={ocupado || conexao.status === "sincronizando"}
                   onClick={() => aoAtualizar(conexao.id)}
-                  title="Pede ao banco um sync agora; o extrato chega pelo webhook"
+                  title="Lê saldos e extrato já coletados (GET). Em Meu Pluggy o PATCH é recusado — sincronize no app Meu Pluggy se os dados estiverem velhos."
                 >
                   <RefreshCw size={14} />
                   Atualizar agora
@@ -821,7 +832,7 @@ function DetalheConexao({
               variante="fantasma"
               disabled={ocupado || conexao.status === "sincronizando"}
               onClick={aoAtualizar}
-              title="Pede ao banco um sync agora; o extrato chega pelo webhook"
+              title="Lê saldos e extrato já coletados (GET). Em Meu Pluggy o PATCH é recusado — sincronize no app Meu Pluggy se os dados estiverem velhos."
             >
               <RefreshCw size={14} />
               Atualizar agora
@@ -851,13 +862,6 @@ function DetalheConexao({
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-texto-suave">Status</dt>
-            <dd className="font-medium text-texto">
-              {ROTULO_STATUS[conexao.status]}
-              {conexao.motivoAtencao ? ` · ${ROTULO_MOTIVO[conexao.motivoAtencao]}` : ""}
-            </dd>
-          </div>
-          <div>
             <dt className="text-xs text-texto-suave">Contas encontradas</dt>
             <dd className="font-medium text-texto">{contagem.contas}</dd>
           </div>
@@ -866,7 +870,9 @@ function DetalheConexao({
             <dd className="font-medium text-texto">{contagem.cartoes}</dd>
           </div>
         </dl>
-        <LinhaSync conexao={conexao} />
+        <div className="mt-2">
+          <LinhaSync conexao={conexao} />
+        </div>
       </Cartao>
 
       {semDestinoLocal && (
@@ -946,7 +952,8 @@ function DetalheConexao({
       <Cartao>
         <p className="text-sm font-semibold text-texto">Transações recentes</p>
         <p className="mt-1 text-xs text-texto-suave">
-          Fonte externa (Open Finance). Use &quot;Atualizar agora&quot; para pedir sync ao banco.
+          Fonte externa (Open Finance). &quot;Atualizar agora&quot; lê o extrato já coletado
+          (GET); em Meu Pluggy, sync do banco fica no app Meu Pluggy.
         </p>
         {carregandoTx ? (
           <p className="mt-3 text-sm text-texto-suave">Carregando transações...</p>

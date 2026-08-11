@@ -21,6 +21,7 @@ import {
   obter_escopo_leitura,
   obter_workspaces_do_usuario,
 } from "../servicos/escopo-workspace";
+import { liberar_lock_sync, tentar_adquirir_lock_sync } from "../servicos/lock-sync-conexao";
 import { obter_servico_conexao, obter_servico_ingestao } from "../servicos/open-finance";
 import { enriquecer_apos_ingestao } from "../servicos/pos-ingestao-open-finance";
 
@@ -146,6 +147,15 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
       resposta.raw.write(`${JSON.stringify(evento)}\n`);
     };
 
+    if (!tentar_adquirir_lock_sync(id)) {
+      escrever({
+        tipo: "erro",
+        erro: "Já existe uma sincronização em andamento para esta conexão. Aguarde e tente de novo.",
+      });
+      resposta.raw.end();
+      return;
+    }
+
     try {
       escrever({
         tipo: "progresso",
@@ -218,6 +228,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
           : bruto,
       });
     } finally {
+      liberar_lock_sync(id);
       resposta.raw.end();
     }
   });

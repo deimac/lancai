@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ConexaoDetalhada, ResumoIngestao } from "@lancai/open-finance";
-import { importar_historico_conexoes_open_finance } from "../servicos/importar-historico-open-finance";
+import {
+  esta_stale,
+  importar_historico_conexoes_open_finance,
+} from "../servicos/importar-historico-open-finance";
 
 function conexao(parcial: Partial<ConexaoDetalhada> & { id: string }): ConexaoDetalhada {
   return {
@@ -36,14 +39,33 @@ const log = {
   error: vi.fn(),
 } as unknown as Parameters<typeof importar_historico_conexoes_open_finance>[0]["log"];
 
+describe("esta_stale", () => {
+  const agora = new Date("2026-08-11T12:00:00.000Z");
+
+  it("trata null como stale", () => {
+    expect(esta_stale(null, agora, 240)).toBe(true);
+  });
+
+  it("respeita o limiar em minutos", () => {
+    expect(esta_stale(new Date("2026-08-11T10:00:00.000Z"), agora, 240)).toBe(false);
+    expect(esta_stale(new Date("2026-08-11T07:00:00.000Z"), agora, 240)).toBe(true);
+  });
+});
+
 describe("importar_historico_conexoes_open_finance", () => {
-  it("dryRun lista conexões sem importar", async () => {
-    const listar = vi.fn(async () => [conexao({ id: "a" }), conexao({ id: "b" })]);
+  it("dryRun lista só candidatas stale sem importar", async () => {
+    const agora = new Date("2026-08-11T12:00:00.000Z");
+    const listar = vi.fn(async () => [
+      conexao({ id: "fresca", ultimoSyncEm: new Date("2026-08-11T11:00:00.000Z") }),
+      conexao({ id: "stale", ultimoSyncEm: new Date("2026-08-11T06:00:00.000Z") }),
+    ]);
     const importar = vi.fn();
 
     const resultado = await importar_historico_conexoes_open_finance({
       log,
       dryRun: true,
+      agora,
+      staleAposMinutos: 240,
       deps: {
         listar,
         atualizarSaldos: vi.fn(),
@@ -55,7 +77,92 @@ describe("importar_historico_conexoes_open_finance", () => {
     expect(resultado.fonteAtiva).toBe(true);
     expect(resultado.dryRun).toBe(true);
     expect(resultado.considerados).toBe(2);
+    expect(resultado.puladasFrescas).toBe(1);
+    expect(resultado.detalhes).toEqual([
+      expect.objectContaining({ conexaoId: "stale" }),
+    ]);
     expect(importar).not.toHaveBeenCalled();
+  });
+
+  it("pula conexão fresca e importa só stale", async () => {
+    const agora = new Date("2026-08-11T12:00:00.000Z");
+    const listar = vi.fn(async () => [
+      conexao({ id: "fresca", ultimoSyncEm: new Date("2026-08-11T11:30:00.000Z") }),
+      conexao({ id: "stale", ultimoSyncEm: null }),
+    ]);
+    const importar = vi.fn(async () => resumo(2));
+    const locks = new Set<string>();
+
+    const resultado = await importar_historico_conexoes_open_finance({
+      log,
+      agora,
+      staleAposMinutos: 240,
+      lookbackDias: 14,
+      deps: {
+        listar,
+        atualizarSaldos: vi.fn(),
+        importar,
+        enriquecer: vi.fn(),
+        tentarLock: (id) => {
+          if (locks.has(id)) return false;
+          locks.add(id);
+          return true;
+        },
+        liberarLock: (id) => {
+          locks.delete(id);
+        },
+      },
+    });
+
+    expect(resultado.puladasFrescas).toBe(1);
+    expect(resultado.importadas).toBe(1);
+    expect(importar).toHaveBeenCalledTimes(1);
+    expect(importar).toHaveBeenCalledWith("stale", { lookbackDias: 365 });
+  });
+
+  it("usa lookback curto quando já houve sync", async () => {
+    const agora = new Date("2026-08-11T12:00:00.000Z");
+    const importar = vi.fn(async () => resumo(0));
+
+    await importar_historico_conexoes_open_finance({
+      log,
+      agora,
+      staleAposMinutos: 60,
+      lookbackDias: 14,
+      deps: {
+        listar: async () => [
+          conexao({ id: "c1", ultimoSyncEm: new Date("2026-08-11T10:00:00.000Z") }),
+        ],
+        atualizarSaldos: vi.fn(),
+        importar,
+        enriquecer: vi.fn(),
+        tentarLock: () => true,
+        liberarLock: () => undefined,
+      },
+    });
+
+    expect(importar).toHaveBeenCalledWith("c1", { lookbackDias: 14 });
+  });
+
+  it("pula quando o lock está ocupado", async () => {
+    const resultado = await importar_historico_conexoes_open_finance({
+      log,
+      staleAposMinutos: 1,
+      deps: {
+        listar: async () => [conexao({ id: "ocupada" })],
+        atualizarSaldos: vi.fn(),
+        importar: vi.fn(),
+        enriquecer: vi.fn(),
+        tentarLock: () => false,
+        liberarLock: vi.fn(),
+      },
+    });
+
+    expect(resultado.puladasLock).toBe(1);
+    expect(resultado.importadas).toBe(0);
+    expect(resultado.detalhes[0]).toEqual(
+      expect.objectContaining({ conexaoId: "ocupada", pulada: "lock" }),
+    );
   });
 
   it("continua o lote quando uma conexão falha", async () => {
@@ -71,7 +178,15 @@ describe("importar_historico_conexoes_open_finance", () => {
 
     const resultado = await importar_historico_conexoes_open_finance({
       log,
-      deps: { listar, atualizarSaldos, importar, enriquecer },
+      staleAposMinutos: 1,
+      deps: {
+        listar,
+        atualizarSaldos,
+        importar,
+        enriquecer,
+        tentarLock: () => true,
+        liberarLock: () => undefined,
+      },
     });
 
     expect(resultado.considerados).toBe(2);
@@ -79,7 +194,7 @@ describe("importar_historico_conexoes_open_finance", () => {
     expect(resultado.falhas).toBe(1);
     expect(resultado.movimentosCriados).toBe(3);
     expect(importar).toHaveBeenCalledTimes(1);
-    expect(importar).toHaveBeenCalledWith("ok");
+    expect(importar).toHaveBeenCalledWith("ok", { lookbackDias: 365 });
     expect(enriquecer).toHaveBeenCalledTimes(1);
     expect(resultado.detalhes).toEqual([
       expect.objectContaining({ conexaoId: "falha", ok: false, erro: expect.stringContaining("timeout") }),
@@ -93,15 +208,18 @@ describe("importar_historico_conexoes_open_finance", () => {
 
     await importar_historico_conexoes_open_finance({
       log,
+      staleAposMinutos: 1,
       deps: {
         listar: async () => [conexao({ id: "c1" })],
         atualizarSaldos,
         importar,
         enriquecer: vi.fn(),
+        tentarLock: () => true,
+        liberarLock: () => undefined,
       },
     });
 
     expect(atualizarSaldos).toHaveBeenCalledWith("c1");
-    expect(importar).toHaveBeenCalledWith("c1");
+    expect(importar).toHaveBeenCalledWith("c1", { lookbackDias: 365 });
   });
 });

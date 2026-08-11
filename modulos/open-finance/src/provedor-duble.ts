@@ -205,7 +205,10 @@ export class ProvedorDuble implements ProvedorOpenFinance {
     return this.contas.get(conexaoExterna) ?? [];
   }
 
-  async listar_referencias_historico(conexaoExterna: string): Promise<string[]> {
+  async listar_referencias_historico(
+    conexaoExterna: string,
+    _opcoes?: { lookbackDias?: number },
+  ): Promise<string[]> {
     const todas = this.movimentacoes.get(conexaoExterna) ?? [];
     return todas.length > 0 ? [`${conexaoExterna}#0`] : [];
   }

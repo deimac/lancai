@@ -143,8 +143,14 @@ export interface ProvedorOpenFinance {
    * Referências para ler o extrato **já coletado** no provedor (GET), sem
    * disparar sync com o banco. Necessário ao registrar um itemId existente
    * (Meu Pluggy): o histórico não chega de novo por webhook.
+   *
+   * `lookbackDias` limita `dateFrom` (padrão do adaptador: 365). Cron usa
+   * janela menor; primeira sync / “Atualizar agora” costuma pedir o máximo.
    */
-  listar_referencias_historico(conexaoExterna: string): Promise<ReferenciaLote[]>;
+  listar_referencias_historico(
+    conexaoExterna: string,
+    opcoes?: { lookbackDias?: number },
+  ): Promise<ReferenciaLote[]>;
 
   /** Traduz a página que o webhook anunciou. O cursor vem do provedor. */
   coletar_lote(referencia: ReferenciaLote): Promise<LoteMovimentacoes>;

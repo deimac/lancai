@@ -165,13 +165,19 @@ export class ServicoIngestaoOpenFinance {
    */
   async importar_historico(
     conexaoId: string,
-    opcoes: { aoProgresso?: (progresso: ProgressoImportacao) => void } = {},
+    opcoes: {
+      aoProgresso?: (progresso: ProgressoImportacao) => void;
+      /** Janela GET `dateFrom` (dias). Sem valor, o adaptador usa o padrão (365). */
+      lookbackDias?: number;
+    } = {},
   ): Promise<ResumoIngestao> {
     const conexao = await this.repositorio.obterConexaoPorId(conexaoId);
     if (!conexao) throw new ErroConexaoNaoEncontrada(conexaoId);
     if (conexao.status === "removida") return resumo_vazio();
 
-    const referencias = await this.provedor.listar_referencias_historico(conexao.idExterno);
+    const referencias = await this.provedor.listar_referencias_historico(conexao.idExterno, {
+      lookbackDias: opcoes.lookbackDias,
+    });
     const total = resumo_vazio();
     const contasTotal = Math.max(referencias.length, 1);
     const basePercentual = 12;

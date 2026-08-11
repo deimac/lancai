@@ -84,16 +84,20 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
   }
 
   /**
-   * Lê até 365 dias já materializados na Pluggy. Não chama PATCH — só GET.
+   * Lê extrato já materializado na Pluggy. Não chama PATCH — só GET.
    * Usado ao registrar itemId do Meu Pluggy, cujo webhook de criação já passou.
    *
    * Em `/v2/transactions` o filtro de data é `dateFrom` (não `from`/`pageSize`
    * do endpoint v1 depreciado).
    */
-  async listar_referencias_historico(conexaoExterna: string): Promise<ReferenciaLote[]> {
+  async listar_referencias_historico(
+    conexaoExterna: string,
+    opcoes?: { lookbackDias?: number },
+  ): Promise<ReferenciaLote[]> {
     const contas = await this.listar_contas_externas(conexaoExterna);
+    const dias = Math.min(Math.max(Math.floor(opcoes?.lookbackDias ?? 365), 1), 365);
     const desde = new Date();
-    desde.setUTCDate(desde.getUTCDate() - 365);
+    desde.setUTCDate(desde.getUTCDate() - dias);
     const dateFrom = desde.toISOString().slice(0, 10);
 
     return contas.map(
