@@ -110,24 +110,14 @@ export async function excluir_destino_financeiro(entrada: {
     await banco
       .delete(cartao)
       .where(
-        and(
-          inArray(cartao.id, cartaoIds),
-          eq(cartao.usuarioId, entrada.usuarioId),
-          inArray(cartao.workspaceId, entrada.workspaceIds),
-        ),
+        and(inArray(cartao.id, cartaoIds), eq(cartao.usuarioId, entrada.usuarioId)),
       );
   }
 
   if (contaIds.length > 0) {
     await banco
       .delete(conta)
-      .where(
-        and(
-          inArray(conta.id, contaIds),
-          eq(conta.usuarioId, entrada.usuarioId),
-          inArray(conta.workspaceId, entrada.workspaceIds),
-        ),
-      );
+      .where(and(inArray(conta.id, contaIds), eq(conta.usuarioId, entrada.usuarioId)));
   }
 
   return { contaIds, cartaoIds };

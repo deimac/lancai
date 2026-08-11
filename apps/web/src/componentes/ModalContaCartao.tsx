@@ -104,7 +104,7 @@ export function ModalContaCartao({
     setPlasticoVisivel(false);
     if (editando && alvo) {
       setNome(alvo.nome);
-      setPerfil(alvo.perfil);
+      setPerfil(alvo.perfil === "pj" ? "pj" : "pf");
       if (eh_cartao(alvo)) {
         setSaldo(valor_para_mascara(Number(alvo.saldo ?? 0)));
         setLimite(valor_para_mascara(Number(alvo.limite ?? 0)));
@@ -333,8 +333,8 @@ export function ModalContaCartao({
               onChange={(e) => setPerfil(e.target.value as Perfil)}
               className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto"
             >
-              <option value="pf">Pessoa física</option>
-              <option value="pj">Pessoa jurídica</option>
+              <option value="pf">Física</option>
+              <option value="pj">Jurídica</option>
             </select>
           </label>
 
@@ -459,7 +459,7 @@ export function ModalContaCartao({
 
           {sincronizada && (
             <p className="text-xs text-texto-suave">
-              Sincronizado: saldo e limite vêm do banco. Nome, perfil (PF/PJ), datas da fatura e
+              Sincronizado: saldo e limite vêm do banco. Nome, perfil (Física/Jurídica), datas da fatura e
               dados do plástico você pode complementar aqui.
             </p>
           )}

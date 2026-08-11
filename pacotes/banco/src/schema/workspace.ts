@@ -3,8 +3,8 @@ import { papelWorkspaceEnum } from "./enums";
 import { usuario } from "./usuario";
 
 /**
- * Organizador de contas/cartões/conexões — só nome (+ descrição opcional).
- * PF/PJ vive em conta/cartão/movimento, não no workspace. Ver ADR-013.
+ * Agrupador para filtros e relatórios (movimentos). Contas e cartões são
+ * globais do usuário — não se listam filtrando por workspace. Ver ADR-013.
  */
 export const workspace = pgTable("workspace", {
   id: uuid("id").primaryKey().defaultRandom(),

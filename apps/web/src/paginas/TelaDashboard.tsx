@@ -144,7 +144,7 @@ export function TelaDashboard() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
-            rotulo: "Saldo total",
+            rotulo: "Saldo em contas",
             valor: formatar_moeda(dados.resumo.saldoTotal),
             icone: Wallet,
             tom: "text-texto",
@@ -337,7 +337,9 @@ export function TelaDashboard() {
               >
                 <div>
                   <p className="font-medium">{conta.nome}</p>
-                  <p className="text-xs uppercase text-texto-suave">{conta.perfil}</p>
+                  <p className="text-xs text-texto-suave">
+                    {conta.perfil === "pj" ? "Jurídica" : "Física"}
+                  </p>
                 </div>
                 <span className="font-medium">{formatar_moeda(conta.saldoAtual)}</span>
               </li>

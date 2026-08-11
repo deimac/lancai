@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   cartao,
-  listar_workspaces_do_usuario,
   mapear_nomes_workspaces,
+  movimento,
   obter_banco,
   usuario as usuarioTabela,
 } from "@lancai/banco";
@@ -19,7 +19,7 @@ import {
   schemaPatchCartaoApi,
   schemaRevelarPlasticoApi,
 } from "@lancai/tipos";
-import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
+import { exigir_workspace_escrita } from "../servicos/escopo-workspace";
 import { excluir_destino_financeiro } from "../servicos/excluir-destino-financeiro";
 import { mapear_origem_cartoes, type MetaOrigem } from "../servicos/origem-conta-cartao";
 import { verificar_senha_usuario } from "../verificar-senha-usuario";
@@ -101,30 +101,17 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId, todos } = requisicao.query as { usuarioId?: string; todos?: string };
+    const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
     if (!usuarioId) {
       const linhas = await banco.select().from(cartao).where(eq(cartao.ativo, true));
       return linhas.map((linha) => cartao_publico(linha, undefined, new Map()));
     }
-    const escopo = await obter_escopo_leitura(usuarioId);
-    let workspaceIds = escopo.workspaceIds;
-    if (todos === "1") {
-      const lista = await listar_workspaces_do_usuario(banco, usuarioId);
-      workspaceIds = lista.filter((w) => !w.sintetico).map((w) => w.id);
-    }
-    if (workspaceIds.length === 0) return [];
-
+    // Cartão é global do usuário — nunca filtrar por workspace ativo.
     const linhas = await banco
       .select()
       .from(cartao)
-      .where(
-        and(
-          eq(cartao.usuarioId, usuarioId),
-          inArray(cartao.workspaceId, workspaceIds),
-          eq(cartao.ativo, true),
-        ),
-      );
+      .where(and(eq(cartao.usuarioId, usuarioId), eq(cartao.ativo, true)));
     const origem = await mapear_origem_cartoes(linhas.map((item) => item.id));
     const nomes = await mapear_nomes_workspaces(
       banco,
@@ -138,18 +125,12 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const { id } = requisicao.params as { id: string };
     const dados = schemaRevelarPlasticoApi.parse(requisicao.body);
     const banco = obter_banco();
-    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
       .from(cartao)
       .where(
-        and(
-          eq(cartao.id, id),
-          eq(cartao.usuarioId, dados.usuarioId),
-          inArray(cartao.workspaceId, escopo.workspaceIds),
-          eq(cartao.ativo, true),
-        ),
+        and(eq(cartao.id, id), eq(cartao.usuarioId, dados.usuarioId), eq(cartao.ativo, true)),
       )
       .limit(1);
 
@@ -203,18 +184,12 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const { id } = requisicao.params as { id: string };
     const dados = schemaPatchCartaoApi.parse(requisicao.body);
     const banco = obter_banco();
-    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
       .from(cartao)
       .where(
-        and(
-          eq(cartao.id, id),
-          eq(cartao.usuarioId, dados.usuarioId),
-          inArray(cartao.workspaceId, escopo.workspaceIds),
-          eq(cartao.ativo, true),
-        ),
+        and(eq(cartao.id, id), eq(cartao.usuarioId, dados.usuarioId), eq(cartao.ativo, true)),
       )
       .limit(1);
 
@@ -256,6 +231,14 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       .where(eq(cartao.id, id))
       .returning();
 
+    // Extrato Open Finance herda o perfil do cartão — alinhar ao salvar.
+    if (dados.perfil != null && dados.perfil !== existente.perfil) {
+      await banco
+        .update(movimento)
+        .set({ perfil: dados.perfil, dataAtualizacao: new Date() })
+        .where(and(eq(movimento.cartaoId, id), eq(movimento.fonte, "open_finance")));
+    }
+
     const nomes = await mapear_nomes_workspaces(banco, [atualizado!.workspaceId]);
     const origem = await mapear_origem_cartoes([atualizado!.id]);
     return cartao_publico(atualizado!, origem.get(atualizado!.id), nomes);
@@ -265,18 +248,12 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
     const { id } = requisicao.params as { id: string };
     const dados = schemaExcluirCartaoApi.parse(requisicao.body);
     const banco = obter_banco();
-    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
       .from(cartao)
       .where(
-        and(
-          eq(cartao.id, id),
-          eq(cartao.usuarioId, dados.usuarioId),
-          inArray(cartao.workspaceId, escopo.workspaceIds),
-          eq(cartao.ativo, true),
-        ),
+        and(eq(cartao.id, id), eq(cartao.usuarioId, dados.usuarioId), eq(cartao.ativo, true)),
       )
       .limit(1);
 
@@ -286,7 +263,7 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
 
     await excluir_destino_financeiro({
       usuarioId: dados.usuarioId,
-      workspaceIds: escopo.workspaceIds,
+      workspaceIds: [existente.workspaceId],
       cartaoId: id,
     });
 

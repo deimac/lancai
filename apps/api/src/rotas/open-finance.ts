@@ -16,7 +16,11 @@ import {
   obter_provedor_duble,
   sincronizar_conexao_duble,
 } from "../servicos/duble-open-finance";
-import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
+import {
+  exigir_workspace_escrita,
+  obter_escopo_leitura,
+  obter_workspaces_do_usuario,
+} from "../servicos/escopo-workspace";
 import { obter_servico_conexao, obter_servico_ingestao } from "../servicos/open-finance";
 import { enriquecer_apos_ingestao } from "../servicos/pos-ingestao-open-finance";
 
@@ -25,28 +29,26 @@ function fonte_desativada(resposta: FastifyReply) {
 }
 
 /**
- * Uma conexão dá acesso ao extrato de uma pessoa, então cada rota que a toca
- * confirma que ela pertence ao workspace de quem pediu. A checagem é por
- * workspace e não por usuário porque é o workspace que delimita os dados
- * (ADR-013), e na F6 ele passa a ter mais de um membro.
+ * Conexão pertence ao usuário. Checamos se o pouso técnico (`workspace_id`)
+ * está em algum workspace em que ele é dono — não no workspace ativo da UI.
  */
 async function exigir_conexao_do_usuario(
   servico: ServicoConexaoOpenFinance,
   conexaoId: string,
   usuarioId: string,
 ) {
-  const escopo = await obter_escopo_leitura(usuarioId);
+  const workspaceIds = await obter_workspaces_do_usuario(usuarioId);
   const detalhe = await servico.detalhar(conexaoId);
 
   /**
    * Mesma resposta de conexão inexistente, de propósito: distinguir "não existe"
    * de "não é sua" conta quem sonda identificadores quais deles são válidos.
    */
-  if (!escopo.workspaceIds.includes(detalhe.conexao.workspaceId)) {
+  if (!workspaceIds.includes(detalhe.conexao.workspaceId)) {
     return { erro: `conexão não encontrada: ${conexaoId}` } as const;
   }
 
-  return { detalhe, workspaceId: detalhe.conexao.workspaceId, escopo } as const;
+  return { detalhe, workspaceId: detalhe.conexao.workspaceId, workspaceIds } as const;
 }
 
 export async function registrar_rotas_open_finance(app: FastifyInstance) {
@@ -98,9 +100,9 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if (!servico) return fonte_desativada(resposta);
 
     const { usuarioId } = schemaUsuarioDaRequisicao.parse(requisicao.query);
-    const escopo = await obter_escopo_leitura(usuarioId);
+    const workspaceIds = await obter_workspaces_do_usuario(usuarioId);
 
-    return resposta.send(await servico.listar_conexoes(escopo.workspaceIds));
+    return resposta.send(await servico.listar_conexoes(workspaceIds));
   });
 
   app.get("/conexoes/:id", async (requisicao, resposta) => {

@@ -47,14 +47,14 @@ export type ResultadoCriarMovimento = ResultadoOperacaoPersistencia;
 
 /**
  * O que a ingestão precisa saber e que o evento não carrega, porque não é Fato.
- * Uma transação recém-chegada da instituição ainda não tem categoria nem perfil
- * — quem define isso é o Conhecimento, depois. Até lá ela pousa na categoria
- * indicada aqui e fica visível para classificação.
+ * Categoria inicial vem daqui; o perfil do movimento segue o da conta/cartão
+ * destino (com `perfilPadrao` só como fallback).
  */
 export interface ContextoIngestao {
   usuarioId: string;
   criadoPor: string;
   categoriaIdNaoClassificado: string;
+  /** Usado só se a conta/cartão do evento não estiver acessível. */
   perfilPadrao: "pf" | "pj";
 }
 
@@ -267,6 +267,22 @@ export class MotorFinanceiro {
     await this.repositorio.atualizarDadosInstitucionaisConta(contaId, dados);
   }
 
+  /** Perfil PF/PJ da conta ou cartão — usado ao materializar irmãos na mesma conexão. */
+  async obter_perfil(entrada: {
+    contaId?: string | null;
+    cartaoId?: string | null;
+  }): Promise<"pf" | "pj" | undefined> {
+    if (entrada.cartaoId) {
+      const cartao = await this.repositorio.obterCartao(entrada.cartaoId);
+      if (cartao?.perfil === "pf" || cartao?.perfil === "pj") return cartao.perfil;
+    }
+    if (entrada.contaId) {
+      const conta = await this.repositorio.obterConta(entrada.contaId);
+      if (conta?.perfil === "pf" || conta?.perfil === "pj") return conta.perfil;
+    }
+    return undefined;
+  }
+
   /** Leitura usada pela projeção de parcelas Open Finance incompletas. */
   async listar_movimentos_parcelados_do_cartao(cartaoId: string) {
     return this.repositorio.listarMovimentosParceladosDoCartao(cartaoId);
@@ -287,6 +303,9 @@ export class MotorFinanceiro {
     const auditorias: NovaAuditoria[] = [];
     const saldosPorConta = new Map<string, number>();
     let duplicados = 0;
+
+    const perfilPorConta = new Map<string, "pf" | "pj">();
+    const perfilPorCartao = new Map<string, "pf" | "pj">();
 
     for (const eventoBruto of eventos) {
       const evento = schemaEventoFinanceiroNormalizado.parse(eventoBruto);
@@ -311,6 +330,13 @@ export class MotorFinanceiro {
         }
       }
 
+      const perfil = await this.perfil_destino_ingestao(
+        { contaId: evento.contaId, cartaoId: evento.cartaoId },
+        contexto.perfilPadrao,
+        perfilPorConta,
+        perfilPorCartao,
+      );
+
       const movimentoId = randomUUID();
       const novoMovimento: NovoMovimento = {
         id: movimentoId,
@@ -326,7 +352,7 @@ export class MotorFinanceiro {
         tipo: evento.tipo,
         status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
         ...parcelamento_em_colunas(evento.parcelamento),
-        perfil: contexto.perfilPadrao,
+        perfil,
         dataMovimento: evento.ocorridoEm,
         contaId: evento.contaId,
         cartaoId: evento.cartaoId,
@@ -1290,6 +1316,37 @@ export class MotorFinanceiro {
     }));
 
     return { novasParcelas };
+  }
+
+  /**
+   * Perfil do movimento na ingestão: herda da conta/cartão destino.
+   * `perfilPadrao` só entra se o destino não for encontrado.
+   */
+  private async perfil_destino_ingestao(
+    destino: { contaId?: string | null; cartaoId?: string | null },
+    fallback: "pf" | "pj",
+    cacheConta: Map<string, "pf" | "pj">,
+    cacheCartao: Map<string, "pf" | "pj">,
+  ): Promise<"pf" | "pj"> {
+    if (destino.cartaoId) {
+      const emCache = cacheCartao.get(destino.cartaoId);
+      if (emCache) return emCache;
+      const cartao = await this.repositorio.obterCartao(destino.cartaoId);
+      if (cartao?.perfil === "pf" || cartao?.perfil === "pj") {
+        cacheCartao.set(destino.cartaoId, cartao.perfil);
+        return cartao.perfil;
+      }
+    }
+    if (destino.contaId) {
+      const emCache = cacheConta.get(destino.contaId);
+      if (emCache) return emCache;
+      const conta = await this.repositorio.obterConta(destino.contaId);
+      if (conta?.perfil === "pf" || conta?.perfil === "pj") {
+        cacheConta.set(destino.contaId, conta.perfil);
+        return conta.perfil;
+      }
+    }
+    return fallback;
   }
 }
 

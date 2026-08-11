@@ -33,6 +33,16 @@ function para_numero(valor: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function badge_perfil(perfil: string | undefined) {
+  const pj = perfil === "pj";
+  return {
+    rotulo: pj ? "Jurídica" : "Física",
+    classe: pj
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : "border-borda bg-fundo/60 text-texto-suave",
+  };
+}
+
 function badge_origem(item: {
   sincronizada?: boolean;
   origem?: string;
@@ -83,7 +93,6 @@ export function TelaContasECartoes() {
     setErro(null);
     try {
       const [contasCarregadas, cartoesCarregados, fonteDesc] = await Promise.all([
-        // Respeita o workspace ativo (sem `todos`): visão Geral agrega; workspace específico filtra.
         clienteApi.listar_contas(usuario.id),
         clienteApi.listar_cartoes(usuario.id),
         clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
@@ -268,7 +277,7 @@ export function TelaContasECartoes() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
         <p className="text-sm text-texto-suave">
-          Todas as contas e cartões — novos cadastros e conexões vão para o workspace ativo
+          Contas e cartões do usuário (globais). Workspace só agrupa filtros e relatórios.
         </p>
       </div>
 
@@ -347,6 +356,7 @@ export function TelaContasECartoes() {
           <ul className="flex flex-col gap-2">
             {contas.map((conta, i) => {
               const badge = badge_origem(conta);
+              const perfilBadge = badge_perfil(conta.perfil);
               const saldo = para_numero(conta.saldoAtual);
               return (
                 <motion.li
@@ -359,8 +369,20 @@ export function TelaContasECartoes() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate font-medium text-texto">{conta.nome}</p>
+                      <span
+                        className={unir_classes(
+                          "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                          perfilBadge.classe,
+                        )}
+                        title="Perfil da conta"
+                      >
+                        {perfilBadge.rotulo}
+                      </span>
                       {conta.workspaceNome ? (
-                        <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
+                        <span
+                          className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
+                          title="Workspace: agrupador para filtros e relatórios"
+                        >
                           {conta.workspaceNome}
                         </span>
                       ) : null}
@@ -423,6 +445,7 @@ export function TelaContasECartoes() {
           <ul className="flex flex-col gap-2">
             {cartoes.map((cartao, i) => {
               const badge = badge_origem(cartao);
+              const perfilBadge = badge_perfil(cartao.perfil);
               return (
                 <motion.li
                   key={cartao.id}
@@ -439,8 +462,20 @@ export function TelaContasECartoes() {
                           <span className="text-texto-suave"> ···· {cartao.final4}</span>
                         ) : null}
                       </p>
+                      <span
+                        className={unir_classes(
+                          "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                          perfilBadge.classe,
+                        )}
+                        title="Perfil do cartão"
+                      >
+                        {perfilBadge.rotulo}
+                      </span>
                       {cartao.workspaceNome ? (
-                        <span className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave">
+                        <span
+                          className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
+                          title="Workspace: agrupador para filtros e relatórios"
+                        >
                           {cartao.workspaceNome}
                         </span>
                       ) : null}

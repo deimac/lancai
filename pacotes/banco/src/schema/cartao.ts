@@ -6,6 +6,7 @@ import { workspace } from "./workspace";
 
 export const cartao = pgTable("cartao", {
   id: uuid("id").primaryKey().defaultRandom(),
+  /** Pouso técnico / agrupador; cartão é global do usuário — leituras não filtram por isto. */
   workspaceId: uuid("workspace_id")
     .notNull()
     .references(() => workspace.id),

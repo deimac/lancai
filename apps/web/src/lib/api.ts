@@ -405,9 +405,8 @@ export const clienteApi = {
     });
   },
 
-  listar_contas(usuarioId: string, todos = false): Promise<ContaResumo[]> {
-    const qs = todos ? `&todos=1` : "";
-    return requisitar<ContaResumo[]>(`/contas?usuarioId=${usuarioId}${qs}`);
+  listar_contas(usuarioId: string): Promise<ContaResumo[]> {
+    return requisitar<ContaResumo[]>(`/contas?usuarioId=${usuarioId}`);
   },
 
   criar_conta(dados: {
@@ -449,9 +448,8 @@ export const clienteApi = {
     });
   },
 
-  listar_cartoes(usuarioId: string, todos = false): Promise<CartaoResumo[]> {
-    const qs = todos ? `&todos=1` : "";
-    return requisitar<CartaoResumo[]>(`/cartoes?usuarioId=${usuarioId}${qs}`);
+  listar_cartoes(usuarioId: string): Promise<CartaoResumo[]> {
+    return requisitar<CartaoResumo[]>(`/cartoes?usuarioId=${usuarioId}`);
   },
 
   criar_cartao(dados: {

@@ -23,13 +23,8 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarContas(usuarioId: string, perfil?: Perfil) {
-    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
-    if (escopo.workspaceIds.length === 0) return [];
-    const condicoes = [
-      eq(contaTabela.usuarioId, usuarioId),
-      inArray(contaTabela.workspaceId, escopo.workspaceIds),
-      eq(contaTabela.ativo, true),
-    ];
+    // Conta é global do usuário — nunca filtrar por workspace.
+    const condicoes = [eq(contaTabela.usuarioId, usuarioId), eq(contaTabela.ativo, true)];
     if (perfil) condicoes.push(eq(contaTabela.perfil, perfil));
     return this.banco
       .select()
@@ -38,13 +33,8 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarCartoes(usuarioId: string, perfil?: Perfil) {
-    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
-    if (escopo.workspaceIds.length === 0) return [];
-    const condicoes = [
-      eq(cartaoTabela.usuarioId, usuarioId),
-      inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
-      eq(cartaoTabela.ativo, true),
-    ];
+    // Cartão é global do usuário — nunca filtrar por workspace.
+    const condicoes = [eq(cartaoTabela.usuarioId, usuarioId), eq(cartaoTabela.ativo, true)];
     if (perfil) condicoes.push(eq(cartaoTabela.perfil, perfil));
     return this.banco
       .select()

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   conta,
-  listar_workspaces_do_usuario,
   mapear_nomes_workspaces,
+  movimento,
   obter_banco,
 } from "@lancai/banco";
 import {
@@ -11,7 +11,7 @@ import {
   schemaExcluirContaApi,
   schemaPatchContaApi,
 } from "@lancai/tipos";
-import { exigir_workspace_escrita, obter_escopo_leitura } from "../servicos/escopo-workspace";
+import { exigir_workspace_escrita } from "../servicos/escopo-workspace";
 import { excluir_destino_financeiro } from "../servicos/excluir-destino-financeiro";
 import { mapear_origem_contas, type MetaOrigem } from "../servicos/origem-conta-cartao";
 
@@ -65,29 +65,16 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId, todos } = requisicao.query as { usuarioId?: string; todos?: string };
+    const { usuarioId } = requisicao.query as { usuarioId?: string };
     const banco = obter_banco();
     if (!usuarioId) {
       return banco.select().from(conta).where(eq(conta.ativo, true));
     }
-    const escopo = await obter_escopo_leitura(usuarioId);
-    let workspaceIds = escopo.workspaceIds;
-    if (todos === "1") {
-      const lista = await listar_workspaces_do_usuario(banco, usuarioId);
-      workspaceIds = lista.filter((w) => !w.sintetico).map((w) => w.id);
-    }
-    if (workspaceIds.length === 0) return [];
-
+    // Conta é global do usuário — nunca filtrar por workspace ativo.
     const linhas = await banco
       .select()
       .from(conta)
-      .where(
-        and(
-          eq(conta.usuarioId, usuarioId),
-          inArray(conta.workspaceId, workspaceIds),
-          eq(conta.ativo, true),
-        ),
-      );
+      .where(and(eq(conta.usuarioId, usuarioId), eq(conta.ativo, true)));
     const origem = await mapear_origem_contas(linhas.map((item) => item.id));
     const nomes = await mapear_nomes_workspaces(
       banco,
@@ -112,18 +99,12 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
     const { id } = requisicao.params as { id: string };
     const dados = schemaPatchContaApi.parse(requisicao.body);
     const banco = obter_banco();
-    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
       .from(conta)
       .where(
-        and(
-          eq(conta.id, id),
-          eq(conta.usuarioId, dados.usuarioId),
-          inArray(conta.workspaceId, escopo.workspaceIds),
-          eq(conta.ativo, true),
-        ),
+        and(eq(conta.id, id), eq(conta.usuarioId, dados.usuarioId), eq(conta.ativo, true)),
       )
       .limit(1);
 
@@ -152,6 +133,14 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
       .where(eq(conta.id, id))
       .returning();
 
+    // Extrato Open Finance herda o perfil da conta — alinhar ao salvar.
+    if (dados.perfil != null && dados.perfil !== existente.perfil) {
+      await banco
+        .update(movimento)
+        .set({ perfil: dados.perfil, dataAtualizacao: new Date() })
+        .where(and(eq(movimento.contaId, id), eq(movimento.fonte, "open_finance")));
+    }
+
     const nomes = await mapear_nomes_workspaces(banco, [atualizada!.workspaceId]);
     const origem = await mapear_origem_contas([atualizada!.id]);
     return com_meta(atualizada!, origem.get(atualizada!.id), nomes);
@@ -161,18 +150,12 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
     const { id } = requisicao.params as { id: string };
     const dados = schemaExcluirContaApi.parse(requisicao.body);
     const banco = obter_banco();
-    const escopo = await obter_escopo_leitura(dados.usuarioId);
 
     const [existente] = await banco
       .select()
       .from(conta)
       .where(
-        and(
-          eq(conta.id, id),
-          eq(conta.usuarioId, dados.usuarioId),
-          inArray(conta.workspaceId, escopo.workspaceIds),
-          eq(conta.ativo, true),
-        ),
+        and(eq(conta.id, id), eq(conta.usuarioId, dados.usuarioId), eq(conta.ativo, true)),
       )
       .limit(1);
 
@@ -182,7 +165,7 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
 
     await excluir_destino_financeiro({
       usuarioId: dados.usuarioId,
-      workspaceIds: escopo.workspaceIds,
+      workspaceIds: [existente.workspaceId],
       contaId: id,
     });
 

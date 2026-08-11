@@ -342,6 +342,8 @@ export class ServicoConexaoOpenFinance {
   }): Promise<void> {
     const registradas = await this.repositorio.listarContasExternas(entrada.conexaoId);
     const porExterno = new Map(entrada.encontradas.map((item) => [item.idExterno, item] as const));
+    let perfilHerdado =
+      (await this.perfil_de_irmaos_na_conexao(registradas)) ?? entrada.perfil;
 
     for (const recurso of registradas) {
       if (recurso.contaId || recurso.cartaoId) continue;
@@ -357,7 +359,7 @@ export class ServicoConexaoOpenFinance {
           workspaceId: entrada.workspaceId,
           usuarioId: entrada.usuarioId,
           nome,
-          perfil: entrada.perfil,
+          perfil: perfilHerdado,
           saldo: numero_finito(externa?.saldo) ?? 0,
           limite: numero_finito(externa?.limite) ?? 0,
           fechamento: externa?.fechamento,
@@ -367,6 +369,7 @@ export class ServicoConexaoOpenFinance {
           contaId: null,
           cartaoId: cartao.id,
         });
+        perfilHerdado = cartao.perfil;
         continue;
       }
 
@@ -374,14 +377,30 @@ export class ServicoConexaoOpenFinance {
         workspaceId: entrada.workspaceId,
         usuarioId: entrada.usuarioId,
         nome,
-        perfil: entrada.perfil,
+        perfil: perfilHerdado,
         saldoAtual: numero_finito(externa?.saldo) ?? 0,
       });
       await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
         contaId: conta.id,
         cartaoId: null,
       });
+      perfilHerdado = conta.perfil;
     }
+  }
+
+  /** Se a conexão já tem conta/cartão associado, novos recursos herdam o perfil. */
+  private async perfil_de_irmaos_na_conexao(
+    registradas: ContaExternaRegistrada[],
+  ): Promise<"pf" | "pj" | undefined> {
+    for (const recurso of registradas) {
+      if (!recurso.contaId && !recurso.cartaoId) continue;
+      const perfil = await this.motor.obter_perfil({
+        contaId: recurso.contaId,
+        cartaoId: recurso.cartaoId,
+      });
+      if (perfil) return perfil;
+    }
+    return undefined;
   }
 
   /**

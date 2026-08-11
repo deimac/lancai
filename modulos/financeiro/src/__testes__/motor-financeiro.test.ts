@@ -807,6 +807,29 @@ describe("MotorFinanceiro", () => {
       expect(criados[0]?.fonte).toBe("open_finance");
     });
 
+    it("herda o perfil da conta destino na ingestão (não o perfilPadrao)", async () => {
+      const conta = criarConta({ usuarioId, perfil: "pj" });
+      repositorio.contas.set(conta.id, conta);
+
+      const { criados } = await motor.ingerir_eventos([evento({ contaId: conta.id })], contexto());
+
+      expect(criados[0]?.perfil).toBe("pj");
+    });
+
+    it("herda o perfil do cartão destino na ingestão", async () => {
+      const conta = criarConta({ usuarioId, perfil: "pf" });
+      const cartao = criarCartao(conta.id, { usuarioId, perfil: "pj", sincronizada: true });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const { criados } = await motor.ingerir_eventos(
+        [evento({ cartaoId: cartao.id, contaId: undefined })],
+        contexto(),
+      );
+
+      expect(criados[0]?.perfil).toBe("pj");
+    });
+
     it("copia descricao para descricao_fonte em lançamento manual", async () => {
       const conta = criarConta({ usuarioId });
       repositorio.contas.set(conta.id, conta);

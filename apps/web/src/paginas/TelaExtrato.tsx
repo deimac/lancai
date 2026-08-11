@@ -430,7 +430,9 @@ export function TelaExtrato() {
                       <p className="mt-1 text-xs text-texto-suave">
                         {formatar_data(movimento.dataMovimento)} ·{" "}
                         {nome_origem(movimento, contas, cartoes)}
-                        {movimento.perfil ? ` · ${movimento.perfil.toUpperCase()}` : ""}
+                        {movimento.perfil
+                          ? ` · ${movimento.perfil === "pj" ? "Jurídica" : "Física"}`
+                          : ""}
                       </p>
                       {!eh_nao_classificado(movimento.categoriaNome) && (
                         <p className="mt-0.5 text-xs text-texto-suave">
