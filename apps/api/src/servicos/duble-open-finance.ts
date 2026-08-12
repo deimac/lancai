@@ -135,6 +135,7 @@ export async function sincronizar_conexao_duble(entrada: {
       atualizados: 0,
       removidos: 0,
       semDestino: 0,
+      puladosSemanticos: 0,
       paginas: 0,
       movimentoIdsCriados: [],
     };

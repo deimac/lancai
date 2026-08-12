@@ -6,7 +6,6 @@ import { RotaProtegida } from "./RotaProtegida";
 import { LayoutAutenticado } from "./layout/LayoutAutenticado";
 import { TelaCategorias } from "./paginas/TelaCategorias";
 import { TelaConfiguracoes } from "./paginas/TelaConfiguracoes";
-import { TelaConexoes } from "./paginas/TelaConexoes";
 import { TelaContasECartoes } from "./paginas/TelaContasECartoes";
 import { TelaDashboard } from "./paginas/TelaDashboard";
 import { TelaExtrato } from "./paginas/TelaExtrato";
@@ -34,7 +33,7 @@ export function App() {
                 <Route path="/categorias" element={<TelaCategorias />} />
                 <Route path="/regras" element={<TelaRegras />} />
                 <Route path="/extrato" element={<TelaExtrato />} />
-                <Route path="/conexoes" element={<TelaConexoes />} />
+                <Route path="/conexoes" element={<Navigate to="/contas#bancos" replace />} />
                 <Route path="/configuracoes" element={<TelaConfiguracoes />} />
               </Route>
             </Routes>

@@ -12,6 +12,29 @@ export const schemaRegistrarConexao = z.object({
   conexaoExterna: z.string().min(1),
 });
 
+/** Preview de itemId antes do pareamento (Reatachar). */
+export const schemaInspecionarItem = z.object({
+  usuarioId: z.string().uuid(),
+  conexaoExterna: z.string().min(1),
+});
+
+export const schemaReatacharConexao = z.object({
+  usuarioId: z.string().uuid(),
+  conexaoExterna: z.string().min(1),
+  pareamentos: z
+    .array(
+      z.object({
+        contaExternaId: z.string().min(1),
+        contaId: z.string().uuid().optional(),
+        cartaoId: z.string().uuid().optional(),
+      }),
+    )
+    .min(1)
+    .max(50),
+  /** Conexão antiga (ex.: removida) a encerrar após o reatachar. */
+  conexaoIdAnterior: z.string().uuid().optional(),
+});
+
 export const schemaAssociarContaExterna = z.object({
   usuarioId: z.string().uuid(),
   contaId: z.string().uuid().optional(),

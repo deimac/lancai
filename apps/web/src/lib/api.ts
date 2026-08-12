@@ -223,6 +223,36 @@ export interface ContaExternaRegistrada {
   cartaoId: string | null;
 }
 
+/** Recurso visto no provedor antes de registrar (inspecionar / reatachar). */
+export interface ContaExternaPreview {
+  idExterno: string;
+  nome: string;
+  tipo: string;
+  saldo?: number;
+  limite?: number;
+}
+
+export interface InspecaoItemOf {
+  instituicao: string | null;
+  status: StatusConexao;
+  contas: ContaExternaPreview[];
+}
+
+export type PareamentoReatachar = {
+  contaExternaId: string;
+  contaId?: string;
+  cartaoId?: string;
+};
+
+export interface ResumoReatachar {
+  criados: number;
+  duplicados: number;
+  atualizados?: number;
+  puladosSemanticos?: number;
+  semDestino: number;
+  paginas: number;
+}
+
 export interface ConexaoComContas {
   conexao: ConexaoDetalhada;
   contas: ContaExternaRegistrada[];
@@ -242,7 +272,7 @@ type EventoAtualizarConexao =
   | {
       tipo: "fim";
       detalhe: ConexaoComContas;
-      resumo: { criados: number; duplicados: number; semDestino: number; paginas: number };
+      resumo: ResumoReatachar;
     }
   | { tipo: "erro"; erro: string };
 
@@ -723,6 +753,103 @@ export const clienteApi = {
       method: "POST",
       body: JSON.stringify(dados),
     });
+  },
+
+  inspecionar_item(dados: {
+    usuarioId: string;
+    conexaoExterna: string;
+  }): Promise<InspecaoItemOf> {
+    return requisitar<InspecaoItemOf>("/open-finance/conexoes/inspecionar", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  /**
+   * Reatacha novo itemId a Contas/Cartões existentes e sincroniza só o novo.
+   * Consome NDJSON (mesmo padrão de atualizar_conexao).
+   */
+  async reatachar_conexao(
+    dados: {
+      usuarioId: string;
+      conexaoExterna: string;
+      pareamentos: PareamentoReatachar[];
+      conexaoIdAnterior?: string;
+    },
+    aoProgresso?: (progresso: ProgressoImportacaoApi) => void,
+  ): Promise<{ detalhe: ConexaoComContas; resumo: ResumoReatachar }> {
+    let resposta: Response;
+    try {
+      resposta = await fetch(`${URL_BASE}/open-finance/conexoes/reatachar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/x-ndjson",
+        },
+        body: JSON.stringify(dados),
+      });
+    } catch (erro) {
+      throw new ErroApi(mensagem_falha_rede(erro, "Reatachar conexão"), 0);
+    }
+
+    if (!resposta.ok) {
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        erro?: string;
+        message?: string;
+      };
+      throw new ErroApi(
+        corpo.erro ?? corpo.message ?? "Não foi possível reatachar a conexão.",
+        resposta.status,
+      );
+    }
+
+    if (!resposta.body) {
+      throw new ErroApi("Resposta sem corpo no reatachar.", 502);
+    }
+
+    const leitor = resposta.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fim: { detalhe: ConexaoComContas; resumo: ResumoReatachar } | null = null;
+
+    while (true) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const linhas = buffer.split("\n");
+      buffer = linhas.pop() ?? "";
+
+      for (const linha of linhas) {
+        const texto = linha.trim();
+        if (!texto) continue;
+        let evento: EventoAtualizarConexao;
+        try {
+          evento = JSON.parse(texto) as EventoAtualizarConexao;
+        } catch {
+          continue;
+        }
+
+        if (evento.tipo === "progresso") {
+          aoProgresso?.({
+            percentual: evento.percentual,
+            mensagem: evento.mensagem,
+            criados: evento.criados,
+            duplicados: evento.duplicados,
+            contaAtual: evento.contaAtual,
+            contasTotal: evento.contasTotal,
+          });
+        } else if (evento.tipo === "fim") {
+          fim = { detalhe: evento.detalhe, resumo: evento.resumo };
+        } else if (evento.tipo === "erro") {
+          throw new ErroApi(evento.erro, 502);
+        }
+      }
+    }
+
+    if (!fim) {
+      throw new ErroApi("Importação terminou sem resultado.", 502);
+    }
+    return fim;
   },
 
   listar_conexoes(usuarioId: string): Promise<ConexaoDetalhada[]> {

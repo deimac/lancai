@@ -227,6 +227,11 @@ A Pluggy sincroniza sozinha a cada 24, 12 ou 8 horas conforme o plano — e **au
 
 Itens Meu Pluggy recusam `PATCH /items/{id}` (`MeuPluggy item cant be updated`). O LançAI trata isso como no-op em “Atualizar agora” e sempre completa com GET. Quem atualiza o dado no provedor é o app Meu Pluggy; o LançAI só espelha.
 
+Quando o Meu Pluggy **recria** o item (novo `itemId`):
+
+- **Reatachar** (`POST /open-finance/conexoes/inspecionar` + `POST /open-finance/conexoes/reatachar`) — pareia o item novo às Contas/Cartões locais e sincroniza só lançamentos novos (dedup por `id_externo` + skip semântico). Categorias e Conhecimento do histórico existente ficam intactos.
+- **Excluir** conta/cartão na UI — hard-delete deliberado do destino e do extrato OF, via escape `lancai.sincronizacao` na exclusão (limpeza explícita do usuário; não é o caminho do dia a dia).
+
 O cron nosso: `POST /cron/open-finance-reprocessar` (eventos com erro) e `POST /cron/open-finance-importar-historico` (GET saldos + extrato, stale/lookback/lock). Ver [ADR-015](adr/015-ingestao-por-webhook.md) e [15-OPERACAO.md](15-OPERACAO.md).
 
 A regra “sync nunca dentro do turno de conversa” continua: GET periódico e webhook ficam fora do chat.

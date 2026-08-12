@@ -4,6 +4,8 @@ import {
   schemaAssociarContaExterna,
   schemaCriarConexaoDuble,
   schemaIniciarConexao,
+  schemaInspecionarItem,
+  schemaReatacharConexao,
   schemaRegistrarConexao,
   schemaSincronizarDuble,
   schemaUsuarioDaRequisicao,
@@ -24,6 +26,7 @@ import {
 import { liberar_lock_sync, tentar_adquirir_lock_sync } from "../servicos/lock-sync-conexao";
 import { obter_servico_conexao, obter_servico_ingestao } from "../servicos/open-finance";
 import { enriquecer_apos_ingestao } from "../servicos/pos-ingestao-open-finance";
+import { filtrar_criacao_semantica_of } from "../servicos/skip-semantico-of";
 
 function fonte_desativada(resposta: FastifyReply) {
   return resposta.status(503).send({ erro: "Fonte Open Finance desativada." });
@@ -95,6 +98,157 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     });
 
     return resposta.status(201).send(registrada);
+  });
+
+  /**
+   * Preview de um itemId (Meu Pluggy) sem gravar conexão — passo 1 do Reatachar.
+   */
+  app.post("/conexoes/inspecionar", async (requisicao, resposta) => {
+    const servico = obter_servico_conexao();
+    if (!servico) return fonte_desativada(resposta);
+
+    const dados = schemaInspecionarItem.parse(requisicao.body);
+    await exigir_workspace_escrita(dados.usuarioId);
+
+    try {
+      return resposta.send(await servico.inspecionar_item(dados.conexaoExterna));
+    } catch (erro) {
+      const msg = erro instanceof Error ? erro.message : "Falha ao inspecionar item.";
+      return resposta.status(400).send({
+        erro: msg.startsWith("provedor indisponível:")
+          ? "Não foi possível ler este item no provedor. Confira o itemId."
+          : msg,
+      });
+    }
+  });
+
+  /**
+   * Reatachar: novo itemId → parear com Contas/Cartões existentes → sync GET
+   * só criando o que for novo (dedup + skip semântico). NDJSON com progresso.
+   */
+  app.post("/conexoes/reatachar", async (requisicao, resposta) => {
+    const servico = obter_servico_conexao();
+    if (!servico) return fonte_desativada(resposta);
+
+    const dados = schemaReatacharConexao.parse(requisicao.body);
+    const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
+
+    if (dados.conexaoIdAnterior) {
+      const acesso = await exigir_conexao_do_usuario(
+        servico,
+        dados.conexaoIdAnterior,
+        dados.usuarioId,
+      );
+      if ("erro" in acesso) return resposta.status(404).send(acesso);
+    }
+
+    resposta.hijack();
+    resposta.raw.writeHead(200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    });
+
+    const escrever = (evento: Record<string, unknown>) => {
+      resposta.raw.write(`${JSON.stringify(evento)}\n`);
+    };
+
+    let conexaoIdLock: string | null = null;
+
+    try {
+      escrever({
+        tipo: "progresso",
+        percentual: 4,
+        mensagem: "Registrando novo item e pareando…",
+        criados: 0,
+        duplicados: 0,
+        contaAtual: 0,
+        contasTotal: 0,
+      });
+
+      const detalhe = await servico.reatachar_conexao({
+        workspaceId,
+        usuarioId: dados.usuarioId,
+        conexaoExterna: dados.conexaoExterna,
+        pareamentos: dados.pareamentos,
+        conexaoIdAnterior: dados.conexaoIdAnterior,
+      });
+
+      conexaoIdLock = detalhe.conexao.id;
+      if (!tentar_adquirir_lock_sync(conexaoIdLock)) {
+        escrever({
+          tipo: "erro",
+          erro: "Já existe uma sincronização em andamento para esta conexão.",
+        });
+        return;
+      }
+
+      escrever({
+        tipo: "progresso",
+        percentual: 12,
+        mensagem: "Sincronizando extrato (só lançamentos novos)…",
+        criados: 0,
+        duplicados: 0,
+        contaAtual: 0,
+        contasTotal: 0,
+      });
+
+      const ingestao = obter_servico_ingestao();
+      if (!ingestao) {
+        escrever({ tipo: "erro", erro: "Ingestão Open Finance indisponível." });
+        return;
+      }
+
+      const resumo = await ingestao.importar_historico(conexaoIdLock, {
+        lookbackDias: 365,
+        filtrarCriacao: filtrar_criacao_semantica_of,
+        aoProgresso: (progresso) => {
+          escrever({ tipo: "progresso", ...progresso });
+        },
+      });
+
+      requisicao.log.info(
+        {
+          evento: "SYNC_REATTACH_OK",
+          conexaoId: conexaoIdLock,
+          criados: resumo.criados,
+          duplicados: resumo.duplicados,
+          puladosSemanticos: resumo.puladosSemanticos,
+        },
+        "[open-finance] SYNC_REATTACH_OK",
+      );
+
+      await enriquecer_apos_ingestao({
+        eventoId: `reatachar:${conexaoIdLock}:${Date.now()}`,
+        resumo,
+        log: requisicao.log,
+      });
+
+      escrever({
+        tipo: "fim",
+        detalhe: await servico.detalhar(conexaoIdLock),
+        resumo: {
+          criados: resumo.criados,
+          duplicados: resumo.duplicados,
+          atualizados: resumo.atualizados,
+          puladosSemanticos: resumo.puladosSemanticos,
+          semDestino: resumo.semDestino,
+          paginas: resumo.paginas,
+        },
+      });
+    } catch (erro) {
+      const bruto = erro instanceof Error ? erro.message : "Falha ao reatachar conexão.";
+      requisicao.log.error({ err: erro }, "[open-finance] falha no reatachar");
+      escrever({
+        tipo: "erro",
+        erro: bruto.startsWith("provedor indisponível:")
+          ? "Não foi possível ler o extrato no banco agora. Tente de novo em instantes."
+          : bruto,
+      });
+    } finally {
+      if (conexaoIdLock) liberar_lock_sync(conexaoIdLock);
+      resposta.raw.end();
+    }
   });
 
   app.get("/conexoes", async (requisicao, resposta) => {

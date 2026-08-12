@@ -150,9 +150,14 @@ A terceira camada é o que torna a garantia real. Ela veio junto com a migraçã
 
 **A sincronização é a única exceção.** A instituição muda de opinião: uma transação pendente é confirmada, um valor é ajustado. Se o trigger fosse absoluto, ele bloquearia justamente quem tem autoridade sobre o Fato. Por isso existe `SET LOCAL "lancai.sincronizacao" = 'on'`, e só dentro dessa transação o trigger libera a escrita. O escopo `LOCAL` faz a porta fechar sozinha no fim — não existe estado a limpar nem risco de vazar para outra requisição.
 
-Quem declara é o **Core**, em `atualizarFatosDaFonte`, e não o módulo `open-finance`. O comentário da migração 0008 diz o contrário porque foi escrito antes de a porta existir; a autoridade ficou onde já estava toda a escrita de movimento, e o módulo pede em vez de escrever. Continua valendo a parte que importa: é a única linha de código no sistema que declara essa chave, e chega-se a ela por exatamente duas portas — `atualizar_fatos_da_fonte` e `remover_fatos_da_fonte`, ambas restritas ao que a instituição anunciou.
+Quem declara é o **Core**, em `atualizarFatosDaFonte`, e não o módulo `open-finance`. O comentário da migração 0008 diz o contrário porque foi escrito antes de a porta existir; a autoridade ficou onde já estava toda a escrita de movimento, e o módulo pede em vez de escrever.
 
-`DELETE` não tem porta, e não vai ter. Quando a instituição desfaz uma transação, `status_fonte` passa a `removido` e o movimento é cancelado: a linha fica, o saldo volta, e a auditoria de algo que existiu não é destruída.
+Portas que usam `lancai.sincronizacao`:
+
+1. `atualizar_fatos_da_fonte` / `remover_fatos_da_fonte` — o que a instituição anunciou (dia a dia).
+2. `excluir_destino_financeiro` — **limpeza explícita** quando o usuário exclui conta/cartão na UI (hard-delete do destino e do extrato ligado). Não é sync; é apagar de propósito.
+
+Quando a instituição desfaz uma transação sem o usuário pedir exclusão, `status_fonte` passa a `removido` e o movimento é cancelado: a linha fica. Para só trocar o itemId do Meu Pluggy sem perder histórico, use **Reatachar** — não Excluir.
 
 ### 4.3 Colunas novas de Fato
 

@@ -28,6 +28,7 @@ function resumo(criados: number): ResumoIngestao {
     atualizados: 0,
     removidos: 0,
     semDestino: 0,
+    puladosSemanticos: 0,
     paginas: 1,
     movimentoIdsCriados: Array.from({ length: criados }, (_, i) => `mov-${i}`),
   };

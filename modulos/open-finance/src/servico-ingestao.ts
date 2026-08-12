@@ -39,6 +39,11 @@ export interface ResumoIngestao {
   removidos: number;
   /** Conta do provedor sem associação local: nada foi gravado. */
   semDestino: number;
+  /**
+   * Novos ids Pluggy que batem semanticamente com Fato OF já existente
+   * (reatachar) — não criados, categorias preservadas.
+   */
+  puladosSemanticos: number;
   paginas: number;
   /**
    * Identificadores dos Fatos criados nesta execução. A API usa isto para
@@ -47,6 +52,14 @@ export interface ResumoIngestao {
    */
   movimentoIdsCriados: string[];
 }
+
+/** Filtra eventos “desconhecidos” antes do create — usado no reatachar. */
+export type FiltrarCriacaoIngestao = (
+  eventos: import("@lancai/tipos").EventoFinanceiroNormalizado[],
+) => Promise<{
+  aceitos: import("@lancai/tipos").EventoFinanceiroNormalizado[];
+  pulados: number;
+}>;
 
 export interface DetalheReprocessamento {
   eventoId: string;
@@ -83,6 +96,7 @@ function resumo_vazio(): ResumoIngestao {
     atualizados: 0,
     removidos: 0,
     semDestino: 0,
+    puladosSemanticos: 0,
     paginas: 0,
     movimentoIdsCriados: [],
   };
@@ -169,6 +183,8 @@ export class ServicoIngestaoOpenFinance {
       aoProgresso?: (progresso: ProgressoImportacao) => void;
       /** Janela GET `dateFrom` (dias). Sem valor, o adaptador usa o padrão (365). */
       lookbackDias?: number;
+      /** Reatachar: evita criar Fato quando já existe equivalente semântico. */
+      filtrarCriacao?: FiltrarCriacaoIngestao;
     } = {},
   ): Promise<ResumoIngestao> {
     const conexao = await this.repositorio.obterConexaoPorId(conexaoId);
@@ -225,6 +241,7 @@ export class ServicoIngestaoOpenFinance {
             contaAtual,
           });
         },
+        filtrarCriacao: opcoes.filtrarCriacao,
       });
 
       total.criados += parte.criados;
@@ -232,6 +249,7 @@ export class ServicoIngestaoOpenFinance {
       total.atualizados += parte.atualizados;
       total.removidos += parte.removidos;
       total.semDestino += parte.semDestino;
+      total.puladosSemanticos += parte.puladosSemanticos;
       total.paginas += parte.paginas;
       total.movimentoIdsCriados.push(...parte.movimentoIdsCriados);
 
@@ -395,7 +413,10 @@ export class ServicoIngestaoOpenFinance {
   private async ingerir_lote(
     conexao: ConexaoRegistrada,
     inicio: string,
-    opcoes: { aoPagina?: (estado: { paginas: number; criados: number }) => void } = {},
+    opcoes: {
+      aoPagina?: (estado: { paginas: number; criados: number }) => void;
+      filtrarCriacao?: FiltrarCriacaoIngestao;
+    } = {},
   ): Promise<ResumoIngestao> {
     const mapa = await this.mapa_de_contas(conexao.id);
     const contexto = await this.contexto_de_ingestao(conexao);
@@ -425,9 +446,16 @@ export class ServicoIngestaoOpenFinance {
         const alteracao = await this.motor.atualizar_fatos_da_fonte(eventos, contexto);
         resumo.atualizados += alteracao.atualizados.length;
 
-        if (alteracao.desconhecidos.length > 0) {
-          await this.cancelar_projetadas_substituidas(alteracao.desconhecidos, contexto, resumo);
-          const resultado = await this.motor.ingerir_eventos(alteracao.desconhecidos, contexto);
+        let paraCriar = alteracao.desconhecidos;
+        if (paraCriar.length > 0 && opcoes.filtrarCriacao) {
+          const filtrado = await opcoes.filtrarCriacao(paraCriar);
+          paraCriar = filtrado.aceitos;
+          resumo.puladosSemanticos += filtrado.pulados;
+        }
+
+        if (paraCriar.length > 0) {
+          await this.cancelar_projetadas_substituidas(paraCriar, contexto, resumo);
+          const resultado = await this.motor.ingerir_eventos(paraCriar, contexto);
           resumo.criados += resultado.criados.length;
           resumo.duplicados += resultado.duplicados;
           resumo.movimentoIdsCriados.push(...resultado.criados.map((m) => m.id));

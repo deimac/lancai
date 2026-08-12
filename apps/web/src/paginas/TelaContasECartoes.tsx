@@ -1,7 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CreditCard, FolderKanban, Link2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import {
+  Building2,
+  CreditCard,
+  FolderKanban,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Unplug,
+  Wallet,
+} from "lucide-react";
 import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
@@ -10,6 +22,7 @@ import {
   clienteApi,
   ErroApi,
   type CartaoResumo,
+  type ConexaoDetalhada,
   type ContaResumo,
   type DescritorFonte,
   type ProgressoImportacaoApi,
@@ -17,16 +30,19 @@ import {
 import { conectar_banco } from "../lib/conectar-banco";
 import { formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
+import { texto_ultimo_sync } from "../lib/observabilidade-sync";
+import { unir_classes } from "../lib/unir-classes";
 import {
   BarraProgressoImportacao,
   type ProgressoImportacaoUi,
 } from "../componentes/BarraProgressoImportacao";
-import { Botao } from "../componentes/ui/Botao";
-import { Cartao } from "../componentes/ui/Cartao";
 import { ModalContaCartao, type TipoCadastro } from "../componentes/ModalContaCartao";
+import { ModalReatachar } from "../componentes/ModalReatachar";
 import { PainelWorkspaces } from "../componentes/PainelWorkspaces";
+import { Botao } from "../componentes/ui/Botao";
 import { useContextoLayout } from "../layout/useContextoLayout";
-import { unir_classes } from "../lib/unir-classes";
+
+type Aba = "contas" | "cartoes" | "bancos";
 
 function para_numero(valor: string | undefined): number {
   const n = Number(valor ?? 0);
@@ -49,18 +65,28 @@ function badge_origem(item: {
   instituicao?: string | null;
 }) {
   const of = item.origem === "open_finance" || item.sincronizada;
-  if (of) {
+  if (of && item.sincronizada) {
     return {
-      rotulo: item.instituicao
-        ? `Sincronizada · ${item.instituicao}`
-        : "Sincronizada via banco",
+      rotulo: item.instituicao ? `Ativa · ${item.instituicao}` : "Ativa",
       classe: "border-primaria/40 bg-primaria/10 text-primaria",
     };
   }
+  if (of) {
+    return {
+      rotulo: item.instituicao ? `Desconectada · ${item.instituicao}` : "Desconectada",
+      classe: "border-aviso/40 bg-aviso/10 text-aviso",
+    };
+  }
   return {
-    rotulo: "Cadastro manual",
+    rotulo: "Manual",
     classe: "border-borda text-texto-suave",
   };
+}
+
+function aba_do_hash(hash: string): Aba {
+  if (hash === "#cartoes") return "cartoes";
+  if (hash === "#bancos" || hash === "#conexoes") return "bancos";
+  return "contas";
 }
 
 export function TelaContasECartoes() {
@@ -68,19 +94,27 @@ export function TelaContasECartoes() {
   const toast = useToast();
   const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
+  const location = useLocation();
   const widgetRef = useRef<WidgetAberto | null>(null);
+
   const [fonte, setFonte] = useState<DescritorFonte | null>(null);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
+  const [conexoes, setConexoes] = useState<ConexaoDetalhada[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [painelWs, setPainelWs] = useState(false);
+  const [aba, setAba] = useState<Aba>(() => aba_do_hash(window.location.hash));
+  const [menuId, setMenuId] = useState<string | null>(null);
+
   const [modalAberto, setModalAberto] = useState(false);
   const [modalModo, setModalModo] = useState<"criar" | "editar">("criar");
   const [modalTipo, setModalTipo] = useState<TipoCadastro>("conta");
   const [modalAlvo, setModalAlvo] = useState<ContaResumo | CartaoResumo | null>(null);
-  const [itemIdManual, setItemIdManual] = useState("");
+
+  const [modalReatachar, setModalReatachar] = useState(false);
+  const [conexaoAnteriorReatachar, setConexaoAnteriorReatachar] = useState<string | null>(null);
   const [progressoImportacao, setProgressoImportacao] = useState<ProgressoImportacaoUi | null>(
     null,
   );
@@ -92,14 +126,17 @@ export function TelaContasECartoes() {
     setCarregando(true);
     setErro(null);
     try {
-      const [contasCarregadas, cartoesCarregados, fonteDesc] = await Promise.all([
-        clienteApi.listar_contas(usuario.id, true),
-        clienteApi.listar_cartoes(usuario.id, true),
-        clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
-      ]);
+      const [contasCarregadas, cartoesCarregados, fonteDesc, conexoesCarregadas] =
+        await Promise.all([
+          clienteApi.listar_contas(usuario.id, true),
+          clienteApi.listar_cartoes(usuario.id, true),
+          clienteApi.descrever_fonte().catch(() => ({ disponivel: false } as DescritorFonte)),
+          clienteApi.listar_conexoes(usuario.id).catch(() => [] as ConexaoDetalhada[]),
+        ]);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
       setFonte(fonteDesc);
+      setConexoes(conexoesCarregadas);
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar contas e cartões.");
     } finally {
@@ -112,8 +149,27 @@ export function TelaContasECartoes() {
   }, [carregar, deps]);
 
   useEffect(() => {
+    setAba(aba_do_hash(location.hash));
+  }, [location.hash]);
+
+  useEffect(() => {
     return () => widgetRef.current?.fechar();
   }, []);
+
+  useEffect(() => {
+    function fechar_menu() {
+      setMenuId(null);
+    }
+    window.addEventListener("click", fechar_menu);
+    return () => window.removeEventListener("click", fechar_menu);
+  }, []);
+
+  function mudar_aba(proxima: Aba) {
+    setAba(proxima);
+    const hash =
+      proxima === "cartoes" ? "#cartoes" : proxima === "bancos" ? "#bancos" : "#contas";
+    window.history.replaceState(null, "", `${location.pathname}${hash}`);
+  }
 
   function abrir_criar(tipo: TipoCadastro = "conta") {
     setModalModo("criar");
@@ -136,21 +192,25 @@ export function TelaContasECartoes() {
     setModalAberto(true);
   }
 
+  function abrir_reatachar(conexaoId?: string | null) {
+    setConexaoAnteriorReatachar(conexaoId ?? null);
+    setModalReatachar(true);
+  }
+
   async function excluir_conta(conta: ContaResumo) {
     if (!usuario) return;
-    const sincronizada = conta.origem === "open_finance" || conta.sincronizada;
+    const of = conta.origem === "open_finance" || conta.sincronizada;
     const ok = await confirmar({
-      titulo: sincronizada ? "Excluir conexão e limpar?" : "Excluir conta?",
-      mensagem: sincronizada
-        ? `Isso apaga a conexão, contas/cartões sincronizados dela (incluindo "${conta.nome}") ` +
-          "e o extrato ligado. Depois você pode registrar o itemId de novo."
-        : `Apaga a conta "${conta.nome}" e o extrato ligado a ela. Irreversível.`,
+      titulo: "Excluir conta?",
+      mensagem: of
+        ? `Apaga "${conta.nome}" e TODO o extrato (incluindo Open Finance). Irreversível. Se só mudou o itemId no Meu Pluggy, use Reatachar.`
+        : `Apaga a conta "${conta.nome}" e o extrato ligado. Irreversível.`,
       confirmarRotulo: "Excluir tudo",
     });
     if (!ok) return;
     try {
       await clienteApi.excluir_conta(conta.id, usuario.id);
-      toast.sucesso(sincronizada ? "Conexão e extrato limpos." : "Conta e extrato excluídos.");
+      toast.sucesso("Conta e extrato excluídos.");
       await carregar();
       contexto?.invalidar("tudo");
     } catch (e) {
@@ -160,19 +220,18 @@ export function TelaContasECartoes() {
 
   async function excluir_cartao(cartao: CartaoResumo) {
     if (!usuario) return;
-    const sincronizada = cartao.origem === "open_finance" || cartao.sincronizada;
+    const of = cartao.origem === "open_finance" || cartao.sincronizada;
     const ok = await confirmar({
-      titulo: sincronizada ? "Excluir conexão e limpar?" : "Excluir cartão?",
-      mensagem: sincronizada
-        ? `Isso apaga a conexão, contas/cartões sincronizados dela (incluindo "${cartao.nome}") ` +
-          "e o extrato ligado. Depois você pode registrar o itemId de novo."
-        : `Apaga o cartão "${cartao.nome}" e o extrato ligado a ele. Irreversível.`,
+      titulo: "Excluir cartão?",
+      mensagem: of
+        ? `Apaga "${cartao.nome}" e TODO o extrato (incluindo Open Finance). Irreversível. Se só mudou o itemId no Meu Pluggy, use Reatachar.`
+        : `Apaga o cartão "${cartao.nome}" e o extrato ligado. Irreversível.`,
       confirmarRotulo: "Excluir tudo",
     });
     if (!ok) return;
     try {
       await clienteApi.excluir_cartao(cartao.id, usuario.id);
-      toast.sucesso(sincronizada ? "Conexão e extrato limpos." : "Cartão e extrato excluídos.");
+      toast.sucesso("Cartão e extrato excluídos.");
       await carregar();
       contexto?.invalidar("tudo");
     } catch (e) {
@@ -189,71 +248,70 @@ export function TelaContasECartoes() {
       aoOcupado: setOcupado,
       aoErro: (mensagem) => toast.erro(mensagem),
       aoSucesso: async () => {
-        toast.sucesso("Banco conectado. Contas e cartões foram criados neste workspace.");
+        toast.sucesso("Banco conectado. Contas e cartões foram criados.");
         await carregar();
         contexto?.invalidar("tudo");
       },
     });
   }
 
-  async function registrar_item_manual() {
+  async function atualizar_conexao(conexaoId: string) {
     if (!usuario) return;
-    const itemId = itemIdManual.trim();
-    if (!itemId) {
-      toast.erro("Informe o itemId da Pluggy / Meu Pluggy.");
-      return;
-    }
-    if (/\s/.test(itemId) || itemId.includes(",")) {
-      toast.erro("Informe um único itemId por vez. Salve, depois registre o próximo.");
-      return;
-    }
     setOcupado(true);
-    setProgressoImportacao({ percentual: 2, mensagem: "Registrando conexão…" });
+    setProgressoImportacao({ percentual: 2, mensagem: "Atualizando…" });
     try {
-      const registrada = await clienteApi.registrar_conexao({
-        usuarioId: usuario.id,
-        conexaoExterna: itemId,
+      await clienteApi.atualizar_conexao(conexaoId, usuario.id, (p: ProgressoImportacaoApi) => {
+        setProgressoImportacao({
+          percentual: p.percentual,
+          mensagem: p.mensagem,
+          criados: p.criados,
+        });
       });
-      let importou = false;
-      try {
-        await clienteApi.atualizar_conexao(
-          registrada.conexao.id,
-          usuario.id,
-          (p: ProgressoImportacaoApi) => {
-            setProgressoImportacao({
-              percentual: p.percentual,
-              mensagem: p.mensagem,
-              criados: p.criados,
-            });
-          },
-        );
-        importou = true;
-      } catch (syncErro) {
-        toast.erro(
-          syncErro instanceof ErroApi
-            ? syncErro.message
-            : "Conexão salva, mas não consegui importar o extrato agora.",
-        );
-      }
-      setItemIdManual("");
+      toast.sucesso("Extrato atualizado.");
       await carregar();
-      contexto?.invalidar("conexoes", "contas", "cartoes", "extrato");
-      const nome = registrada.conexao.instituicao ?? "Conexão";
-      if (importou) {
-        toast.sucesso(
-          `${nome} salva. Saldos e extrato importados do banco. Pode registrar outro itemId.`,
-        );
-      }
+      contexto?.invalidar("conexoes", "contas", "cartoes", "extrato", "dashboard");
     } catch (e) {
-      toast.erro(
-        e instanceof ErroApi
-          ? e.message
-          : "Não foi possível registrar o itemId. Confira se a Application enxerga esse item.",
-      );
+      toast.erro(e instanceof ErroApi ? e.message : "Falha ao atualizar.");
     } finally {
       setOcupado(false);
       setProgressoImportacao(null);
     }
+  }
+
+  async function desconectar(conexaoId: string, nome: string) {
+    if (!usuario) return;
+    const ok = await confirmar({
+      titulo: "Desconectar banco?",
+      mensagem: `Encerra a sync de "${nome}". Contas, cartões e histórico ficam. Para novo itemId, use Reatachar.`,
+      confirmarRotulo: "Desconectar",
+    });
+    if (!ok) return;
+    try {
+      await clienteApi.desconectar_conexao(conexaoId, usuario.id);
+      toast.sucesso("Banco desconectado.");
+      await carregar();
+      contexto?.invalidar("conexoes", "contas", "cartoes");
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Falha ao desconectar.");
+    }
+  }
+
+  async function reconectar_mesmo_item(conexao: ConexaoDetalhada) {
+    if (!usuario || !fonte) return;
+    void conectar_banco({
+      usuarioId: usuario.id,
+      fonte,
+      widgetRef,
+      conexaoId: conexao.id,
+      conexaoExterna: conexao.idExterno,
+      aoOcupado: setOcupado,
+      aoErro: (mensagem) => toast.erro(mensagem),
+      aoSucesso: async () => {
+        toast.sucesso("Reconexão iniciada (mesmo item).");
+        await carregar();
+        contexto?.invalidar("tudo");
+      },
+    });
   }
 
   if (!usuario) return null;
@@ -272,35 +330,38 @@ export function TelaContasECartoes() {
     );
   }
 
+  const abas: { id: Aba; rotulo: string; icone: typeof Wallet }[] = [
+    { id: "contas", rotulo: "Contas", icone: Wallet },
+    { id: "cartoes", rotulo: "Cartões", icone: CreditCard },
+    { id: "bancos", rotulo: "Bancos", icone: Building2 },
+  ];
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 md:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-texto">Contas</h1>
         <p className="text-sm text-texto-suave">
-          Contas, cartões e conexões do usuário. Workspace agrupa filtros e relatórios.
+          Contas, cartões e bancos do usuário. Workspace só agrupa filtros e relatórios.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <Botao onClick={ao_conectar} disabled={ocupado || !fonte?.disponivel}>
           <Link2 size={14} />
-          {ocupado ? "Conectando..." : "Conectar banco"}
+          {ocupado ? "Conectando…" : "Conectar banco"}
         </Botao>
-        <Botao variante="fantasma" onClick={() => abrir_criar("conta")}>
-          <Plus size={14} />
-          Adicionar conta
+        <Botao variante="fantasma" onClick={() => abrir_reatachar(null)} disabled={ocupado}>
+          <RefreshCw size={14} />
+          Reatachar
         </Botao>
-        <Botao variante="fantasma" onClick={() => abrir_criar("cartao")}>
+        <Botao variante="fantasma" onClick={() => abrir_criar(aba === "cartoes" ? "cartao" : "conta")}>
           <Plus size={14} />
-          Adicionar cartão
+          Adicionar
         </Botao>
         <Botao variante="fantasma" onClick={() => setPainelWs(true)}>
           <FolderKanban size={14} />
           Workspaces
         </Botao>
-        <Link to="/conexoes">
-          <Botao variante="fantasma">Gerenciar conexões</Botao>
-        </Link>
       </div>
 
       {erro && (
@@ -309,216 +370,237 @@ export function TelaContasECartoes() {
         </div>
       )}
 
-      {fonte?.id === "pluggy" && (
-        <Cartao className="flex flex-col gap-3">
-          <div>
-            <p className="text-sm font-medium text-texto">Conectar Meu Pluggy (itemId)</p>
-            <p className="mt-1 text-xs text-texto-suave">
-              Um banco por vez: cole o itemId, salve — a conexão entra na lista e o sync é
-              pedido. Depois cole o próximo ID (Itaú, Mercado Pago…).
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              className="min-w-0 flex-1 rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-sm text-texto"
-              placeholder="uuid do item (um por vez)"
-              value={itemIdManual}
-              disabled={ocupado}
-              onChange={(e) => setItemIdManual(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void registrar_item_manual();
-              }}
-            />
-            <Botao
-              disabled={ocupado || !itemIdManual.trim()}
-              onClick={() => void registrar_item_manual()}
-            >
-              {ocupado ? "Importando…" : "Salvar conexão"}
-            </Botao>
-          </div>
-          <BarraProgressoImportacao progresso={progressoImportacao} />
-        </Cartao>
+      <BarraProgressoImportacao progresso={progressoImportacao} />
+
+      <div className="flex gap-1 border-b border-borda">
+        {abas.map(({ id, rotulo, icone: Icone }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => mudar_aba(id)}
+            className={unir_classes(
+              "flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
+              aba === id
+                ? "border-b-2 border-primaria text-primaria"
+                : "text-texto-suave hover:text-texto",
+            )}
+          >
+            <Icone size={14} />
+            {rotulo}
+            {id === "contas" && contas.length > 0 && (
+              <span className="text-xs opacity-70">{contas.length}</span>
+            )}
+            {id === "cartoes" && cartoes.length > 0 && (
+              <span className="text-xs opacity-70">{cartoes.length}</span>
+            )}
+            {id === "bancos" && conexoes.length > 0 && (
+              <span className="text-xs opacity-70">{conexoes.length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {aba === "contas" && (
+        <ListaDestinos
+          carregando={carregando}
+          vazia="Nenhuma conta. Conecte um banco, reatachar itemId ou cadastre manualmente."
+          itens={contas.map((conta) => {
+            const badge = badge_origem(conta);
+            const perfilBadge = badge_perfil(conta.perfil);
+            const saldo = para_numero(conta.saldoAtual);
+            return {
+              id: conta.id,
+              titulo: conta.nome,
+              badges: [perfilBadge, badge],
+              valor: saldo,
+              valorClasse: saldo < 0 ? "text-despesa" : "text-texto",
+              menuAberto: menuId === conta.id,
+              aoMenu: (e: MouseEvent) => {
+                e.stopPropagation();
+                setMenuId(menuId === conta.id ? null : conta.id);
+              },
+              acoes: [
+                { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_conta(conta) },
+                ...(conta.origem === "open_finance" || conta.sincronizada
+                  ? [
+                      {
+                        rotulo: "Reatachar",
+                        icone: RefreshCw,
+                        onClick: () => abrir_reatachar(null),
+                      },
+                    ]
+                  : []),
+                {
+                  rotulo: "Excluir",
+                  icone: Trash2,
+                  perigo: true,
+                  onClick: () => void excluir_conta(conta),
+                },
+              ],
+            };
+          })}
+        />
       )}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
-          <Wallet size={18} className="text-primaria" />
-          Contas
-        </h2>
+      {aba === "cartoes" && (
+        <ListaDestinos
+          carregando={carregando}
+          vazia="Nenhum cartão. Conecte um banco, reatachar itemId ou cadastre manualmente."
+          itens={cartoes.map((cartao) => {
+            const badge = badge_origem(cartao);
+            const perfilBadge = badge_perfil(cartao.perfil);
+            const saldo = para_numero(cartao.saldo);
+            return {
+              id: cartao.id,
+              titulo: `${cartao.nome}${cartao.final4 ? ` ···· ${cartao.final4}` : ""}`,
+              subtitulo: `Limite ${formatar_moeda(para_numero(cartao.limite))}${
+                cartao.sincronizada
+                  ? ` · Disp. ${formatar_moeda(para_numero(cartao.limite) - saldo)}`
+                  : ""
+              } · Fecha ${cartao.fechamento ?? "—"} · Vence ${cartao.vencimento}`,
+              badges: [perfilBadge, badge],
+              valor: saldo,
+              valorClasse: saldo > 0 ? "text-despesa" : "text-texto",
+              menuAberto: menuId === cartao.id,
+              aoMenu: (e: MouseEvent) => {
+                e.stopPropagation();
+                setMenuId(menuId === cartao.id ? null : cartao.id);
+              },
+              acoes: [
+                { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_cartao(cartao) },
+                ...(cartao.origem === "open_finance" || cartao.sincronizada
+                  ? [
+                      {
+                        rotulo: "Reatachar",
+                        icone: RefreshCw,
+                        onClick: () => abrir_reatachar(null),
+                      },
+                    ]
+                  : []),
+                {
+                  rotulo: "Excluir",
+                  icone: Trash2,
+                  perigo: true,
+                  onClick: () => void excluir_cartao(cartao),
+                },
+              ],
+            };
+          })}
+        />
+      )}
 
-        {carregando && contas.length === 0 ? (
-          <p className="text-sm text-texto-suave">Carregando...</p>
-        ) : contas.length === 0 ? (
-          <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-            Nenhuma conta cadastrada. Conecte um banco ou cadastre manualmente.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {contas.map((conta, i) => {
-              const badge = badge_origem(conta);
-              const perfilBadge = badge_perfil(conta.perfil);
-              const saldo = para_numero(conta.saldoAtual);
-              return (
-                <motion.li
-                  key={conta.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.02 }}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate font-medium text-texto">{conta.nome}</p>
-                      <span
-                        className={unir_classes(
-                          "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                          perfilBadge.classe,
-                        )}
-                        title="Perfil da conta"
-                      >
-                        {perfilBadge.rotulo}
-                      </span>
-                      <span
-                        className={unir_classes(
-                          "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
-                          badge.classe,
-                        )}
-                      >
-                        {badge.rotulo}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <p
-                      className={unir_classes(
-                        "text-base font-semibold tabular-nums",
-                        saldo < 0 ? "text-despesa" : "text-texto",
-                      )}
-                    >
-                      {formatar_moeda(saldo)}
-                    </p>
-                    <Botao
-                      variante="fantasma"
-                      className="px-2"
-                      title="Editar conta"
-                      onClick={() => abrir_editar_conta(conta)}
-                    >
-                      <Pencil size={14} />
-                    </Botao>
-                    <Botao
-                      variante="fantasma"
-                      className="px-2 text-despesa"
-                      title="Excluir conta"
-                      onClick={() => void excluir_conta(conta)}
-                    >
-                      <Trash2 size={14} />
-                    </Botao>
-                  </div>
-                </motion.li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      <section id="cartoes" className="flex flex-col gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-medium text-texto">
-          <CreditCard size={18} className="text-primaria" />
-          Cartões
-        </h2>
-
-        {carregando && cartoes.length === 0 ? (
-          <p className="text-sm text-texto-suave">Carregando...</p>
-        ) : cartoes.length === 0 ? (
-          <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-            Nenhum cartão cadastrado. Conecte um banco ou cadastre manualmente.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {cartoes.map((cartao, i) => {
-              const badge = badge_origem(cartao);
-              const perfilBadge = badge_perfil(cartao.perfil);
-              return (
-                <motion.li
-                  key={cartao.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.02 }}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate font-medium text-texto">
-                        {cartao.nome}
-                        {cartao.final4 ? (
-                          <span className="text-texto-suave"> ···· {cartao.final4}</span>
-                        ) : null}
+      {aba === "bancos" && (
+        <section className="flex flex-col gap-3">
+          {carregando && conexoes.length === 0 ? (
+            <p className="text-sm text-texto-suave">Carregando…</p>
+          ) : conexoes.length === 0 ? (
+            <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
+              Nenhum banco conectado. Use Conectar banco ou Reatachar com um itemId do Meu
+              Pluggy.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {conexoes.map((conexao, i) => {
+                const sync = texto_ultimo_sync(conexao.ultimoSyncEm);
+                return (
+                  <motion.li
+                    key={conexao.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.02 }}
+                    className="relative flex items-start justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-texto">
+                        {conexao.instituicao ?? "Instituição conectada"}
                       </p>
-                      <span
+                      <p className="mt-0.5 text-xs text-texto-suave">
+                        {conexao.status === "ativa"
+                          ? "Ativa"
+                          : conexao.status === "precisa_atencao"
+                            ? "Precisa de atenção"
+                            : conexao.status === "sincronizando"
+                              ? "Sincronizando"
+                              : "Removida"}
+                        {conexao.motivoAtencao ? ` · ${conexao.motivoAtencao}` : ""}
+                      </p>
+                      <p
                         className={unir_classes(
-                          "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                          perfilBadge.classe,
-                        )}
-                        title="Perfil do cartão"
-                      >
-                        {perfilBadge.rotulo}
-                      </span>
-                      <span
-                        className={unir_classes(
-                          "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
-                          badge.classe,
+                          "mt-1 text-xs",
+                          sync.atrasado ? "text-aviso" : "text-texto-suave",
                         )}
                       >
-                        {badge.rotulo}
-                      </span>
+                        {sync.linha}
+                      </p>
                     </div>
-                    <p className="mt-1 text-xs text-texto-suave">
-                      Limite {formatar_moeda(para_numero(cartao.limite))}
-                      {cartao.sincronizada ? (
-                        <>
-                          {" · "}
-                          Disponível{" "}
-                          {formatar_moeda(
-                            para_numero(cartao.limite) - para_numero(cartao.saldo),
-                          )}
-                        </>
-                      ) : null}
-                      {" · "}
-                      Fecha dia {cartao.fechamento ?? "—"} · Vence dia {cartao.vencimento}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <p
-                      className={unir_classes(
-                        "text-base font-semibold tabular-nums",
-                        para_numero(cartao.saldo) > 0 ? "text-despesa" : "text-texto",
+                    <div className="relative shrink-0">
+                      <Botao
+                        variante="fantasma"
+                        className="px-2"
+                        disabled={ocupado}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuId(menuId === conexao.id ? null : conexao.id);
+                        }}
+                      >
+                        <MoreHorizontal size={16} />
+                      </Botao>
+                      {menuId === conexao.id && (
+                        <MenuAcoes
+                          acoes={[
+                            ...(conexao.status !== "removida"
+                              ? [
+                                  {
+                                    rotulo: "Atualizar agora",
+                                    icone: RefreshCw,
+                                    onClick: () => void atualizar_conexao(conexao.id),
+                                  },
+                                ]
+                              : []),
+                            ...(conexao.status === "precisa_atencao"
+                              ? [
+                                  {
+                                    rotulo: "Reconectar (mesmo item)",
+                                    icone: Link2,
+                                    onClick: () => void reconectar_mesmo_item(conexao),
+                                  },
+                                ]
+                              : []),
+                            {
+                              rotulo: "Reatachar (novo itemId)",
+                              icone: RefreshCw,
+                              onClick: () => abrir_reatachar(conexao.id),
+                            },
+                            ...(conexao.status !== "removida"
+                              ? [
+                                  {
+                                    rotulo: "Desconectar",
+                                    icone: Unplug,
+                                    onClick: () =>
+                                      void desconectar(
+                                        conexao.id,
+                                        conexao.instituicao ?? "banco",
+                                      ),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       )}
-                    >
-                      {formatar_moeda(para_numero(cartao.saldo))}
-                    </p>
-                    <Botao
-                      variante="fantasma"
-                      className="px-2"
-                      title="Editar cartão"
-                      onClick={() => abrir_editar_cartao(cartao)}
-                    >
-                      <Pencil size={14} />
-                    </Botao>
-                    <Botao
-                      variante="fantasma"
-                      className="px-2 text-despesa"
-                      title="Excluir cartão"
-                      onClick={() => void excluir_cartao(cartao)}
-                    >
-                      <Trash2 size={14} />
-                    </Botao>
-                  </div>
-                </motion.li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                    </div>
+                  </motion.li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="text-xs text-texto-suave">
+            <strong className="font-medium text-texto">Reatachar</strong> = novo itemId do Meu
+            Pluggy sem perder categorias.{" "}
+            <strong className="font-medium text-texto">Excluir</strong> na aba Contas/Cartões
+            apaga o extrato de vez.
+          </p>
+        </section>
+      )}
 
       <ModalContaCartao
         aberto={modalAberto}
@@ -531,6 +613,128 @@ export function TelaContasECartoes() {
           contexto?.invalidar("contas", "cartoes", "dashboard");
         }}
       />
+
+      <ModalReatachar
+        aberto={modalReatachar}
+        usuarioId={usuario.id}
+        contas={contas}
+        cartoes={cartoes}
+        conexoes={conexoes}
+        conexaoIdAnterior={conexaoAnteriorReatachar}
+        aoFechar={() => setModalReatachar(false)}
+        aoConcluir={() => {
+          void carregar();
+          contexto?.invalidar("tudo");
+          mudar_aba("bancos");
+        }}
+      />
     </div>
+  );
+}
+
+type AcaoMenu = {
+  rotulo: string;
+  icone: typeof Pencil;
+  onClick: () => void;
+  perigo?: boolean;
+};
+
+function MenuAcoes({ acoes }: { acoes: AcaoMenu[] }) {
+  return (
+    <div
+      className="absolute right-0 top-full z-20 mt-1 min-w-[11rem] rounded-xl border border-borda bg-superficie py-1 shadow-lg"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {acoes.map((acao) => (
+        <button
+          key={acao.rotulo}
+          type="button"
+          className={unir_classes(
+            "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-fundo",
+            acao.perigo ? "text-despesa" : "text-texto",
+          )}
+          onClick={() => {
+            acao.onClick();
+          }}
+        >
+          <acao.icone size={14} />
+          {acao.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ListaDestinos({
+  carregando,
+  vazia,
+  itens,
+}: {
+  carregando: boolean;
+  vazia: string;
+  itens: Array<{
+    id: string;
+    titulo: string;
+    subtitulo?: string;
+    badges: Array<{ rotulo: string; classe: string }>;
+    valor: number;
+    valorClasse: string;
+    menuAberto: boolean;
+    aoMenu: (e: MouseEvent) => void;
+    acoes: AcaoMenu[];
+  }>;
+}) {
+  if (carregando && itens.length === 0) {
+    return <p className="text-sm text-texto-suave">Carregando…</p>;
+  }
+  if (itens.length === 0) {
+    return (
+      <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
+        {vazia}
+      </p>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {itens.map((item, i) => (
+        <motion.li
+          key={item.id}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: i * 0.02 }}
+          className="relative flex items-center justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate font-medium text-texto">{item.titulo}</p>
+              {item.badges.map((b) => (
+                <span
+                  key={b.rotulo}
+                  className={unir_classes(
+                    "rounded-md border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                    b.classe,
+                  )}
+                >
+                  {b.rotulo}
+                </span>
+              ))}
+            </div>
+            {item.subtitulo && (
+              <p className="mt-1 text-xs text-texto-suave">{item.subtitulo}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <p className={unir_classes("text-base font-semibold tabular-nums", item.valorClasse)}>
+              {formatar_moeda(item.valor)}
+            </p>
+            <Botao variante="fantasma" className="px-2" onClick={item.aoMenu}>
+              <MoreHorizontal size={16} />
+            </Botao>
+            {item.menuAberto && <MenuAcoes acoes={item.acoes} />}
+          </div>
+        </motion.li>
+      ))}
+    </ul>
   );
 }

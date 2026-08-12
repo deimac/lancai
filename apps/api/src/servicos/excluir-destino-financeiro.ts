@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import {
   cartao,
   conta,
@@ -16,13 +16,13 @@ import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeir
 import { obter_provedor_open_finance } from "./open-finance";
 
 /**
- * Exclusão total de conta/cartão:
- * - se veio de Open Finance, apaga a conexão e todos os recursos da instituição;
- * - apaga parcelas e movimentos ligados;
+ * Exclusão total (hard-delete) de conta/cartão:
+ * - se veio de Open Finance, apaga a conexão e os recursos ligados da instituição;
+ * - apaga parcelas e movimentos (incl. Fatos OF, via escape `lancai.sincronizacao`);
  * - apaga as contas/cartões (não só `ativo=false`).
  *
- * Exceção deliberada ao append-only do dia a dia: o botão Excluir é limpeza
- * para reconectar, não cancelamento de um lançamento.
+ * Exceção deliberada ao append-only: o botão Excluir é limpeza explícita do
+ * usuário. Para só trocar itemId do Meu Pluggy, use Reatachar.
  */
 export async function excluir_destino_financeiro(entrada: {
   usuarioId: string;
@@ -54,71 +54,83 @@ export async function excluir_destino_financeiro(entrada: {
       : [];
 
   const banco = obter_banco();
-  const agora = new Date();
 
-  if (contaIds.length > 0) {
-    await banco
-      .update(recorrencia)
-      .set({ contaId: null, dataAtualizacao: agora })
-      .where(
-        and(eq(recorrencia.usuarioId, entrada.usuarioId), inArray(recorrencia.contaId, contaIds)),
-      );
-  }
-  if (cartaoIds.length > 0) {
-    await banco
-      .update(recorrencia)
-      .set({ cartaoId: null, dataAtualizacao: agora })
-      .where(
-        and(eq(recorrencia.usuarioId, entrada.usuarioId), inArray(recorrencia.cartaoId, cartaoIds)),
-      );
-  }
+  await banco.transaction(async (tx) => {
+    /**
+     * Mesmo escape do Core na sync: permite DELETE de Fatos `open_finance`.
+     * `LOCAL` amarra à transação — fecha no commit/rollback.
+     */
+    await tx.execute(sql`SET LOCAL "lancai.sincronizacao" = 'on'`);
 
-  const filtroMovimento = [
-    ...(contaIds.length > 0 ? [inArray(movimento.contaId, contaIds)] : []),
-    ...(cartaoIds.length > 0 ? [inArray(movimento.cartaoId, cartaoIds)] : []),
-  ];
+    const agora = new Date();
 
-  if (filtroMovimento.length > 0) {
-    const movimentosAlvo = await banco
-      .select({ id: movimento.id })
-      .from(movimento)
-      .where(
-        and(
-          eq(movimento.usuarioId, entrada.usuarioId),
-          inArray(movimento.workspaceId, entrada.workspaceIds),
-          or(...filtroMovimento),
-        ),
-      );
-
-    const movimentoIds = movimentosAlvo.map((m) => m.id);
-    if (movimentoIds.length > 0) {
-      await banco.delete(parcela).where(inArray(parcela.movimentoId, movimentoIds));
-      await banco.delete(movimento).where(inArray(movimento.id, movimentoIds));
+    if (contaIds.length > 0) {
+      await tx
+        .update(recorrencia)
+        .set({ contaId: null, dataAtualizacao: agora })
+        .where(
+          and(eq(recorrencia.usuarioId, entrada.usuarioId), inArray(recorrencia.contaId, contaIds)),
+        );
     }
-  }
+    if (cartaoIds.length > 0) {
+      await tx
+        .update(recorrencia)
+        .set({ cartaoId: null, dataAtualizacao: agora })
+        .where(
+          and(
+            eq(recorrencia.usuarioId, entrada.usuarioId),
+            inArray(recorrencia.cartaoId, cartaoIds),
+          ),
+        );
+    }
 
-  if (contaIds.length > 0) {
-    await banco
-      .update(cartao)
-      .set({ contaId: null, dataAtualizacao: agora })
-      .where(
-        and(eq(cartao.usuarioId, entrada.usuarioId), inArray(cartao.contaId, contaIds)),
-      );
-  }
+    const filtroMovimento = [
+      ...(contaIds.length > 0 ? [inArray(movimento.contaId, contaIds)] : []),
+      ...(cartaoIds.length > 0 ? [inArray(movimento.cartaoId, cartaoIds)] : []),
+    ];
 
-  if (cartaoIds.length > 0) {
-    await banco
-      .delete(cartao)
-      .where(
-        and(inArray(cartao.id, cartaoIds), eq(cartao.usuarioId, entrada.usuarioId)),
-      );
-  }
+    if (filtroMovimento.length > 0) {
+      const movimentosAlvo = await tx
+        .select({ id: movimento.id })
+        .from(movimento)
+        .where(
+          and(
+            eq(movimento.usuarioId, entrada.usuarioId),
+            inArray(movimento.workspaceId, entrada.workspaceIds),
+            or(...filtroMovimento),
+          ),
+        );
 
-  if (contaIds.length > 0) {
-    await banco
-      .delete(conta)
-      .where(and(inArray(conta.id, contaIds), eq(conta.usuarioId, entrada.usuarioId)));
-  }
+      const movimentoIds = movimentosAlvo.map((m) => m.id);
+      if (movimentoIds.length > 0) {
+        await tx.delete(parcela).where(inArray(parcela.movimentoId, movimentoIds));
+        await tx.delete(movimento).where(inArray(movimento.id, movimentoIds));
+      }
+    }
+
+    if (contaIds.length > 0) {
+      await tx
+        .update(cartao)
+        .set({ contaId: null, dataAtualizacao: agora })
+        .where(
+          and(eq(cartao.usuarioId, entrada.usuarioId), inArray(cartao.contaId, contaIds)),
+        );
+    }
+
+    if (cartaoIds.length > 0) {
+      await tx
+        .delete(cartao)
+        .where(
+          and(inArray(cartao.id, cartaoIds), eq(cartao.usuarioId, entrada.usuarioId)),
+        );
+    }
+
+    if (contaIds.length > 0) {
+      await tx
+        .delete(conta)
+        .where(and(inArray(conta.id, contaIds), eq(conta.usuarioId, entrada.usuarioId)));
+    }
+  });
 
   return { contaIds, cartaoIds };
 }

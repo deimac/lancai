@@ -11,11 +11,16 @@ export async function conectar_banco(entrada: {
   usuarioId: string;
   fonte: DescritorFonte;
   widgetRef: { current: WidgetHandle };
+  /** ID interno LançAI — token com itemId para reconexão. */
+  conexaoId?: string;
+  /** itemId Pluggy — abre widget em modo updateItem. */
+  conexaoExterna?: string;
   aoSucesso: () => void | Promise<void>;
   aoErro: (mensagem: string) => void;
   aoOcupado: (ocupado: boolean) => void;
 }): Promise<void> {
-  const { usuarioId, fonte, widgetRef, aoSucesso, aoErro, aoOcupado } = entrada;
+  const { usuarioId, fonte, widgetRef, conexaoId, conexaoExterna, aoSucesso, aoErro, aoOcupado } =
+    entrada;
 
   if (!fonte.disponivel || !fonte.id) {
     aoErro("Open Finance não está disponível neste ambiente.");
@@ -45,15 +50,16 @@ export async function conectar_banco(entrada: {
 
   aoOcupado(true);
   try {
-    const { token } = await clienteApi.criar_token_conexao({ usuarioId });
+    const { token } = await clienteApi.criar_token_conexao({ usuarioId, conexaoId });
     widgetRef.current?.fechar();
     widgetRef.current = await abrir_widget_conexao(fonte.id, {
       token,
       incluirSandbox: import.meta.env.DEV,
-      aoConcluir: (conexaoExterna) => {
+      conexaoExterna,
+      aoConcluir: (itemId) => {
         void (async () => {
           try {
-            await clienteApi.registrar_conexao({ usuarioId, conexaoExterna });
+            await clienteApi.registrar_conexao({ usuarioId, conexaoExterna: itemId });
             await aoSucesso();
           } catch (e) {
             aoErro(

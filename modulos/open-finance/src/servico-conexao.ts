@@ -144,6 +144,103 @@ export class ServicoConexaoOpenFinance {
   }
 
   /**
+   * Lê estado e recursos de um itemId no provedor **sem** gravar conexão.
+   * Usado pelo wizard de Reatachar antes do pareamento.
+   */
+  async inspecionar_item(conexaoExterna: string): Promise<{
+    instituicao: string | null;
+    status: EstadoConexao["status"];
+    contas: ContaExterna[];
+  }> {
+    const estado = await this.provedor.obter_estado(conexaoExterna);
+    const contas = await this.provedor.listar_contas_externas(conexaoExterna);
+    return {
+      instituicao: estado.instituicao ?? null,
+      status: estado.status,
+      contas,
+    };
+  }
+
+  /**
+   * Meu Pluggy (ou item recriado): registra o novo itemId, associa aos
+   * Conta/Cartão locais escolhidos e **não** materializa destinos novos para
+   * o que já foi pareado. A importação GET fica a cargo da API (com skip
+   * semântico).
+   */
+  async reatachar_conexao(entrada: {
+    workspaceId: string;
+    usuarioId: string;
+    conexaoExterna: string;
+    pareamentos: Array<{
+      contaExternaId: string;
+      contaId?: string;
+      cartaoId?: string;
+    }>;
+    conexaoIdAnterior?: string;
+  }): Promise<ConexaoComContas> {
+    if (entrada.pareamentos.length === 0) {
+      throw new ErroAssociacaoInvalida("Informe ao menos um pareamento conta externa → local.");
+    }
+
+    for (const p of entrada.pareamentos) {
+      if (!p.contaId && !p.cartaoId) {
+        throw new ErroAssociacaoInvalida(
+          `Pareamento de ${p.contaExternaId}: informe contaId ou cartaoId.`,
+        );
+      }
+      if (p.contaId && p.cartaoId) {
+        throw new ErroAssociacaoInvalida(
+          `Pareamento de ${p.contaExternaId}: conta ou cartão, não os dois.`,
+        );
+      }
+    }
+
+    if (entrada.conexaoIdAnterior) {
+      const anterior = await this.repositorio.obterConexaoPorId(entrada.conexaoIdAnterior);
+      if (anterior && anterior.status !== "removida") {
+        await this.desconectar(entrada.conexaoIdAnterior);
+      }
+    }
+
+    const estado = await this.provedor.obter_estado(entrada.conexaoExterna);
+    const conexao = await this.repositorio.registrarConexao({
+      provedor: this.provedor.id,
+      idExterno: entrada.conexaoExterna,
+      workspaceId: entrada.workspaceId,
+      criadoPor: entrada.usuarioId,
+      instituicao: estado.instituicao ?? null,
+    });
+
+    await this.repositorio.atualizarEstadoConexao(conexao.id, this.traduzir_estado(estado));
+
+    const encontradas = await this.provedor.listar_contas_externas(entrada.conexaoExterna);
+    await this.repositorio.sincronizarContasExternas(
+      conexao.id,
+      encontradas.map((conta: ContaExterna) => ({
+        contaExternaId: conta.idExterno,
+        nome: conta.nome,
+        tipo: conta.tipo,
+      })),
+    );
+
+    const idsExternos = new Set(encontradas.map((c) => c.idExterno));
+    for (const p of entrada.pareamentos) {
+      if (!idsExternos.has(p.contaExternaId)) {
+        throw new ErroContaExternaNaoEncontrada(p.contaExternaId);
+      }
+      await this.associar({
+        conexaoId: conexao.id,
+        contaExternaId: p.contaExternaId,
+        contaId: p.contaId,
+        cartaoId: p.cartaoId,
+      });
+    }
+
+    await this.aplicar_saldos_institucionais(conexao.id, encontradas);
+    return this.detalhar(conexao.id);
+  }
+
+  /**
    * Passos 6 e 7: liga a conta do banco a uma conta ou cartão local e marca a
    * origem como sincronizada.
    *

@@ -35,6 +35,7 @@ describe("webhooks open-finance / pluggy", () => {
       atualizados: 0,
       removidos: 0,
       semDestino: 0,
+      puladosSemanticos: 0,
       paginas: 0,
       movimentoIdsCriados: [],
     });

@@ -138,9 +138,18 @@ curl -X POST https://api.lancai.xploreia.com/open-finance/conexoes \
   -d '{"usuarioId":"<uuid>","conexaoExterna":"<itemId>"}'
 ```
 
-Ou em `/conexoes`, campo **Registrar itemId** (atalho de teste).
+Ou em `/contas` → aba **Bancos** → **Reatachar** (recomendado se já existem Contas/Cartões).
 
-7. Web → Contas/Conexões → **Atualizar agora** → conferir contas materializadas e Extrato com `fonte=open_finance`.
+7. Web → Contas → **Atualizar agora** (menu do banco) → conferir Extrato com `fonte=open_finance`.
+
+#### Meu Pluggy: itemId novo (dois caminhos)
+
+| Caminho | Quando | O que faz |
+|---------|--------|-----------|
+| **Reatachar** (`POST /open-finance/conexoes/reatachar`) | Perdeu o item e o Meu Pluggy gerou **novo** itemId; quer manter Contas/Cartões e categorias | Pareia recursos externos → destinos locais; GET extrato; **só cria** o que for novo (`id_externo` + skip semântico data/valor/descrição). Não sobrescreve categorias. |
+| **Excluir** (hard-delete em Contas/Cartões) | Quer limpar tudo e começar de novo | Apaga conta/cartão + extrato OF (usa `SET LOCAL lancai.sincronizacao=on`). Irreversível. |
+
+UI: hub `/contas` com abas Contas · Cartões · Bancos (`/conexoes` redireciona para `#bancos`).
 
 Credenciais: as mesmas `PLUGGY_CLIENT_ID` / `PLUGGY_CLIENT_SECRET` da Application que enxerga o item. `OPEN_FINANCE_WEBHOOK_URL` deve ser a URL `/pluggy` acima.
 
