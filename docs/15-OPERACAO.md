@@ -200,16 +200,18 @@ Rodar sempre de dentro de cada pacote, nunca da raiz. Ver [14-TESTES.md](14-TEST
 
 Stack de infraestrutura: Docker, Coolify, VPS Hostinger e Caddy.
 
-### Deploy da API no Coolify (Nixpacks)
+### Deploy da API no Coolify (Dockerfile)
 
-O serviço da API usa `nixpacks.toml` na raiz: install com `pnpm install --frozen-lockfile`, build com `pnpm build:api` (typecheck), start com `pnpm start:api` (`tsx`).
+O serviço da API usa o `Dockerfile` na raiz: `pnpm install --frozen-lockfile`, `pnpm build:api` (typecheck) e `pnpm start:api` (`tsx`). Isso evita o Nixpacks baixar o nixpkgs do GitHub (passo que costuma falhar com exit 255 no builder).
 
 No painel Coolify deste serviço:
 
-1. **Build Command** vazio (usa o `nixpacks.toml`) ou explicitamente `pnpm build:api`.
+1. **Build Pack** = Dockerfile. **Build Command** vazio (o Dockerfile já instala e faz o typecheck).
 2. Não use `pnpm build:all` nem o build do Vite neste serviço — a Web é outro app.
 3. O script raiz `pnpm build` aponta para `pnpm build:api` (defesa se o painel ainda mandar `pnpm build`).
 4. `package.json` permite scripts de build do `esbuild` (`pnpm.onlyBuiltDependencies`) — o `tsx` depende disso em runtime.
+
+O `nixpacks.toml` permanece como fallback se o pack do painel ainda estiver em Nixpacks.
 
 ### Ollama no servidor
 O plano de referência é uma KVM2 com 2 vCPU e 8 GB. Se for habilitar o Ollama lá:
