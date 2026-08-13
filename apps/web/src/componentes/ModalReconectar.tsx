@@ -205,10 +205,13 @@ export function ModalReconectar({
       >
         <div className="flex items-center justify-between border-b border-borda px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-texto">Reconectar banco</p>
+            <p className="text-sm font-semibold text-texto">
+              {conexaoId ? "Reconectar banco" : "Conectar banco"}
+            </p>
             <p className="text-xs text-texto-suave">
-              {conexao?.instituicao ?? alvoNome ?? "Instituição"} — religa o mesmo cartão/conta,
-              sem duplicar
+              {conexaoId
+                ? `${conexao?.instituicao ?? alvoNome ?? "Instituição"} — religa o mesmo cartão/conta, sem duplicar`
+                : "Cole o itemId do Meu Pluggy. Contas e cartões já existentes são religados, sem duplicar."}
             </p>
           </div>
           <button
@@ -224,7 +227,7 @@ export function ModalReconectar({
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
           {passo === "item" && (
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-texto-suave">ItemId (mesmo ou novo)</span>
+              <span className="text-texto-suave">ItemId (Meu Pluggy)</span>
               <input
                 className="rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-texto"
                 value={itemId}

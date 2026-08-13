@@ -1,11 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Link2, Plus, RefreshCw } from "lucide-react";
-import {
-  abrir_widget_conexao,
-  ErroWidgetIndisponivel,
-  provedor_tem_widget,
-} from "@lancai/open-finance/web";
-import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { useToast } from "../contexto/ContextoToast";
@@ -151,7 +145,6 @@ export function TelaConexoes() {
   const [progressoImportacao, setProgressoImportacao] = useState<ProgressoImportacaoUi | null>(
     null,
   );
-  const widgetRef = useRef<WidgetAberto | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "conexoes",
@@ -191,13 +184,6 @@ export function TelaConexoes() {
   useEffect(() => {
     void carregar();
   }, [carregar, depsDados]);
-
-  useEffect(() => {
-    return () => {
-      widgetRef.current?.fechar();
-      widgetRef.current = null;
-    };
-  }, []);
 
   async function abrir_detalhe(conexaoId: string) {
     if (!usuario) return;
@@ -362,70 +348,11 @@ export function TelaConexoes() {
       return;
     }
 
-    if (!provedor_tem_widget(fonte.id)) {
-      setErro(
-        "A fonte ativa não tem tela de conexão no navegador. " +
-          "Troque OPEN_FINANCE_PROVEDOR por um provedor real para conectar um banco.",
-      );
-      return;
+    if (conexaoParaReconectar?.idExterno) {
+      setItemIdManual(conexaoParaReconectar.idExterno);
     }
-
-    setOcupado(true);
+    setDetalhe(null);
     setErro(null);
-
-    try {
-      const { token, conectorIds } = await clienteApi.criar_token_conexao({
-        usuarioId: usuario.id,
-        conexaoId: conexaoParaReconectar?.id,
-      });
-
-      widgetRef.current?.fechar();
-      widgetRef.current = await abrir_widget_conexao(fonte.id, {
-        token,
-        conectorIds,
-        incluirSandbox: import.meta.env.VITE_OPEN_FINANCE_INCLUDE_SANDBOX === "true",
-        conexaoExterna: conexaoParaReconectar?.idExterno,
-        aoConcluir: (conexaoExterna) => {
-          void (async () => {
-            try {
-              const registrada = await clienteApi.registrar_conexao({
-                usuarioId: usuario.id,
-                conexaoExterna,
-              });
-              setDetalhe(registrada);
-              await carregar();
-              contexto?.invalidar("conexoes", "contas", "cartoes");
-              toast.sucesso("Conexão realizada. Contas e cartões foram recuperados.");
-            } catch (e) {
-              setErro(
-                e instanceof ErroApi
-                  ? e.message
-                  : "O banco conectou, mas não consegui gravar a conexão.",
-              );
-            } finally {
-              setOcupado(false);
-              widgetRef.current = null;
-            }
-          })();
-        },
-        aoFalhar: (mensagem) => {
-          setErro(mensagem);
-          setOcupado(false);
-          widgetRef.current = null;
-        },
-        aoFechar: () => {
-          setOcupado(false);
-          widgetRef.current = null;
-        },
-      });
-    } catch (e) {
-      setErro(
-        e instanceof ErroWidgetIndisponivel || e instanceof ErroApi
-          ? e.message
-          : "Não foi possível abrir a conexão com o banco.",
-      );
-      setOcupado(false);
-    }
   }
 
   async function associar(contaExterna: ContaExternaRegistrada, destino: string) {
@@ -554,7 +481,7 @@ export function TelaConexoes() {
           }
         >
           {fonte?.id === "duble" ? <Link2 size={14} /> : <Plus size={14} />}
-          {fonte?.id === "duble" ? "Conectar banco de mentira" : "Conectar conta ou cartão"}
+          {fonte?.id === "duble" ? "Conectar banco de mentira" : "Conectar com itemId"}
         </Botao>
       </div>
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -14,7 +14,6 @@ import {
   Unplug,
   Wallet,
 } from "lucide-react";
-import type { WidgetAberto } from "@lancai/open-finance/web";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { useToast } from "../contexto/ContextoToast";
@@ -108,7 +107,6 @@ export function TelaContasECartoes() {
   const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const location = useLocation();
-  const widgetRef = useRef<WidgetAberto | null>(null);
 
   const [fonte, setFonte] = useState<DescritorFonte | null>(null);
   const [contas, setContas] = useState<ContaResumo[]>([]);
@@ -168,10 +166,6 @@ export function TelaContasECartoes() {
   useEffect(() => {
     setAba(aba_do_hash(location.hash));
   }, [location.hash]);
-
-  useEffect(() => {
-    return () => widgetRef.current?.fechar();
-  }, []);
 
   useEffect(() => {
     function fechar_menu() {
@@ -263,18 +257,22 @@ export function TelaContasECartoes() {
 
   function ao_conectar() {
     if (!usuario || !fonte) return;
-    void conectar_banco({
-      usuarioId: usuario.id,
-      fonte,
-      widgetRef,
-      aoOcupado: setOcupado,
-      aoErro: (mensagem) => toast.erro(mensagem),
-      aoSucesso: async () => {
-        toast.sucesso("Banco conectado. Contas e cartões foram criados.");
-        await carregar();
-        contexto?.invalidar("tudo");
-      },
-    });
+    if (fonte.id === "duble") {
+      void conectar_banco({
+        usuarioId: usuario.id,
+        fonte,
+        aoOcupado: setOcupado,
+        aoErro: (mensagem) => toast.erro(mensagem),
+        aoSucesso: async () => {
+          toast.sucesso("Banco conectado. Contas e cartões foram criados.");
+          await carregar();
+          contexto?.invalidar("tudo");
+        },
+      });
+      return;
+    }
+    mudar_aba("bancos");
+    abrir_reconectar({});
   }
 
   async function atualizar_conexao(conexaoId: string) {
@@ -319,21 +317,7 @@ export function TelaContasECartoes() {
   }
 
   async function reconectar_mesmo_item(conexao: ConexaoDetalhada) {
-    if (!usuario || !fonte) return;
-    void conectar_banco({
-      usuarioId: usuario.id,
-      fonte,
-      widgetRef,
-      conexaoId: conexao.id,
-      conexaoExterna: conexao.idExterno,
-      aoOcupado: setOcupado,
-      aoErro: (mensagem) => toast.erro(mensagem),
-      aoSucesso: async () => {
-        toast.sucesso("Reconexão iniciada (mesmo item).");
-        await carregar();
-        contexto?.invalidar("tudo");
-      },
-    });
+    abrir_reconectar({ conexaoId: conexao.id });
   }
 
   if (!usuario) return null;
@@ -535,8 +519,7 @@ export function TelaContasECartoes() {
             <p className="text-sm text-texto-suave">Carregando…</p>
           ) : conexoes.length === 0 ? (
             <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-              Nenhum banco conectado. Use Conectar banco para trazer contas e cartões da
-              instituição.
+              Nenhum banco conectado. Use Conectar banco e cole o itemId do Meu Pluggy.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -645,8 +628,8 @@ export function TelaContasECartoes() {
             </ul>
           )}
           <p className="text-xs text-texto-suave">
-            <strong className="font-medium text-texto">Reconectar</strong> atualiza o mesmo
-            banco — contas e cartões continuam os mesmos.{" "}
+            <strong className="font-medium text-texto">Conectar / Reconectar</strong> usa o
+            itemId do Meu Pluggy — contas e cartões locais são religados, sem duplicar.{" "}
             <strong className="font-medium text-texto">Excluir</strong> na aba Contas/Cartões
             apaga o extrato de vez.
           </p>

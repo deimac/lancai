@@ -10,7 +10,7 @@ type WidgetHandle = { fechar: () => void } | null;
 export async function conectar_banco(entrada: {
   usuarioId: string;
   fonte: DescritorFonte;
-  widgetRef: { current: WidgetHandle };
+  widgetRef?: { current: WidgetHandle };
   /** ID interno LançAI — token com itemId para reconexão. */
   conexaoId?: string;
   /** itemId Pluggy — abre widget em modo updateItem. */
@@ -60,8 +60,8 @@ export async function conectar_banco(entrada: {
   aoOcupado(true);
   try {
     const { token, conectorIds } = await clienteApi.criar_token_conexao({ usuarioId, conexaoId });
-    widgetRef.current?.fechar();
-    widgetRef.current = await abrir_widget_conexao(fonte.id, {
+    widgetRef?.current?.fechar();
+    const aberto = await abrir_widget_conexao(fonte.id, {
       token,
       conectorIds,
       incluirSandbox: import.meta.env.VITE_OPEN_FINANCE_INCLUDE_SANDBOX === "true",
@@ -88,20 +88,21 @@ export async function conectar_banco(entrada: {
             );
           } finally {
             aoOcupado(false);
-            widgetRef.current = null;
+            if (widgetRef) widgetRef.current = null;
           }
         })();
       },
       aoFalhar: (mensagem) => {
         aoErro(mensagem);
         aoOcupado(false);
-        widgetRef.current = null;
+        if (widgetRef) widgetRef.current = null;
       },
       aoFechar: () => {
         aoOcupado(false);
-        widgetRef.current = null;
+        if (widgetRef) widgetRef.current = null;
       },
     });
+    if (widgetRef) widgetRef.current = aberto;
   } catch (e) {
     aoErro(
       e instanceof ErroWidgetIndisponivel || e instanceof ErroApi
