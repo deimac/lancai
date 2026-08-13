@@ -1,5 +1,6 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ServicoConexaoOpenFinance } from "@lancai/open-finance";
+import { cabecalhos_stream_ndjson } from "../cors";
 import {
   schemaAssociarContaExterna,
   schemaAtualizarItemId,
@@ -31,6 +32,13 @@ import { filtrar_criacao_semantica_of } from "../servicos/skip-semantico-of";
 
 function fonte_desativada(resposta: FastifyReply) {
   return resposta.status(503).send({ erro: "Fonte Open Finance desativada." });
+}
+
+async function iniciar_stream_ndjson(requisicao: FastifyRequest, resposta: FastifyReply) {
+  const origem =
+    typeof requisicao.headers.origin === "string" ? requisicao.headers.origin : undefined;
+  resposta.hijack();
+  resposta.raw.writeHead(200, await cabecalhos_stream_ndjson(origem));
 }
 
 /**
@@ -140,12 +148,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
       if ("erro" in acesso) return resposta.status(404).send(acesso);
     }
 
-    resposta.hijack();
-    resposta.raw.writeHead(200, {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    });
+    await iniciar_stream_ndjson(requisicao, resposta);
 
     const escrever = (evento: Record<string, unknown>) => {
       resposta.raw.write(`${JSON.stringify(evento)}\n`);
@@ -290,12 +293,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     const acesso = await exigir_conexao_do_usuario(servico, id, usuarioId);
     if ("erro" in acesso) return resposta.status(404).send(acesso);
 
-    resposta.hijack();
-    resposta.raw.writeHead(200, {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    });
+    await iniciar_stream_ndjson(requisicao, resposta);
 
     const escrever = (evento: Record<string, unknown>) => {
       resposta.raw.write(`${JSON.stringify(evento)}\n`);
