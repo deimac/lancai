@@ -374,7 +374,7 @@ export function TelaConexoes() {
     setErro(null);
 
     try {
-      const { token } = await clienteApi.criar_token_conexao({
+      const { token, conectorIds } = await clienteApi.criar_token_conexao({
         usuarioId: usuario.id,
         conexaoId: conexaoParaReconectar?.id,
       });
@@ -382,7 +382,8 @@ export function TelaConexoes() {
       widgetRef.current?.fechar();
       widgetRef.current = await abrir_widget_conexao(fonte.id, {
         token,
-        incluirSandbox: import.meta.env.DEV,
+        conectorIds,
+        incluirSandbox: import.meta.env.VITE_OPEN_FINANCE_INCLUDE_SANDBOX === "true",
         conexaoExterna: conexaoParaReconectar?.idExterno,
         aoConcluir: (conexaoExterna) => {
           void (async () => {

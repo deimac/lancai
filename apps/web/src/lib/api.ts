@@ -191,6 +191,7 @@ export interface DescritorFonte {
 export interface TokenConexao {
   token: string;
   expiraEm: string;
+  conectorIds?: number[];
 }
 
 export type MotivoAtencao =

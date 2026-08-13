@@ -11,6 +11,7 @@ import type {
   WebhookInterpretado,
 } from "../provedor";
 import { ClientePluggy, type ConfigPluggy } from "./cliente";
+import { ids_conectores_para_widget } from "./conectores-widget";
 import type {
   ContaPluggy,
   ItemPluggy,
@@ -72,7 +73,24 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
       },
     });
 
-    return { token: corpo.accessToken, expiraEm: new Date(this.agora() + VALIDADE_TOKEN_MS) };
+    return {
+      token: corpo.accessToken,
+      expiraEm: new Date(this.agora() + VALIDADE_TOKEN_MS),
+      conectorIds: await this.ids_conectores_do_widget(),
+    };
+  }
+
+  /** Lista bancos reais; tira Meu Pluggy, que no Connect só gera erro genérico. */
+  private async ids_conectores_do_widget(): Promise<number[] | undefined> {
+    try {
+      const corpo = await this.cliente.obter<RespostaPaginada<{ id: number; name?: string }>>(
+        "/connectors",
+      );
+      const ids = ids_conectores_para_widget(corpo.results ?? []);
+      return ids.length > 0 ? ids : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async listar_contas_externas(conexaoExterna: string): Promise<ContaExterna[]> {

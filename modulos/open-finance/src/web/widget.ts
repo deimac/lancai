@@ -27,10 +27,12 @@ export interface PedidoDeConexao {
    */
   conexaoExterna?: string;
   /**
-   * Inclui as instituições de mentira do ambiente de teste do provedor. Sem
-   * isto não há como conectar nada no sandbox, que é onde a F2 é validada.
+   * Inclui as instituições de mentira do ambiente de teste do provedor.
+   * Só ligar com `VITE_OPEN_FINANCE_INCLUDE_SANDBOX=true`.
    */
   incluirSandbox?: boolean;
+  /** Instituições a listar; sem isto o widget mostra tudo, inclusive Meu Pluggy. */
+  conectorIds?: number[];
 }
 
 /** Fecha o widget. A tela guarda para poder desmontar sem deixar iframe órfão. */

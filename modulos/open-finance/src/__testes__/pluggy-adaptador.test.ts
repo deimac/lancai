@@ -138,6 +138,21 @@ describe("AdaptadorPluggy", () => {
       expect(token.expiraEm.getTime()).toBeGreaterThan(Date.now());
     });
 
+    it("omite Meu Pluggy da lista que o widget vai mostrar", async () => {
+      rede.responder("/connect_token", { accessToken: "token-do-widget" });
+      rede.responder("/connectors", {
+        results: [
+          { id: 601, name: "Itaú" },
+          { id: 200, name: "MeuPluggy" },
+          { id: 612, name: "Nubank" },
+        ],
+      });
+
+      const token = await adaptador.criar_token_conexao({ usuarioId: "user-1" });
+
+      expect(token.conectorIds).toEqual([601, 612]);
+    });
+
     /** Sem `itemId` o widget cria conexão nova em vez de consertar a existente. */
     it("manda o item quando é reconexão", async () => {
       rede.responder("/connect_token", { accessToken: "token" });

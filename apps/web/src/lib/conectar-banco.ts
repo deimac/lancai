@@ -59,11 +59,12 @@ export async function conectar_banco(entrada: {
 
   aoOcupado(true);
   try {
-    const { token } = await clienteApi.criar_token_conexao({ usuarioId, conexaoId });
+    const { token, conectorIds } = await clienteApi.criar_token_conexao({ usuarioId, conexaoId });
     widgetRef.current?.fechar();
     widgetRef.current = await abrir_widget_conexao(fonte.id, {
       token,
-      incluirSandbox: import.meta.env.DEV,
+      conectorIds,
+      incluirSandbox: import.meta.env.VITE_OPEN_FINANCE_INCLUDE_SANDBOX === "true",
       conexaoExterna,
       aoConcluir: (itemId) => {
         void (async () => {

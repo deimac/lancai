@@ -83,6 +83,11 @@ export interface EstadoConexao {
 export interface TokenConexao {
   token: string;
   expiraEm: Date;
+  /**
+   * IDs de instituições que o widget deve listar. Sem isto o provedor mostra
+   * tudo, inclusive atalhos que não são banco (ex.: Meu Pluggy).
+   */
+  conectorIds?: number[];
 }
 
 /**
