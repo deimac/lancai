@@ -434,4 +434,34 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
   ): Promise<void> {
     /* Memória não persiste conta_financeira; identidade é opaca nos testes. */
   }
+
+  async listarContasDoWorkspace(workspaceId: string): Promise<Conta[]> {
+    return [...this.contas.values()].filter(
+      (conta) => conta.workspaceId === workspaceId && conta.ativo,
+    );
+  }
+
+  async listarCartoesDoWorkspace(workspaceId: string): Promise<Cartao[]> {
+    return [...this.cartoes.values()].filter(
+      (cartao) => cartao.workspaceId === workspaceId && cartao.ativo,
+    );
+  }
+
+  async idsComFatoOpenFinance(entrada: {
+    contaIds: string[];
+    cartaoIds: string[];
+  }): Promise<{ contas: string[]; cartoes: string[] }> {
+    const contas = new Set<string>();
+    const cartoes = new Set<string>();
+    for (const movimento of this.movimentos.values()) {
+      if (movimento.fonte !== "open_finance") continue;
+      if (movimento.contaId && entrada.contaIds.includes(movimento.contaId)) {
+        contas.add(movimento.contaId);
+      }
+      if (movimento.cartaoId && entrada.cartaoIds.includes(movimento.cartaoId)) {
+        cartoes.add(movimento.cartaoId);
+      }
+    }
+    return { contas: [...contas], cartoes: [...cartoes] };
+  }
 }

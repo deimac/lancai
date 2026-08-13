@@ -1507,4 +1507,57 @@ describe("MotorFinanceiro", () => {
       expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(955);
     });
   });
+
+  describe("destinos adotáveis na reconexão", () => {
+    it("inclui cartão com Fato OF mesmo sem sincronizada, e exclui só manual", async () => {
+      const orfao = criarCartao(randomUUID(), {
+        usuarioId,
+        nome: "AZUL ITAU VISA PLATINUM",
+        sincronizada: false,
+      });
+      const manual = criarCartao(randomUUID(), {
+        usuarioId,
+        nome: "Cartão da loja",
+        sincronizada: false,
+      });
+      const sync = criarCartao(randomUUID(), {
+        usuarioId,
+        nome: "Mercado Pago",
+        sincronizada: true,
+      });
+      repositorio.cartoes.set(orfao.id, orfao);
+      repositorio.cartoes.set(manual.id, manual);
+      repositorio.cartoes.set(sync.id, sync);
+
+      await motor.ingerir_eventos(
+        [
+          {
+            workspaceId: WORKSPACE,
+            fonte: "open_finance",
+            provedor: "duble",
+            idExterno: "tx-azul",
+            ocorridoEm: "2026-08-01",
+            valor: 90,
+            tipo: "despesa",
+            descricaoFonte: "COMPRA AZUL",
+            statusFonte: "confirmado",
+            fatoImutavel: true,
+            cartaoId: orfao.id,
+          },
+        ],
+        {
+          usuarioId,
+          criadoPor: usuarioId,
+          categoriaIdNaoClassificado: categoria.id,
+          perfilPadrao: "pf",
+        },
+      );
+
+      const { cartoes } = await motor.listar_destinos_adotaveis(WORKSPACE);
+      const ids = cartoes.map((c) => c.id);
+      expect(ids).toContain(orfao.id);
+      expect(ids).toContain(sync.id);
+      expect(ids).not.toContain(manual.id);
+    });
+  });
 });

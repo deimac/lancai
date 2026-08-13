@@ -23,8 +23,9 @@ type Props = {
   contas: ContaResumo[];
   cartoes: CartaoResumo[];
   conexoes: ConexaoDetalhada[];
-  /** Conexão a atualizar in-place — obrigatória. */
   conexaoId: string | null;
+  alvoContaId?: string;
+  alvoCartaoId?: string;
   aoFechar: () => void;
   aoConcluir: () => void;
 };
@@ -34,6 +35,10 @@ function eh_cartao_externo(tipo: string): boolean {
   return t.includes("credit") || t.includes("card") || t.includes("cartao");
 }
 
+function eh_of(item: { origem?: string; sincronizada?: boolean }) {
+  return item.origem === "open_finance" || item.sincronizada;
+}
+
 export function ModalReconectar({
   aberto,
   usuarioId,
@@ -41,6 +46,8 @@ export function ModalReconectar({
   cartoes,
   conexoes,
   conexaoId,
+  alvoContaId,
+  alvoCartaoId,
   aoFechar,
   aoConcluir,
 }: Props) {
@@ -53,19 +60,29 @@ export function ModalReconectar({
   const [passo, setPasso] = useState<"item" | "parear">("item");
   const [instituicao, setInstituicao] = useState<string | null>(null);
   const [externas, setExternas] = useState<ContaExternaPreview[]>([]);
-  /** chave = idExterno → "conta:uuid" | "cartao:uuid" | "" (auto) */
   const [mapa, setMapa] = useState<Record<string, string>>({});
   const [ocupado, setOcupado] = useState(false);
   const [progresso, setProgresso] = useState<ProgressoImportacaoUi | null>(null);
 
-  const contasDaConexao = useMemo(
-    () => contas.filter((c) => c.conexaoId === conexaoId),
-    [contas, conexaoId],
-  );
-  const cartoesDaConexao = useMemo(
-    () => cartoes.filter((c) => c.conexaoId === conexaoId),
-    [cartoes, conexaoId],
-  );
+  const contasCandidatas = useMemo(() => {
+    const daConexao = conexaoId
+      ? contas.filter((c) => c.conexaoId === conexaoId)
+      : [];
+    const orfas = contas.filter((c) => eh_of(c) && !c.conexaoId);
+    const alvo = alvoContaId ? contas.filter((c) => c.id === alvoContaId) : [];
+    const porId = new Map([...daConexao, ...orfas, ...alvo].map((c) => [c.id, c]));
+    return [...porId.values()];
+  }, [contas, conexaoId, alvoContaId]);
+
+  const cartoesCandidatos = useMemo(() => {
+    const daConexao = conexaoId
+      ? cartoes.filter((c) => c.conexaoId === conexaoId)
+      : [];
+    const orfas = cartoes.filter((c) => eh_of(c) && !c.conexaoId);
+    const alvo = alvoCartaoId ? cartoes.filter((c) => c.id === alvoCartaoId) : [];
+    const porId = new Map([...daConexao, ...orfas, ...alvo].map((c) => [c.id, c]));
+    return [...porId.values()];
+  }, [cartoes, conexaoId, alvoCartaoId]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -86,10 +103,6 @@ export function ModalReconectar({
       toast.erro("Informe o itemId do banco.");
       return;
     }
-    if (!conexaoId) {
-      toast.erro("Selecione um banco para reconectar.");
-      return;
-    }
     setOcupado(true);
     try {
       const preview = await clienteApi.inspecionar_item({
@@ -101,12 +114,18 @@ export function ModalReconectar({
       const inicial: Record<string, string> = {};
       for (const c of preview.contas) {
         const cartao = eh_cartao_externo(c.tipo);
-        const candidatos = cartao ? cartoesDaConexao : contasDaConexao;
+        const candidatos = cartao ? cartoesCandidatos : contasCandidatas;
+        const alvoId = cartao ? alvoCartaoId : alvoContaId;
+        const alvo = alvoId ? candidatos.find((local) => local.id === alvoId) : undefined;
         const porNome = candidatos.find(
           (local) => local.nome.toLowerCase() === c.nome.toLowerCase(),
         );
-        if (porNome) {
-          inicial[c.idExterno] = cartao ? `cartao:${porNome.id}` : `conta:${porNome.id}`;
+        const escolhido =
+          alvo && (!porNome || porNome.id === alvo.id || candidatos.length === 1)
+            ? alvo
+            : porNome;
+        if (escolhido) {
+          inicial[c.idExterno] = cartao ? `cartao:${escolhido.id}` : `conta:${escolhido.id}`;
         } else if (candidatos.length === 1) {
           const unico = candidatos[0]!;
           inicial[c.idExterno] = cartao ? `cartao:${unico.id}` : `conta:${unico.id}`;
@@ -124,10 +143,6 @@ export function ModalReconectar({
   }
 
   async function confirmar() {
-    if (!conexaoId) {
-      toast.erro("Selecione um banco para reconectar.");
-      return;
-    }
     const pareamentos: PareamentoReatachar[] = [];
     for (const ext of externas) {
       const valor = mapa[ext.idExterno] ?? "";
@@ -145,7 +160,9 @@ export function ModalReconectar({
           usuarioId,
           conexaoExterna: itemId.trim(),
           pareamentos,
-          conexaoId,
+          conexaoId: conexaoId || undefined,
+          alvoContaId,
+          alvoCartaoId,
         },
         (p: ProgressoImportacaoApi) => {
           setProgresso({
@@ -175,6 +192,10 @@ export function ModalReconectar({
     }
   }
 
+  const alvoNome =
+    cartoes.find((c) => c.id === alvoCartaoId)?.nome ??
+    contas.find((c) => c.id === alvoContaId)?.nome;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
       <div
@@ -186,8 +207,8 @@ export function ModalReconectar({
           <div>
             <p className="text-sm font-semibold text-texto">Reconectar banco</p>
             <p className="text-xs text-texto-suave">
-              {conexao?.instituicao ?? "Instituição"} — atualiza a conexão existente, sem duplicar
-              contas
+              {conexao?.instituicao ?? alvoNome ?? "Instituição"} — religa o mesmo cartão/conta,
+              sem duplicar
             </p>
           </div>
           <button
@@ -223,7 +244,7 @@ export function ModalReconectar({
               <ul className="flex flex-col gap-3">
                 {externas.map((ext) => {
                   const cartao = eh_cartao_externo(ext.tipo);
-                  const opcoes = cartao ? cartoesDaConexao : contasDaConexao;
+                  const opcoes = cartao ? cartoesCandidatos : contasCandidatas;
                   return (
                     <li
                       key={ext.idExterno}
@@ -271,7 +292,7 @@ export function ModalReconectar({
             Cancelar
           </Botao>
           {passo === "item" ? (
-            <Botao disabled={ocupado || !itemId.trim() || !conexaoId} onClick={() => void inspecionar()}>
+            <Botao disabled={ocupado || !itemId.trim()} onClick={() => void inspecionar()}>
               {ocupado ? "Lendo…" : "Continuar"}
             </Botao>
           ) : (

@@ -162,6 +162,12 @@ export interface RepositorioFinanceiro {
     contaId: string,
     dados: { saldoAtual?: number; nome?: string },
   ): Promise<void>;
+  listarContasDoWorkspace(workspaceId: string): Promise<Conta[]>;
+  listarCartoesDoWorkspace(workspaceId: string): Promise<Cartao[]>;
+  idsComFatoOpenFinance(entrada: {
+    contaIds: string[];
+    cartaoIds: string[];
+  }): Promise<{ contas: string[]; cartoes: string[] }>;
 }
 
 export type { Auditoria, Cartao, Categoria, Conta, Movimento, NovoMovimento, Parcela, Pessoa };

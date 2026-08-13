@@ -124,8 +124,8 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
   });
 
   /**
-   * Reconectar: atualiza o itemId da conexão informada, rematcha recursos e
-   * sincroniza o extrato (skip semântico + fingerprint). NDJSON com progresso.
+   * Reconectar: com conexaoId, atualiza o item in-place; sem, registra o item
+   * e adota conta/cartão órfão. Depois sincroniza o extrato (NDJSON).
    */
   app.post("/conexoes/reatachar", async (requisicao, resposta) => {
     const servico = obter_servico_conexao();
@@ -135,14 +135,10 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
     const conexaoAlvo = dados.conexaoId ?? dados.conexaoIdAnterior;
 
-    if (!conexaoAlvo) {
-      return resposta.status(400).send({
-        erro: "Informe a conexão a reconectar.",
-      });
+    if (conexaoAlvo) {
+      const acesso = await exigir_conexao_do_usuario(servico, conexaoAlvo, dados.usuarioId);
+      if ("erro" in acesso) return resposta.status(404).send(acesso);
     }
-
-    const acesso = await exigir_conexao_do_usuario(servico, conexaoAlvo, dados.usuarioId);
-    if ("erro" in acesso) return resposta.status(404).send(acesso);
 
     resposta.hijack();
     resposta.raw.writeHead(200, {
@@ -174,6 +170,8 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         conexaoExterna: dados.conexaoExterna,
         pareamentos: dados.pareamentos,
         conexaoId: conexaoAlvo,
+        alvoContaId: dados.alvoContaId,
+        alvoCartaoId: dados.alvoCartaoId,
       });
 
       conexaoIdLock = detalhe.conexao.id;

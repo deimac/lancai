@@ -111,6 +111,12 @@ export class ServicoConexaoOpenFinance {
       })),
     );
 
+    await this.adotar_locais_orfos({
+      conexaoId: conexao.id,
+      workspaceId: entrada.workspaceId,
+      encontradas,
+    });
+
     await this.materializar_recursos_sem_destino({
       conexaoId: conexao.id,
       workspaceId: entrada.workspaceId,
@@ -175,9 +181,9 @@ export class ServicoConexaoOpenFinance {
   }
 
   /**
-   * Reconecta a **mesma** conexão: atualiza o itemId, rematcha contas externas
-   * e só materializa recurso que realmente não existia. Pareamentos manuais
-   * são fallback quando o auto-match é ambíguo.
+   * Reconecta: com `conexaoId`, atualiza o itemId in-place; sem, registra (ou
+   * reusa) a conexão do item e **adota** conta/cartão local órfão (alvo, nome+tipo)
+   * em vez de duplicar. Só materializa o que for realmente novo.
    */
   async reatachar_conexao(entrada: {
     workspaceId: string;
@@ -190,14 +196,9 @@ export class ServicoConexaoOpenFinance {
     }>;
     conexaoId?: string;
     conexaoIdAnterior?: string;
+    alvoContaId?: string;
+    alvoCartaoId?: string;
   }): Promise<ConexaoComContas> {
-    const conexaoId = entrada.conexaoId ?? entrada.conexaoIdAnterior;
-    if (!conexaoId) {
-      throw new ErroAssociacaoInvalida(
-        "Informe a conexão a reconectar. Reconectar atualiza o banco existente.",
-      );
-    }
-
     const pareamentos = entrada.pareamentos ?? [];
     for (const p of pareamentos) {
       if (!p.contaId && !p.cartaoId) {
@@ -212,15 +213,54 @@ export class ServicoConexaoOpenFinance {
       }
     }
 
-    const conexao = await this.exigir_conexao(conexaoId);
-    const { encontradas, instituicao } = await this.aplicar_novo_item(
+    let conexaoId = entrada.conexaoId ?? entrada.conexaoIdAnterior;
+    let encontradas: ContaExterna[];
+    let instituicao: string | null;
+    let perfil: "pf" | "pj";
+
+    if (conexaoId) {
+      const conexao = await this.exigir_conexao(conexaoId);
+      perfil = conexao.perfilPadrao;
+      const aplicado = await this.aplicar_novo_item(conexaoId, entrada.conexaoExterna);
+      encontradas = aplicado.encontradas;
+      instituicao = aplicado.instituicao;
+      await this.rematch_contas_externas(
+        conexaoId,
+        new Set(encontradas.map((c) => c.idExterno)),
+      );
+    } else {
+      const estado = await this.provedor.obter_estado(entrada.conexaoExterna);
+      const conexao = await this.repositorio.registrarConexao({
+        provedor: this.provedor.id,
+        idExterno: entrada.conexaoExterna,
+        workspaceId: entrada.workspaceId,
+        criadoPor: entrada.usuarioId,
+        instituicao: estado.instituicao ?? null,
+      });
+      conexaoId = conexao.id;
+      perfil = conexao.perfilPadrao;
+      await this.repositorio.atualizarEstadoConexao(conexao.id, this.traduzir_estado(estado));
+      encontradas = await this.provedor.listar_contas_externas(entrada.conexaoExterna);
+      instituicao = estado.instituicao ?? null;
+      await this.repositorio.sincronizarContasExternas(
+        conexaoId,
+        encontradas.map((conta: ContaExterna) => ({
+          contaExternaId: conta.idExterno,
+          nome: conta.nome,
+          tipo: conta.tipo,
+        })),
+      );
+    }
+
+    await this.adotar_locais_orfos({
       conexaoId,
-      entrada.conexaoExterna,
-    );
+      workspaceId: entrada.workspaceId,
+      encontradas,
+      alvoContaId: entrada.alvoContaId,
+      alvoCartaoId: entrada.alvoCartaoId,
+    });
+
     const idsNoProvedor = new Set(encontradas.map((c) => c.idExterno));
-
-    await this.rematch_contas_externas(conexaoId, idsNoProvedor);
-
     for (const p of pareamentos) {
       if (!idsNoProvedor.has(p.contaExternaId)) {
         throw new ErroContaExternaNaoEncontrada(p.contaExternaId);
@@ -237,7 +277,7 @@ export class ServicoConexaoOpenFinance {
       conexaoId,
       workspaceId: entrada.workspaceId,
       usuarioId: entrada.usuarioId,
-      perfil: conexao.perfilPadrao,
+      perfil,
       encontradas,
       instituicao,
       soNovosSemOrfaoDoMesmoTipo: true,
@@ -465,6 +505,124 @@ export class ServicoConexaoOpenFinance {
         contaId: conta.contaId ?? undefined,
         cartaoId: conta.cartaoId ?? undefined,
       });
+    }
+  }
+
+  /**
+   * Liga recursos externos sem destino a contas/cartões locais já existentes
+   * (órfãos com Fato OF ou sync), em vez de materializar duplicata.
+   */
+  private async adotar_locais_orfos(entrada: {
+    conexaoId: string;
+    workspaceId: string;
+    encontradas: ContaExterna[];
+    alvoContaId?: string;
+    alvoCartaoId?: string;
+  }): Promise<void> {
+    const registradas = await this.repositorio.listarContasExternas(entrada.conexaoId);
+    const idsNoProvedor = new Set(entrada.encontradas.map((c) => c.idExterno));
+    const associados = new Set(
+      registradas
+        .filter((r) => idsNoProvedor.has(r.contaExternaId) && (r.contaId || r.cartaoId))
+        .map((r) => r.contaExternaId),
+    );
+    const pendentes = () =>
+      registradas.filter(
+        (r) =>
+          idsNoProvedor.has(r.contaExternaId) &&
+          !r.contaId &&
+          !r.cartaoId &&
+          !associados.has(r.contaExternaId),
+      );
+    if (pendentes().length === 0) return;
+
+    const adotaveis = await this.motor.listar_destinos_adotaveis(entrada.workspaceId);
+    const contasLivres: typeof adotaveis.contas = [];
+    for (const conta of adotaveis.contas) {
+      const dono = await this.repositorio.encontrarConexaoIdPorDestino({ contaId: conta.id });
+      if (dono && dono !== entrada.conexaoId) continue;
+      contasLivres.push(conta);
+    }
+    const cartoesLivres: typeof adotaveis.cartoes = [];
+    for (const cartao of adotaveis.cartoes) {
+      const dono = await this.repositorio.encontrarConexaoIdPorDestino({ cartaoId: cartao.id });
+      if (dono && dono !== entrada.conexaoId) continue;
+      cartoesLivres.push(cartao);
+    }
+
+    const usadosConta = new Set(
+      registradas.map((r) => r.contaId).filter((id): id is string => Boolean(id)),
+    );
+    const usadosCartao = new Set(
+      registradas.map((r) => r.cartaoId).filter((id): id is string => Boolean(id)),
+    );
+
+    const ligar = async (
+      recurso: ContaExternaRegistrada,
+      destino: { contaId?: string; cartaoId?: string },
+    ) => {
+      await this.associar({
+        conexaoId: entrada.conexaoId,
+        contaExternaId: recurso.contaExternaId,
+        contaId: destino.contaId,
+        cartaoId: destino.cartaoId,
+      });
+      associados.add(recurso.contaExternaId);
+      if (destino.contaId) usadosConta.add(destino.contaId);
+      if (destino.cartaoId) usadosCartao.add(destino.cartaoId);
+    };
+
+    if (entrada.alvoCartaoId) {
+      const alvo = cartoesLivres.find((c) => c.id === entrada.alvoCartaoId);
+      if (alvo && !usadosCartao.has(alvo.id)) {
+        const cards = pendentes().filter((r) => recurso_externo_eh_cartao(r.tipo));
+        const porNome = cards.filter(
+          (r) => nome_normalizado(r.nome) === nome_normalizado(alvo.nome),
+        );
+        const escolhido =
+          porNome.length === 1 ? porNome[0] : cards.length === 1 ? cards[0] : undefined;
+        if (escolhido) await ligar(escolhido, { cartaoId: alvo.id });
+      }
+    }
+
+    if (entrada.alvoContaId) {
+      const alvo = contasLivres.find((c) => c.id === entrada.alvoContaId);
+      if (alvo && !usadosConta.has(alvo.id)) {
+        const contas = pendentes().filter((r) => !recurso_externo_eh_cartao(r.tipo));
+        const porNome = contas.filter(
+          (r) => nome_normalizado(r.nome) === nome_normalizado(alvo.nome),
+        );
+        const escolhido =
+          porNome.length === 1 ? porNome[0] : contas.length === 1 ? contas[0] : undefined;
+        if (escolhido) await ligar(escolhido, { contaId: alvo.id });
+      }
+    }
+
+    for (const recurso of [...pendentes()]) {
+      const ehCartao = recurso_externo_eh_cartao(recurso.tipo);
+      const pool = ehCartao
+        ? cartoesLivres.filter((c) => !usadosCartao.has(c.id))
+        : contasLivres.filter((c) => !usadosConta.has(c.id));
+      const nome = nome_normalizado(recurso.nome);
+      const candidatos = pool.filter((local) => nome_normalizado(local.nome) === nome);
+      if (candidatos.length !== 1) continue;
+      const local = candidatos[0]!;
+      if (ehCartao) await ligar(recurso, { cartaoId: local.id });
+      else await ligar(recurso, { contaId: local.id });
+    }
+
+    for (const recurso of [...pendentes()]) {
+      const ehCartao = recurso_externo_eh_cartao(recurso.tipo);
+      const pool = ehCartao
+        ? cartoesLivres.filter((c) => !usadosCartao.has(c.id))
+        : contasLivres.filter((c) => !usadosConta.has(c.id));
+      const mesmoTipo = pendentes().filter(
+        (r) => recurso_externo_eh_cartao(r.tipo) === ehCartao,
+      );
+      if (pool.length !== 1 || mesmoTipo.length !== 1) continue;
+      const local = pool[0]!;
+      if (ehCartao) await ligar(recurso, { cartaoId: local.id });
+      else await ligar(recurso, { contaId: local.id });
     }
   }
 

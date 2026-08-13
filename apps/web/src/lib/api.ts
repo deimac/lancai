@@ -787,6 +787,8 @@ export const clienteApi = {
       pareamentos?: PareamentoReatachar[];
       conexaoId?: string;
       conexaoIdAnterior?: string;
+      alvoContaId?: string;
+      alvoCartaoId?: string;
     },
     aoProgresso?: (progresso: ProgressoImportacaoApi) => void,
   ): Promise<{ detalhe: ConexaoComContas; resumo: ResumoReatachar }> {

@@ -291,6 +291,30 @@ export class MotorFinanceiro {
     await this.repositorio.definirConexaoIdentidade(destino, conexaoId);
   }
 
+  /**
+   * Contas/cartões do workspace que já são OF (sync ligada) ou têm Fato da Fonte.
+   * Usado para adotar órfãos na reconexão em vez de criar duplicata.
+   */
+  async listar_destinos_adotaveis(workspaceId: string): Promise<{
+    contas: Conta[];
+    cartoes: Cartao[];
+  }> {
+    const [contas, cartoes] = await Promise.all([
+      this.repositorio.listarContasDoWorkspace(workspaceId),
+      this.repositorio.listarCartoesDoWorkspace(workspaceId),
+    ]);
+    const fatos = await this.repositorio.idsComFatoOpenFinance({
+      contaIds: contas.map((c) => c.id),
+      cartaoIds: cartoes.map((c) => c.id),
+    });
+    const contasFato = new Set(fatos.contas);
+    const cartoesFato = new Set(fatos.cartoes);
+    return {
+      contas: contas.filter((c) => c.sincronizada || contasFato.has(c.id)),
+      cartoes: cartoes.filter((c) => c.sincronizada || cartoesFato.has(c.id)),
+    };
+  }
+
   async atualizar_dados_institucionais_cartao(
     cartaoId: string,
     dados: {

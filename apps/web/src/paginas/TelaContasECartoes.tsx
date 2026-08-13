@@ -128,6 +128,10 @@ export function TelaContasECartoes() {
 
   const [modalReconectar, setModalReconectar] = useState(false);
   const [conexaoReconectar, setConexaoReconectar] = useState<string | null>(null);
+  const [alvoReconectar, setAlvoReconectar] = useState<{
+    contaId?: string;
+    cartaoId?: string;
+  }>({});
   const [progressoImportacao, setProgressoImportacao] = useState<ProgressoImportacaoUi | null>(
     null,
   );
@@ -205,12 +209,13 @@ export function TelaContasECartoes() {
     setModalAberto(true);
   }
 
-  function abrir_reconectar(conexaoId?: string | null) {
-    if (!conexaoId) {
-      toast.erro("Esta conta não tem banco para reconectar.");
-      return;
-    }
-    setConexaoReconectar(conexaoId);
+  function abrir_reconectar(entrada: {
+    conexaoId?: string | null;
+    contaId?: string;
+    cartaoId?: string;
+  }) {
+    setConexaoReconectar(entrada.conexaoId ?? null);
+    setAlvoReconectar({ contaId: entrada.contaId, cartaoId: entrada.cartaoId });
     setModalReconectar(true);
   }
 
@@ -439,12 +444,16 @@ export function TelaContasECartoes() {
               },
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_conta(conta) },
-                ...(of && conta.conexaoId
+                ...(of
                   ? [
                       {
                         rotulo: "Reconectar",
                         icone: RefreshCw,
-                        onClick: () => abrir_reconectar(conta.conexaoId),
+                        onClick: () =>
+                          abrir_reconectar({
+                            conexaoId: conta.conexaoId,
+                            contaId: conta.id,
+                          }),
                       },
                     ]
                   : []),
@@ -495,12 +504,16 @@ export function TelaContasECartoes() {
               },
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_cartao(cartao) },
-                ...(of && cartao.conexaoId
+                ...(of
                   ? [
                       {
                         rotulo: "Reconectar",
                         icone: RefreshCw,
-                        onClick: () => abrir_reconectar(cartao.conexaoId),
+                        onClick: () =>
+                          abrir_reconectar({
+                            conexaoId: cartao.conexaoId,
+                            cartaoId: cartao.id,
+                          }),
                       },
                     ]
                   : []),
@@ -607,7 +620,7 @@ export function TelaContasECartoes() {
                             {
                               rotulo: "Reconectar",
                               icone: RefreshCw,
-                              onClick: () => abrir_reconectar(conexao.id),
+                              onClick: () => abrir_reconectar({ conexaoId: conexao.id }),
                             },
                             ...(conexao.status !== "removida"
                               ? [
@@ -659,6 +672,8 @@ export function TelaContasECartoes() {
         cartoes={cartoes}
         conexoes={conexoes}
         conexaoId={conexaoReconectar}
+        alvoContaId={alvoReconectar.contaId}
+        alvoCartaoId={alvoReconectar.cartaoId}
         aoFechar={() => setModalReconectar(false)}
         aoConcluir={() => {
           void carregar();

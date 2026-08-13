@@ -526,14 +526,147 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(financeiro.cartoes.size).toBe(1);
     });
 
-    it("recusa reconectar sem informar a conexão existente", async () => {
-      await expect(
-        servico.reatachar_conexao({
-          workspaceId: WORKSPACE,
+    it("sem conexaoId reusa o item já registrado em vez de recusar", async () => {
+      const primeira = await registrar();
+      const detalhe = await servico.reatachar_conexao({
+        workspaceId: WORKSPACE,
+        usuarioId,
+        conexaoExterna: CONEXAO_EXTERNA,
+      });
+
+      expect(detalhe.conexao.id).toBe(primeira.conexao.id);
+      expect(financeiro.contas.size).toBe(1);
+      expect(financeiro.cartoes.size).toBe(1);
+    });
+
+    it("reconectar o cartão com mapa usa a mesma conexão da conta", async () => {
+      const { conexao, contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      expect(cartaoId).toBeTruthy();
+
+      const detalhe = await servico.reatachar_conexao({
+        workspaceId: WORKSPACE,
+        usuarioId,
+        conexaoExterna: CONEXAO_EXTERNA,
+        conexaoId: conexao.id,
+        alvoCartaoId: cartaoId ?? undefined,
+      });
+
+      expect(detalhe.conexao.id).toBe(conexao.id);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaId);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "card-1")?.cartaoId).toBe(cartaoId);
+      expect(financeiro.contas.size).toBe(1);
+      expect(financeiro.cartoes.size).toBe(1);
+    });
+  });
+
+  describe("adoção de órfão", () => {
+    function criarCategoria() {
+      const agora = new Date();
+      const categoria = {
+        id: randomUUID(),
+        nome: "Não classificado",
+        tipo: "despesa" as const,
+        ativo: true,
+        usuarioId,
+        workspaceId: WORKSPACE,
+        dataCriacao: agora,
+        dataAtualizacao: agora,
+      };
+      financeiro.categorias.set(categoria.id, categoria);
+      return categoria;
+    }
+
+    async function semearCartaoOrfao(nome: string) {
+      const cartao = criarCartao({ nome, usuarioId, sincronizada: false });
+      financeiro.cartoes.set(cartao.id, cartao);
+      const categoria = criarCategoria();
+      await motor.ingerir_eventos(
+        [
+          {
+            workspaceId: WORKSPACE,
+            fonte: "open_finance",
+            provedor: "duble",
+            idExterno: "tx-orfao-1",
+            ocorridoEm: "2026-08-01",
+            valor: 90,
+            tipo: "despesa",
+            descricaoFonte: "COMPRA AZUL",
+            statusFonte: "confirmado",
+            fatoImutavel: true,
+            cartaoId: cartao.id,
+          },
+        ],
+        {
           usuarioId,
-          conexaoExterna: CONEXAO_EXTERNA,
-        }),
-      ).rejects.toThrow(ErroAssociacaoInvalida);
+          criadoPor: usuarioId,
+          categoriaIdNaoClassificado: categoria.id,
+          perfilPadrao: "pf",
+        },
+      );
+      return cartao;
+    }
+
+    it("reconecta cartão com Fato OF, sem mapa, no mesmo id e cria conexão nova", async () => {
+      const azul = await semearCartaoOrfao("AZUL ITAU VISA PLATINUM");
+      provedor.registrarContas("item-itau", [
+        {
+          idExterno: "card-azul",
+          nome: "AZUL ITAU VISA PLATINUM",
+          tipo: "CREDIT",
+          saldo: 100,
+          limite: 20000,
+        },
+      ]);
+
+      const detalhe = await servico.reatachar_conexao({
+        workspaceId: WORKSPACE,
+        usuarioId,
+        conexaoExterna: "item-itau",
+        alvoCartaoId: azul.id,
+      });
+
+      expect(detalhe.conexao.idExterno).toBe("item-itau");
+      expect(detalhe.conexao.status).toBe("ativa");
+      expect(detalhe.contas.find((c) => c.contaExternaId === "card-azul")?.cartaoId).toBe(azul.id);
+      expect(financeiro.cartoes.size).toBe(1);
+      expect(financeiro.cartoes.get(azul.id)?.sincronizada).toBe(true);
+    });
+
+    it("registrar item novo adota o cartão órfão pelo nome sem duplicar", async () => {
+      const azul = await semearCartaoOrfao("AZUL ITAU VISA PLATINUM");
+      provedor.registrarContas("item-itau-2", [
+        {
+          idExterno: "card-azul-2",
+          nome: "AZUL ITAU VISA PLATINUM",
+          tipo: "CREDIT",
+          saldo: 50,
+          limite: 20000,
+        },
+      ]);
+
+      const detalhe = await servico.registrar_conexao({
+        workspaceId: WORKSPACE,
+        usuarioId,
+        conexaoExterna: "item-itau-2",
+      });
+
+      expect(detalhe.contas.find((c) => c.contaExternaId === "card-azul-2")?.cartaoId).toBe(azul.id);
+      expect(financeiro.cartoes.size).toBe(1);
+    });
+
+    it("não adota cartão só manual ao conectar o banco", async () => {
+      const manual = criarCartao({ nome: "Cartão Platinum", usuarioId, sincronizada: false });
+      financeiro.cartoes.set(manual.id, manual);
+
+      const { contas } = await registrar();
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+
+      expect(cartaoId).toBeTruthy();
+      expect(cartaoId).not.toBe(manual.id);
+      expect(financeiro.cartoes.size).toBe(2);
+      expect(financeiro.cartoes.get(manual.id)?.sincronizada).toBe(false);
     });
   });
 

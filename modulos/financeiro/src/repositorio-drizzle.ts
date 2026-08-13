@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
   auditoria as auditoriaTabela,
   cartao as cartaoTabela,
@@ -411,8 +411,60 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       .set({
         conexaoId,
         conexaoStatus: "conectado",
+        origem: "open_finance",
         dataAtualizacao: new Date(),
       })
       .where(eq(contaFinanceiraTabela.id, identidadeId));
+  }
+
+  async listarContasDoWorkspace(workspaceId: string): Promise<Conta[]> {
+    return this.banco
+      .select()
+      .from(contaTabela)
+      .where(and(eq(contaTabela.workspaceId, workspaceId), eq(contaTabela.ativo, true)));
+  }
+
+  async listarCartoesDoWorkspace(workspaceId: string): Promise<Cartao[]> {
+    return this.banco
+      .select()
+      .from(cartaoTabela)
+      .where(and(eq(cartaoTabela.workspaceId, workspaceId), eq(cartaoTabela.ativo, true)));
+  }
+
+  async idsComFatoOpenFinance(entrada: {
+    contaIds: string[];
+    cartaoIds: string[];
+  }): Promise<{ contas: string[]; cartoes: string[] }> {
+    const contas = new Set<string>();
+    const cartoes = new Set<string>();
+    if (entrada.contaIds.length > 0) {
+      const linhas = await this.banco
+        .selectDistinct({ contaId: movimentoTabela.contaId })
+        .from(movimentoTabela)
+        .where(
+          and(
+            eq(movimentoTabela.fonte, "open_finance"),
+            inArray(movimentoTabela.contaId, entrada.contaIds),
+          ),
+        );
+      for (const linha of linhas) {
+        if (linha.contaId) contas.add(linha.contaId);
+      }
+    }
+    if (entrada.cartaoIds.length > 0) {
+      const linhas = await this.banco
+        .selectDistinct({ cartaoId: movimentoTabela.cartaoId })
+        .from(movimentoTabela)
+        .where(
+          and(
+            eq(movimentoTabela.fonte, "open_finance"),
+            inArray(movimentoTabela.cartaoId, entrada.cartaoIds),
+          ),
+        );
+      for (const linha of linhas) {
+        if (linha.cartaoId) cartoes.add(linha.cartaoId);
+      }
+    }
+    return { contas: [...contas], cartoes: [...cartoes] };
   }
 }

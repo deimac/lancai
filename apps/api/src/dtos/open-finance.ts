@@ -34,6 +34,9 @@ export const schemaReatacharConexao = z.object({
   /** Conexão a atualizar in-place (mesma linha, novo itemId). */
   conexaoId: z.string().uuid().optional(),
   conexaoIdAnterior: z.string().uuid().optional(),
+  /** Cartão/conta órfão a religar quando a conexão original sumiu. */
+  alvoContaId: z.string().uuid().optional(),
+  alvoCartaoId: z.string().uuid().optional(),
 });
 
 export const schemaAssociarContaExterna = z.object({
