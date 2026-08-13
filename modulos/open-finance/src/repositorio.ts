@@ -137,6 +137,12 @@ export interface RepositorioOpenFinance {
     instituicao?: string | null;
   }): Promise<ConexaoRegistrada>;
 
+  /**
+   * Atualiza o itemId (idExterno) de uma conexão existente.
+   * Usado no fallback Meu Pluggy: o item antigo sumiu, o usuário informa o novo itemId.
+   */
+  atualizarItemId(conexaoId: string, novoItemId: string): Promise<ConexaoRegistrada>;
+
   listarContasExternas(conexaoId: string): Promise<ContaExternaRegistrada[]>;
 
   /**

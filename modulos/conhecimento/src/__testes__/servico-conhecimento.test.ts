@@ -207,6 +207,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     dataAtualizacao: agora,
     criadoPor: randomUUID(),
     alteradoPor: null,
+    fingerprint: null,
     ...sobrepor,
   };
 }

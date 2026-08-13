@@ -169,6 +169,20 @@
       "when": 1786201600000,
       "tag": "0023_regra_builder",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786201700000,
+      "tag": "0024_conta_financeira",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786201800000,
+      "tag": "0025_movimento_fingerprint",
+      "breakpoints": true
     }
   ]
 }

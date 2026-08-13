@@ -3,6 +3,7 @@ export * from "./usuario";
 export * from "./workspace";
 export * from "./conta";
 export * from "./cartao";
+export * from "./conta-financeira";
 export * from "./categoria";
 export * from "./pessoa";
 export * from "./movimento";

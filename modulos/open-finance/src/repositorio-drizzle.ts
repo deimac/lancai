@@ -310,6 +310,17 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
     await this.banco.delete(conexaoTabela).where(eq(conexaoTabela.id, conexaoId));
   }
 
+  async atualizarItemId(conexaoId: string, novoItemId: string): Promise<ConexaoRegistrada> {
+    await this.banco
+      .update(conexaoTabela)
+      .set({ idExterno: novoItemId, dataAtualizacao: new Date() })
+      .where(eq(conexaoTabela.id, conexaoId));
+
+    const atualizada = await this.obterConexaoPorId(conexaoId);
+    if (!atualizada) throw new Error("Conexão não encontrada após atualizar itemId.");
+    return atualizada;
+  }
+
   async sincronizarContasExternas(
     conexaoId: string,
     contas: ContaExternaDescoberta[],

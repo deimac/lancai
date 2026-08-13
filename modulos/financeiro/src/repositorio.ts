@@ -80,6 +80,16 @@ export interface RepositorioFinanceiro {
     idExterno: string;
   }): Promise<Movimento | undefined>;
   /**
+   * Candidatos à reidentificação quando o idExterno muda (reatachar).
+   * Pode devolver mais de um: duas compras iguais no mesmo dia compartilham o hash.
+   */
+  listarMovimentosPorFingerprint(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    fingerprint: string;
+  }): Promise<Movimento[]>;
+  /**
    * Movimentos de cartão com metadados de parcelamento — usados para completar
    * séries que o Open Finance entrega incompletas.
    */
@@ -112,6 +122,7 @@ export interface RepositorioFinanceiro {
     nome: string;
     perfil: Conta["perfil"];
     saldoAtual?: number;
+    conexaoId?: string | null;
   }): Promise<Conta>;
   criarCartaoSincronizado(entrada: {
     workspaceId: string;
@@ -122,7 +133,16 @@ export interface RepositorioFinanceiro {
     limite?: number;
     fechamento?: number;
     vencimento?: number;
+    conexaoId?: string | null;
   }): Promise<Cartao>;
+  /**
+   * Grava o id da conexão Open Finance na identidade estável (conta_financeira).
+   * Opaco para o Core: só persiste o UUID.
+   */
+  definirConexaoIdentidade(
+    destino: { contaId?: string; cartaoId?: string },
+    conexaoId: string,
+  ): Promise<void>;
   /**
    * Atribui saldo/limite/ciclo informados pela instituição em cartão sincronizado.
    * Não passa pelo fluxo de compra — é Fato da Fonte, como o saldo da conta.

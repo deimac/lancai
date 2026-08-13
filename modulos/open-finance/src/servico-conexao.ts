@@ -23,8 +23,18 @@ export interface DescritorFonte {
   disponivel: boolean;
 }
 
+export interface RecursosVinculados {
+  quantidade: number;
+  nomes: string[];
+}
+
+export interface ConexaoListada extends ConexaoDetalhada {
+  contasVinculadas: RecursosVinculados;
+  cartoesVinculados: RecursosVinculados;
+}
+
 export interface ConexaoComContas {
-  conexao: ConexaoDetalhada;
+  conexao: ConexaoListada;
   contas: ContaExternaRegistrada[];
 }
 
@@ -110,13 +120,15 @@ export class ServicoConexaoOpenFinance {
       instituicao: estado.instituicao ?? null,
     });
 
+    await this.religar_recursos_da_conexao(conexao.id);
     await this.aplicar_saldos_institucionais(conexao.id, encontradas);
 
     return this.detalhar(conexao.id);
   }
 
-  async listar_conexoes(workspaceIds: string | string[]): Promise<ConexaoDetalhada[]> {
-    return this.repositorio.listarConexoes(workspaceIds);
+  async listar_conexoes(workspaceIds: string | string[]): Promise<ConexaoListada[]> {
+    const conexoes = await this.repositorio.listarConexoes(workspaceIds);
+    return Promise.all(conexoes.map((conexao) => this.com_vinculos(conexao)));
   }
 
   /** Conexões não removidas do provedor ativo — usadas pelo cron de importação GET. */
@@ -140,12 +152,13 @@ export class ServicoConexaoOpenFinance {
 
   async detalhar(conexaoId: string): Promise<ConexaoComContas> {
     const conexao = await this.exigir_conexao(conexaoId);
-    return { conexao, contas: await this.repositorio.listarContasExternas(conexaoId) };
+    const contas = await this.repositorio.listarContasExternas(conexaoId);
+    return { conexao: this.com_vinculos_de(conexao, contas), contas };
   }
 
   /**
    * Lê estado e recursos de um itemId no provedor **sem** gravar conexão.
-   * Usado pelo wizard de Reatachar antes do pareamento.
+   * Usado pelo wizard de reconectar quando o auto-match é ambíguo.
    */
   async inspecionar_item(conexaoExterna: string): Promise<{
     instituicao: string | null;
@@ -162,27 +175,31 @@ export class ServicoConexaoOpenFinance {
   }
 
   /**
-   * Meu Pluggy (ou item recriado): registra o novo itemId, associa aos
-   * Conta/Cartão locais escolhidos e **não** materializa destinos novos para
-   * o que já foi pareado. A importação GET fica a cargo da API (com skip
-   * semântico).
+   * Reconecta a **mesma** conexão: atualiza o itemId, rematcha contas externas
+   * e só materializa recurso que realmente não existia. Pareamentos manuais
+   * são fallback quando o auto-match é ambíguo.
    */
   async reatachar_conexao(entrada: {
     workspaceId: string;
     usuarioId: string;
     conexaoExterna: string;
-    pareamentos: Array<{
+    pareamentos?: Array<{
       contaExternaId: string;
       contaId?: string;
       cartaoId?: string;
     }>;
+    conexaoId?: string;
     conexaoIdAnterior?: string;
   }): Promise<ConexaoComContas> {
-    if (entrada.pareamentos.length === 0) {
-      throw new ErroAssociacaoInvalida("Informe ao menos um pareamento conta externa → local.");
+    const conexaoId = entrada.conexaoId ?? entrada.conexaoIdAnterior;
+    if (!conexaoId) {
+      throw new ErroAssociacaoInvalida(
+        "Informe a conexão a reconectar. Reconectar atualiza o banco existente.",
+      );
     }
 
-    for (const p of entrada.pareamentos) {
+    const pareamentos = entrada.pareamentos ?? [];
+    for (const p of pareamentos) {
       if (!p.contaId && !p.cartaoId) {
         throw new ErroAssociacaoInvalida(
           `Pareamento de ${p.contaExternaId}: informe contaId ou cartaoId.`,
@@ -195,49 +212,40 @@ export class ServicoConexaoOpenFinance {
       }
     }
 
-    if (entrada.conexaoIdAnterior) {
-      const anterior = await this.repositorio.obterConexaoPorId(entrada.conexaoIdAnterior);
-      if (anterior && anterior.status !== "removida") {
-        await this.desconectar(entrada.conexaoIdAnterior);
-      }
-    }
-
-    const estado = await this.provedor.obter_estado(entrada.conexaoExterna);
-    const conexao = await this.repositorio.registrarConexao({
-      provedor: this.provedor.id,
-      idExterno: entrada.conexaoExterna,
-      workspaceId: entrada.workspaceId,
-      criadoPor: entrada.usuarioId,
-      instituicao: estado.instituicao ?? null,
-    });
-
-    await this.repositorio.atualizarEstadoConexao(conexao.id, this.traduzir_estado(estado));
-
-    const encontradas = await this.provedor.listar_contas_externas(entrada.conexaoExterna);
-    await this.repositorio.sincronizarContasExternas(
-      conexao.id,
-      encontradas.map((conta: ContaExterna) => ({
-        contaExternaId: conta.idExterno,
-        nome: conta.nome,
-        tipo: conta.tipo,
-      })),
+    const conexao = await this.exigir_conexao(conexaoId);
+    const { encontradas, instituicao } = await this.aplicar_novo_item(
+      conexaoId,
+      entrada.conexaoExterna,
     );
+    const idsNoProvedor = new Set(encontradas.map((c) => c.idExterno));
 
-    const idsExternos = new Set(encontradas.map((c) => c.idExterno));
-    for (const p of entrada.pareamentos) {
-      if (!idsExternos.has(p.contaExternaId)) {
+    await this.rematch_contas_externas(conexaoId, idsNoProvedor);
+
+    for (const p of pareamentos) {
+      if (!idsNoProvedor.has(p.contaExternaId)) {
         throw new ErroContaExternaNaoEncontrada(p.contaExternaId);
       }
       await this.associar({
-        conexaoId: conexao.id,
+        conexaoId,
         contaExternaId: p.contaExternaId,
         contaId: p.contaId,
         cartaoId: p.cartaoId,
       });
     }
 
-    await this.aplicar_saldos_institucionais(conexao.id, encontradas);
-    return this.detalhar(conexao.id);
+    await this.materializar_recursos_sem_destino({
+      conexaoId,
+      workspaceId: entrada.workspaceId,
+      usuarioId: entrada.usuarioId,
+      perfil: conexao.perfilPadrao,
+      encontradas,
+      instituicao,
+      soNovosSemOrfaoDoMesmoTipo: true,
+    });
+
+    await this.religar_recursos_da_conexao(conexaoId);
+    await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+    return this.detalhar(conexaoId);
   }
 
   /**
@@ -280,6 +288,7 @@ export class ServicoConexaoOpenFinance {
       contaId: entrada.contaId ?? null,
       cartaoId: entrada.cartaoId ?? null,
     });
+    await this.gravar_conexao_na_identidade(entrada);
 
     return this.detalhar(entrada.conexaoId);
   }
@@ -365,6 +374,27 @@ export class ServicoConexaoOpenFinance {
   }
 
   /**
+   * Fallback Meu Pluggy: o item antigo sumiu do provedor, o usuário informa
+   * o novo itemId gerado pelo Meu Pluggy. Atualiza a conexão preservando
+   * associações e histórico local.
+   */
+  async atualizar_item_id(conexaoId: string, novoItemId: string): Promise<ConexaoComContas> {
+    const conexao = await this.exigir_conexao(conexaoId);
+    if (conexao.status === "removida") {
+      throw new Error("Não é possível atualizar itemId de conexão removida.");
+    }
+
+    const { encontradas } = await this.aplicar_novo_item(conexaoId, novoItemId);
+    await this.rematch_contas_externas(
+      conexaoId,
+      new Set(encontradas.map((c) => c.idExterno)),
+    );
+    await this.religar_recursos_da_conexao(conexaoId);
+    await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+    return this.detalhar(conexaoId);
+  }
+
+  /**
    * Excluir no Core uma conta/cartão sincronizado: desliga a conexão inteira
    * (conta + cartões da mesma instituição) e devolve os IDs locais para
    * soft-delete. Sem associação OF, devolve só o destino pedido.
@@ -418,11 +448,23 @@ export class ServicoConexaoOpenFinance {
           { contaId: conta.contaId ?? undefined, cartaoId: conta.cartaoId ?? undefined },
           false,
         );
-        await this.repositorio.definirAssociacao(conexaoId, conta.contaExternaId, {
-          contaId: null,
-          cartaoId: null,
-        });
       }
+    }
+  }
+
+  private async religar_recursos_da_conexao(conexaoId: string): Promise<void> {
+    const contas = await this.repositorio.listarContasExternas(conexaoId);
+    for (const conta of contas) {
+      if (!conta.contaId && !conta.cartaoId) continue;
+      await this.motor.definir_sincronizacao(
+        { contaId: conta.contaId ?? undefined, cartaoId: conta.cartaoId ?? undefined },
+        true,
+      );
+      await this.gravar_conexao_na_identidade({
+        conexaoId,
+        contaId: conta.contaId ?? undefined,
+        cartaoId: conta.cartaoId ?? undefined,
+      });
     }
   }
 
@@ -436,14 +478,41 @@ export class ServicoConexaoOpenFinance {
     perfil: "pf" | "pj";
     encontradas: ContaExterna[];
     instituicao: string | null;
+    /**
+     * Na reconexão, não cria conta/cartão local se ainda houver recurso órfão
+     * do mesmo tipo nesta conexão — isso é ambiguidade, não recurso novo.
+     */
+    soNovosSemOrfaoDoMesmoTipo?: boolean;
   }): Promise<void> {
     const registradas = await this.repositorio.listarContasExternas(entrada.conexaoId);
     const porExterno = new Map(entrada.encontradas.map((item) => [item.idExterno, item] as const));
     let perfilHerdado =
       (await this.perfil_de_irmaos_na_conexao(registradas)) ?? entrada.perfil;
 
+    const idsNoProvedor = new Set(entrada.encontradas.map((item) => item.idExterno));
+
     for (const recurso of registradas) {
       if (recurso.contaId || recurso.cartaoId) continue;
+      if (!idsNoProvedor.has(recurso.contaExternaId)) continue;
+
+      if (entrada.soNovosSemOrfaoDoMesmoTipo) {
+        const tipoCartao = recurso_externo_eh_cartao(recurso.tipo);
+        const destinosNoProvedor = new Set<string>();
+        for (const outra of registradas) {
+          if (!idsNoProvedor.has(outra.contaExternaId)) continue;
+          if (outra.contaId) destinosNoProvedor.add(`conta:${outra.contaId}`);
+          if (outra.cartaoId) destinosNoProvedor.add(`cartao:${outra.cartaoId}`);
+        }
+        const orfaoNaoRematchado = registradas.some((outra) => {
+          if (idsNoProvedor.has(outra.contaExternaId)) return false;
+          if (!outra.contaId && !outra.cartaoId) return false;
+          if (recurso_externo_eh_cartao(outra.tipo) !== tipoCartao) return false;
+          if (outra.contaId && destinosNoProvedor.has(`conta:${outra.contaId}`)) return false;
+          if (outra.cartaoId && destinosNoProvedor.has(`cartao:${outra.cartaoId}`)) return false;
+          return true;
+        });
+        if (orfaoNaoRematchado) continue;
+      }
 
       const nome =
         recurso.nome.trim() ||
@@ -461,6 +530,7 @@ export class ServicoConexaoOpenFinance {
           limite: numero_finito(externa?.limite) ?? 0,
           fechamento: externa?.fechamento,
           vencimento: externa?.vencimento,
+          conexaoId: entrada.conexaoId,
         });
         await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
           contaId: null,
@@ -476,6 +546,7 @@ export class ServicoConexaoOpenFinance {
         nome,
         perfil: perfilHerdado,
         saldoAtual: numero_finito(externa?.saldo) ?? 0,
+        conexaoId: entrada.conexaoId,
       });
       await this.repositorio.definirAssociacao(entrada.conexaoId, recurso.contaExternaId, {
         contaId: conta.id,
@@ -534,6 +605,150 @@ export class ServicoConexaoOpenFinance {
     }
   }
 
+  /**
+   * Atualiza o itemId da conexão existente (sem criar outra linha) e relista
+   * as contas externas do provedor. Permite conexão com status removida —
+   * reconectar religa o mesmo registro.
+   */
+  private async aplicar_novo_item(
+    conexaoId: string,
+    novoItemId: string,
+  ): Promise<{ encontradas: ContaExterna[]; instituicao: string | null }> {
+    const conexao = await this.exigir_conexao(conexaoId);
+    const estado = await this.provedor.obter_estado(novoItemId);
+
+    if (conexao.idExterno !== novoItemId) {
+      const ocupante = await this.repositorio.obterConexao(this.provedor.id, novoItemId);
+      if (ocupante && ocupante.id !== conexaoId) {
+        throw new ErroAssociacaoInvalida("Este item já está ligado a outra conexão.");
+      }
+      await this.repositorio.atualizarItemId(conexaoId, novoItemId);
+    }
+
+    await this.repositorio.atualizarEstadoConexao(conexaoId, this.traduzir_estado(estado));
+
+    const encontradas = await this.provedor.listar_contas_externas(novoItemId);
+    await this.repositorio.sincronizarContasExternas(
+      conexaoId,
+      encontradas.map((conta: ContaExterna) => ({
+        contaExternaId: conta.idExterno,
+        nome: conta.nome,
+        tipo: conta.tipo,
+      })),
+    );
+
+    return { encontradas, instituicao: estado.instituicao ?? null };
+  }
+
+  /**
+   * Copia associação de linhas antigas desta conexão para account ids novos:
+   * 1) mesmo id externo já associado → mantém;
+   * 2) tipo + nome normalizado, candidato único;
+   * 3) tipo único (um órfão e um novo do mesmo tipo).
+   */
+  private async rematch_contas_externas(
+    conexaoId: string,
+    idsNoProvedor: Set<string>,
+  ): Promise<void> {
+    const registradas = await this.repositorio.listarContasExternas(conexaoId);
+    const destinosJaNoProvedor = new Set<string>();
+    for (const recurso of registradas) {
+      if (!idsNoProvedor.has(recurso.contaExternaId)) continue;
+      if (recurso.contaId) destinosJaNoProvedor.add(`conta:${recurso.contaId}`);
+      if (recurso.cartaoId) destinosJaNoProvedor.add(`cartao:${recurso.cartaoId}`);
+    }
+
+    const orfas = registradas.filter(
+      (recurso) =>
+        !idsNoProvedor.has(recurso.contaExternaId) && (recurso.contaId || recurso.cartaoId),
+    );
+    const novas = registradas.filter(
+      (recurso) =>
+        idsNoProvedor.has(recurso.contaExternaId) && !recurso.contaId && !recurso.cartaoId,
+    );
+    const orfasUsadas = new Set<string>();
+
+    const copiar = async (destino: ContaExternaRegistrada, origem: ContaExternaRegistrada) => {
+      await this.repositorio.definirAssociacao(conexaoId, destino.contaExternaId, {
+        contaId: origem.contaId,
+        cartaoId: origem.cartaoId,
+      });
+      orfasUsadas.add(origem.contaExternaId);
+      if (origem.contaId) destinosJaNoProvedor.add(`conta:${origem.contaId}`);
+      if (origem.cartaoId) destinosJaNoProvedor.add(`cartao:${origem.cartaoId}`);
+    };
+
+    const orfa_disponivel = (origem: ContaExternaRegistrada) => {
+      if (orfasUsadas.has(origem.contaExternaId)) return false;
+      if (origem.contaId && destinosJaNoProvedor.has(`conta:${origem.contaId}`)) return false;
+      if (origem.cartaoId && destinosJaNoProvedor.has(`cartao:${origem.cartaoId}`)) return false;
+      return true;
+    };
+
+    for (const nova of novas) {
+      const tipoCartao = recurso_externo_eh_cartao(nova.tipo);
+      const nome = nome_normalizado(nova.nome);
+      const candidatos = orfas.filter(
+        (origem) =>
+          orfa_disponivel(origem) &&
+          recurso_externo_eh_cartao(origem.tipo) === tipoCartao &&
+          nome_normalizado(origem.nome) === nome,
+      );
+      if (candidatos.length === 1) await copiar(nova, candidatos[0]!);
+    }
+
+    const registradasDepois = await this.repositorio.listarContasExternas(conexaoId);
+    const novasRestantes = registradasDepois.filter(
+      (recurso) =>
+        idsNoProvedor.has(recurso.contaExternaId) && !recurso.contaId && !recurso.cartaoId,
+    );
+
+    for (const nova of novasRestantes) {
+      const tipoCartao = recurso_externo_eh_cartao(nova.tipo);
+      const candidatos = orfas.filter(
+        (origem) =>
+          orfa_disponivel(origem) && recurso_externo_eh_cartao(origem.tipo) === tipoCartao,
+      );
+      if (candidatos.length === 1) await copiar(nova, candidatos[0]!);
+    }
+  }
+
+  private async gravar_conexao_na_identidade(entrada: {
+    conexaoId: string;
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<void> {
+    if (!entrada.contaId && !entrada.cartaoId) return;
+    await this.motor.definir_conexao_identidade(
+      { contaId: entrada.contaId, cartaoId: entrada.cartaoId },
+      entrada.conexaoId,
+    );
+  }
+
+  private async com_vinculos(conexao: ConexaoDetalhada): Promise<ConexaoListada> {
+    const contas = await this.repositorio.listarContasExternas(conexao.id);
+    return this.com_vinculos_de(conexao, contas);
+  }
+
+  private com_vinculos_de(
+    conexao: ConexaoDetalhada,
+    contas: ContaExternaRegistrada[],
+  ): ConexaoListada {
+    const contasVinculadas = contas.filter((c) => c.contaId);
+    const cartoesVinculados = contas.filter((c) => c.cartaoId);
+    return {
+      ...conexao,
+      contasVinculadas: {
+        quantidade: contasVinculadas.length,
+        nomes: contasVinculadas.map((c) => c.nome),
+      },
+      cartoesVinculados: {
+        quantidade: cartoesVinculados.length,
+        nomes: cartoesVinculados.map((c) => c.nome),
+      },
+    };
+  }
+
   private traduzir_estado(estado: EstadoConexao) {
     return {
       status: estado.status,
@@ -562,4 +777,13 @@ export class ServicoConexaoOpenFinance {
 
 function numero_finito(valor: number | undefined): number | undefined {
   return typeof valor === "number" && Number.isFinite(valor) ? valor : undefined;
+}
+
+function nome_normalizado(nome: string): string {
+  return nome
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
 }

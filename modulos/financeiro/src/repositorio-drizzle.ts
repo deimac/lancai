@@ -4,6 +4,7 @@ import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
   conta as contaTabela,
+  contaFinanceira as contaFinanceiraTabela,
   movimento as movimentoTabela,
   obter_banco,
   parcela as parcelaTabela,
@@ -78,6 +79,27 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       )
       .limit(1);
     return linha;
+  }
+
+  async listarMovimentosPorFingerprint(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    fingerprint: string;
+  }): Promise<Movimento[]> {
+    return this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.workspaceId, chave.workspaceId),
+          eq(movimentoTabela.fonte, chave.fonte as Movimento["fonte"]),
+          chave.provedor === undefined
+            ? isNull(movimentoTabela.provedor)
+            : eq(movimentoTabela.provedor, chave.provedor),
+          eq(movimentoTabela.fingerprint, chave.fingerprint),
+        ),
+      );
   }
 
   async listarMovimentosParceladosDoCartao(cartaoId: string): Promise<Movimento[]> {
@@ -234,8 +256,24 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     nome: string;
     perfil: Conta["perfil"];
     saldoAtual?: number;
+    conexaoId?: string | null;
   }) {
     const saldo = String(entrada.saldoAtual ?? 0);
+    const [identidade] = await this.banco
+      .insert(contaFinanceiraTabela)
+      .values({
+        usuarioId: entrada.usuarioId,
+        instituicao: entrada.nome,
+        nomeExibicao: entrada.nome,
+        tipo: "conta_corrente",
+        perfil: entrada.perfil,
+        origem: "open_finance",
+        conexaoStatus: "conectado",
+        conexaoId: entrada.conexaoId ?? null,
+      })
+      .returning();
+    if (!identidade) throw new Error("Falha ao criar identidade da conta sincronizada.");
+
     const [criada] = await this.banco
       .insert(contaTabela)
       .values({
@@ -246,6 +284,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
         saldoInicial: saldo,
         saldoAtual: saldo,
         sincronizada: true,
+        contaFinanceiraId: identidade.id,
       })
       .returning();
     if (!criada) throw new Error("Falha ao criar conta sincronizada.");
@@ -261,9 +300,25 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     limite?: number;
     fechamento?: number;
     vencimento?: number;
+    conexaoId?: string | null;
   }) {
     const fechamento = entrada.fechamento ?? 1;
     const vencimento = entrada.vencimento ?? 10;
+    const [identidade] = await this.banco
+      .insert(contaFinanceiraTabela)
+      .values({
+        usuarioId: entrada.usuarioId,
+        instituicao: entrada.nome,
+        nomeExibicao: entrada.nome,
+        tipo: "credito",
+        perfil: entrada.perfil,
+        origem: "open_finance",
+        conexaoStatus: "conectado",
+        conexaoId: entrada.conexaoId ?? null,
+      })
+      .returning();
+    if (!identidade) throw new Error("Falha ao criar identidade do cartão sincronizado.");
+
     const [criado] = await this.banco
       .insert(cartaoTabela)
       .values({
@@ -278,6 +333,7 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
         melhorDiaCompra: fechamento === 31 ? 1 : fechamento + 1,
         modalidade: "credito",
         sincronizada: true,
+        contaFinanceiraId: identidade.id,
       })
       .returning();
     if (!criado) throw new Error("Falha ao criar cartão sincronizado.");
@@ -335,5 +391,28 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
     }
     if (patch.nome === undefined && patch.saldoAtual === undefined) return;
     await this.banco.update(contaTabela).set(patch).where(eq(contaTabela.id, contaId));
+  }
+
+  async definirConexaoIdentidade(
+    destino: { contaId?: string; cartaoId?: string },
+    conexaoId: string,
+  ): Promise<void> {
+    let identidadeId: string | null = null;
+    if (destino.contaId) {
+      const conta = await this.obterConta(destino.contaId);
+      identidadeId = conta?.contaFinanceiraId ?? null;
+    } else if (destino.cartaoId) {
+      const cartao = await this.obterCartao(destino.cartaoId);
+      identidadeId = cartao?.contaFinanceiraId ?? null;
+    }
+    if (!identidadeId) return;
+    await this.banco
+      .update(contaFinanceiraTabela)
+      .set({
+        conexaoId,
+        conexaoStatus: "conectado",
+        dataAtualizacao: new Date(),
+      })
+      .where(eq(contaFinanceiraTabela.id, identidadeId));
   }
 }

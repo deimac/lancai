@@ -25,6 +25,7 @@ function criarConta(sobrepor: Partial<Conta> = {}): Conta {
     workspaceId: WORKSPACE_EM_MEMORIA,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -37,6 +38,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     fonte: "manual",
     provedor: null,
     idExterno: null,
+    fingerprint: null,
     descricaoFonte: "Combustível",
     favorecidoFonte: null,
     statusFonte: "confirmado",
@@ -162,6 +164,7 @@ describe("ResolvedorIntencao", () => {
         workspaceId: WORKSPACE_EM_MEMORIA,
         dataCriacao: new Date(),
         dataAtualizacao: new Date(),
+        contaFinanceiraId: null,
       };
       const movimento = criarMovimento({
         usuarioId,

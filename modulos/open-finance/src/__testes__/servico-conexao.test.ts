@@ -28,6 +28,7 @@ function criarConta(sobrepor: Partial<Conta> = {}): Conta {
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -52,6 +53,7 @@ function criarCartao(sobrepor: Partial<Cartao> = {}): Cartao {
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -104,6 +106,29 @@ describe("ServicoConexaoOpenFinance", () => {
 
       expect(token.token).toContain(usuarioId);
       expect(token.expiraEm.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it("atualiza o itemId preservando a conexão e as associações", async () => {
+      const { conexao, contas } = await registrar();
+      const contaIdAntes = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      provedor.registrarContas("item-novo", [
+        { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 2500 },
+        {
+          idExterno: "card-1",
+          nome: "Cartão Platinum",
+          tipo: "CREDIT",
+          saldo: 11740.87,
+          limite: 30000,
+          fechamento: 5,
+          vencimento: 12,
+        },
+      ]);
+
+      const detalhe = await servico.atualizar_item_id(conexao.id, "item-novo");
+
+      expect(detalhe.conexao.id).toBe(conexao.id);
+      expect(detalhe.conexao.idExterno).toBe("item-novo");
+      expect(detalhe.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaIdAntes);
     });
 
     it("recusa reconectar uma conexão que não existe", async () => {
@@ -397,17 +422,118 @@ describe("ServicoConexaoOpenFinance", () => {
   });
 
   describe("desconexão", () => {
-    it("marca a conexão como removida e desliga sync sem apagar entidades", async () => {
+    it("marca a conexão como removida e desliga sync sem apagar o mapa nem as entidades", async () => {
       const { conexao, contas: antes } = await registrar();
       const contaId = antes.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = antes.find((c) => c.contaExternaId === "card-1")?.cartaoId;
       expect(contaId).toBeTruthy();
+      expect(cartaoId).toBeTruthy();
 
       const detalhe = await servico.desconectar(conexao.id);
 
       expect(detalhe.conexao.status).toBe("removida");
-      expect(detalhe.contas.every((c) => c.contaId === null && c.cartaoId === null)).toBe(true);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaId);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "card-1")?.cartaoId).toBe(cartaoId);
       expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(false);
       expect(financeiro.contas.has(contaId!)).toBe(true);
+      expect(detalhe.conexao.contasVinculadas.quantidade).toBe(1);
+      expect(detalhe.conexao.cartoesVinculados.quantidade).toBe(1);
+    });
+
+    it("re-registrar o mesmo itemId após desconectar não cria conta nem cartão novos", async () => {
+      const primeira = await registrar();
+      const contaId = primeira.contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = primeira.contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      await servico.desconectar(primeira.conexao.id);
+
+      const segunda = await registrar();
+
+      expect(segunda.conexao.id).toBe(primeira.conexao.id);
+      expect(segunda.conexao.status).toBe("ativa");
+      expect(segunda.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaId);
+      expect(segunda.contas.find((c) => c.contaExternaId === "card-1")?.cartaoId).toBe(cartaoId);
+      expect(financeiro.contas.size).toBe(1);
+      expect(financeiro.cartoes.size).toBe(1);
+      expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(true);
+    });
+  });
+
+  describe("reconexão in-place", () => {
+    it("com novo itemId atualiza a mesma conexão e preserva IDs locais", async () => {
+      const { conexao, contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      await servico.desconectar(conexao.id);
+      provedor.registrarContas("item-novo", [
+        { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 2500 },
+        {
+          idExterno: "card-1",
+          nome: "Cartão Platinum",
+          tipo: "CREDIT",
+          saldo: 11740.87,
+          limite: 30000,
+          fechamento: 5,
+          vencimento: 12,
+        },
+      ]);
+
+      const detalhe = await servico.reatachar_conexao({
+        workspaceId: WORKSPACE,
+        usuarioId,
+        conexaoExterna: "item-novo",
+        conexaoId: conexao.id,
+      });
+
+      expect(detalhe.conexao.id).toBe(conexao.id);
+      expect(detalhe.conexao.idExterno).toBe("item-novo");
+      expect(detalhe.conexao.status).toBe("ativa");
+      expect(detalhe.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaId);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "card-1")?.cartaoId).toBe(cartaoId);
+      expect(financeiro.contas.size).toBe(1);
+      expect(financeiro.cartoes.size).toBe(1);
+      expect(financeiro.contas.get(contaId!)?.sincronizada).toBe(true);
+    });
+
+    it("rematcha por tipo e nome quando o account id muda e só materializa recurso novo", async () => {
+      const { conexao, contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      provedor.registrarContas("item-recriado", [
+        { idExterno: "acc-novo", nome: "Conta Corrente", tipo: "BANK", saldo: 2600 },
+        {
+          idExterno: "card-novo",
+          nome: "Cartão Platinum",
+          tipo: "CREDIT",
+          saldo: 100,
+          limite: 30000,
+        },
+        { idExterno: "poup-nova", nome: "Poupança", tipo: "BANK", saldo: 50 },
+      ]);
+
+      const detalhe = await servico.reatachar_conexao({
+        workspaceId: WORKSPACE,
+        usuarioId,
+        conexaoExterna: "item-recriado",
+        conexaoId: conexao.id,
+      });
+
+      expect(detalhe.conexao.id).toBe(conexao.id);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "acc-novo")?.contaId).toBe(contaId);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "card-novo")?.cartaoId).toBe(cartaoId);
+      expect(detalhe.contas.find((c) => c.contaExternaId === "poup-nova")?.contaId).toBeTruthy();
+      expect(detalhe.contas.find((c) => c.contaExternaId === "poup-nova")?.contaId).not.toBe(contaId);
+      expect(financeiro.contas.size).toBe(2);
+      expect(financeiro.cartoes.size).toBe(1);
+    });
+
+    it("recusa reconectar sem informar a conexão existente", async () => {
+      await expect(
+        servico.reatachar_conexao({
+          workspaceId: WORKSPACE,
+          usuarioId,
+          conexaoExterna: CONEXAO_EXTERNA,
+        }),
+      ).rejects.toThrow(ErroAssociacaoInvalida);
     });
   });
 

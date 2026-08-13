@@ -26,6 +26,7 @@ import {
   type NovoMovimento,
 } from "@lancai/banco";
 import { calcular_saldo, obter_direcao_padrao, tipo_movimento_implementado } from "./calcular-saldo";
+import { calcular_fingerprint_movimento } from "./fingerprint";
 import { eh_fluxo_cruzado } from "./fluxo-cruzado";
 import { registrar_parcelamento } from "./registrar-parcelamento";
 import {
@@ -188,6 +189,40 @@ export class MotorFinanceiro {
   }
 
   /**
+   * Identidade estável para o hash: `conta_financeira_id` quando existir,
+   * senão o id local da conta/cartão (também estável no reatachar).
+   */
+  private async identidade_fingerprint(
+    evento: EventoFinanceiroNormalizado,
+  ): Promise<string | null> {
+    if (evento.fonte !== "open_finance") return null;
+    if (evento.contaId) {
+      const conta = await this.repositorio.obterConta(evento.contaId);
+      return conta?.contaFinanceiraId ?? conta?.id ?? null;
+    }
+    if (evento.cartaoId) {
+      const cartao = await this.repositorio.obterCartao(evento.cartaoId);
+      return cartao?.contaFinanceiraId ?? cartao?.id ?? null;
+    }
+    return null;
+  }
+
+  private async gerar_fingerprint(
+    evento: EventoFinanceiroNormalizado,
+  ): Promise<string | null> {
+    const identidadeId = await this.identidade_fingerprint(evento);
+    if (!identidadeId) return null;
+    return calcular_fingerprint_movimento({
+      identidadeId,
+      dataMovimento: evento.ocorridoEm,
+      tipo: evento.tipo,
+      valor: evento.valor,
+      descricaoFonte: evento.descricaoFonte,
+      favorecidoFonte: evento.favorecidoFonte,
+    });
+  }
+
+  /**
    * Liga e desliga a marca de conta sincronizada. Mora aqui, ao lado da regra que
    * a lê, porque a marca muda o que o Core permite: deixar a Fonte escrever
    * direto na coluna espalharia por dois módulos a autoridade sobre a mesma
@@ -230,6 +265,7 @@ export class MotorFinanceiro {
     nome: string;
     perfil: Conta["perfil"];
     saldoAtual?: number;
+    conexaoId?: string | null;
   }): Promise<Conta> {
     return this.repositorio.criarContaSincronizada(entrada);
   }
@@ -243,8 +279,16 @@ export class MotorFinanceiro {
     limite?: number;
     fechamento?: number;
     vencimento?: number;
+    conexaoId?: string | null;
   }): Promise<Cartao> {
     return this.repositorio.criarCartaoSincronizado(entrada);
+  }
+
+  async definir_conexao_identidade(
+    destino: { contaId?: string; cartaoId?: string },
+    conexaoId: string,
+  ): Promise<void> {
+    await this.repositorio.definirConexaoIdentidade(destino, conexaoId);
   }
 
   async atualizar_dados_institucionais_cartao(
@@ -293,7 +337,8 @@ export class MotorFinanceiro {
    * não sabe qual fonte é nem o que é "pluggy" — recebe eventos já normalizados
    * e obedece ao `fatoImutavel` que a fonte declarou.
    *
-   * Idempotente por `idExterno`: reprocessar o mesmo lote não duplica nada.
+   * Idempotente por `idExterno`. O fingerprint é gravado para reidentificar
+   * o Fato depois, quando o idExterno muda (reatachar) — ver `atualizar_fatos_da_fonte`.
    */
   async ingerir_eventos(
     eventos: EventoFinanceiroNormalizado[],
@@ -330,6 +375,8 @@ export class MotorFinanceiro {
         }
       }
 
+      const fingerprint = await this.gerar_fingerprint(evento);
+
       const perfil = await this.perfil_destino_ingestao(
         { contaId: evento.contaId, cartaoId: evento.cartaoId },
         contexto.perfilPadrao,
@@ -344,6 +391,7 @@ export class MotorFinanceiro {
         fonte: evento.fonte,
         provedor: evento.provedor,
         idExterno: evento.idExterno,
+        fingerprint,
         descricaoFonte: evento.descricaoFonte,
         favorecidoFonte: evento.favorecidoFonte,
         statusFonte: evento.statusFonte,
@@ -425,11 +473,13 @@ export class MotorFinanceiro {
   async atualizar_fatos_da_fonte(
     eventos: EventoFinanceiroNormalizado[],
     contexto: ContextoIngestao,
+    opcoes: { reidentificarPorFingerprint?: boolean } = {},
   ): Promise<ResultadoAtualizacaoFonte> {
     const atualizacoes: OperacaoAtualizacaoFonte["atualizacoes"] = [];
     const auditorias: NovaAuditoria[] = [];
     const saldosPorConta = new Map<string, number>();
     const desconhecidos: EventoFinanceiroNormalizado[] = [];
+    const reidentificados = new Set<string>();
     let inalterados = 0;
 
     for (const eventoBruto of eventos) {
@@ -441,19 +491,41 @@ export class MotorFinanceiro {
         );
       }
 
-      const atual = await this.repositorio.obterMovimentoPorIdExterno({
+      let atual = await this.repositorio.obterMovimentoPorIdExterno({
         workspaceId: evento.workspaceId,
         fonte: evento.fonte,
         provedor: evento.provedor,
         idExterno: evento.idExterno,
       });
 
+      const fingerprint =
+        evento.fonte === "open_finance" ? await this.gerar_fingerprint(evento) : null;
+
+      if (!atual && fingerprint && opcoes.reidentificarPorFingerprint) {
+        const candidatos = await this.repositorio.listarMovimentosPorFingerprint({
+          workspaceId: evento.workspaceId,
+          fonte: evento.fonte,
+          provedor: evento.provedor,
+          fingerprint,
+        });
+        atual = candidatos.find(
+          (movimento) => movimento.status !== "cancelado" && !reidentificados.has(movimento.id),
+        );
+      }
+
       if (!atual) {
         desconhecidos.push(evento);
         continue;
       }
 
+      reidentificados.add(atual.id);
       const campos = this.diferenca_do_fato(atual, evento);
+      if (atual.idExterno !== evento.idExterno) {
+        campos.idExterno = evento.idExterno;
+      }
+      if (fingerprint && atual.fingerprint !== fingerprint) {
+        campos.fingerprint = fingerprint;
+      }
       if (Object.keys(campos).length === 0) {
         inalterados += 1;
         continue;

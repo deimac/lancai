@@ -26,6 +26,8 @@ const URL_BASE = resolver_url_api();
 
 export type OrigemFinanceira = "manual" | "open_finance";
 
+export type StatusConexao = "ativa" | "sincronizando" | "precisa_atencao" | "removida";
+
 export interface ContaResumo {
   id: string;
   nome: string;
@@ -39,6 +41,8 @@ export interface ContaResumo {
   conexaoId?: string | null;
   instituicao?: string | null;
   idExterno?: string | null;
+  conexaoStatus?: StatusConexao | null;
+  ultimoSyncEm?: string | null;
   workspaceId?: string;
   workspaceNome?: string | null;
   ativo?: boolean;
@@ -61,6 +65,8 @@ export interface CartaoResumo {
   conexaoId?: string | null;
   instituicao?: string | null;
   idExterno?: string | null;
+  conexaoStatus?: StatusConexao | null;
+  ultimoSyncEm?: string | null;
   workspaceId?: string;
   workspaceNome?: string | null;
   contaId?: string | null;
@@ -187,8 +193,6 @@ export interface TokenConexao {
   expiraEm: string;
 }
 
-export type StatusConexao = "ativa" | "sincronizando" | "precisa_atencao" | "removida";
-
 export type MotivoAtencao =
   | "credencial_invalida"
   | "consentimento_revogado"
@@ -204,6 +208,11 @@ export interface ResumoIngestaoUi {
   paginas: number;
 }
 
+export interface RecursosVinculadosUi {
+  quantidade: number;
+  nomes: string[];
+}
+
 export interface ConexaoDetalhada {
   id: string;
   idExterno: string;
@@ -213,6 +222,8 @@ export interface ConexaoDetalhada {
   ultimoSyncEm: string | null;
   consentimentoExpiraEm: string | null;
   ultimoResumoIngestao: ResumoIngestaoUi | null;
+  contasVinculadas?: RecursosVinculadosUi;
+  cartoesVinculados?: RecursosVinculadosUi;
 }
 
 export interface ContaExternaRegistrada {
@@ -766,14 +777,15 @@ export const clienteApi = {
   },
 
   /**
-   * Reatacha novo itemId a Contas/Cartões existentes e sincroniza só o novo.
+   * Reconecta a conexão existente (novo ou mesmo itemId) e sincroniza só o novo.
    * Consome NDJSON (mesmo padrão de atualizar_conexao).
    */
   async reatachar_conexao(
     dados: {
       usuarioId: string;
       conexaoExterna: string;
-      pareamentos: PareamentoReatachar[];
+      pareamentos?: PareamentoReatachar[];
+      conexaoId?: string;
       conexaoIdAnterior?: string;
     },
     aoProgresso?: (progresso: ProgressoImportacaoApi) => void,
@@ -789,7 +801,7 @@ export const clienteApi = {
         body: JSON.stringify(dados),
       });
     } catch (erro) {
-      throw new ErroApi(mensagem_falha_rede(erro, "Reatachar conexão"), 0);
+      throw new ErroApi(mensagem_falha_rede(erro, "Reconectar banco"), 0);
     }
 
     if (!resposta.ok) {
@@ -798,13 +810,13 @@ export const clienteApi = {
         message?: string;
       };
       throw new ErroApi(
-        corpo.erro ?? corpo.message ?? "Não foi possível reatachar a conexão.",
+        corpo.erro ?? corpo.message ?? "Não foi possível reconectar o banco.",
         resposta.status,
       );
     }
 
     if (!resposta.body) {
-      throw new ErroApi("Resposta sem corpo no reatachar.", 502);
+      throw new ErroApi("Resposta sem corpo ao reconectar.", 502);
     }
 
     const leitor = resposta.body.getReader();

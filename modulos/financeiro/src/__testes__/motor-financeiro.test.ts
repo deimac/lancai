@@ -29,6 +29,7 @@ function criarConta(sobrepor: Partial<Conta> = {}): Conta {
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -53,6 +54,7 @@ function criarCartao(contaId: string, sobrepor: Partial<Cartao> = {}): Cartao {
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -864,6 +866,45 @@ describe("MotorFinanceiro", () => {
       expect(segunda.criados).toHaveLength(0);
       expect(segunda.duplicados).toBe(2);
       expect(repositorio.movimentos.size).toBe(2);
+    });
+
+    it("grava fingerprint e reidentifica quando o idExterno muda", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const { criados } = await motor.ingerir_eventos(
+        [evento({ contaId: conta.id, idExterno: "tx-antigo" })],
+        contexto(),
+      );
+      expect(criados[0]?.fingerprint).toBeTruthy();
+
+      const { atualizados, desconhecidos } = await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, idExterno: "tx-novo-item" })],
+        contexto(),
+        { reidentificarPorFingerprint: true },
+      );
+
+      expect(desconhecidos).toHaveLength(0);
+      expect(atualizados).toHaveLength(1);
+      expect(atualizados[0]?.id).toBe(criados[0]?.id);
+      expect(atualizados[0]?.idExterno).toBe("tx-novo-item");
+      expect(atualizados[0]?.descricao).toBe(criados[0]?.descricao);
+    });
+
+    it("cria duas compras idênticas com idExterno diferente — fingerprint não é único", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({ contaId: conta.id, idExterno: "cafe-1" }),
+          evento({ contaId: conta.id, idExterno: "cafe-2" }),
+        ],
+        contexto(),
+      );
+
+      expect(criados).toHaveLength(2);
+      expect(criados[0]?.fingerprint).toBe(criados[1]?.fingerprint);
     });
 
     it("não acumula saldo_atual na conta — o saldo vem da instituição", async () => {

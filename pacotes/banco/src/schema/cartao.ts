@@ -1,6 +1,7 @@
 import { boolean, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { modalidadeCartaoEnum, perfilEnum } from "./enums";
 import { conta } from "./conta";
+import { contaFinanceira } from "./conta-financeira";
 import { usuario } from "./usuario";
 import { workspace } from "./workspace";
 
@@ -13,6 +14,7 @@ export const cartao = pgTable("cartao", {
   workspaceId: uuid("workspace_id")
     .notNull()
     .references(() => workspace.id),
+  contaFinanceiraId: uuid("conta_financeira_id").references(() => contaFinanceira.id),
   nome: text("nome").notNull(),
   /** Armazenado como string decimal (numeric do Postgres) para evitar perda de precisão. */
   limite: numeric("limite", { precision: 14, scale: 2 }).notNull(),

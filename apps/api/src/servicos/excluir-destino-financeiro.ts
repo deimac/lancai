@@ -22,7 +22,7 @@ import { obter_provedor_open_finance } from "./open-finance";
  * - apaga as contas/cartões (não só `ativo=false`).
  *
  * Exceção deliberada ao append-only: o botão Excluir é limpeza explícita do
- * usuário. Para só trocar itemId do Meu Pluggy, use Reatachar.
+ * usuário. Para só trocar o itemId, use Reconectar banco.
  */
 export async function excluir_destino_financeiro(entrada: {
   usuarioId: string;

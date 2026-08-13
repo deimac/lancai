@@ -46,6 +46,7 @@ describe("pedido de senha do cartão", () => {
         workspaceId: "w",
         dataCriacao: new Date(),
         dataAtualizacao: new Date(),
+        contaFinanceiraId: null,
       },
       { numero: "4111111111111111", validade: "08/30", cvv: "123" },
     );

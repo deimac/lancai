@@ -7,11 +7,19 @@ import {
 
 export type OrigemFinanceira = "manual" | "open_finance";
 
+export type StatusConexaoOrigem =
+  | "ativa"
+  | "sincronizando"
+  | "precisa_atencao"
+  | "removida";
+
 export type MetaOrigem = {
   origem: OrigemFinanceira;
   conexaoId: string | null;
   instituicao: string | null;
   idExterno: string | null;
+  conexaoStatus: StatusConexaoOrigem | null;
+  ultimoSyncEm: Date | null;
 };
 
 const META_MANUAL: MetaOrigem = {
@@ -19,6 +27,8 @@ const META_MANUAL: MetaOrigem = {
   conexaoId: null,
   instituicao: null,
   idExterno: null,
+  conexaoStatus: null,
+  ultimoSyncEm: null,
 };
 
 /**
@@ -37,6 +47,8 @@ export async function mapear_origem_contas(contaIds: string[]): Promise<Map<stri
       conexaoId: openFinanceContaExterna.conexaoId,
       idExterno: openFinanceContaExterna.idExterno,
       instituicao: openFinanceConexao.instituicao,
+      conexaoStatus: openFinanceConexao.status,
+      ultimoSyncEm: openFinanceConexao.ultimoSyncEm,
     })
     .from(openFinanceContaExterna)
     .innerJoin(openFinanceConexao, eq(openFinanceContaExterna.conexaoId, openFinanceConexao.id))
@@ -51,6 +63,8 @@ export async function mapear_origem_contas(contaIds: string[]): Promise<Map<stri
       conexaoId: linha.conexaoId,
       instituicao: linha.instituicao,
       idExterno: linha.idExterno,
+      conexaoStatus: linha.conexaoStatus,
+      ultimoSyncEm: linha.ultimoSyncEm,
     });
   }
 
@@ -69,6 +83,8 @@ export async function mapear_origem_cartoes(cartaoIds: string[]): Promise<Map<st
       conexaoId: openFinanceContaExterna.conexaoId,
       idExterno: openFinanceContaExterna.idExterno,
       instituicao: openFinanceConexao.instituicao,
+      conexaoStatus: openFinanceConexao.status,
+      ultimoSyncEm: openFinanceConexao.ultimoSyncEm,
     })
     .from(openFinanceContaExterna)
     .innerJoin(openFinanceConexao, eq(openFinanceContaExterna.conexaoId, openFinanceConexao.id))
@@ -86,6 +102,8 @@ export async function mapear_origem_cartoes(cartaoIds: string[]): Promise<Map<st
       conexaoId: linha.conexaoId,
       instituicao: linha.instituicao,
       idExterno: linha.idExterno,
+      conexaoStatus: linha.conexaoStatus,
+      ultimoSyncEm: linha.ultimoSyncEm,
     });
   }
 

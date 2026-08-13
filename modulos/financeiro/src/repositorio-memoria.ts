@@ -56,6 +56,21 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     );
   }
 
+  async listarMovimentosPorFingerprint(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    fingerprint: string;
+  }) {
+    return [...this.movimentos.values()].filter(
+      (movimento) =>
+        movimento.workspaceId === chave.workspaceId &&
+        movimento.fonte === chave.fonte &&
+        (movimento.provedor ?? undefined) === chave.provedor &&
+        movimento.fingerprint === chave.fingerprint,
+    );
+  }
+
   async listarMovimentosParceladosDoCartao(cartaoId: string) {
     return [...this.movimentos.values()].filter(
       (movimento) =>
@@ -96,6 +111,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         fonte: novoMovimento.fonte ?? "manual",
         provedor: novoMovimento.provedor ?? null,
         idExterno: novoMovimento.idExterno ?? null,
+        fingerprint: novoMovimento.fingerprint ?? null,
         descricaoFonte: novoMovimento.descricaoFonte,
         favorecidoFonte: novoMovimento.favorecidoFonte ?? null,
         statusFonte: novoMovimento.statusFonte ?? "confirmado",
@@ -296,6 +312,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     nome: string;
     perfil: Conta["perfil"];
     saldoAtual?: number;
+    conexaoId?: string | null;
   }): Promise<Conta> {
     const agora = new Date();
     const saldo = String(entrada.saldoAtual ?? 0);
@@ -309,6 +326,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
       saldoAtual: saldo,
       ativo: true,
       sincronizada: true,
+      contaFinanceiraId: randomUUID(),
       dataCriacao: agora,
       dataAtualizacao: agora,
     };
@@ -325,6 +343,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
     limite?: number;
     fechamento?: number;
     vencimento?: number;
+    conexaoId?: string | null;
   }): Promise<Cartao> {
     const agora = new Date();
     const fechamento = entrada.fechamento ?? 1;
@@ -345,6 +364,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
       sincronizada: true,
       dadosPlasticosCifrados: null,
       contaId: null,
+      contaFinanceiraId: randomUUID(),
       dataCriacao: agora,
       dataAtualizacao: agora,
     };
@@ -406,5 +426,12 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
           : conta.saldoAtual,
       dataAtualizacao: new Date(),
     });
+  }
+
+  async definirConexaoIdentidade(
+    _destino: { contaId?: string; cartaoId?: string },
+    _conexaoId: string,
+  ): Promise<void> {
+    /* Memória não persiste conta_financeira; identidade é opaca nos testes. */
   }
 }

@@ -37,7 +37,7 @@ import {
   type ProgressoImportacaoUi,
 } from "../componentes/BarraProgressoImportacao";
 import { ModalContaCartao, type TipoCadastro } from "../componentes/ModalContaCartao";
-import { ModalReatachar } from "../componentes/ModalReatachar";
+import { ModalReconectar } from "../componentes/ModalReconectar";
 import { PainelWorkspaces } from "../componentes/PainelWorkspaces";
 import { Botao } from "../componentes/ui/Botao";
 import { useContextoLayout } from "../layout/useContextoLayout";
@@ -63,24 +63,37 @@ function badge_origem(item: {
   sincronizada?: boolean;
   origem?: string;
   instituicao?: string | null;
+  conexaoStatus?: string | null;
 }) {
   const of = item.origem === "open_finance" || item.sincronizada;
-  if (of && item.sincronizada) {
+  if (!of) {
     return {
-      rotulo: item.instituicao ? `Ativa · ${item.instituicao}` : "Ativa",
-      classe: "border-primaria/40 bg-primaria/10 text-primaria",
+      rotulo: "Manual",
+      classe: "border-borda text-texto-suave",
     };
   }
-  if (of) {
+  const banco = item.instituicao ? ` · ${item.instituicao}` : "";
+  if (item.conexaoStatus === "precisa_atencao") {
     return {
-      rotulo: item.instituicao ? `Desconectada · ${item.instituicao}` : "Desconectada",
+      rotulo: `Precisa de atenção${banco}`,
+      classe: "border-aviso/40 bg-aviso/10 text-aviso",
+    };
+  }
+  if (item.conexaoStatus === "removida" || !item.sincronizada) {
+    return {
+      rotulo: `Desconectada${banco}`,
       classe: "border-aviso/40 bg-aviso/10 text-aviso",
     };
   }
   return {
-    rotulo: "Manual",
-    classe: "border-borda text-texto-suave",
+    rotulo: item.conexaoStatus === "sincronizando" ? `Sincronizando${banco}` : `Ativa${banco}`,
+    classe: "border-primaria/40 bg-primaria/10 text-primaria",
   };
+}
+
+function linha_sync(ultimoSyncEm?: string | null) {
+  if (!ultimoSyncEm) return null;
+  return texto_ultimo_sync(ultimoSyncEm).linha;
 }
 
 function aba_do_hash(hash: string): Aba {
@@ -113,8 +126,8 @@ export function TelaContasECartoes() {
   const [modalTipo, setModalTipo] = useState<TipoCadastro>("conta");
   const [modalAlvo, setModalAlvo] = useState<ContaResumo | CartaoResumo | null>(null);
 
-  const [modalReatachar, setModalReatachar] = useState(false);
-  const [conexaoAnteriorReatachar, setConexaoAnteriorReatachar] = useState<string | null>(null);
+  const [modalReconectar, setModalReconectar] = useState(false);
+  const [conexaoReconectar, setConexaoReconectar] = useState<string | null>(null);
   const [progressoImportacao, setProgressoImportacao] = useState<ProgressoImportacaoUi | null>(
     null,
   );
@@ -192,9 +205,13 @@ export function TelaContasECartoes() {
     setModalAberto(true);
   }
 
-  function abrir_reatachar(conexaoId?: string | null) {
-    setConexaoAnteriorReatachar(conexaoId ?? null);
-    setModalReatachar(true);
+  function abrir_reconectar(conexaoId?: string | null) {
+    if (!conexaoId) {
+      toast.erro("Esta conta não tem banco para reconectar.");
+      return;
+    }
+    setConexaoReconectar(conexaoId);
+    setModalReconectar(true);
   }
 
   async function excluir_conta(conta: ContaResumo) {
@@ -203,7 +220,7 @@ export function TelaContasECartoes() {
     const ok = await confirmar({
       titulo: "Excluir conta?",
       mensagem: of
-        ? `Apaga "${conta.nome}" e TODO o extrato (incluindo Open Finance). Irreversível. Se só mudou o itemId no Meu Pluggy, use Reatachar.`
+        ? `Apaga "${conta.nome}" e TODO o extrato (incluindo Open Finance). Irreversível. Se só mudou o itemId, use Reconectar.`
         : `Apaga a conta "${conta.nome}" e o extrato ligado. Irreversível.`,
       confirmarRotulo: "Excluir tudo",
     });
@@ -224,7 +241,7 @@ export function TelaContasECartoes() {
     const ok = await confirmar({
       titulo: "Excluir cartão?",
       mensagem: of
-        ? `Apaga "${cartao.nome}" e TODO o extrato (incluindo Open Finance). Irreversível. Se só mudou o itemId no Meu Pluggy, use Reatachar.`
+        ? `Apaga "${cartao.nome}" e TODO o extrato (incluindo Open Finance). Irreversível. Se só mudou o itemId, use Reconectar.`
         : `Apaga o cartão "${cartao.nome}" e o extrato ligado. Irreversível.`,
       confirmarRotulo: "Excluir tudo",
     });
@@ -282,7 +299,7 @@ export function TelaContasECartoes() {
     if (!usuario) return;
     const ok = await confirmar({
       titulo: "Desconectar banco?",
-      mensagem: `Encerra a sync de "${nome}". Contas, cartões e histórico ficam. Para novo itemId, use Reatachar.`,
+      mensagem: `Encerra a sync de "${nome}". Contas, cartões e histórico ficam. Depois use Reconectar no mesmo banco.`,
       confirmarRotulo: "Desconectar",
     });
     if (!ok) return;
@@ -350,10 +367,6 @@ export function TelaContasECartoes() {
           <Link2 size={14} />
           {ocupado ? "Conectando…" : "Conectar banco"}
         </Botao>
-        <Botao variante="fantasma" onClick={() => abrir_reatachar(null)} disabled={ocupado}>
-          <RefreshCw size={14} />
-          Reatachar
-        </Botao>
         <Botao variante="fantasma" onClick={() => abrir_criar(aba === "cartoes" ? "cartao" : "conta")}>
           <Plus size={14} />
           Adicionar
@@ -403,14 +416,19 @@ export function TelaContasECartoes() {
       {aba === "contas" && (
         <ListaDestinos
           carregando={carregando}
-          vazia="Nenhuma conta. Conecte um banco, reatachar itemId ou cadastre manualmente."
+          vazia="Nenhuma conta. Conecte um banco ou cadastre manualmente."
           itens={contas.map((conta) => {
             const badge = badge_origem(conta);
             const perfilBadge = badge_perfil(conta.perfil);
             const saldo = para_numero(conta.saldoAtual);
+            const sync = linha_sync(conta.ultimoSyncEm);
+            const of = conta.origem === "open_finance" || conta.sincronizada;
             return {
               id: conta.id,
               titulo: conta.nome,
+              subtitulo: of
+                ? [conta.instituicao, sync].filter(Boolean).join(" · ") || undefined
+                : undefined,
               badges: [perfilBadge, badge],
               valor: saldo,
               valorClasse: saldo < 0 ? "text-despesa" : "text-texto",
@@ -421,12 +439,12 @@ export function TelaContasECartoes() {
               },
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_conta(conta) },
-                ...(conta.origem === "open_finance" || conta.sincronizada
+                ...(of && conta.conexaoId
                   ? [
                       {
-                        rotulo: "Reatachar",
+                        rotulo: "Reconectar",
                         icone: RefreshCw,
-                        onClick: () => abrir_reatachar(null),
+                        onClick: () => abrir_reconectar(conta.conexaoId),
                       },
                     ]
                   : []),
@@ -445,19 +463,28 @@ export function TelaContasECartoes() {
       {aba === "cartoes" && (
         <ListaDestinos
           carregando={carregando}
-          vazia="Nenhum cartão. Conecte um banco, reatachar itemId ou cadastre manualmente."
+          vazia="Nenhum cartão. Conecte um banco ou cadastre manualmente."
           itens={cartoes.map((cartao) => {
             const badge = badge_origem(cartao);
             const perfilBadge = badge_perfil(cartao.perfil);
             const saldo = para_numero(cartao.saldo);
+            const of = cartao.origem === "open_finance" || cartao.sincronizada;
+            const sync = linha_sync(cartao.ultimoSyncEm);
             return {
               id: cartao.id,
               titulo: `${cartao.nome}${cartao.final4 ? ` ···· ${cartao.final4}` : ""}`,
-              subtitulo: `Limite ${formatar_moeda(para_numero(cartao.limite))}${
+              subtitulo: [
+                `Limite ${formatar_moeda(para_numero(cartao.limite))}`,
                 cartao.sincronizada
-                  ? ` · Disp. ${formatar_moeda(para_numero(cartao.limite) - saldo)}`
-                  : ""
-              } · Fecha ${cartao.fechamento ?? "—"} · Vence ${cartao.vencimento}`,
+                  ? `Disp. ${formatar_moeda(para_numero(cartao.limite) - saldo)}`
+                  : null,
+                `Fecha ${cartao.fechamento ?? "—"}`,
+                `Vence ${cartao.vencimento}`,
+                cartao.instituicao,
+                sync,
+              ]
+                .filter(Boolean)
+                .join(" · "),
               badges: [perfilBadge, badge],
               valor: saldo,
               valorClasse: saldo > 0 ? "text-despesa" : "text-texto",
@@ -468,12 +495,12 @@ export function TelaContasECartoes() {
               },
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_cartao(cartao) },
-                ...(cartao.origem === "open_finance" || cartao.sincronizada
+                ...(of && cartao.conexaoId
                   ? [
                       {
-                        rotulo: "Reatachar",
+                        rotulo: "Reconectar",
                         icone: RefreshCw,
-                        onClick: () => abrir_reatachar(null),
+                        onClick: () => abrir_reconectar(cartao.conexaoId),
                       },
                     ]
                   : []),
@@ -495,13 +522,19 @@ export function TelaContasECartoes() {
             <p className="text-sm text-texto-suave">Carregando…</p>
           ) : conexoes.length === 0 ? (
             <p className="rounded-2xl border border-borda bg-superficie/80 p-4 text-sm text-texto-suave">
-              Nenhum banco conectado. Use Conectar banco ou Reatachar com um itemId do Meu
-              Pluggy.
+              Nenhum banco conectado. Use Conectar banco para trazer contas e cartões da
+              instituição.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {conexoes.map((conexao, i) => {
                 const sync = texto_ultimo_sync(conexao.ultimoSyncEm);
+                const nContas = conexao.contasVinculadas?.quantidade ?? 0;
+                const nCartoes = conexao.cartoesVinculados?.quantidade ?? 0;
+                const nomes = [
+                  ...(conexao.contasVinculadas?.nomes ?? []),
+                  ...(conexao.cartoesVinculados?.nomes ?? []),
+                ];
                 return (
                   <motion.li
                     key={conexao.id}
@@ -523,6 +556,11 @@ export function TelaContasECartoes() {
                               ? "Sincronizando"
                               : "Removida"}
                         {conexao.motivoAtencao ? ` · ${conexao.motivoAtencao}` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-texto-suave">
+                        {nContas} {nContas === 1 ? "conta" : "contas"} · {nCartoes}{" "}
+                        {nCartoes === 1 ? "cartão" : "cartões"}
+                        {nomes.length > 0 ? ` · ${nomes.join(", ")}` : ""}
                       </p>
                       <p
                         className={unir_classes(
@@ -551,7 +589,7 @@ export function TelaContasECartoes() {
                             ...(conexao.status !== "removida"
                               ? [
                                   {
-                                    rotulo: "Atualizar agora",
+                                    rotulo: "Sincronizar",
                                     icone: RefreshCw,
                                     onClick: () => void atualizar_conexao(conexao.id),
                                   },
@@ -560,16 +598,16 @@ export function TelaContasECartoes() {
                             ...(conexao.status === "precisa_atencao"
                               ? [
                                   {
-                                    rotulo: "Reconectar (mesmo item)",
+                                    rotulo: "Atualizar login",
                                     icone: Link2,
                                     onClick: () => void reconectar_mesmo_item(conexao),
                                   },
                                 ]
                               : []),
                             {
-                              rotulo: "Reatachar (novo itemId)",
+                              rotulo: "Reconectar",
                               icone: RefreshCw,
-                              onClick: () => abrir_reatachar(conexao.id),
+                              onClick: () => abrir_reconectar(conexao.id),
                             },
                             ...(conexao.status !== "removida"
                               ? [
@@ -594,8 +632,8 @@ export function TelaContasECartoes() {
             </ul>
           )}
           <p className="text-xs text-texto-suave">
-            <strong className="font-medium text-texto">Reatachar</strong> = novo itemId do Meu
-            Pluggy sem perder categorias.{" "}
+            <strong className="font-medium text-texto">Reconectar</strong> atualiza o mesmo
+            banco — contas e cartões continuam os mesmos.{" "}
             <strong className="font-medium text-texto">Excluir</strong> na aba Contas/Cartões
             apaga o extrato de vez.
           </p>
@@ -614,14 +652,14 @@ export function TelaContasECartoes() {
         }}
       />
 
-      <ModalReatachar
-        aberto={modalReatachar}
+      <ModalReconectar
+        aberto={modalReconectar}
         usuarioId={usuario.id}
         contas={contas}
         cartoes={cartoes}
         conexoes={conexoes}
-        conexaoIdAnterior={conexaoAnteriorReatachar}
-        aoFechar={() => setModalReatachar(false)}
+        conexaoId={conexaoReconectar}
+        aoFechar={() => setModalReconectar(false)}
         aoConcluir={() => {
           void carregar();
           contexto?.invalidar("tudo");

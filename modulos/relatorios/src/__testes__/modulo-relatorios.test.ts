@@ -32,6 +32,7 @@ function criarConta(usuarioId: string, sobrepor: Partial<Conta> = {}): Conta {
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -56,6 +57,7 @@ function criarCartao(usuarioId: string, contaId: string, sobrepor: Partial<Carta
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }
@@ -83,6 +85,7 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     fonte: "manual",
     provedor: null,
     idExterno: null,
+    fingerprint: null,
     descricaoFonte: "Movimento de teste",
     favorecidoFonte: null,
     statusFonte: "confirmado",

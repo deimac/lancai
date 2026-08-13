@@ -2,6 +2,7 @@ import { boolean, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg
 import { perfilEnum } from "./enums";
 import { usuario } from "./usuario";
 import { workspace } from "./workspace";
+import { contaFinanceira } from "./conta-financeira";
 
 export const conta = pgTable("conta", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -12,6 +13,7 @@ export const conta = pgTable("conta", {
   workspaceId: uuid("workspace_id")
     .notNull()
     .references(() => workspace.id),
+  contaFinanceiraId: uuid("conta_financeira_id").references(() => contaFinanceira.id),
   nome: text("nome").notNull(),
   /** Armazenado como string decimal (numeric do Postgres) para evitar perda de precisão. */
   saldoInicial: numeric("saldo_inicial", { precision: 14, scale: 2 }).notNull().default("0"),

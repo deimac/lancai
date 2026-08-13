@@ -95,6 +95,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       saldoAtual: String(dados.saldoInicial),
       ativo: true,
       sincronizada: false,
+      contaFinanceiraId: null,
       dataCriacao: agora,
       dataAtualizacao: agora,
     };
@@ -123,6 +124,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       ativo: true,
       sincronizada: false,
       dadosPlasticosCifrados,
+      contaFinanceiraId: null,
       dataCriacao: agora,
       dataAtualizacao: agora,
     };

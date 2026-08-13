@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ServicoConexaoOpenFinance } from "@lancai/open-finance";
 import {
   schemaAssociarContaExterna,
+  schemaAtualizarItemId,
   schemaCriarConexaoDuble,
   schemaIniciarConexao,
   schemaInspecionarItem,
@@ -101,7 +102,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
   });
 
   /**
-   * Preview de um itemId (Meu Pluggy) sem gravar conexão — passo 1 do Reatachar.
+   * Preview de um itemId (Meu Pluggy) sem gravar conexão — passo 1 do Reconectar.
    */
   app.post("/conexoes/inspecionar", async (requisicao, resposta) => {
     const servico = obter_servico_conexao();
@@ -123,8 +124,8 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
   });
 
   /**
-   * Reatachar: novo itemId → parear com Contas/Cartões existentes → sync GET
-   * só criando o que for novo (dedup + skip semântico). NDJSON com progresso.
+   * Reconectar: atualiza o itemId da conexão informada, rematcha recursos e
+   * sincroniza o extrato (skip semântico + fingerprint). NDJSON com progresso.
    */
   app.post("/conexoes/reatachar", async (requisicao, resposta) => {
     const servico = obter_servico_conexao();
@@ -132,15 +133,16 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
 
     const dados = schemaReatacharConexao.parse(requisicao.body);
     const workspaceId = await exigir_workspace_escrita(dados.usuarioId);
+    const conexaoAlvo = dados.conexaoId ?? dados.conexaoIdAnterior;
 
-    if (dados.conexaoIdAnterior) {
-      const acesso = await exigir_conexao_do_usuario(
-        servico,
-        dados.conexaoIdAnterior,
-        dados.usuarioId,
-      );
-      if ("erro" in acesso) return resposta.status(404).send(acesso);
+    if (!conexaoAlvo) {
+      return resposta.status(400).send({
+        erro: "Informe a conexão a reconectar.",
+      });
     }
+
+    const acesso = await exigir_conexao_do_usuario(servico, conexaoAlvo, dados.usuarioId);
+    if ("erro" in acesso) return resposta.status(404).send(acesso);
 
     resposta.hijack();
     resposta.raw.writeHead(200, {
@@ -159,7 +161,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
       escrever({
         tipo: "progresso",
         percentual: 4,
-        mensagem: "Registrando novo item e pareando…",
+        mensagem: "Atualizando conexão e associando contas…",
         criados: 0,
         duplicados: 0,
         contaAtual: 0,
@@ -171,7 +173,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         usuarioId: dados.usuarioId,
         conexaoExterna: dados.conexaoExterna,
         pareamentos: dados.pareamentos,
-        conexaoIdAnterior: dados.conexaoIdAnterior,
+        conexaoId: conexaoAlvo,
       });
 
       conexaoIdLock = detalhe.conexao.id;
@@ -237,8 +239,8 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         },
       });
     } catch (erro) {
-      const bruto = erro instanceof Error ? erro.message : "Falha ao reatachar conexão.";
-      requisicao.log.error({ err: erro }, "[open-finance] falha no reatachar");
+      const bruto = erro instanceof Error ? erro.message : "Falha ao reconectar o banco.";
+      requisicao.log.error({ err: erro }, "[open-finance] falha no reconectar");
       escrever({
         tipo: "erro",
         erro: bruto.startsWith("provedor indisponível:")
@@ -439,6 +441,30 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if ("erro" in acesso) return resposta.status(404).send(acesso);
 
     return resposta.send(await servico.desconectar(id));
+  });
+
+  /**
+   * Fallback Meu Pluggy: o item antigo sumiu do provedor e o Meu Pluggy
+   * gerou um novo itemId. O usuário informa o novo itemId e atualizamos
+   * a conexão preservando associações e histórico local.
+   */
+  app.post("/conexoes/:id/item-id", async (requisicao, resposta) => {
+    const servico = obter_servico_conexao();
+    if (!servico) return fonte_desativada(resposta);
+
+    const { id } = requisicao.params as { id: string };
+    const dados = schemaAtualizarItemId.parse(requisicao.body);
+
+    const acesso = await exigir_conexao_do_usuario(servico, id, dados.usuarioId);
+    if ("erro" in acesso) return resposta.status(404).send(acesso);
+
+    try {
+      return resposta.send(await servico.atualizar_item_id(id, dados.novoItemId));
+    } catch (erro) {
+      const msg = erro instanceof Error ? erro.message : "Falha ao atualizar itemId.";
+      requisicao.log.error({ err: erro, conexaoId: id }, "[open-finance] falha ao atualizar itemId");
+      return resposta.status(400).send({ erro: msg });
+    }
   });
 
   /**

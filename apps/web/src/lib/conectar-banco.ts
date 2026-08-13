@@ -30,7 +30,16 @@ export async function conectar_banco(entrada: {
   if (fonte.id === "duble") {
     aoOcupado(true);
     try {
-      await clienteApi.criar_conexao_duble(usuarioId);
+      if (conexaoId && conexaoExterna) {
+        await clienteApi.reatachar_conexao({
+          usuarioId,
+          conexaoExterna,
+          conexaoId,
+          pareamentos: [],
+        });
+      } else {
+        await clienteApi.criar_conexao_duble(usuarioId);
+      }
       await aoSucesso();
     } catch (e) {
       aoErro(e instanceof ErroApi ? e.message : "Não foi possível criar a conexão de teste.");
@@ -59,7 +68,16 @@ export async function conectar_banco(entrada: {
       aoConcluir: (itemId) => {
         void (async () => {
           try {
-            await clienteApi.registrar_conexao({ usuarioId, conexaoExterna: itemId });
+            if (conexaoId) {
+              await clienteApi.reatachar_conexao({
+                usuarioId,
+                conexaoExterna: itemId,
+                conexaoId,
+                pareamentos: [],
+              });
+            } else {
+              await clienteApi.registrar_conexao({ usuarioId, conexaoExterna: itemId });
+            }
             await aoSucesso();
           } catch (e) {
             aoErro(

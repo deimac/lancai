@@ -51,10 +51,10 @@ Arquivo `enums.ts`. Alterar um enum exige migração, então a lista é parte do
 O `id` é o mesmo UUID do `auth.users.id` do Supabase. Não existe tabela de vínculo: após login, o frontend chama `POST /usuarios/sincronizar`, que é idempotente.
 
 ### `conta`
-`id`, `nome`, `saldo_inicial`, `saldo_atual`, `perfil`, `ativo`, `usuario_id`, `data_criacao`, `data_atualizacao`.
+`id`, `nome`, `saldo_inicial`, `saldo_atual`, `perfil`, `ativo`, `usuario_id`, `conta_financeira_id` (opcional), `data_criacao`, `data_atualizacao`.
 
 ### `cartao`
-`id`, `nome`, `limite`, `fechamento` (dia do mês), `vencimento` (dia do mês), `melhor_dia_compra` (dia seguinte ao fechamento), `perfil`, `modalidade`, `ativo`, `final4`, `dados_plasticos_cifrados`, `conta_id` (opcional), `usuario_id`, `data_criacao`, `data_atualizacao`.
+`id`, `nome`, `limite`, `fechamento` (dia do mês), `vencimento` (dia do mês), `melhor_dia_compra` (dia seguinte ao fechamento), `perfil`, `modalidade`, `ativo`, `final4`, `dados_plasticos_cifrados`, `conta_id` (opcional), `usuario_id`, `conta_financeira_id` (opcional), `data_criacao`, `data_atualizacao`.
 
 Dois campos exigem cuidado:
 
@@ -62,6 +62,11 @@ Dois campos exigem cuidado:
 - `dados_plasticos_cifrados` é um payload AES-256-GCM em base64 contendo número, validade e CVV. **Nunca** deve ser devolvido em listagem pública; só após validação de senha no chat.
 
 `conta_id` é a conta preferencial para pagar a fatura, e é opcional: o pagamento pode usar qualquer conta no momento do lançamento.
+
+### `conta_financeira`
+Identidade estável da conta/cartão do usuário. Permanece quando o `itemId` do provedor muda (reatachar). `conta` e `cartão` locais apontam para cá via `conta_financeira_id`.
+
+`id`, `usuario_id`, `instituicao`, `nome_exibicao`, `mascara`, `tipo`, `perfil`, `banco_codigo`, `agencia`, `conta_numero`, `conexao_status`, `conexao_id` (conexão Open Finance atual, sem FK no Drizzle), `ultimo_sync_em`, `origem` (`manual` | `open_finance`), `data_criacao`, `data_atualizacao`.
 
 ### `categoria`
 `id`, `nome`, `tipo` (`tipo_categoria`), `ativo`, `usuario_id`, `data_criacao`, `data_atualizacao`.
@@ -76,7 +81,7 @@ Uma categoria tem significado especial: **“Não classificado”**, criada no s
 
 `conta_id` e `cartao_id` são individualmente opcionais, mas o `MotorFinanceiro` exige pelo menos um dos dois.
 
-Do lado do Fato existem ainda `fonte`, `provedor`, `id_externo`, `descricao_fonte`, `favorecido_fonte`, `status_fonte` e as quatro colunas de parcelamento informado pela instituição: `parcela_numero`, `parcela_total`, `parcela_compra_em` e `parcela_compra_valor`, nulas em tudo que não é parcela de cartão.
+Do lado do Fato existem ainda `fonte`, `provedor`, `id_externo`, `fingerprint` (hash da identidade financeira + data/tipo/valor/descrição, para reidentificar o Fato quando o `id_externo` muda no reatachar; não é único), `descricao_fonte`, `favorecido_fonte`, `status_fonte` e as quatro colunas de parcelamento informado pela instituição: `parcela_numero`, `parcela_total`, `parcela_compra_em` e `parcela_compra_valor`, nulas em tudo que não é parcela de cartão.
 
 ### `parcela`
 `id`, `movimento_id`, `numero_parcela`, `valor`, `data_movimento` (vencimento projetado), `status`, `data_criacao`, `data_atualizacao`.

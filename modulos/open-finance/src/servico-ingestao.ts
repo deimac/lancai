@@ -443,7 +443,9 @@ export class ServicoIngestaoOpenFinance {
          * `billForecastDate`) e só cria o desconhecido — reimportar o histórico
          * deixa de ser “só duplicados”.
          */
-        const alteracao = await this.motor.atualizar_fatos_da_fonte(eventos, contexto);
+        const alteracao = await this.motor.atualizar_fatos_da_fonte(eventos, contexto, {
+          reidentificarPorFingerprint: Boolean(opcoes.filtrarCriacao),
+        });
         resumo.atualizados += alteracao.atualizados.length;
 
         let paraCriar = alteracao.desconhecidos;

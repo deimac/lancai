@@ -27,6 +27,7 @@ function criarConta(sobrepor: Partial<Conta> = {}): Conta {
     workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
+    contaFinanceiraId: null,
     ...sobrepor,
   };
 }

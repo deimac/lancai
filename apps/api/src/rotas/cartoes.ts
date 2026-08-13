@@ -42,6 +42,8 @@ function cartao_publico<
     conexaoId: null,
     instituicao: null,
     idExterno: null,
+    conexaoStatus: null,
+    ultimoSyncEm: null,
   };
   return {
     ...resto,
@@ -98,6 +100,8 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
           conexaoId: null,
           instituicao: null,
           idExterno: null,
+          conexaoStatus: null,
+          ultimoSyncEm: null,
         },
         nomes,
       ),

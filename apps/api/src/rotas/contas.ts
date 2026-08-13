@@ -29,6 +29,8 @@ function com_meta<T extends { id: string; sincronizada: boolean; workspaceId: st
     conexaoId: null,
     instituicao: null,
     idExterno: null,
+    conexaoStatus: null,
+    ultimoSyncEm: null,
   };
   return {
     ...linha,
@@ -62,6 +64,8 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
           conexaoId: null,
           instituicao: null,
           idExterno: null,
+          conexaoStatus: null,
+          ultimoSyncEm: null,
         },
         nomes,
       ),

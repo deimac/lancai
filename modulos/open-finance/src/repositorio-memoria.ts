@@ -223,6 +223,13 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
     this.conexoes.delete(conexaoId);
   }
 
+  async atualizarItemId(conexaoId: string, novoItemId: string): Promise<ConexaoRegistrada> {
+    const conexao = this.conexoes.get(conexaoId);
+    if (!conexao) throw new Error("Conexão não encontrada.");
+    conexao.idExterno = novoItemId;
+    return conexao;
+  }
+
   async sincronizarContasExternas(
     conexaoId: string,
     contas: ContaExternaDescoberta[],

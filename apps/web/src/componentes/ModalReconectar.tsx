@@ -23,8 +23,8 @@ type Props = {
   contas: ContaResumo[];
   cartoes: CartaoResumo[];
   conexoes: ConexaoDetalhada[];
-  /** Prefill: conexão antiga a encerrar. */
-  conexaoIdAnterior?: string | null;
+  /** Conexão a atualizar in-place — obrigatória. */
+  conexaoId: string | null;
   aoFechar: () => void;
   aoConcluir: () => void;
 };
@@ -34,50 +34,60 @@ function eh_cartao_externo(tipo: string): boolean {
   return t.includes("credit") || t.includes("card") || t.includes("cartao");
 }
 
-export function ModalReatachar({
+export function ModalReconectar({
   aberto,
   usuarioId,
   contas,
   cartoes,
   conexoes,
-  conexaoIdAnterior = null,
+  conexaoId,
   aoFechar,
   aoConcluir,
 }: Props) {
   const toast = useToast();
+  const conexao = useMemo(
+    () => conexoes.find((c) => c.id === conexaoId) ?? null,
+    [conexoes, conexaoId],
+  );
   const [itemId, setItemId] = useState("");
-  const [anteriorId, setAnteriorId] = useState(conexaoIdAnterior ?? "");
   const [passo, setPasso] = useState<"item" | "parear">("item");
   const [instituicao, setInstituicao] = useState<string | null>(null);
   const [externas, setExternas] = useState<ContaExternaPreview[]>([]);
-  /** chave = idExterno → "conta:uuid" | "cartao:uuid" | "" */
+  /** chave = idExterno → "conta:uuid" | "cartao:uuid" | "" (auto) */
   const [mapa, setMapa] = useState<Record<string, string>>({});
   const [ocupado, setOcupado] = useState(false);
   const [progresso, setProgresso] = useState<ProgressoImportacaoUi | null>(null);
 
+  const contasDaConexao = useMemo(
+    () => contas.filter((c) => c.conexaoId === conexaoId),
+    [contas, conexaoId],
+  );
+  const cartoesDaConexao = useMemo(
+    () => cartoes.filter((c) => c.conexaoId === conexaoId),
+    [cartoes, conexaoId],
+  );
+
   useEffect(() => {
     if (!aberto) return;
-    setItemId("");
-    setAnteriorId(conexaoIdAnterior ?? "");
+    setItemId(conexao?.idExterno ?? "");
     setPasso("item");
-    setInstituicao(null);
+    setInstituicao(conexao?.instituicao ?? null);
     setExternas([]);
     setMapa({});
     setOcupado(false);
     setProgresso(null);
-  }, [aberto, conexaoIdAnterior]);
-
-  const conexoesAnteriores = useMemo(
-    () => conexoes.filter((c) => c.status !== "ativa" || Boolean(conexaoIdAnterior)),
-    [conexoes, conexaoIdAnterior],
-  );
+  }, [aberto, conexao]);
 
   if (!aberto) return null;
 
   async function inspecionar() {
     const id = itemId.trim();
     if (!id) {
-      toast.erro("Informe o novo itemId.");
+      toast.erro("Informe o itemId do banco.");
+      return;
+    }
+    if (!conexaoId) {
+      toast.erro("Selecione um banco para reconectar.");
       return;
     }
     setOcupado(true);
@@ -91,16 +101,15 @@ export function ModalReatachar({
       const inicial: Record<string, string> = {};
       for (const c of preview.contas) {
         const cartao = eh_cartao_externo(c.tipo);
-        const candidatos = cartao ? cartoes : contas;
+        const candidatos = cartao ? cartoesDaConexao : contasDaConexao;
         const porNome = candidatos.find(
-          (local) =>
-            local.nome.toLowerCase() === c.nome.toLowerCase() ||
-            (preview.instituicao &&
-              local.instituicao?.toLowerCase() === preview.instituicao.toLowerCase() &&
-              (local.origem === "open_finance" || local.sincronizada)),
+          (local) => local.nome.toLowerCase() === c.nome.toLowerCase(),
         );
         if (porNome) {
           inicial[c.idExterno] = cartao ? `cartao:${porNome.id}` : `conta:${porNome.id}`;
+        } else if (candidatos.length === 1) {
+          const unico = candidatos[0]!;
+          inicial[c.idExterno] = cartao ? `cartao:${unico.id}` : `conta:${unico.id}`;
         } else {
           inicial[c.idExterno] = "";
         }
@@ -115,27 +124,28 @@ export function ModalReatachar({
   }
 
   async function confirmar() {
+    if (!conexaoId) {
+      toast.erro("Selecione um banco para reconectar.");
+      return;
+    }
     const pareamentos: PareamentoReatachar[] = [];
     for (const ext of externas) {
       const valor = mapa[ext.idExterno] ?? "";
-      if (!valor) {
-        toast.erro(`Pareie "${ext.nome}" com uma conta ou cartão local.`);
-        return;
-      }
+      if (!valor) continue;
       const [tipo, id] = valor.split(":");
       if (tipo === "conta") pareamentos.push({ contaExternaId: ext.idExterno, contaId: id });
-      else pareamentos.push({ contaExternaId: ext.idExterno, cartaoId: id });
+      else if (tipo === "cartao") pareamentos.push({ contaExternaId: ext.idExterno, cartaoId: id });
     }
 
     setOcupado(true);
-    setProgresso({ percentual: 2, mensagem: "Reatachando…" });
+    setProgresso({ percentual: 2, mensagem: "Reconectando…" });
     try {
       const { resumo } = await clienteApi.reatachar_conexao(
         {
           usuarioId,
           conexaoExterna: itemId.trim(),
           pareamentos,
-          conexaoIdAnterior: anteriorId || undefined,
+          conexaoId,
         },
         (p: ProgressoImportacaoApi) => {
           setProgresso({
@@ -153,12 +163,12 @@ export function ModalReatachar({
           : null,
       ].filter(Boolean);
       toast.sucesso(
-        `Reatachado${instituicao ? ` · ${instituicao}` : ""}. ${partes.join(" · ")}.`,
+        `Banco reconectado${instituicao ? ` · ${instituicao}` : ""}. ${partes.join(" · ")}.`,
       );
       aoConcluir();
       aoFechar();
     } catch (e) {
-      toast.erro(e instanceof ErroApi ? e.message : "Falha ao reatachar.");
+      toast.erro(e instanceof ErroApi ? e.message : "Falha ao reconectar.");
     } finally {
       setOcupado(false);
       setProgresso(null);
@@ -174,9 +184,10 @@ export function ModalReatachar({
       >
         <div className="flex items-center justify-between border-b border-borda px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-texto">Reatachar banco</p>
+            <p className="text-sm font-semibold text-texto">Reconectar banco</p>
             <p className="text-xs text-texto-suave">
-              Novo itemId → mesmas contas/cartões → só lançamentos novos
+              {conexao?.instituicao ?? "Instituição"} — atualiza a conexão existente, sem duplicar
+              contas
             </p>
           </div>
           <button
@@ -191,47 +202,28 @@ export function ModalReatachar({
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
           {passo === "item" && (
-            <>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="text-texto-suave">Novo itemId (Meu Pluggy / Pluggy)</span>
-                <input
-                  className="rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-texto"
-                  value={itemId}
-                  disabled={ocupado}
-                  onChange={(e) => setItemId(e.target.value)}
-                  placeholder="uuid do item"
-                />
-              </label>
-              {conexoesAnteriores.length > 0 && (
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="text-texto-suave">Encerrar conexão antiga (opcional)</span>
-                  <select
-                    className="rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-texto"
-                    value={anteriorId}
-                    disabled={ocupado}
-                    onChange={(e) => setAnteriorId(e.target.value)}
-                  >
-                    <option value="">Nenhuma</option>
-                    {conexoes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.instituicao ?? "Instituição"} · {c.status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-            </>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-texto-suave">ItemId (mesmo ou novo)</span>
+              <input
+                className="rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-texto"
+                value={itemId}
+                disabled={ocupado}
+                onChange={(e) => setItemId(e.target.value)}
+                placeholder="uuid do item"
+              />
+            </label>
           )}
 
           {passo === "parear" && (
             <>
               <p className="text-sm text-texto">
-                {instituicao ?? "Instituição"} — pareie cada recurso com o destino local.
+                {instituicao ?? "Instituição"} — deixe em branco para associar automaticamente.
+                Recurso realmente novo vira conta ou cartão local.
               </p>
               <ul className="flex flex-col gap-3">
                 {externas.map((ext) => {
                   const cartao = eh_cartao_externo(ext.tipo);
-                  const opcoes = cartao ? cartoes : contas;
+                  const opcoes = cartao ? cartoesDaConexao : contasDaConexao;
                   return (
                     <li
                       key={ext.idExterno}
@@ -249,7 +241,7 @@ export function ModalReatachar({
                           setMapa((m) => ({ ...m, [ext.idExterno]: e.target.value }))
                         }
                       >
-                        <option value="">Escolher…</option>
+                        <option value="">Associar automaticamente</option>
                         {opcoes.map((local) => (
                           <option
                             key={local.id}
@@ -271,11 +263,7 @@ export function ModalReatachar({
 
         <div className="flex justify-end gap-2 border-t border-borda px-4 py-3">
           {passo === "parear" && (
-            <Botao
-              variante="fantasma"
-              disabled={ocupado}
-              onClick={() => setPasso("item")}
-            >
+            <Botao variante="fantasma" disabled={ocupado} onClick={() => setPasso("item")}>
               Voltar
             </Botao>
           )}
@@ -283,12 +271,12 @@ export function ModalReatachar({
             Cancelar
           </Botao>
           {passo === "item" ? (
-            <Botao disabled={ocupado || !itemId.trim()} onClick={() => void inspecionar()}>
+            <Botao disabled={ocupado || !itemId.trim() || !conexaoId} onClick={() => void inspecionar()}>
               {ocupado ? "Lendo…" : "Continuar"}
             </Botao>
           ) : (
             <Botao disabled={ocupado} onClick={() => void confirmar()}>
-              {ocupado ? "Sincronizando…" : "Reatachar e sincronizar"}
+              {ocupado ? "Sincronizando…" : "Reconectar e sincronizar"}
             </Botao>
           )}
         </div>

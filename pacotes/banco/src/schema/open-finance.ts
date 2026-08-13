@@ -1,6 +1,7 @@
 import { foreignKey, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { cartao } from "./cartao";
 import { conta } from "./conta";
+import { contaFinanceira } from "./conta-financeira";
 import { motivoAtencaoEnum, statusConexaoEnum } from "./enums";
 import { usuario } from "./usuario";
 import { workspace } from "./workspace";
@@ -87,6 +88,7 @@ export const openFinanceContaExterna = pgTable(
     tipo: text("tipo").notNull(),
     contaId: uuid("conta_id").references(() => conta.id),
     cartaoId: uuid("cartao_id").references(() => cartao.id),
+    contaFinanceiraId: uuid("conta_financeira_id").references(() => contaFinanceira.id),
     dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
     dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),
   },

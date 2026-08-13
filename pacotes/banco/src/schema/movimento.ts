@@ -71,6 +71,8 @@ export const movimento = pgTable(
     favorecidoFonte: text("favorecido_fonte"),
     /** Situação na instituição — diferente de `status`, que é do LançAI. */
     statusFonte: statusFonteEnum("status_fonte").notNull().default("confirmado"),
+    /** Hash determinístico da identidade financeira + dados da transação. Usado para deduplicação robusta quando idExterno muda (reatachar). */
+    fingerprint: text("fingerprint"),
 
     /**
      * O que a instituição afirma sobre o parcelamento desta compra no cartão.
@@ -141,6 +143,13 @@ export const movimento = pgTable(
     uniqueIndex("movimento_id_externo_unico")
       .on(tabela.workspaceId, tabela.fonte, tabela.provedor, tabela.idExterno)
       .where(sql`${tabela.idExterno} is not null`),
+    /**
+     * Lookup de reidentificação quando idExterno muda (reatachar). Não é único:
+     * duas compras iguais no mesmo dia compartilham o hash.
+     */
+    index("movimento_fingerprint_idx")
+      .on(tabela.fingerprint)
+      .where(sql`${tabela.fingerprint} is not null`),
     index("movimento_workspace_data_idx").on(tabela.workspaceId, tabela.dataMovimento),
   ],
 );
