@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertTriangle, Building2, PenLine } from "lucide-react";
+import { AlertTriangle, Building2, PenLine, Search } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
@@ -14,7 +14,9 @@ import {
 } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Botao } from "../componentes/ui/Botao";
+import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
+import { Paginador } from "../componentes/Paginador";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import {
@@ -23,9 +25,21 @@ import {
   explicacao_classificacao,
   rotulo_classificado_por,
 } from "../lib/fila-revisao";
+import {
+  classificacao_da_query,
+  fila_da_query,
+  filtrar_extrato,
+  nome_origem_movimento,
+  origem_da_query,
+  origem_para_query,
+  paginar,
+  tamanho_pagina_da_query,
+  TAMANHO_PAGINA_PADRAO,
+  type ClassificacaoExtrato,
+  type FilaExtrato,
+  type OrigemExtrato,
+} from "../lib/filtrar-extrato";
 import { unir_classes } from "../lib/unir-classes";
-
-type FiltroExtrato = "todas" | "banco" | "manual" | "revisar";
 
 function formatar_data(valor: string): string {
   const [ano, mes, dia] = valor.split("-");
@@ -84,26 +98,8 @@ function cor_valor(tipo: string, status: MovimentoResumo["status"]): string {
   return "text-texto-suave";
 }
 
-function nome_origem(
-  movimento: MovimentoResumo,
-  contas: ContaResumo[],
-  cartoes: CartaoResumo[],
-): string {
-  if (movimento.contaId) {
-    return contas.find((c) => c.id === movimento.contaId)?.nome ?? "Conta";
-  }
-  if (movimento.cartaoId) {
-    return cartoes.find((c) => c.id === movimento.cartaoId)?.nome ?? "Cartão";
-  }
-  return "Sem origem";
-}
-
-function filtro_da_query(valor: string | null): FiltroExtrato {
-  if (valor === "banco" || valor === "manual" || valor === "revisar" || valor === "todas") {
-    return valor;
-  }
-  return "todas";
-}
+const CLASSE_SELECT =
+  "rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria disabled:opacity-60";
 
 export function TelaExtrato() {
   const { usuario } = useAutenticacao();
@@ -111,14 +107,18 @@ export function TelaExtrato() {
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
   const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
+  const filtro = fila_da_query(searchParams.get("fila") ?? searchParams.get("filtro"));
+  const busca = searchParams.get("q") ?? "";
+  const categoriaId = searchParams.get("categoria");
+  const classificacao = classificacao_da_query(searchParams.get("classificacao"));
+  const origem = origem_da_query(searchParams.get("origem"));
+  const porPagina = tamanho_pagina_da_query(searchParams.get("porPagina"));
+  const [pagina, setPagina] = useState(1);
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
   const [visaoGeral, setVisaoGeral] = useState(false);
-  const [filtro, setFiltro] = useState<FiltroExtrato>(() =>
-    filtro_da_query(searchParams.get("fila") ?? searchParams.get("filtro")),
-  );
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
@@ -156,9 +156,7 @@ export function TelaExtrato() {
       setMovimentos(movimentosCarregados);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
-      setCategorias(
-        categoriasCarregadas.filter((c) => !eh_nao_classificado(c.nome)),
-      );
+      setCategorias(categoriasCarregadas);
       const ativo = workspaces.find((w) => w.ativo);
       setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
     } catch (e) {
@@ -172,22 +170,39 @@ export function TelaExtrato() {
     void carregar();
   }, [carregar, depsDados]);
 
-  useEffect(() => {
-    const daUrl = filtro_da_query(searchParams.get("fila") ?? searchParams.get("filtro"));
-    setFiltro(daUrl);
-  }, [searchParams]);
-
-  function sincronizar_params(entrada: { filtro?: FiltroExtrato; mes?: string }) {
+  function sincronizar_params(entrada: {
+    filtro?: FilaExtrato;
+    mes?: string;
+    busca?: string;
+    categoriaId?: string | null;
+    classificacao?: ClassificacaoExtrato;
+    origem?: OrigemExtrato;
+    porPagina?: number;
+  }) {
     const proximoFiltro = entrada.filtro ?? filtro;
     const proximoMes = entrada.mes ?? mes;
+    const proximaBusca = entrada.busca ?? busca;
+    const proximaCategoria =
+      entrada.categoriaId === undefined ? categoriaId : entrada.categoriaId;
+    const proximaClassificacao = entrada.classificacao ?? classificacao;
+    const proximaOrigem = entrada.origem ?? origem;
+    const proximoPorPagina = entrada.porPagina ?? porPagina;
     const params = new URLSearchParams();
     if (proximoFiltro !== "todas") params.set("fila", proximoFiltro);
     if (proximoMes !== mes_de_hoje()) params.set("mes", proximoMes);
+    if (proximaBusca.trim()) params.set("q", proximaBusca);
+    if (proximaCategoria) params.set("categoria", proximaCategoria);
+    if (proximaClassificacao !== "todas") params.set("classificacao", proximaClassificacao);
+    const origemQuery = origem_para_query(proximaOrigem);
+    if (origemQuery) params.set("origem", origemQuery);
+    if (proximoPorPagina !== TAMANHO_PAGINA_PADRAO) {
+      params.set("porPagina", String(proximoPorPagina));
+    }
     setSearchParams(params, { replace: true });
+    setPagina(1);
   }
 
-  function escolher_filtro(proximo: FiltroExtrato) {
-    setFiltro(proximo);
+  function escolher_filtro(proximo: FilaExtrato) {
     sincronizar_params({ filtro: proximo });
   }
 
@@ -223,15 +238,34 @@ export function TelaExtrato() {
     [movimentos, mes],
   );
 
-  const visiveis = useMemo(() => {
-    return movimentos.filter((movimento) => {
-      if (!movimento.dataMovimento.startsWith(`${mes}-`)) return false;
-      if (filtro === "banco") return movimento.fonte === "open_finance";
-      if (filtro === "manual") return movimento.fonte !== "open_finance";
-      if (filtro === "revisar") return precisa_revisao(movimento);
-      return true;
-    });
-  }, [movimentos, filtro, mes]);
+  const categoriasParaClassificar = useMemo(
+    () => categorias.filter((c) => !eh_nao_classificado(c.nome)),
+    [categorias],
+  );
+
+  const visiveis = useMemo(
+    () =>
+      filtrar_extrato(movimentos, contas, cartoes, {
+        mes,
+        fila: filtro,
+        busca,
+        categoriaId,
+        classificacao,
+        origem,
+      }),
+    [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem],
+  );
+
+  const paginaAtual = useMemo(
+    () => paginar(visiveis, pagina, porPagina),
+    [visiveis, pagina, porPagina],
+  );
+
+  const filtrosAtivos =
+    busca.trim() !== "" ||
+    Boolean(categoriaId) ||
+    classificacao !== "todas" ||
+    origem.tipo !== "todas";
 
   async function classificar(movimentoId: string, categoriaId: string) {
     if (!usuario || !categoriaId) return;
@@ -328,6 +362,85 @@ export function TelaExtrato() {
         ))}
       </div>
 
+      <div className="flex flex-col gap-2">
+        <label className="relative block">
+          <span className="sr-only">Buscar lançamento</span>
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-suave"
+          />
+          <Campo
+            value={busca}
+            onChange={(e) => sincronizar_params({ busca: e.target.value })}
+            placeholder="Buscar por descrição, banco ou conta"
+            className="pl-9"
+          />
+        </label>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Conta ou cartão
+            <select
+              value={origem_para_query(origem) ?? ""}
+              onChange={(e) => sincronizar_params({ origem: origem_da_query(e.target.value || null) })}
+              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
+            >
+              <option value="">Todas as origens</option>
+              {contas.length > 0 && (
+                <optgroup label="Contas">
+                  {contas.map((conta) => (
+                    <option key={conta.id} value={`conta:${conta.id}`}>
+                      {conta.nome}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {cartoes.length > 0 && (
+                <optgroup label="Cartões">
+                  {cartoes.map((cartao) => (
+                    <option key={cartao.id} value={`cartao:${cartao.id}`}>
+                      {cartao.nome}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Categoria
+            <select
+              value={categoriaId ?? ""}
+              onChange={(e) => sincronizar_params({ categoriaId: e.target.value || null })}
+              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
+            >
+              <option value="">Todas</option>
+              {categorias.map((categoria) => (
+                <option key={categoria.id} value={categoria.id}>
+                  {categoria.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Classificação
+            <select
+              value={classificacao}
+              onChange={(e) =>
+                sincronizar_params({
+                  classificacao: classificacao_da_query(e.target.value),
+                })
+              }
+              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
+            >
+              <option value="todas">Todas</option>
+              <option value="usuario">Você</option>
+              <option value="regra">Regra</option>
+              <option value="ia">IA</option>
+              <option value="sem_classificar">Sem classificar</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
       {erro && (
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
           {erro}
@@ -344,21 +457,24 @@ export function TelaExtrato() {
               : "Nenhum lançamento por aqui."}
           </p>
           <p className="mt-1 text-xs text-texto-suave">
-            {filtro === "banco"
-              ? "Conecte um banco em Contas e associe as contas para o extrato aparecer."
-              : filtro === "revisar"
-                ? "Quando a IA classificar com pouca certeza, o item aparece aqui."
-                : "Lance pelo assistente ou conecte um banco para começar."}
+            {filtrosAtivos
+              ? "Tente limpar a busca ou os filtros."
+              : filtro === "banco"
+                ? "Conecte um banco em Contas e associe as contas para o extrato aparecer."
+                : filtro === "revisar"
+                  ? "Quando a IA classificar com pouca certeza, o item aparece aqui."
+                  : "Lance pelo assistente ou conecte um banco para começar."}
           </p>
-          {filtro === "banco" && (
+          {filtro === "banco" && !filtrosAtivos && (
             <Link to="/contas" className="mt-3 inline-block text-sm text-primaria hover:underline">
               Ir para Contas
             </Link>
           )}
         </Cartao>
       ) : (
+        <>
         <ul className="flex flex-col gap-2">
-          {visiveis.map((movimento, indice) => {
+          {paginaAtual.itens.map((movimento, indice) => {
             const doBanco = movimento.fonte === "open_finance";
             const revisao = precisa_revisao(movimento);
             return (
@@ -429,7 +545,7 @@ export function TelaExtrato() {
                       </div>
                       <p className="mt-1 text-xs text-texto-suave">
                         {formatar_data(movimento.dataMovimento)} ·{" "}
-                        {nome_origem(movimento, contas, cartoes)}
+                        {nome_origem_movimento(movimento, contas, cartoes)}
                         {movimento.perfil
                           ? ` · ${movimento.perfil === "pj" ? "Jurídica" : "Física"}`
                           : ""}
@@ -519,7 +635,7 @@ export function TelaExtrato() {
                               ? ""
                               : movimento.categoriaId
                           }
-                          disabled={salvandoId === movimento.id || categorias.length === 0}
+                          disabled={salvandoId === movimento.id || categoriasParaClassificar.length === 0}
                           onChange={(e) => {
                             if (e.target.value) void classificar(movimento.id, e.target.value);
                           }}
@@ -530,7 +646,7 @@ export function TelaExtrato() {
                               ? "Escolher categoria..."
                               : movimento.categoriaNome}
                           </option>
-                          {categorias.map((categoria) => (
+                          {categoriasParaClassificar.map((categoria) => (
                             <option key={categoria.id} value={categoria.id}>
                               {categoria.nome}
                             </option>
@@ -547,9 +663,20 @@ export function TelaExtrato() {
             );
           })}
         </ul>
+        <Paginador
+          pagina={paginaAtual.pagina}
+          paginas={paginaAtual.paginas}
+          total={paginaAtual.total}
+          porPagina={paginaAtual.porPagina}
+          de={paginaAtual.de}
+          ate={paginaAtual.ate}
+          onPagina={setPagina}
+          onPorPagina={(n) => sincronizar_params({ porPagina: n })}
+        />
+        </>
       )}
 
-      {categorias.length === 0 && !carregando && (
+      {categoriasParaClassificar.length === 0 && !carregando && (
         <p className="text-xs text-texto-suave">
           Sem categorias úteis.{" "}
           <Link to="/categorias" className="text-primaria hover:underline">
