@@ -13,7 +13,6 @@ import {
   type MovimentoResumo,
 } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
-import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
 import { Paginador } from "../componentes/Paginador";
@@ -342,26 +341,6 @@ export function TelaExtrato() {
         </motion.button>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            ["todas", "Todas"],
-            ["banco", "Do banco"],
-            ["manual", "Manuais"],
-            ["revisar", `Revisar${quantidadeRevisar ? ` (${quantidadeRevisar})` : ""}`],
-          ] as const
-        ).map(([valor, rotulo]) => (
-          <Botao
-            key={valor}
-            variante={filtro === valor ? "primaria" : "fantasma"}
-            onClick={() => escolher_filtro(valor)}
-          >
-            {valor === "revisar" && <AlertTriangle size={14} />}
-            {rotulo}
-          </Botao>
-        ))}
-      </div>
-
       <div className="flex flex-col gap-2">
         <label className="relative block">
           <span className="sr-only">Buscar lançamento</span>
@@ -378,13 +357,13 @@ export function TelaExtrato() {
         </label>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Conta ou cartão
+            Origens
             <select
               value={origem_para_query(origem) ?? ""}
               onChange={(e) => sincronizar_params({ origem: origem_da_query(e.target.value || null) })}
               className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
             >
-              <option value="">Todas as origens</option>
+              <option value="">Todos</option>
               {contas.length > 0 && (
                 <optgroup label="Contas">
                   {contas.map((conta) => (
