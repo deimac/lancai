@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ErroProvedorIndisponivel, ErroWebhookInvalido } from "../erros";
+import {
+  ErroConexaoExternaInexistente,
+  ErroProvedorIndisponivel,
+  ErroWebhookInvalido,
+} from "../erros";
 import { AdaptadorPluggy } from "../pluggy/adaptador";
 
 /**
@@ -184,6 +188,15 @@ describe("AdaptadorPluggy", () => {
       );
     });
 
+    it("trata PATCH 404 do item como conexão inexistente", async () => {
+      rede.responder(`/items/${ITEM}`, {});
+      rede.falhar(`/items/${ITEM}`, [404]);
+
+      await expect(adaptador.solicitar_atualizacao(ITEM)).rejects.toThrow(
+        ErroConexaoExternaInexistente,
+      );
+    });
+
     it("ignora recusa Meu Pluggy (sync só no app; importação GET continua)", async () => {
       rede.responder(`/items/${ITEM}`, {
         message: "MeuPluggy item cant be updated",
@@ -228,6 +241,15 @@ describe("AdaptadorPluggy", () => {
       const dias = Math.round((hoje.getTime() - desde.getTime()) / (24 * 60 * 60 * 1000));
       expect(dias).toBeGreaterThanOrEqual(13);
       expect(dias).toBeLessThanOrEqual(15);
+    });
+
+    it("trata GET 404 nas contas do item como conexão inexistente", async () => {
+      rede.responder("/accounts", {});
+      rede.falhar("/accounts", [404]);
+
+      await expect(adaptador.listar_referencias_historico(ITEM)).rejects.toThrow(
+        ErroConexaoExternaInexistente,
+      );
     });
   });
 
@@ -400,6 +422,15 @@ describe("AdaptadorPluggy", () => {
         valorTotal: 1000,
         compraEm: "2026-06-15",
       });
+    });
+
+    it("não trata 404 de transação isolada como item apagado", async () => {
+      rede.responder("/v2/transactions", {});
+      rede.falhar("/v2/transactions", [404]);
+
+      await expect(adaptador.coletar_lote(`/v2/transactions?accountId=${CONTA}`)).rejects.toThrow(
+        ErroProvedorIndisponivel,
+      );
     });
 
     /**
@@ -576,6 +607,20 @@ describe("AdaptadorPluggy", () => {
       rede.responder("/items/", { id: ITEM, status: "STATUS_QUE_AINDA_NAO_EXISTE" });
 
       expect((await adaptador.obter_estado(ITEM)).status).toBe("precisa_atencao");
+    });
+
+    it("trata GET 404 do item como conexão inexistente", async () => {
+      rede.responder("/items/", {});
+      rede.falhar("/items/", [404]);
+
+      await expect(adaptador.obter_estado(ITEM)).rejects.toThrow(ErroConexaoExternaInexistente);
+    });
+
+    it("trata GET 500 do item como provedor indisponível", async () => {
+      rede.responder("/items/", {});
+      rede.falhar("/items/", [500]);
+
+      await expect(adaptador.obter_estado(ITEM)).rejects.toThrow(ErroProvedorIndisponivel);
     });
   });
 

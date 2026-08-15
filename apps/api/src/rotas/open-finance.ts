@@ -1,5 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { ResumoIngestao, ServicoConexaoOpenFinance } from "@lancai/open-finance";
+import {
+  ErroConexaoExternaInexistente,
+  type ResumoIngestao,
+  type ServicoConexaoOpenFinance,
+} from "@lancai/open-finance";
 import { cabecalhos_stream_ndjson } from "../cors";
 import {
   schemaAssociarContaExterna,
@@ -382,14 +386,23 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         });
       }
     } catch (erro) {
-      const bruto = erro instanceof Error ? erro.message : "Falha ao atualizar conexão.";
-      requisicao.log.error({ err: erro, conexaoId: id }, "[open-finance] falha no atualizar");
-      escrever({
-        tipo: "erro",
-        erro: bruto.startsWith("provedor indisponível:")
-          ? "Não foi possível ler o extrato no banco agora. Tente de novo em instantes."
-          : bruto,
-      });
+      if (erro instanceof ErroConexaoExternaInexistente) {
+        requisicao.log.info({ conexaoId: id }, "[open-finance] item inexistente no atualizar");
+        escrever({
+          tipo: "fim",
+          detalhe: await servico.detalhar(id),
+          resumo: { criados: 0, duplicados: 0, semDestino: 0, paginas: 0 },
+        });
+      } else {
+        const bruto = erro instanceof Error ? erro.message : "Falha ao atualizar conexão.";
+        requisicao.log.error({ err: erro, conexaoId: id }, "[open-finance] falha no atualizar");
+        escrever({
+          tipo: "erro",
+          erro: bruto.startsWith("provedor indisponível:")
+            ? "Não foi possível ler o extrato no banco agora. Tente de novo em instantes."
+            : bruto,
+        });
+      }
     } finally {
       encerrar();
     }

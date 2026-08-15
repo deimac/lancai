@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Conta } from "@lancai/banco";
 import { MotorFinanceiro, RepositorioFinanceiroMemoria } from "@lancai/financeiro";
-import { ErroWebhookInvalido } from "../erros";
+import { ErroConexaoExternaInexistente, ErroWebhookInvalido } from "../erros";
 import type { MovimentacaoExterna } from "../provedor";
 import { ProvedorDuble } from "../provedor-duble";
 import { RepositorioOpenFinanceMemoria } from "../repositorio-memoria";
@@ -104,6 +104,15 @@ describe("ServicoIngestaoOpenFinance", () => {
 
       expect(resumo.criados).toBe(2);
       expect(financeiro.movimentos.size).toBe(2);
+    });
+
+    it("marca a conexão como removida quando o item sumiu no provedor", async () => {
+      provedor.marcar_inexistente(CONEXAO_EXTERNA);
+
+      await expect(servico.importar_historico(conexaoId)).rejects.toThrow(
+        ErroConexaoExternaInexistente,
+      );
+      expect(repositorio.estadosGravados.at(-1)?.estado.status).toBe("removida");
     });
   });
 
@@ -265,6 +274,14 @@ describe("ServicoIngestaoOpenFinance", () => {
 
     it("marca a conexão como removida quando o provedor apaga o item", async () => {
       await entregar({ eventoId: "ev-1", evento: "conexao_removida", conexao: CONEXAO_EXTERNA });
+
+      expect(repositorio.estadosGravados.at(-1)?.estado.status).toBe("removida");
+    });
+
+    it("marca removida se o GET de estado devolver item inexistente", async () => {
+      provedor.marcar_inexistente(CONEXAO_EXTERNA);
+
+      await entregar(provedor.anunciar_estado(CONEXAO_EXTERNA, "ev-estado"));
 
       expect(repositorio.estadosGravados.at(-1)?.estado.status).toBe("removida");
     });

@@ -1,6 +1,7 @@
 import type { MotorFinanceiro } from "@lancai/financeiro";
 import {
   ErroAssociacaoInvalida,
+  ErroConexaoExternaInexistente,
   ErroConexaoNaoEncontrada,
   ErroContaExternaNaoEncontrada,
   ErroProvedorIndisponivel,
@@ -152,8 +153,13 @@ export class ServicoConexaoOpenFinance {
   async atualizar_saldos(conexaoId: string): Promise<void> {
     const conexao = await this.exigir_conexao(conexaoId);
     if (conexao.status === "removida") return;
-    const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
-    await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+    try {
+      const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
+      await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+    } catch (erro) {
+      await this.marcar_removida_se_inexistente(conexaoId, erro);
+      throw erro;
+    }
   }
 
   async detalhar(conexaoId: string): Promise<ConexaoComContas> {
@@ -346,21 +352,29 @@ export class ServicoConexaoOpenFinance {
       throw new ErroAssociacaoInvalida("Esta conexão foi removida e não pode ser atualizada.");
     }
 
-    const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
-    await this.aplicar_saldos_institucionais(conexaoId, encontradas);
-
     try {
-      await this.provedor.solicitar_atualizacao(conexao.idExterno);
-      await this.repositorio.atualizarEstadoConexao(conexaoId, {
-        status: "sincronizando",
-        motivoAtencao: null,
-      });
+      const encontradas = await this.provedor.listar_contas_externas(conexao.idExterno);
+      await this.aplicar_saldos_institucionais(conexaoId, encontradas);
+
+      try {
+        await this.provedor.solicitar_atualizacao(conexao.idExterno);
+        await this.repositorio.atualizarEstadoConexao(conexaoId, {
+          status: "sincronizando",
+          motivoAtencao: null,
+        });
+      } catch (erro) {
+        if (erro instanceof ErroConexaoExternaInexistente) throw erro;
+        if (!(erro instanceof ErroProvedorIndisponivel)) throw erro;
+        /**
+         * Sync recusado não é falha da ação: o snapshot de saldo/limite já foi
+         * aplicado. Extrato continua o que já tínhamos até o próximo sync aceito.
+         */
+      }
     } catch (erro) {
-      if (!(erro instanceof ErroProvedorIndisponivel)) throw erro;
-      /**
-       * Sync recusado não é falha da ação: o snapshot de saldo/limite já foi
-       * aplicado. Extrato continua o que já tínhamos até o próximo sync aceito.
-       */
+      if (await this.marcar_removida_se_inexistente(conexaoId, erro)) {
+        return this.detalhar(conexaoId);
+      }
+      throw erro;
     }
 
     return this.detalhar(conexaoId);
@@ -914,6 +928,21 @@ export class ServicoConexaoOpenFinance {
       instituicao: estado.instituicao ?? null,
       consentimentoExpiraEm: estado.consentimentoExpiraEm ?? null,
     };
+  }
+
+  /**
+   * GET 404 no item: o webhook `item/deleted` pode não ter chegado. Mesmo efeito.
+   */
+  private async marcar_removida_se_inexistente(
+    conexaoId: string,
+    erro: unknown,
+  ): Promise<boolean> {
+    if (!(erro instanceof ErroConexaoExternaInexistente)) return false;
+    await this.repositorio.atualizarEstadoConexao(conexaoId, {
+      status: "removida",
+      motivoAtencao: null,
+    });
+    return true;
   }
 
   private async exigir_conexao(conexaoId: string): Promise<ConexaoDetalhada> {

@@ -1,6 +1,10 @@
 import type { ContextoIngestao, MotorFinanceiro } from "@lancai/financeiro";
 import type { EventoFinanceiroNormalizado } from "@lancai/tipos";
-import { ErroConexaoNaoEncontrada, ErroLoteInterminavel } from "./erros";
+import {
+  ErroConexaoExternaInexistente,
+  ErroConexaoNaoEncontrada,
+  ErroLoteInterminavel,
+} from "./erros";
 import type {
   MovimentacaoExterna,
   NotificacaoFonte,
@@ -191,9 +195,15 @@ export class ServicoIngestaoOpenFinance {
     if (!conexao) throw new ErroConexaoNaoEncontrada(conexaoId);
     if (conexao.status === "removida") return resumo_vazio();
 
-    const referencias = await this.provedor.listar_referencias_historico(conexao.idExterno, {
-      lookbackDias: opcoes.lookbackDias,
-    });
+    let referencias;
+    try {
+      referencias = await this.provedor.listar_referencias_historico(conexao.idExterno, {
+        lookbackDias: opcoes.lookbackDias,
+      });
+    } catch (erro) {
+      await this.marcar_removida_se_inexistente(conexao.id, erro);
+      throw erro;
+    }
     const total = resumo_vazio();
     const contasTotal = Math.max(referencias.length, 1);
     const basePercentual = 12;
@@ -384,13 +394,17 @@ export class ServicoIngestaoOpenFinance {
         return this.remover(conexao, notificacao.idsExternos);
 
       case "conexao_estado": {
-        const estado = await this.provedor.obter_estado(notificacao.conexaoExterna);
-        await this.repositorio.atualizarEstadoConexao(conexao.id, {
-          status: estado.status,
-          motivoAtencao: estado.motivoAtencao ?? null,
-          consentimentoExpiraEm: estado.consentimentoExpiraEm ?? null,
-          ultimoSyncEm: estado.ultimoSyncEm ?? undefined,
-        });
+        try {
+          const estado = await this.provedor.obter_estado(notificacao.conexaoExterna);
+          await this.repositorio.atualizarEstadoConexao(conexao.id, {
+            status: estado.status,
+            motivoAtencao: estado.motivoAtencao ?? null,
+            consentimentoExpiraEm: estado.consentimentoExpiraEm ?? null,
+            ultimoSyncEm: estado.ultimoSyncEm ?? undefined,
+          });
+        } catch (erro) {
+          if (!(await this.marcar_removida_se_inexistente(conexao.id, erro))) throw erro;
+        }
         return resumo_vazio();
       }
 
@@ -553,6 +567,21 @@ export class ServicoIngestaoOpenFinance {
     const resumo = { ...resumo_vazio(), removidos: resultado.removidos.length };
     await this.registrar_resumo_sync(conexao.id, resumo);
     return resumo;
+  }
+
+  /**
+   * GET 404 no item: o webhook `item/deleted` pode não ter chegado. Mesmo efeito.
+   */
+  private async marcar_removida_se_inexistente(
+    conexaoId: string,
+    erro: unknown,
+  ): Promise<boolean> {
+    if (!(erro instanceof ErroConexaoExternaInexistente)) return false;
+    await this.repositorio.atualizarEstadoConexao(conexaoId, {
+      status: "removida",
+      motivoAtencao: null,
+    });
+    return true;
   }
 
   /** Atualiza observabilidade sem forçar status (alteração/remoção não “curam” atenção). */

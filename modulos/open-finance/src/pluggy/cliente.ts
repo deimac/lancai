@@ -1,4 +1,4 @@
-import { ErroProvedorIndisponivel } from "../erros";
+import { ErroConexaoExternaInexistente, ErroProvedorIndisponivel } from "../erros";
 
 export const BASE_PLUGGY = "https://api.pluggy.ai";
 
@@ -124,8 +124,11 @@ export class ClientePluggy {
 
     if (!resposta.ok) {
       const detalhe = await ler_detalhe_erro(resposta);
-      throw new ErroProvedorIndisponivel(
-        `${opcoes.method} ${caminho} devolveu HTTP ${resposta.status}${detalhe}`,
+      throw erro_http_do_provedor(
+        opcoes.method ?? "GET",
+        caminho,
+        resposta.status,
+        detalhe,
       );
     }
 
@@ -133,6 +136,41 @@ export class ClientePluggy {
     const texto = await resposta.text();
     if (!texto.trim()) return undefined as T;
     return JSON.parse(texto) as T;
+  }
+}
+
+/**
+ * 404 em item ou contas = o item foi apagado no provedor. 404 em transação
+ * isolada (ou 5xx/429) continua indisponibilidade: retry, não `removida`.
+ */
+function erro_http_do_provedor(
+  metodo: string,
+  caminho: string,
+  status: number,
+  detalhe: string,
+): ErroConexaoExternaInexistente | ErroProvedorIndisponivel {
+  const mensagem = `${metodo} ${caminho} devolveu HTTP ${status}${detalhe}`;
+  if (status === 404 && caminho_eh_item_ou_contas(caminho)) {
+    return new ErroConexaoExternaInexistente(mensagem);
+  }
+  return new ErroProvedorIndisponivel(mensagem);
+}
+
+function caminho_eh_item_ou_contas(caminho: string): boolean {
+  const relativo = caminho_relativo(caminho);
+  const semQuery = relativo.split("?")[0] ?? relativo;
+  if (/\/items\/[^/]+/.test(semQuery)) return true;
+  if (semQuery === "/accounts" || semQuery.endsWith("/accounts")) return true;
+  return false;
+}
+
+function caminho_relativo(caminho: string): string {
+  if (!caminho.startsWith("http")) return caminho;
+  try {
+    const url = new URL(caminho);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return caminho;
   }
 }
 

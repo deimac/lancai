@@ -1,5 +1,9 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { ConexaoDetalhada, ResumoIngestao } from "@lancai/open-finance";
+import {
+  ErroConexaoExternaInexistente,
+  type ConexaoDetalhada,
+  type ResumoIngestao,
+} from "@lancai/open-finance";
 import { enriquecer_apos_ingestao } from "./pos-ingestao-open-finance";
 import { obter_servico_conexao, obter_servico_ingestao } from "./open-finance";
 import { liberar_lock_sync, tentar_adquirir_lock_sync } from "./lock-sync-conexao";
@@ -14,6 +18,8 @@ export interface ResultadoCronImportarHistorico {
   puladasLock: number;
   /** Conexões importadas com sucesso neste lote. */
   importadas: number;
+  /** Item sumiu no provedor (GET 404); marcadas como removida. */
+  itensInexistentes: number;
   falhas: number;
   movimentosCriados: number;
   staleAposMinutos: number;
@@ -75,6 +81,7 @@ export async function importar_historico_conexoes_open_finance(entrada: {
       puladasFrescas: 0,
       puladasLock: 0,
       importadas: 0,
+      itensInexistentes: 0,
       falhas: 0,
       movimentosCriados: 0,
       staleAposMinutos,
@@ -113,6 +120,7 @@ export async function importar_historico_conexoes_open_finance(entrada: {
       puladasFrescas,
       puladasLock: 0,
       importadas: 0,
+      itensInexistentes: 0,
       falhas: 0,
       movimentosCriados: 0,
       staleAposMinutos,
@@ -126,6 +134,7 @@ export async function importar_historico_conexoes_open_finance(entrada: {
   }
 
   let importadas = 0;
+  let itensInexistentes = 0;
   let falhas = 0;
   let puladasLock = 0;
   let movimentosCriados = 0;
@@ -202,24 +211,42 @@ export async function importar_historico_conexoes_open_finance(entrada: {
         criados: resumo.criados,
       });
     } catch (erro) {
-      falhas += 1;
-      const mensagem = erro instanceof Error ? erro.message : String(erro);
-      entrada.log.warn(
-        {
-          evento: "SYNC_FAIL",
-          err: erro,
+      if (erro instanceof ErroConexaoExternaInexistente) {
+        itensInexistentes += 1;
+        entrada.log.info(
+          {
+            evento: "SYNC_ITEM_GONE",
+            conexaoId: conexao.id,
+            instituicao: conexao.instituicao,
+          },
+          "[cron] SYNC_ITEM_GONE",
+        );
+        detalhes.push({
           conexaoId: conexao.id,
           instituicao: conexao.instituicao,
+          ok: false,
+          erro: "item_inexistente",
+        });
+      } else {
+        falhas += 1;
+        const mensagem = erro instanceof Error ? erro.message : String(erro);
+        entrada.log.warn(
+          {
+            evento: "SYNC_FAIL",
+            err: erro,
+            conexaoId: conexao.id,
+            instituicao: conexao.instituicao,
+            erro: mensagem,
+          },
+          "[cron] SYNC_FAIL",
+        );
+        detalhes.push({
+          conexaoId: conexao.id,
+          instituicao: conexao.instituicao,
+          ok: false,
           erro: mensagem,
-        },
-        "[cron] SYNC_FAIL",
-      );
-      detalhes.push({
-        conexaoId: conexao.id,
-        instituicao: conexao.instituicao,
-        ok: false,
-        erro: mensagem,
-      });
+        });
+      }
     } finally {
       liberarLock(conexao.id);
     }
@@ -232,6 +259,7 @@ export async function importar_historico_conexoes_open_finance(entrada: {
     puladasFrescas,
     puladasLock,
     importadas,
+    itensInexistentes,
     falhas,
     movimentosCriados,
     staleAposMinutos,

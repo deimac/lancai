@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ConexaoDetalhada, ResumoIngestao } from "@lancai/open-finance";
+import {
+  ErroConexaoExternaInexistente,
+  type ConexaoDetalhada,
+  type ResumoIngestao,
+} from "@lancai/open-finance";
 import {
   esta_stale,
   importar_historico_conexoes_open_finance,
@@ -201,6 +205,42 @@ describe("importar_historico_conexoes_open_finance", () => {
       expect.objectContaining({ conexaoId: "falha", ok: false, erro: expect.stringContaining("timeout") }),
       expect.objectContaining({ conexaoId: "ok", ok: true, criados: 3 }),
     ]);
+  });
+
+  it("trata item inexistente à parte de SYNC_FAIL", async () => {
+    const atualizarSaldos = vi.fn(async () => {
+      throw new ErroConexaoExternaInexistente("GET /items/x devolveu HTTP 404");
+    });
+    const importar = vi.fn();
+
+    const resultado = await importar_historico_conexoes_open_finance({
+      log,
+      staleAposMinutos: 1,
+      deps: {
+        listar: async () => [conexao({ id: "sumiu", instituicao: "Banco" })],
+        atualizarSaldos,
+        importar,
+        enriquecer: vi.fn(),
+        tentarLock: () => true,
+        liberarLock: () => undefined,
+      },
+    });
+
+    expect(resultado.itensInexistentes).toBe(1);
+    expect(resultado.falhas).toBe(0);
+    expect(resultado.importadas).toBe(0);
+    expect(importar).not.toHaveBeenCalled();
+    expect(resultado.detalhes).toEqual([
+      expect.objectContaining({
+        conexaoId: "sumiu",
+        ok: false,
+        erro: "item_inexistente",
+      }),
+    ]);
+    expect(log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ evento: "SYNC_ITEM_GONE", conexaoId: "sumiu" }),
+      "[cron] SYNC_ITEM_GONE",
+    );
   });
 
   it("não chama PATCH: só saldos + importar", async () => {

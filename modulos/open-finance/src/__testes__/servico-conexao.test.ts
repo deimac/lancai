@@ -419,6 +419,36 @@ describe("ServicoConexaoOpenFinance", () => {
       );
       expect(provedor.atualizacoesPedidas).toHaveLength(0);
     });
+
+    it("marca como removida quando o item sumiu no provedor, sem 500", async () => {
+      const { conexao } = await registrar();
+      provedor.marcar_inexistente(CONEXAO_EXTERNA);
+
+      const detalhe = await servico.solicitar_atualizacao(conexao.id);
+
+      expect(detalhe.conexao.status).toBe("removida");
+      expect(provedor.atualizacoesPedidas).toHaveLength(0);
+    });
+
+    it("não marca removida quando o GET de contas falha como 5xx", async () => {
+      const { conexao } = await registrar();
+      provedor.falharLeitura = true;
+
+      await expect(servico.solicitar_atualizacao(conexao.id)).rejects.toThrow(
+        /provedor indisponível/,
+      );
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("ativa");
+    });
+
+    it("atualizar_saldos marca removida e relança quando o item sumiu", async () => {
+      const { conexao } = await registrar();
+      provedor.marcar_inexistente(CONEXAO_EXTERNA);
+
+      await expect(servico.atualizar_saldos(conexao.id)).rejects.toThrow(
+        /conexão externa inexistente/,
+      );
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("removida");
+    });
   });
 
   describe("desconexão", () => {

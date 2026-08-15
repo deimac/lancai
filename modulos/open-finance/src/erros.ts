@@ -20,6 +20,18 @@ export class ErroProvedorIndisponivel extends ErroOpenFinance {
   }
 }
 
+/**
+ * O item (conexão externa) não existe mais no provedor — HTTP 404 em
+ * `/items/{id}` ou na listagem de contas. Não é falha transitória: retry não
+ * traz o item de volta. Quem captura isto marca a conexão local como `removida`.
+ */
+export class ErroConexaoExternaInexistente extends ErroOpenFinance {
+  constructor(detalhe: string) {
+    super(`conexão externa inexistente: ${detalhe}`);
+    this.name = "ErroConexaoExternaInexistente";
+  }
+}
+
 export class ErroConexaoNaoEncontrada extends ErroOpenFinance {
   constructor(id: string) {
     super(`conexão não encontrada: ${id}`);

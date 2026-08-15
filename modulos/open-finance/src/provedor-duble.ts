@@ -1,4 +1,8 @@
-import { ErroProvedorIndisponivel, ErroWebhookInvalido } from "./erros";
+import {
+  ErroConexaoExternaInexistente,
+  ErroProvedorIndisponivel,
+  ErroWebhookInvalido,
+} from "./erros";
 import type {
   ContaExterna,
   EstadoConexao,
@@ -45,6 +49,12 @@ export class ProvedorDuble implements ProvedorOpenFinance {
 
   /** Quando true, `solicitar_atualizacao` falha (simula 409 da Pluggy). */
   falharAtualizacao = false;
+
+  /** Quando true, GET de contas/estado falha como 5xx (não como item apagado). */
+  falharLeitura = false;
+
+  /** ItemIds que o provedor trata como apagados (GET 404). */
+  private readonly inexistentes = new Set<string>();
 
   constructor(
     private readonly opcoes: { id?: string; tamanhoPagina?: number } = {},
@@ -107,6 +117,19 @@ export class ProvedorDuble implements ProvedorOpenFinance {
 
   definir_estado(conexaoExterna: string, estado: EstadoConexao): void {
     this.estados.set(conexaoExterna, estado);
+  }
+
+  /** Simula item apagado no provedor (GET 404). */
+  marcar_inexistente(conexaoExterna: string): void {
+    this.inexistentes.add(conexaoExterna);
+  }
+
+  private exigir_existente(conexaoExterna: string): void {
+    if (this.inexistentes.has(conexaoExterna)) {
+      throw new ErroConexaoExternaInexistente(
+        `GET /items/${conexaoExterna} devolveu HTTP 404`,
+      );
+    }
   }
 
   // ----- a porta -----
@@ -202,6 +225,10 @@ export class ProvedorDuble implements ProvedorOpenFinance {
   }
 
   async listar_contas_externas(conexaoExterna: string): Promise<ContaExterna[]> {
+    this.exigir_existente(conexaoExterna);
+    if (this.falharLeitura) {
+      throw new ErroProvedorIndisponivel("GET /accounts devolveu HTTP 500");
+    }
     return this.contas.get(conexaoExterna) ?? [];
   }
 
@@ -209,6 +236,7 @@ export class ProvedorDuble implements ProvedorOpenFinance {
     conexaoExterna: string,
     _opcoes?: { lookbackDias?: number },
   ): Promise<string[]> {
+    this.exigir_existente(conexaoExterna);
     const todas = this.movimentacoes.get(conexaoExterna) ?? [];
     return todas.length > 0 ? [`${conexaoExterna}#0`] : [];
   }
@@ -221,6 +249,7 @@ export class ProvedorDuble implements ProvedorOpenFinance {
   }
 
   async obter_estado(conexaoExterna: string): Promise<EstadoConexao> {
+    this.exigir_existente(conexaoExterna);
     return (
       this.estados.get(conexaoExterna) ?? {
         status: "ativa",
@@ -231,6 +260,7 @@ export class ProvedorDuble implements ProvedorOpenFinance {
   }
 
   async solicitar_atualizacao(conexaoExterna: string): Promise<void> {
+    this.exigir_existente(conexaoExterna);
     if (this.falharAtualizacao) {
       throw new ErroProvedorIndisponivel("PATCH /items devolveu HTTP 409");
     }
