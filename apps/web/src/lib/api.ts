@@ -288,6 +288,44 @@ type EventoAtualizarConexao =
     }
   | { tipo: "erro"; erro: string };
 
+function evento_ndjson(texto: string): EventoAtualizarConexao | null {
+  const linha = texto.trim();
+  if (!linha) return null;
+  try {
+    return JSON.parse(linha) as EventoAtualizarConexao;
+  } catch {
+    return null;
+  }
+}
+
+/** Consome NDJSON e processa a última linha mesmo sem `\n` final. */
+async function ler_stream_ndjson(
+  corpo: ReadableStream<Uint8Array>,
+  aoEvento: (evento: EventoAtualizarConexao) => void,
+): Promise<void> {
+  const leitor = corpo.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await leitor.read();
+    if (done) {
+      buffer += decoder.decode();
+      for (const linha of buffer.split("\n")) {
+        const evento = evento_ndjson(linha);
+        if (evento) aoEvento(evento);
+      }
+      return;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const linhas = buffer.split("\n");
+    buffer = linhas.pop() ?? "";
+    for (const linha of linhas) {
+      const evento = evento_ndjson(linha);
+      if (evento) aoEvento(evento);
+    }
+  }
+}
+
 export interface DashboardCartao {
   id: string;
   nome: string;
@@ -822,44 +860,23 @@ export const clienteApi = {
       throw new ErroApi("Resposta sem corpo ao reconectar.", 502);
     }
 
-    const leitor = resposta.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
     let fim: { detalhe: ConexaoComContas; resumo: ResumoReatachar } | null = null;
-
-    while (true) {
-      const { done, value } = await leitor.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const linhas = buffer.split("\n");
-      buffer = linhas.pop() ?? "";
-
-      for (const linha of linhas) {
-        const texto = linha.trim();
-        if (!texto) continue;
-        let evento: EventoAtualizarConexao;
-        try {
-          evento = JSON.parse(texto) as EventoAtualizarConexao;
-        } catch {
-          continue;
-        }
-
-        if (evento.tipo === "progresso") {
-          aoProgresso?.({
-            percentual: evento.percentual,
-            mensagem: evento.mensagem,
-            criados: evento.criados,
-            duplicados: evento.duplicados,
-            contaAtual: evento.contaAtual,
-            contasTotal: evento.contasTotal,
-          });
-        } else if (evento.tipo === "fim") {
-          fim = { detalhe: evento.detalhe, resumo: evento.resumo };
-        } else if (evento.tipo === "erro") {
-          throw new ErroApi(evento.erro, 502);
-        }
+    await ler_stream_ndjson(resposta.body, (evento) => {
+      if (evento.tipo === "progresso") {
+        aoProgresso?.({
+          percentual: evento.percentual,
+          mensagem: evento.mensagem,
+          criados: evento.criados,
+          duplicados: evento.duplicados,
+          contaAtual: evento.contaAtual,
+          contasTotal: evento.contasTotal,
+        });
+      } else if (evento.tipo === "fim") {
+        fim = { detalhe: evento.detalhe, resumo: evento.resumo };
+      } else if (evento.tipo === "erro") {
+        throw new ErroApi(evento.erro, 502);
       }
-    }
+    });
 
     if (!fim) {
       throw new ErroApi("Importação terminou sem resultado.", 502);
@@ -915,52 +932,31 @@ export const clienteApi = {
       throw new ErroApi("Resposta sem corpo na importação.", 502);
     }
 
-    const leitor = resposta.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
     let detalhe: ConexaoComContas | null = null;
-
-    while (true) {
-      const { done, value } = await leitor.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const linhas = buffer.split("\n");
-      buffer = linhas.pop() ?? "";
-
-      for (const linha of linhas) {
-        const texto = linha.trim();
-        if (!texto) continue;
-        let evento: EventoAtualizarConexao;
-        try {
-          evento = JSON.parse(texto) as EventoAtualizarConexao;
-        } catch {
-          continue;
-        }
-
-        if (evento.tipo === "progresso") {
-          aoProgresso?.({
-            percentual: evento.percentual,
-            mensagem: evento.mensagem,
-            criados: evento.criados,
-            duplicados: evento.duplicados,
-            contaAtual: evento.contaAtual,
-            contasTotal: evento.contasTotal,
-          });
-        } else if (evento.tipo === "fim") {
-          detalhe = evento.detalhe;
-          aoProgresso?.({
-            percentual: 100,
-            mensagem: "Importação concluída.",
-            criados: evento.resumo.criados,
-            duplicados: evento.resumo.duplicados,
-            contaAtual: evento.resumo.criados > 0 ? 1 : 0,
-            contasTotal: 0,
-          });
-        } else if (evento.tipo === "erro") {
-          throw new ErroApi(evento.erro, 502);
-        }
+    await ler_stream_ndjson(resposta.body, (evento) => {
+      if (evento.tipo === "progresso") {
+        aoProgresso?.({
+          percentual: evento.percentual,
+          mensagem: evento.mensagem,
+          criados: evento.criados,
+          duplicados: evento.duplicados,
+          contaAtual: evento.contaAtual,
+          contasTotal: evento.contasTotal,
+        });
+      } else if (evento.tipo === "fim") {
+        detalhe = evento.detalhe;
+        aoProgresso?.({
+          percentual: 100,
+          mensagem: "Importação concluída.",
+          criados: evento.resumo.criados,
+          duplicados: evento.resumo.duplicados,
+          contaAtual: evento.resumo.criados > 0 ? 1 : 0,
+          contasTotal: 0,
+        });
+      } else if (evento.tipo === "erro") {
+        throw new ErroApi(evento.erro, 502);
       }
-    }
+    });
 
     if (!detalhe) {
       throw new ErroApi("Importação terminou sem resultado.", 502);

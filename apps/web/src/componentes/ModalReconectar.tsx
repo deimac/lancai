@@ -56,6 +56,7 @@ export function ModalReconectar({
     () => conexoes.find((c) => c.id === conexaoId) ?? null,
     [conexoes, conexaoId],
   );
+  const ehReconexao = Boolean(conexaoId || alvoContaId || alvoCartaoId);
   const [itemId, setItemId] = useState("");
   const [passo, setPasso] = useState<"item" | "parear">("item");
   const [instituicao, setInstituicao] = useState<string | null>(null);
@@ -143,6 +144,10 @@ export function ModalReconectar({
   }
 
   async function confirmar() {
+    if (!itemId.trim()) {
+      toast.erro("Informe o itemId do banco.");
+      return;
+    }
     const pareamentos: PareamentoReatachar[] = [];
     for (const ext of externas) {
       const valor = mapa[ext.idExterno] ?? "";
@@ -153,7 +158,7 @@ export function ModalReconectar({
     }
 
     setOcupado(true);
-    setProgresso({ percentual: 2, mensagem: "Reconectando…" });
+    setProgresso({ percentual: 2, mensagem: ehReconexao ? "Reconectando…" : "Conectando…" });
     try {
       const { resumo } = await clienteApi.reatachar_conexao(
         {
@@ -179,13 +184,13 @@ export function ModalReconectar({
           ? `${resumo.puladosSemanticos} pulado(s) (já no extrato)`
           : null,
       ].filter(Boolean);
+      aoFechar();
       toast.sucesso(
-        `Banco reconectado${instituicao ? ` · ${instituicao}` : ""}. ${partes.join(" · ")}.`,
+        `Banco ${ehReconexao ? "reconectado" : "conectado"}${instituicao ? ` · ${instituicao}` : ""}. ${partes.join(" · ")}.`,
       );
       aoConcluir();
-      aoFechar();
     } catch (e) {
-      toast.erro(e instanceof ErroApi ? e.message : "Falha ao reconectar.");
+      toast.erro(e instanceof ErroApi ? e.message : `Falha ao ${ehReconexao ? "reconectar" : "conectar"}.`);
     } finally {
       setOcupado(false);
       setProgresso(null);
@@ -206,12 +211,12 @@ export function ModalReconectar({
         <div className="flex items-center justify-between border-b border-borda px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-texto">
-              {conexaoId ? "Reconectar banco" : "Conectar banco"}
+              {ehReconexao ? "Reconectar banco" : "Conectar banco"}
             </p>
             <p className="text-xs text-texto-suave">
-              {conexaoId
+              {ehReconexao
                 ? `${conexao?.instituicao ?? alvoNome ?? "Instituição"} — religa o mesmo cartão/conta, sem duplicar`
-                : "Cole o itemId do Meu Pluggy. Contas e cartões já existentes são religados, sem duplicar."}
+                : "Cole o itemId do Meu Pluggy. Contas e cartões novos são criados."}
             </p>
           </div>
           <button
@@ -226,16 +231,19 @@ export function ModalReconectar({
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
           {passo === "item" && (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-texto-suave">ItemId (Meu Pluggy)</span>
-              <input
-                className="rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-texto"
-                value={itemId}
-                disabled={ocupado}
-                onChange={(e) => setItemId(e.target.value)}
-                placeholder="uuid do item"
-              />
-            </label>
+            <>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-texto-suave">ItemId (Meu Pluggy)</span>
+                <input
+                  className="rounded-lg border border-borda bg-superficie-alta px-3 py-2 text-texto"
+                  value={itemId}
+                  disabled={ocupado}
+                  onChange={(e) => setItemId(e.target.value)}
+                  placeholder="uuid do item"
+                />
+              </label>
+              {!ehReconexao && <BarraProgressoImportacao progresso={progresso} />}
+            </>
           )}
 
           {passo === "parear" && (
@@ -295,9 +303,15 @@ export function ModalReconectar({
             Cancelar
           </Botao>
           {passo === "item" ? (
-            <Botao disabled={ocupado || !itemId.trim()} onClick={() => void inspecionar()}>
-              {ocupado ? "Lendo…" : "Continuar"}
-            </Botao>
+            ehReconexao ? (
+              <Botao disabled={ocupado || !itemId.trim()} onClick={() => void inspecionar()}>
+                {ocupado ? "Lendo…" : "Continuar"}
+              </Botao>
+            ) : (
+              <Botao disabled={ocupado || !itemId.trim()} onClick={() => void confirmar()}>
+                {ocupado ? "Sincronizando…" : "Conectar e sincronizar"}
+              </Botao>
+            )
           ) : (
             <Botao disabled={ocupado} onClick={() => void confirmar()}>
               {ocupado ? "Sincronizando…" : "Reconectar e sincronizar"}
