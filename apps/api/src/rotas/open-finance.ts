@@ -34,8 +34,34 @@ import { obter_servico_conexao, obter_servico_ingestao } from "../servicos/open-
 import { enriquecer_apos_ingestao } from "../servicos/pos-ingestao-open-finance";
 import { filtrar_criacao_semantica_of } from "../servicos/skip-semantico-of";
 
+const MSG_ITEM_SALVO_INEXISTENTE =
+  "Este item não existe mais no Meu Pluggy. A conexão foi desconectada. Cole um itemId novo para reconectar.";
+const MSG_ITEM_ID_NAO_ENCONTRADO =
+  "Não encontramos este itemId no Meu Pluggy. Confira e cole um ID válido.";
+
 function fonte_desativada(resposta: FastifyReply) {
   return resposta.status(503).send({ erro: "Fonte Open Finance desativada." });
+}
+
+/**
+ * 404 no inspect: só desconecta a conexão informada, e só se o UUID for o
+ * `idExterno` dela. Confere dono antes — UUID morto aleatório não derruba.
+ */
+async function desconectar_se_inspecao_do_item_salvo(
+  servico: ServicoConexaoOpenFinance,
+  dados: { usuarioId: string; conexaoExterna: string; conexaoId?: string },
+): Promise<boolean> {
+  if (!dados.conexaoId) return false;
+  try {
+    const acesso = await exigir_conexao_do_usuario(servico, dados.conexaoId, dados.usuarioId);
+    if ("erro" in acesso) return false;
+    return servico.marcar_removida_se_item_salvo_inexistente(
+      dados.conexaoId,
+      dados.conexaoExterna,
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function iniciar_stream_ndjson(requisicao: FastifyRequest, resposta: FastifyReply) {
@@ -140,6 +166,13 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     try {
       return resposta.send(await servico.inspecionar_item(dados.conexaoExterna));
     } catch (erro) {
+      if (erro instanceof ErroConexaoExternaInexistente) {
+        const desconectou = await desconectar_se_inspecao_do_item_salvo(servico, dados);
+        return resposta.status(400).send({
+          erro: desconectou ? MSG_ITEM_SALVO_INEXISTENTE : MSG_ITEM_ID_NAO_ENCONTRADO,
+          ...(desconectou ? { conexaoDesconectada: true } : {}),
+        });
+      }
       const msg = erro instanceof Error ? erro.message : "Falha ao inspecionar item.";
       return resposta.status(400).send({
         erro: msg.startsWith("provedor indisponível:")
@@ -250,14 +283,28 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         },
       });
     } catch (erro) {
-      const bruto = erro instanceof Error ? erro.message : "Falha ao reconectar o banco.";
-      requisicao.log.error({ err: erro }, "[open-finance] falha no reconectar");
-      escrever({
-        tipo: "erro",
-        erro: bruto.startsWith("provedor indisponível:")
-          ? "Não foi possível ler o extrato no banco agora. Tente de novo em instantes."
-          : bruto,
-      });
+      if (erro instanceof ErroConexaoExternaInexistente) {
+        const desconectou = conexaoAlvo
+          ? await servico.marcar_removida_se_item_salvo_inexistente(
+              conexaoAlvo,
+              dados.conexaoExterna,
+            )
+          : false;
+        escrever({
+          tipo: "erro",
+          erro: desconectou ? MSG_ITEM_SALVO_INEXISTENTE : MSG_ITEM_ID_NAO_ENCONTRADO,
+          conexaoDesconectada: desconectou,
+        });
+      } else {
+        const bruto = erro instanceof Error ? erro.message : "Falha ao reconectar o banco.";
+        requisicao.log.error({ err: erro }, "[open-finance] falha no reconectar");
+        escrever({
+          tipo: "erro",
+          erro: bruto.startsWith("provedor indisponível:")
+            ? "Não foi possível ler o extrato no banco agora. Tente de novo em instantes."
+            : bruto,
+        });
+      }
     } finally {
       encerrar();
     }

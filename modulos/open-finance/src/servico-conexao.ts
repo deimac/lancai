@@ -764,6 +764,7 @@ export class ServicoConexaoOpenFinance {
 
   /**
    * Espelha saldo/limite/ciclo da instituição nas contas e cartões já associados.
+   * Não toca no nome local: o rótulo que o usuário editou permanece.
    * Cobre cartões criados antes do mapeamento de creditData (saldo/limite zerados).
    */
   private async aplicar_saldos_institucionais(
@@ -779,7 +780,6 @@ export class ServicoConexaoOpenFinance {
 
       if (recurso.cartaoId) {
         await this.motor.atualizar_dados_institucionais_cartao(recurso.cartaoId, {
-          nome: externa.nome,
           saldo: numero_finito(externa.saldo),
           limite: numero_finito(externa.limite),
           fechamento: externa.fechamento,
@@ -789,7 +789,6 @@ export class ServicoConexaoOpenFinance {
 
       if (recurso.contaId) {
         await this.motor.atualizar_dados_institucionais_conta(recurso.contaId, {
-          nome: externa.nome,
           saldoAtual: numero_finito(externa.saldo),
         });
       }
@@ -947,6 +946,24 @@ export class ServicoConexaoOpenFinance {
       instituicao: estado.instituicao ?? null,
       consentimentoExpiraEm: estado.consentimentoExpiraEm ?? null,
     };
+  }
+
+  /**
+   * 404 no inspect/reattach: só marca `removida` se o UUID inspecionado for o
+   * `idExterno` já gravado nesta conexão. Um UUID morto aleatório não derruba.
+   */
+  async marcar_removida_se_item_salvo_inexistente(
+    conexaoId: string,
+    conexaoExterna: string,
+  ): Promise<boolean> {
+    const conexao = await this.repositorio.obterConexaoPorId(conexaoId);
+    if (!conexao || conexao.idExterno !== conexaoExterna) return false;
+    if (conexao.status === "removida") return true;
+    await this.repositorio.atualizarEstadoConexao(conexaoId, {
+      status: "removida",
+      motivoAtencao: null,
+    });
+    return true;
   }
 
   /**

@@ -6,7 +6,7 @@ import {
   MotorFinanceiro,
   RepositorioFinanceiroMemoria,
 } from "@lancai/financeiro";
-import { ErroAssociacaoInvalida, ErroConexaoNaoEncontrada } from "../erros";
+import { ErroAssociacaoInvalida, ErroConexaoExternaInexistente, ErroConexaoNaoEncontrada } from "../erros";
 import { ProvedorDuble } from "../provedor-duble";
 import { RepositorioOpenFinanceMemoria } from "../repositorio-memoria";
 import { ServicoConexaoOpenFinance } from "../servico-conexao";
@@ -235,6 +235,37 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(cartaoLocal?.vencimento).toBe(15);
       expect(financeiro.contas.get(contas.find((c) => c.contaExternaId === "acc-1")!.contaId!)
         ?.saldoAtual).toBe("2600");
+    });
+
+    it("preserva o nome local ao relistar a Fonte", async () => {
+      const { contas } = await registrar();
+      const contaId = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      const cartaoId = contas.find((c) => c.contaExternaId === "card-1")?.cartaoId;
+      expect(contaId).toBeTruthy();
+      expect(cartaoId).toBeTruthy();
+
+      const conta = financeiro.contas.get(contaId!)!;
+      const cartao = financeiro.cartoes.get(cartaoId!)!;
+      financeiro.contas.set(contaId!, { ...conta, nome: "Mercado Livre" });
+      financeiro.cartoes.set(cartaoId!, { ...cartao, nome: "Visa Mercado Livre" });
+
+      provedor.registrarContas(CONEXAO_EXTERNA, [
+        { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 3100 },
+        {
+          idExterno: "card-1",
+          nome: "AZUL ITAU VISA PLATINUM",
+          tipo: "CREDIT",
+          saldo: 800,
+          limite: 30000,
+        },
+      ]);
+
+      await registrar();
+
+      expect(financeiro.contas.get(contaId!)?.nome).toBe("Mercado Livre");
+      expect(financeiro.contas.get(contaId!)?.saldoAtual).toBe("3100");
+      expect(financeiro.cartoes.get(cartaoId!)?.nome).toBe("Visa Mercado Livre");
+      expect(financeiro.cartoes.get(cartaoId!)?.saldo).toBe("800");
     });
 
     it("é idempotente: reabrir o widget não cria conexão nova", async () => {
@@ -496,6 +527,35 @@ describe("ServicoConexaoOpenFinance", () => {
 
       await expect(servico.verificar_item_salvo(conexao.id)).rejects.toThrow(
         /provedor indisponível/,
+      );
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("ativa");
+    });
+  });
+
+  describe("inspecionar item inexistente", () => {
+    it("marca removida quando o 404 é do idExterno salvo", async () => {
+      const { conexao } = await registrar();
+      provedor.marcar_inexistente(CONEXAO_EXTERNA);
+
+      await expect(servico.inspecionar_item(CONEXAO_EXTERNA)).rejects.toThrow(
+        ErroConexaoExternaInexistente,
+      );
+      expect(
+        await servico.marcar_removida_se_item_salvo_inexistente(conexao.id, CONEXAO_EXTERNA),
+      ).toBe(true);
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("removida");
+    });
+
+    it("não derruba a conexão viva quando o 404 é de outro UUID", async () => {
+      const { conexao } = await registrar();
+      const outro = "item-morto-aleatorio";
+      provedor.marcar_inexistente(outro);
+
+      await expect(servico.inspecionar_item(outro)).rejects.toThrow(
+        ErroConexaoExternaInexistente,
+      );
+      expect(await servico.marcar_removida_se_item_salvo_inexistente(conexao.id, outro)).toBe(
+        false,
       );
       expect((await servico.detalhar(conexao.id)).conexao.status).toBe("ativa");
     });

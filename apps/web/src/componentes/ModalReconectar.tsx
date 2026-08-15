@@ -39,6 +39,15 @@ function eh_of(item: { origem?: string; sincronizada?: boolean }) {
   return item.origem === "open_finance" || item.sincronizada;
 }
 
+/** Nunca mostra o texto cru do GET /items no toast. */
+function mensagem_item_inexistente(erro: unknown, fallback: string): string {
+  const msg = erro instanceof ErroApi ? erro.message : fallback;
+  if (/GET \/items|conexão externa inexistente/i.test(msg)) {
+    return "Não encontramos este itemId no Meu Pluggy. Confira e cole um ID válido.";
+  }
+  return msg;
+}
+
 export function ModalReconectar({
   aberto,
   usuarioId,
@@ -109,6 +118,7 @@ export function ModalReconectar({
       const preview = await clienteApi.inspecionar_item({
         usuarioId,
         conexaoExterna: id,
+        conexaoId: conexaoId || undefined,
       });
       setInstituicao(preview.instituicao);
       setExternas(preview.contas);
@@ -137,7 +147,11 @@ export function ModalReconectar({
       setMapa(inicial);
       setPasso("parear");
     } catch (e) {
-      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível ler o item.");
+      toast.erro(mensagem_item_inexistente(e, "Não foi possível ler o item."));
+      if (e instanceof ErroApi && e.conexaoDesconectada) {
+        aoFechar();
+        aoConcluir();
+      }
     } finally {
       setOcupado(false);
     }
@@ -190,7 +204,13 @@ export function ModalReconectar({
       );
       aoConcluir();
     } catch (e) {
-      toast.erro(e instanceof ErroApi ? e.message : `Falha ao ${ehReconexao ? "reconectar" : "conectar"}.`);
+      toast.erro(
+        mensagem_item_inexistente(e, `Falha ao ${ehReconexao ? "reconectar" : "conectar"}.`),
+      );
+      if (e instanceof ErroApi && e.conexaoDesconectada) {
+        aoFechar();
+        aoConcluir();
+      }
     } finally {
       setOcupado(false);
       setProgresso(null);

@@ -286,7 +286,7 @@ type EventoAtualizarConexao =
       detalhe: ConexaoComContas;
       resumo: ResumoReatachar;
     }
-  | { tipo: "erro"; erro: string };
+  | { tipo: "erro"; erro: string; conexaoDesconectada?: boolean };
 
 function evento_ndjson(texto: string): EventoAtualizarConexao | null {
   const linha = texto.trim();
@@ -426,6 +426,7 @@ class ErroApi extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly conexaoDesconectada = false,
   ) {
     super(message);
     this.name = "ErroApi";
@@ -459,6 +460,7 @@ async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise
     const corpo = (await resposta.json().catch(() => ({}))) as {
       erro?: string;
       message?: string;
+      conexaoDesconectada?: boolean;
     };
     const mensagem =
       corpo.erro ??
@@ -466,7 +468,7 @@ async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise
       (resposta.status === 404
         ? "Rota não encontrada na API — confira se a API foi redeployada."
         : "Erro inesperado na API.");
-    throw new ErroApi(mensagem, resposta.status);
+    throw new ErroApi(mensagem, resposta.status, Boolean(corpo.conexaoDesconectada));
   }
 
   if (resposta.status === 204) return undefined as T;
@@ -818,6 +820,7 @@ export const clienteApi = {
   inspecionar_item(dados: {
     usuarioId: string;
     conexaoExterna: string;
+    conexaoId?: string;
   }): Promise<InspecaoItemOf> {
     return requisitar<InspecaoItemOf>("/open-finance/conexoes/inspecionar", {
       method: "POST",
@@ -884,7 +887,7 @@ export const clienteApi = {
       } else if (evento.tipo === "fim") {
         fim = { detalhe: evento.detalhe, resumo: evento.resumo };
       } else if (evento.tipo === "erro") {
-        throw new ErroApi(evento.erro, 502);
+        throw new ErroApi(evento.erro, 502, Boolean(evento.conexaoDesconectada));
       }
     });
 

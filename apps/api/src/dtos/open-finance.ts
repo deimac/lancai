@@ -16,6 +16,8 @@ export const schemaRegistrarConexao = z.object({
 export const schemaInspecionarItem = z.object({
   usuarioId: z.string().uuid(),
   conexaoExterna: z.string().min(1),
+  /** Só desconecta esta conexão se o id inspecionado for o `idExterno` dela. */
+  conexaoId: z.string().uuid().optional(),
 });
 
 export const schemaReatacharConexao = z.object({
