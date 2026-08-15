@@ -54,7 +54,7 @@ function badge_perfil(perfil: string | undefined) {
     rotulo: pj ? "Jurídica" : "Física",
     classe: pj
       ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-      : "border-borda bg-fundo/60 text-texto-suave",
+      : "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
   };
 }
 
@@ -90,9 +90,20 @@ function badge_origem(item: {
   };
 }
 
-function linha_sync(ultimoSyncEm?: string | null) {
-  if (!ultimoSyncEm) return null;
-  return texto_ultimo_sync(ultimoSyncEm).linha;
+function precisa_reconectar(item: {
+  origem?: string;
+  sincronizada?: boolean;
+  conexaoStatus?: string | null;
+  conexaoId?: string | null;
+}) {
+  const of = item.origem === "open_finance" || item.sincronizada;
+  if (!of) return false;
+  return (
+    !item.conexaoId ||
+    item.conexaoStatus === "removida" ||
+    item.conexaoStatus === "precisa_atencao" ||
+    !item.sincronizada
+  );
 }
 
 function aba_do_hash(hash: string): Aba {
@@ -410,14 +421,10 @@ export function TelaContasECartoes() {
             const badge = badge_origem(conta);
             const perfilBadge = badge_perfil(conta.perfil);
             const saldo = para_numero(conta.saldoAtual);
-            const sync = linha_sync(conta.ultimoSyncEm);
-            const of = conta.origem === "open_finance" || conta.sincronizada;
             return {
               id: conta.id,
               titulo: conta.nome,
-              subtitulo: of
-                ? [conta.instituicao, sync].filter(Boolean).join(" · ") || undefined
-                : undefined,
+              subtitulo: undefined,
               badges: [perfilBadge, badge],
               valor: saldo,
               valorClasse: saldo < 0 ? "text-despesa" : "text-texto",
@@ -428,7 +435,7 @@ export function TelaContasECartoes() {
               },
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_conta(conta) },
-                ...(of
+                ...(precisa_reconectar(conta)
                   ? [
                       {
                         rotulo: "Reconectar",
@@ -461,23 +468,19 @@ export function TelaContasECartoes() {
             const badge = badge_origem(cartao);
             const perfilBadge = badge_perfil(cartao.perfil);
             const saldo = para_numero(cartao.saldo);
-            const of = cartao.origem === "open_finance" || cartao.sincronizada;
-            const sync = linha_sync(cartao.ultimoSyncEm);
+            const limite = para_numero(cartao.limite);
+            const disponivel = limite - saldo;
             return {
               id: cartao.id,
               titulo: `${cartao.nome}${cartao.final4 ? ` ···· ${cartao.final4}` : ""}`,
               subtitulo: [
-                `Limite ${formatar_moeda(para_numero(cartao.limite))}`,
-                cartao.sincronizada
-                  ? `Disp. ${formatar_moeda(para_numero(cartao.limite) - saldo)}`
-                  : null,
-                `Fecha ${cartao.fechamento ?? "—"}`,
-                `Vence ${cartao.vencimento}`,
-                cartao.instituicao,
-                sync,
-              ]
-                .filter(Boolean)
-                .join(" · "),
+                `Limite: ${formatar_moeda(limite)}`,
+                `Disponível: ${formatar_moeda(disponivel)}`,
+                `Fechamento: ${
+                  cartao.fechamento != null ? String(cartao.fechamento).padStart(2, "0") : "—"
+                }`,
+                `Vencimento: ${String(cartao.vencimento).padStart(2, "0")}`,
+              ].join(" · "),
               badges: [perfilBadge, badge],
               valor: saldo,
               valorClasse: saldo > 0 ? "text-despesa" : "text-texto",
@@ -488,7 +491,7 @@ export function TelaContasECartoes() {
               },
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_cartao(cartao) },
-                ...(of
+                ...(precisa_reconectar(cartao)
                   ? [
                       {
                         rotulo: "Reconectar",
