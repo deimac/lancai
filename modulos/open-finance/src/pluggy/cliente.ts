@@ -140,8 +140,9 @@ export class ClientePluggy {
 }
 
 /**
- * 404 em item ou contas = o item foi apagado no provedor. 404 em transação
- * isolada (ou 5xx/429) continua indisponibilidade: retry, não `removida`.
+ * 404 no item (e 400 “not found” no GET /items) = o item foi apagado no
+ * provedor. 404 em transação isolada (ou 5xx/429) continua indisponibilidade:
+ * retry, não `removida`.
  */
 function erro_http_do_provedor(
   metodo: string,
@@ -150,10 +151,28 @@ function erro_http_do_provedor(
   detalhe: string,
 ): ErroConexaoExternaInexistente | ErroProvedorIndisponivel {
   const mensagem = `${metodo} ${caminho} devolveu HTTP ${status}${detalhe}`;
-  if (status === 404 && caminho_eh_item_ou_contas(caminho)) {
+  if (item_nao_encontrado(status, caminho, detalhe)) {
     return new ErroConexaoExternaInexistente(mensagem);
   }
   return new ErroProvedorIndisponivel(mensagem);
+}
+
+function item_nao_encontrado(status: number, caminho: string, detalhe: string): boolean {
+  if (status === 404 && caminho_eh_item_ou_contas(caminho)) return true;
+  if (
+    status === 400 &&
+    caminho_eh_item(caminho) &&
+    /not found|does not exist|ITEM_NOT_FOUND/i.test(detalhe)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function caminho_eh_item(caminho: string): boolean {
+  const relativo = caminho_relativo(caminho);
+  const semQuery = relativo.split("?")[0] ?? relativo;
+  return /\/items\/[^/]+/.test(semQuery);
 }
 
 function caminho_eh_item_ou_contas(caminho: string): boolean {

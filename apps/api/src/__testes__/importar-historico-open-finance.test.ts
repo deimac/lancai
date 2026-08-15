@@ -243,6 +243,45 @@ describe("importar_historico_conexoes_open_finance", () => {
     );
   });
 
+  it("sonda conexão fresca e marca item inexistente sem importar", async () => {
+    const agora = new Date("2026-08-11T12:00:00.000Z");
+    const importar = vi.fn();
+    const atualizarSaldos = vi.fn();
+
+    const resultado = await importar_historico_conexoes_open_finance({
+      log,
+      agora,
+      staleAposMinutos: 240,
+      deps: {
+        listar: async () => [
+          conexao({
+            id: "fresca",
+            ultimoSyncEm: new Date("2026-08-11T11:00:00.000Z"),
+          }),
+        ],
+        verificarItem: async () => false,
+        atualizarSaldos,
+        importar,
+        enriquecer: vi.fn(),
+        tentarLock: () => true,
+        liberarLock: () => undefined,
+      },
+    });
+
+    expect(resultado.itensInexistentes).toBe(1);
+    expect(resultado.puladasFrescas).toBe(0);
+    expect(resultado.falhas).toBe(0);
+    expect(importar).not.toHaveBeenCalled();
+    expect(atualizarSaldos).not.toHaveBeenCalled();
+    expect(resultado.detalhes).toEqual([
+      expect.objectContaining({
+        conexaoId: "fresca",
+        ok: false,
+        erro: "item_inexistente",
+      }),
+    ]);
+  });
+
   it("não chama PATCH: só saldos + importar", async () => {
     const atualizarSaldos = vi.fn(async () => undefined);
     const importar = vi.fn(async () => resumo(0));

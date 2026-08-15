@@ -147,6 +147,23 @@ export class ServicoConexaoOpenFinance {
   }
 
   /**
+   * Mesmo primeiro passo do conectar: GET /items/{idExterno}.
+   * Item existe → não regrava conexão nem extrato. Item sumiu → `removida`.
+   * 5xx/429 sobem para o chamador (não mudam status).
+   */
+  async verificar_item_salvo(conexaoId: string): Promise<boolean> {
+    const conexao = await this.exigir_conexao(conexaoId);
+    if (conexao.status === "removida") return false;
+    try {
+      await this.provedor.obter_estado(conexao.idExterno);
+      return true;
+    } catch (erro) {
+      if (await this.marcar_removida_se_inexistente(conexaoId, erro)) return false;
+      throw erro;
+    }
+  }
+
+  /**
    * Atualiza saldo/limite a partir do snapshot atual no provedor, sem pedir sync
    * (sem PATCH). Usado pelo cron de importação e por fluxos que só precisam ler.
    */
@@ -341,8 +358,9 @@ export class ServicoConexaoOpenFinance {
 
   /**
    * “Atualizar agora”:
-   * 1) refresca saldo/limite com o snapshot atual da instituição (sempre);
-   * 2) pede sync pontual — best-effort: a Pluggy recusa com frequência
+   * 1) confirma que o item ainda existe (GET /items, como no conectar);
+   * 2) refresca saldo/limite com o snapshot atual da instituição;
+   * 3) pede sync pontual — best-effort: a Pluggy recusa com frequência
    *    (já atualizando / limite de 1h / item Meu Pluggy que só synca no app).
    * Extrato novo: importação GET no request da API (e webhook, quando chegar).
    */
@@ -350,6 +368,10 @@ export class ServicoConexaoOpenFinance {
     const conexao = await this.exigir_conexao(conexaoId);
     if (conexao.status === "removida") {
       throw new ErroAssociacaoInvalida("Esta conexão foi removida e não pode ser atualizada.");
+    }
+
+    if (!(await this.verificar_item_salvo(conexaoId))) {
+      return this.detalhar(conexaoId);
     }
 
     try {
@@ -430,13 +452,10 @@ export class ServicoConexaoOpenFinance {
   /**
    * Fallback Meu Pluggy: o item antigo sumiu do provedor, o usuário informa
    * o novo itemId gerado pelo Meu Pluggy. Atualiza a conexão preservando
-   * associações e histórico local.
+   * associações e histórico local — inclusive se o status já for `removida`.
    */
   async atualizar_item_id(conexaoId: string, novoItemId: string): Promise<ConexaoComContas> {
-    const conexao = await this.exigir_conexao(conexaoId);
-    if (conexao.status === "removida") {
-      throw new Error("Não é possível atualizar itemId de conexão removida.");
-    }
+    await this.exigir_conexao(conexaoId);
 
     const { encontradas } = await this.aplicar_novo_item(conexaoId, novoItemId);
     await this.rematch_contas_externas(

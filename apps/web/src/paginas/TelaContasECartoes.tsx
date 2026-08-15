@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Building2,
+  CheckCircle2,
   CreditCard,
   FolderKanban,
   Link2,
@@ -13,6 +14,7 @@ import {
   Trash2,
   Unplug,
   Wallet,
+  XCircle,
 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
@@ -104,6 +106,23 @@ function precisa_reconectar(item: {
     item.conexaoStatus === "precisa_atencao" ||
     !item.sincronizada
   );
+}
+
+function status_visual_conexao(status: string) {
+  if (status === "ativa" || status === "sincronizando") {
+    return {
+      conectado: true,
+      rotulo: status === "sincronizando" ? "Sincronizando" : "Conectado",
+      Icone: CheckCircle2,
+      iconeClasse: "text-emerald-500",
+    };
+  }
+  return {
+    conectado: false,
+    rotulo: status === "precisa_atencao" ? "Precisa de atenção" : "Desconectado",
+    Icone: XCircle,
+    iconeClasse: "text-red-500",
+  };
 }
 
 function aba_do_hash(hash: string): Aba {
@@ -525,106 +544,116 @@ export function TelaContasECartoes() {
               Nenhum banco conectado. Use Conectar banco e cole o itemId do Meu Pluggy.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-3">
               {conexoes.map((conexao, i) => {
                 const sync = texto_ultimo_sync(conexao.ultimoSyncEm);
-                const nContas = conexao.contasVinculadas?.quantidade ?? 0;
-                const nCartoes = conexao.cartoesVinculados?.quantidade ?? 0;
-                const nomes = [
-                  ...(conexao.contasVinculadas?.nomes ?? []),
-                  ...(conexao.cartoesVinculados?.nomes ?? []),
-                ];
+                const visual = status_visual_conexao(conexao.status);
+                const contasLigadas = contas.filter((c) => c.conexaoId === conexao.id);
+                const cartoesLigados = cartoes.filter((c) => c.conexaoId === conexao.id);
+                const nomeConfirmacao =
+                  contasLigadas[0]?.nome ??
+                  cartoesLigados[0]?.nome ??
+                  "banco";
                 return (
                   <motion.li
                     key={conexao.id}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.02 }}
-                    className="relative flex items-start justify-between gap-3 rounded-2xl border border-borda bg-superficie/80 px-4 py-3"
+                    className="relative rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/10"
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium text-texto">
-                        {conexao.instituicao ?? "Instituição conectada"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-texto-suave">
-                        {conexao.status === "ativa"
-                          ? "Ativa"
-                          : conexao.status === "precisa_atencao"
-                            ? "Precisa de atenção"
-                            : conexao.status === "sincronizando"
-                              ? "Sincronizando"
-                              : "Removida"}
-                        {conexao.motivoAtencao ? ` · ${conexao.motivoAtencao}` : ""}
-                      </p>
-                      <p className="mt-1 text-xs text-texto-suave">
-                        {nContas} {nContas === 1 ? "conta" : "contas"} · {nCartoes}{" "}
-                        {nCartoes === 1 ? "cartão" : "cartões"}
-                        {nomes.length > 0 ? ` · ${nomes.join(", ")}` : ""}
-                      </p>
-                      <p
-                        className={unir_classes(
-                          "mt-1 text-xs",
-                          sync.atrasado ? "text-aviso" : "text-texto-suave",
-                        )}
-                      >
-                        {sync.linha}
-                      </p>
-                    </div>
-                    <div className="relative shrink-0">
-                      <Botao
-                        variante="fantasma"
-                        className="px-2"
-                        disabled={ocupado}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuId(menuId === conexao.id ? null : conexao.id);
-                        }}
-                      >
-                        <MoreHorizontal size={16} />
-                      </Botao>
-                      {menuId === conexao.id && (
-                        <MenuAcoes
-                          acoes={[
-                            ...(conexao.status !== "removida"
-                              ? [
-                                  {
-                                    rotulo: "Sincronizar",
-                                    icone: RefreshCw,
-                                    onClick: () => void atualizar_conexao(conexao.id),
-                                  },
-                                ]
-                              : []),
-                            ...(conexao.status === "precisa_atencao"
-                              ? [
-                                  {
-                                    rotulo: "Atualizar login",
-                                    icone: Link2,
-                                    onClick: () => void reconectar_mesmo_item(conexao),
-                                  },
-                                ]
-                              : []),
-                            {
-                              rotulo: "Reconectar",
-                              icone: RefreshCw,
-                              onClick: () => abrir_reconectar({ conexaoId: conexao.id }),
-                            },
-                            ...(conexao.status !== "removida"
-                              ? [
-                                  {
-                                    rotulo: "Desconectar",
-                                    icone: Unplug,
-                                    onClick: () =>
-                                      void desconectar(
-                                        conexao.id,
-                                        conexao.instituicao ?? "banco",
-                                      ),
-                                  },
-                                ]
-                              : []),
-                          ]}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <visual.Icone
+                          size={20}
+                          className={unir_classes("shrink-0", visual.iconeClasse)}
+                          aria-hidden
                         />
+                        <p className="text-sm font-semibold text-texto">{visual.rotulo}</p>
+                      </div>
+                      <div className="relative shrink-0">
+                        <Botao
+                          variante="fantasma"
+                          className="px-2"
+                          disabled={ocupado}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuId(menuId === conexao.id ? null : conexao.id);
+                          }}
+                        >
+                          <MoreHorizontal size={16} />
+                        </Botao>
+                        {menuId === conexao.id && (
+                          <MenuAcoes
+                            acoes={[
+                              ...(conexao.status !== "removida"
+                                ? [
+                                    {
+                                      rotulo: "Sincronizar",
+                                      icone: RefreshCw,
+                                      onClick: () => void atualizar_conexao(conexao.id),
+                                    },
+                                  ]
+                                : []),
+                              ...(conexao.status === "precisa_atencao"
+                                ? [
+                                    {
+                                      rotulo: "Atualizar login",
+                                      icone: Link2,
+                                      onClick: () => void reconectar_mesmo_item(conexao),
+                                    },
+                                  ]
+                                : []),
+                              {
+                                rotulo: "Reconectar",
+                                icone: RefreshCw,
+                                onClick: () => abrir_reconectar({ conexaoId: conexao.id }),
+                              },
+                              ...(conexao.status !== "removida"
+                                ? [
+                                    {
+                                      rotulo: "Desconectar",
+                                      icone: Unplug,
+                                      onClick: () =>
+                                        void desconectar(conexao.id, nomeConfirmacao),
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-1">
+                      {contasLigadas.length === 0 && cartoesLigados.length === 0 ? (
+                        <p className="text-sm text-texto-suave">
+                          Nenhuma conta ou cartão associado
+                        </p>
+                      ) : (
+                        <>
+                          {contasLigadas.map((conta) => (
+                            <p key={conta.id} className="text-sm text-texto">
+                              <span className="text-texto-suave">Conta: </span>
+                              <span className="font-semibold">{conta.nome}</span>
+                            </p>
+                          ))}
+                          {cartoesLigados.map((cartao) => (
+                            <p key={cartao.id} className="text-sm text-texto">
+                              <span className="text-texto-suave">Cartão: </span>
+                              <span className="font-semibold">{cartao.nome}</span>
+                            </p>
+                          ))}
+                        </>
                       )}
                     </div>
+                    <p
+                      className={unir_classes(
+                        "mt-3 text-xs",
+                        sync.atrasado ? "text-aviso" : "text-texto-suave",
+                      )}
+                    >
+                      {sync.linha}
+                    </p>
                   </motion.li>
                 );
               })}

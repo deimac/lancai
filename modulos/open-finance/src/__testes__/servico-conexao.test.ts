@@ -131,6 +131,29 @@ describe("ServicoConexaoOpenFinance", () => {
       expect(detalhe.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaIdAntes);
     });
 
+    it("atualiza o itemId mesmo quando a conexão já está removida", async () => {
+      const { conexao, contas } = await registrar();
+      const contaIdAntes = contas.find((c) => c.contaExternaId === "acc-1")?.contaId;
+      await repositorio.atualizarEstadoConexao(conexao.id, { status: "removida" });
+      provedor.registrarContas("item-novo", [
+        { idExterno: "acc-1", nome: "Conta Corrente", tipo: "BANK", saldo: 2500 },
+        {
+          idExterno: "card-1",
+          nome: "Cartão Platinum",
+          tipo: "CREDIT",
+          saldo: 11740.87,
+          limite: 30000,
+        },
+      ]);
+
+      const detalhe = await servico.atualizar_item_id(conexao.id, "item-novo");
+
+      expect(detalhe.conexao.id).toBe(conexao.id);
+      expect(detalhe.conexao.idExterno).toBe("item-novo");
+      expect(detalhe.conexao.status).toBe("ativa");
+      expect(detalhe.contas.find((c) => c.contaExternaId === "acc-1")?.contaId).toBe(contaIdAntes);
+    });
+
     it("recusa reconectar uma conexão que não existe", async () => {
       await expect(
         servico.iniciar_conexao({ usuarioId, conexaoId: randomUUID() }),
@@ -448,6 +471,33 @@ describe("ServicoConexaoOpenFinance", () => {
         /conexão externa inexistente/,
       );
       expect((await servico.detalhar(conexao.id)).conexao.status).toBe("removida");
+    });
+  });
+
+  describe("verificar item salvo", () => {
+    it("não muda status quando o GET /items encontra o item", async () => {
+      const { conexao } = await registrar();
+
+      expect(await servico.verificar_item_salvo(conexao.id)).toBe(true);
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("ativa");
+    });
+
+    it("marca removida quando o item sumiu no provedor", async () => {
+      const { conexao } = await registrar();
+      provedor.marcar_inexistente(CONEXAO_EXTERNA);
+
+      expect(await servico.verificar_item_salvo(conexao.id)).toBe(false);
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("removida");
+    });
+
+    it("não marca removida quando o GET /items falha como 5xx", async () => {
+      const { conexao } = await registrar();
+      provedor.falharLeitura = true;
+
+      await expect(servico.verificar_item_salvo(conexao.id)).rejects.toThrow(
+        /provedor indisponível/,
+      );
+      expect((await servico.detalhar(conexao.id)).conexao.status).toBe("ativa");
     });
   });
 

@@ -250,6 +250,9 @@ export class ProvedorDuble implements ProvedorOpenFinance {
 
   async obter_estado(conexaoExterna: string): Promise<EstadoConexao> {
     this.exigir_existente(conexaoExterna);
+    if (this.falharLeitura) {
+      throw new ErroProvedorIndisponivel("GET /items devolveu HTTP 500");
+    }
     return (
       this.estados.get(conexaoExterna) ?? {
         status: "ativa",

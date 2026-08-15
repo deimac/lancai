@@ -36,6 +36,8 @@ export interface ResultadoCronImportarHistorico {
 
 export type DependenciasImportarHistorico = {
   listar: (limite: number) => Promise<ConexaoDetalhada[]>;
+  /** GET /items/{idExterno}: true se existe; false se marcou removida. */
+  verificarItem?: (conexaoId: string) => Promise<boolean>;
   atualizarSaldos: (conexaoId: string) => Promise<void>;
   importar: (conexaoId: string, opcoes?: { lookbackDias?: number }) => Promise<ResumoIngestao>;
   enriquecer: (entrada: {
@@ -92,32 +94,17 @@ export async function importar_historico_conexoes_open_finance(entrada: {
 
   const tentarLock = deps.tentarLock ?? tentar_adquirir_lock_sync;
   const liberarLock = deps.liberarLock ?? liberar_lock_sync;
+  const verificarItem = deps.verificarItem;
 
   const conexoes = await deps.listar(limite);
-  const candidatas = conexoes.filter((c) => esta_stale(c.ultimoSyncEm, agora, staleAposMinutos));
-  const puladasFrescas = conexoes.length - candidatas.length;
-
-  for (const conexao of conexoes) {
-    if (!esta_stale(conexao.ultimoSyncEm, agora, staleAposMinutos)) {
-      entrada.log.info(
-        {
-          evento: "SYNC_SKIP_FRESH",
-          conexaoId: conexao.id,
-          instituicao: conexao.instituicao,
-          ultimoSyncEm: conexao.ultimoSyncEm?.toISOString() ?? null,
-          staleAposMinutos,
-        },
-        "[cron] SYNC_SKIP_FRESH",
-      );
-    }
-  }
 
   if (dryRun) {
+    const candidatas = conexoes.filter((c) => esta_stale(c.ultimoSyncEm, agora, staleAposMinutos));
     return {
       fonteAtiva: true,
       dryRun: true,
       considerados: conexoes.length,
-      puladasFrescas,
+      puladasFrescas: conexoes.length - candidatas.length,
       puladasLock: 0,
       importadas: 0,
       itensInexistentes: 0,
@@ -137,10 +124,88 @@ export async function importar_historico_conexoes_open_finance(entrada: {
   let itensInexistentes = 0;
   let falhas = 0;
   let puladasLock = 0;
+  let puladasFrescas = 0;
   let movimentosCriados = 0;
   const detalhes: ResultadoCronImportarHistorico["detalhes"] = [];
 
-  for (const conexao of candidatas) {
+  for (const conexao of conexoes) {
+    if (verificarItem) {
+      try {
+        const existe = await verificarItem(conexao.id);
+        if (!existe) {
+          itensInexistentes += 1;
+          entrada.log.info(
+            {
+              evento: "SYNC_ITEM_GONE",
+              conexaoId: conexao.id,
+              instituicao: conexao.instituicao,
+            },
+            "[cron] SYNC_ITEM_GONE",
+          );
+          detalhes.push({
+            conexaoId: conexao.id,
+            instituicao: conexao.instituicao,
+            ok: false,
+            erro: "item_inexistente",
+          });
+          continue;
+        }
+      } catch (erro) {
+        if (erro instanceof ErroConexaoExternaInexistente) {
+          itensInexistentes += 1;
+          entrada.log.info(
+            {
+              evento: "SYNC_ITEM_GONE",
+              conexaoId: conexao.id,
+              instituicao: conexao.instituicao,
+            },
+            "[cron] SYNC_ITEM_GONE",
+          );
+          detalhes.push({
+            conexaoId: conexao.id,
+            instituicao: conexao.instituicao,
+            ok: false,
+            erro: "item_inexistente",
+          });
+          continue;
+        }
+        falhas += 1;
+        const mensagem = erro instanceof Error ? erro.message : String(erro);
+        entrada.log.warn(
+          {
+            evento: "SYNC_FAIL",
+            err: erro,
+            conexaoId: conexao.id,
+            instituicao: conexao.instituicao,
+            erro: mensagem,
+          },
+          "[cron] SYNC_FAIL",
+        );
+        detalhes.push({
+          conexaoId: conexao.id,
+          instituicao: conexao.instituicao,
+          ok: false,
+          erro: mensagem,
+        });
+        continue;
+      }
+    }
+
+    if (!esta_stale(conexao.ultimoSyncEm, agora, staleAposMinutos)) {
+      puladasFrescas += 1;
+      entrada.log.info(
+        {
+          evento: "SYNC_SKIP_FRESH",
+          conexaoId: conexao.id,
+          instituicao: conexao.instituicao,
+          ultimoSyncEm: conexao.ultimoSyncEm?.toISOString() ?? null,
+          staleAposMinutos,
+        },
+        "[cron] SYNC_SKIP_FRESH",
+      );
+      continue;
+    }
+
     if (!tentarLock(conexao.id)) {
       puladasLock += 1;
       entrada.log.info(
@@ -293,6 +358,7 @@ function montar_deps_padrao(): DependenciasImportarHistorico | null {
 
   return {
     listar: (limite) => conexao.listar_conexoes_importaveis(limite),
+    verificarItem: (id) => conexao.verificar_item_salvo(id),
     atualizarSaldos: (id) => conexao.atualizar_saldos(id),
     importar: (id, opcoes) => ingestao.importar_historico(id, opcoes),
     enriquecer: enriquecer_apos_ingestao,

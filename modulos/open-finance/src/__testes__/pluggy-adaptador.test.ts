@@ -622,6 +622,13 @@ describe("AdaptadorPluggy", () => {
 
       await expect(adaptador.obter_estado(ITEM)).rejects.toThrow(ErroProvedorIndisponivel);
     });
+
+    it("trata GET 400 not found do item como conexão inexistente", async () => {
+      rede.responder("/items/", { message: "Item not found", code: "ITEM_NOT_FOUND" });
+      rede.falhar("/items/", [400]);
+
+      await expect(adaptador.obter_estado(ITEM)).rejects.toThrow(ErroConexaoExternaInexistente);
+    });
   });
 
   describe("leitura do webhook", () => {
