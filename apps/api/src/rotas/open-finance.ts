@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { ServicoConexaoOpenFinance } from "@lancai/open-finance";
+import type { ResumoIngestao, ServicoConexaoOpenFinance } from "@lancai/open-finance";
 import { cabecalhos_stream_ndjson } from "../cors";
 import {
   schemaAssociarContaExterna,
@@ -39,6 +39,20 @@ async function iniciar_stream_ndjson(requisicao: FastifyRequest, resposta: Fasti
     typeof requisicao.headers.origin === "string" ? requisicao.headers.origin : undefined;
   resposta.hijack();
   resposta.raw.writeHead(200, await cabecalhos_stream_ndjson(origem));
+}
+
+function escritor_ndjson(resposta: FastifyReply) {
+  let encerrado = false;
+  const escrever = (evento: Record<string, unknown>) => {
+    if (encerrado) return;
+    resposta.raw.write(`${JSON.stringify(evento)}\n`);
+  };
+  const encerrar = () => {
+    if (encerrado) return;
+    encerrado = true;
+    resposta.raw.end();
+  };
+  return { escrever, encerrar };
 }
 
 /**
@@ -149,12 +163,10 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     }
 
     await iniciar_stream_ndjson(requisicao, resposta);
-
-    const escrever = (evento: Record<string, unknown>) => {
-      resposta.raw.write(`${JSON.stringify(evento)}\n`);
-    };
+    const { escrever, encerrar } = escritor_ndjson(resposta);
 
     let conexaoIdLock: string | null = null;
+    let resumoIngestao: ResumoIngestao | null = null;
 
     try {
       escrever({
@@ -202,7 +214,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         return;
       }
 
-      const resumo = await ingestao.importar_historico(conexaoIdLock, {
+      resumoIngestao = await ingestao.importar_historico(conexaoIdLock, {
         lookbackDias: 365,
         filtrarCriacao: filtrar_criacao_semantica_of,
         aoProgresso: (progresso) => {
@@ -214,29 +226,23 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         {
           evento: "SYNC_REATTACH_OK",
           conexaoId: conexaoIdLock,
-          criados: resumo.criados,
-          duplicados: resumo.duplicados,
-          puladosSemanticos: resumo.puladosSemanticos,
+          criados: resumoIngestao.criados,
+          duplicados: resumoIngestao.duplicados,
+          puladosSemanticos: resumoIngestao.puladosSemanticos,
         },
         "[open-finance] SYNC_REATTACH_OK",
       );
-
-      await enriquecer_apos_ingestao({
-        eventoId: `reatachar:${conexaoIdLock}:${Date.now()}`,
-        resumo,
-        log: requisicao.log,
-      });
 
       escrever({
         tipo: "fim",
         detalhe: await servico.detalhar(conexaoIdLock),
         resumo: {
-          criados: resumo.criados,
-          duplicados: resumo.duplicados,
-          atualizados: resumo.atualizados,
-          puladosSemanticos: resumo.puladosSemanticos,
-          semDestino: resumo.semDestino,
-          paginas: resumo.paginas,
+          criados: resumoIngestao.criados,
+          duplicados: resumoIngestao.duplicados,
+          atualizados: resumoIngestao.atualizados,
+          puladosSemanticos: resumoIngestao.puladosSemanticos,
+          semDestino: resumoIngestao.semDestino,
+          paginas: resumoIngestao.paginas,
         },
       });
     } catch (erro) {
@@ -249,9 +255,21 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
           : bruto,
       });
     } finally {
-      if (conexaoIdLock) liberar_lock_sync(conexaoIdLock);
-      resposta.raw.end();
+      encerrar();
     }
+
+    if (conexaoIdLock && resumoIngestao) {
+      try {
+        await enriquecer_apos_ingestao({
+          eventoId: `reatachar:${conexaoIdLock}:${Date.now()}`,
+          resumo: resumoIngestao,
+          log: requisicao.log,
+        });
+      } catch (erro) {
+        requisicao.log.error({ err: erro }, "[open-finance] falha ao enriquecer após reconectar");
+      }
+    }
+    if (conexaoIdLock) liberar_lock_sync(conexaoIdLock);
   });
 
   app.get("/conexoes", async (requisicao, resposta) => {
@@ -294,20 +312,18 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
     if ("erro" in acesso) return resposta.status(404).send(acesso);
 
     await iniciar_stream_ndjson(requisicao, resposta);
-
-    const escrever = (evento: Record<string, unknown>) => {
-      resposta.raw.write(`${JSON.stringify(evento)}\n`);
-    };
+    const { escrever, encerrar } = escritor_ndjson(resposta);
 
     if (!tentar_adquirir_lock_sync(id)) {
       escrever({
         tipo: "erro",
         erro: "Já existe uma sincronização em andamento para esta conexão. Aguarde e tente de novo.",
       });
-      resposta.raw.end();
+      encerrar();
       return;
     }
 
+    let resumoIngestao: ResumoIngestao | null = null;
     try {
       escrever({
         tipo: "progresso",
@@ -333,7 +349,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
 
       const ingestao = obter_servico_ingestao();
       if (ingestao) {
-        const resumo = await ingestao.importar_historico(id, {
+        resumoIngestao = await ingestao.importar_historico(id, {
           aoProgresso: (progresso) => {
             escrever({ tipo: "progresso", ...progresso });
           },
@@ -341,26 +357,21 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
         requisicao.log.info(
           {
             conexaoId: id,
-            criados: resumo.criados,
-            duplicados: resumo.duplicados,
-            semDestino: resumo.semDestino,
-            paginas: resumo.paginas,
+            criados: resumoIngestao.criados,
+            duplicados: resumoIngestao.duplicados,
+            semDestino: resumoIngestao.semDestino,
+            paginas: resumoIngestao.paginas,
           },
           "[open-finance] histórico importado",
         );
-        await enriquecer_apos_ingestao({
-          eventoId: `importar-historico:${id}:${Date.now()}`,
-          resumo,
-          log: requisicao.log,
-        });
         escrever({
           tipo: "fim",
           detalhe: await servico.detalhar(id),
           resumo: {
-            criados: resumo.criados,
-            duplicados: resumo.duplicados,
-            semDestino: resumo.semDestino,
-            paginas: resumo.paginas,
+            criados: resumoIngestao.criados,
+            duplicados: resumoIngestao.duplicados,
+            semDestino: resumoIngestao.semDestino,
+            paginas: resumoIngestao.paginas,
           },
         });
       } else {
@@ -380,9 +391,21 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
           : bruto,
       });
     } finally {
-      liberar_lock_sync(id);
-      resposta.raw.end();
+      encerrar();
     }
+
+    if (resumoIngestao) {
+      try {
+        await enriquecer_apos_ingestao({
+          eventoId: `importar-historico:${id}:${Date.now()}`,
+          resumo: resumoIngestao,
+          log: requisicao.log,
+        });
+      } catch (erro) {
+        requisicao.log.error({ err: erro, conexaoId: id }, "[open-finance] falha ao enriquecer após atualizar");
+      }
+    }
+    liberar_lock_sync(id);
   });
 
   /**

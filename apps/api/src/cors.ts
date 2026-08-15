@@ -52,6 +52,7 @@ export async function cabecalhos_stream_ndjson(
   const cabecalhos: Record<string, string> = {
     "Content-Type": "application/x-ndjson; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
   };
   if (origem && (await origem_cors_permitida(origem))) {
     cabecalhos["Access-Control-Allow-Origin"] = origem;

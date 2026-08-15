@@ -298,7 +298,7 @@ function evento_ndjson(texto: string): EventoAtualizarConexao | null {
   }
 }
 
-/** Consome NDJSON e processa a última linha mesmo sem `\n` final. */
+/** Consome NDJSON e para no `fim`/`erro`, sem esperar o socket fechar. */
 async function ler_stream_ndjson(
   corpo: ReadableStream<Uint8Array>,
   aoEvento: (evento: EventoAtualizarConexao) => void,
@@ -306,23 +306,33 @@ async function ler_stream_ndjson(
   const leitor = corpo.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { done, value } = await leitor.read();
-    if (done) {
-      buffer += decoder.decode();
-      for (const linha of buffer.split("\n")) {
-        const evento = evento_ndjson(linha);
-        if (evento) aoEvento(evento);
+
+  const aplicar = (evento: EventoAtualizarConexao): boolean => {
+    aoEvento(evento);
+    return evento.tipo === "fim" || evento.tipo === "erro";
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await leitor.read();
+      if (done) {
+        buffer += decoder.decode();
+        for (const linha of buffer.split("\n")) {
+          const evento = evento_ndjson(linha);
+          if (evento && aplicar(evento)) return;
+        }
+        return;
       }
-      return;
+      buffer += decoder.decode(value, { stream: true });
+      const linhas = buffer.split("\n");
+      buffer = linhas.pop() ?? "";
+      for (const linha of linhas) {
+        const evento = evento_ndjson(linha);
+        if (evento && aplicar(evento)) return;
+      }
     }
-    buffer += decoder.decode(value, { stream: true });
-    const linhas = buffer.split("\n");
-    buffer = linhas.pop() ?? "";
-    for (const linha of linhas) {
-      const evento = evento_ndjson(linha);
-      if (evento) aoEvento(evento);
-    }
+  } finally {
+    await leitor.cancel().catch(() => undefined);
   }
 }
 
