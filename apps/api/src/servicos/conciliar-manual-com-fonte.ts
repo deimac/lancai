@@ -227,7 +227,7 @@ export async function conciliar_manuais_com_fatos_criados(entrada: {
           descricao: manual.descricao,
           categoriaId: manual.categoriaId,
           pessoaId: manual.pessoaId ?? undefined,
-          perfil: manual.perfil,
+          tipoGasto: manual.tipoGasto,
           tags: manual.tags ?? [],
           observacoes: manual.observacoes,
           classificadoPor: manual.classificadoPor,

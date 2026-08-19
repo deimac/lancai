@@ -15,6 +15,8 @@ export type OrigemExtrato =
   | { tipo: "conta"; id: string }
   | { tipo: "cartao"; id: string };
 
+export type TipoGastoExtrato = "todas" | "pessoal" | "empresa";
+
 export const TAMANHOS_PAGINA = [10, 25, 50, 100] as const;
 export const TAMANHO_PAGINA_PADRAO = 10;
 
@@ -25,6 +27,7 @@ export type FiltrosExtrato = {
   categoriaId: string | null;
   classificacao: ClassificacaoExtrato;
   origem: OrigemExtrato;
+  tipoGasto: TipoGastoExtrato;
 };
 
 type OrigemNomeada = { id: string; nome: string };
@@ -61,6 +64,15 @@ export function origem_da_query(valor: string | null): OrigemExtrato {
 export function origem_para_query(origem: OrigemExtrato): string | null {
   if (origem.tipo === "todas") return null;
   return `${origem.tipo}:${origem.id}`;
+}
+
+export function tipo_gasto_da_query(valor: string | null): TipoGastoExtrato {
+  if (valor === "pessoal" || valor === "empresa") return valor;
+  return "todas";
+}
+
+export function tipo_gasto_para_query(tipo: TipoGastoExtrato): string | null {
+  return tipo === "todas" ? null : tipo;
 }
 
 export function tamanho_pagina_da_query(valor: string | null): number {
@@ -119,6 +131,9 @@ export function filtrar_extrato(
     ) {
       return false;
     }
+
+    if (filtros.tipoGasto === "pessoal" && movimento.tipoGasto !== "pf") return false;
+    if (filtros.tipoGasto === "empresa" && movimento.tipoGasto !== "pj") return false;
 
     if (termo) {
       const origem = nome_origem_movimento(movimento, contas, cartoes);

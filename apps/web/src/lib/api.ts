@@ -419,7 +419,7 @@ export interface MovimentoResumo {
   /** ISO — quando a origem da classificação mudou pela última vez. */
   classificadoEm: string | null;
   confiancaIa: number | null;
-  perfil: Perfil | null;
+  tipoGasto: Perfil | null;
 }
 
 class ErroApi extends Error {
@@ -764,7 +764,7 @@ export const clienteApi = {
     usuarioId: string;
     movimentoId: string;
     categoriaId?: string;
-    perfil?: Perfil;
+    tipoGasto?: Perfil;
     ignoradoEmRelatorio?: boolean;
   }): Promise<{
     id: string;
@@ -775,7 +775,7 @@ export const clienteApi = {
     regraId: string | null;
     classificadoEm: string | null;
     confiancaIa: number | null;
-    perfil: Perfil | null;
+    tipoGasto: Perfil | null;
     ignoradoEmRelatorio: boolean;
   }> {
     return requisitar("/conhecimento", {

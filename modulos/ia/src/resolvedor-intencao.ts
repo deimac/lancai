@@ -116,7 +116,7 @@ export class ResolvedorIntencao {
       valor: intencao.valor,
       tipo: intencao.tipo_movimento,
       status: "realizado",
-      perfil: intencao.perfil,
+      tipoGasto: intencao.perfil,
       formaPagamento:
         intencao.forma_pagamento ??
         (intencao.cartao_nome ? "credito" : intencao.conta_nome ? "pix" : null),
@@ -182,7 +182,7 @@ export class ResolvedorIntencao {
     if (camposAlterados.valor != null) campos.valor = camposAlterados.valor;
     if (camposAlterados.descricao) campos.descricao = camposAlterados.descricao;
     if (camposAlterados.data_movimento) campos.dataMovimento = camposAlterados.data_movimento;
-    if (camposAlterados.perfil) campos.perfil = camposAlterados.perfil;
+    if (camposAlterados.perfil) campos.tipoGasto = camposAlterados.perfil;
     if (camposAlterados.parcelas != null) campos.parcelas = camposAlterados.parcelas;
     if (camposAlterados.status) campos.status = camposAlterados.status;
     if (camposAlterados.forma_pagamento !== undefined) {

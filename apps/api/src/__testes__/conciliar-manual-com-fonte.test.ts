@@ -19,7 +19,7 @@ function mov(parcial: Partial<Movimento> & { id: string; descricao: string }): M
     valor: "45.00",
     tipo: "despesa",
     status: "realizado",
-    perfil: "pf",
+    tipoGasto: "pf",
     formaPagamento: "pix",
     dataMovimento: "2026-08-01",
     contaId: "conta-1",

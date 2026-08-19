@@ -351,7 +351,7 @@ describe("ServicoConexaoOpenFinance", () => {
           valor: 45,
           tipo: "despesa",
           status: "realizado",
-          perfil: "pf",
+          tipoGasto: "pf",
           dataMovimento: "2026-08-01",
           contaId: contaId!,
           categoriaId: categoria.id,

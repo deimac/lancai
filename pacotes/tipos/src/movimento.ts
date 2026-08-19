@@ -55,7 +55,7 @@ export const schemaCriarMovimento = z
     valor: z.number().positive(),
     tipo: tipoMovimentoSchema,
     status: statusMovimentoSchema.default("realizado"),
-    perfil: perfilSchema,
+    tipoGasto: perfilSchema,
     /**
      * Meio de pagamento. Em conta, omitido vira `pix` no motor.
      * Em cartão, omitido vira `credito` (ou `debito` se explícito).
@@ -125,7 +125,7 @@ export const schemaConhecimentoMovimento = z.object({
   descricao: z.string().min(1).optional(),
   categoriaId: z.string().uuid().optional(),
   pessoaId: z.string().uuid().optional(),
-  perfil: perfilSchema.optional(),
+  tipoGasto: perfilSchema.optional(),
   tags: z.array(z.string().min(1)).optional(),
   observacoes: z.string().nullable().optional(),
   classificadoPor: classificadoPorSchema.optional(),

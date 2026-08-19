@@ -7,6 +7,8 @@ import {
   origem_para_query,
   paginar,
   tamanho_pagina_da_query,
+  tipo_gasto_da_query,
+  tipo_gasto_para_query,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
@@ -35,7 +37,7 @@ function movimento(parcial: Partial<MovimentoResumo> & Pick<MovimentoResumo, "id
     regraTrecho: null,
     classificadoEm: null,
     confiancaIa: null,
-    perfil: "pf",
+    tipoGasto: "pf",
     ...parcial,
   };
 }
@@ -53,6 +55,7 @@ const base: FiltrosExtrato = {
   categoriaId: null,
   classificacao: "todas",
   origem: { tipo: "todas" },
+  tipoGasto: "todas",
 };
 
 const lote: MovimentoResumo[] = [
@@ -159,6 +162,19 @@ describe("filtrar_extrato", () => {
     const ids = filtrar_extrato(lote, contas, cartoes, { ...base, fila: "revisar" }).map((m) => m.id);
     expect(ids).toEqual(["4"]);
   });
+
+  it("filtra tipo de gasto pessoal vs empresa", () => {
+    const misto = [
+      movimento({ id: "p", tipoGasto: "pf" }),
+      movimento({ id: "e", tipoGasto: "pj", contaId: "conta-mp" }),
+    ];
+    expect(
+      filtrar_extrato(misto, contas, cartoes, { ...base, tipoGasto: "pessoal" }).map((m) => m.id),
+    ).toEqual(["p"]);
+    expect(
+      filtrar_extrato(misto, contas, cartoes, { ...base, tipoGasto: "empresa" }).map((m) => m.id),
+    ).toEqual(["e"]);
+  });
 });
 
 describe("paginar", () => {
@@ -199,5 +215,13 @@ describe("parsers da URL", () => {
     expect(tamanho_pagina_da_query(null)).toBe(10);
     expect(tamanho_pagina_da_query("25")).toBe(25);
     expect(tamanho_pagina_da_query("7")).toBe(10);
+  });
+
+  it("lê tipo de gasto pessoal/empresa", () => {
+    expect(tipo_gasto_da_query("pessoal")).toBe("pessoal");
+    expect(tipo_gasto_da_query("empresa")).toBe("empresa");
+    expect(tipo_gasto_da_query("pf")).toBe("todas");
+    expect(tipo_gasto_para_query("pessoal")).toBe("pessoal");
+    expect(tipo_gasto_para_query("todas")).toBeNull();
   });
 });

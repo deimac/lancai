@@ -50,7 +50,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     valor: "185.00",
     tipo: "despesa",
     status: "realizado",
-    perfil: "pf",
+    tipoGasto: "pf",
     formaPagamento: null,
     dataMovimento: "2026-07-31",
     dataLancamento: agora,

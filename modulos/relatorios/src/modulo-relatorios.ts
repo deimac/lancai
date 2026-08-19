@@ -304,13 +304,13 @@ export class ModuloRelatorios {
         : movimento.cartaoId
           ? mapaCartoes.get(movimento.cartaoId)
           : undefined;
-      if (!perfilOrigem || !eh_fluxo_cruzado(movimento.perfil, perfilOrigem)) continue;
+      if (!perfilOrigem || !eh_fluxo_cruzado(movimento.tipoGasto, perfilOrigem)) continue;
 
       itens.push({
         descricao: movimento.descricao,
         valor: paraNumero(movimento.valor),
         data: movimento.dataMovimento,
-        direcao: movimento.perfil === "pf" ? "pessoal_com_empresa" : "empresa_com_pessoal",
+        direcao: movimento.tipoGasto === "pf" ? "pessoal_com_empresa" : "empresa_com_pessoal",
       });
     }
 
@@ -418,7 +418,7 @@ export class ModuloRelatorios {
         descricao: movimento.descricao,
         tipo: movimento.tipo,
         valor,
-        perfil: movimento.perfil,
+        perfil: movimento.tipoGasto,
         contaNome: movimento.contaId ? (mapaContas.get(movimento.contaId) ?? null) : null,
         cartaoNome: movimento.cartaoId ? (mapaCartoes.get(movimento.cartaoId) ?? null) : null,
         categoriaNome: mapaCategorias.get(movimento.categoriaId) ?? null,

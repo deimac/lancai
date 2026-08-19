@@ -176,7 +176,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         regraTrecho: regra.nome ?? regra.condicaoValor,
         classificadoEm: movimento.classificadoEm,
         confiancaIa: movimento.confiancaIa,
-        perfil: movimento.perfil,
+        tipoGasto: movimento.tipoGasto,
       })
       .from(movimento)
       .innerJoin(categoria, eq(movimento.categoriaId, categoria.id))

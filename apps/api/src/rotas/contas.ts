@@ -157,7 +157,7 @@ export async function registrar_rotas_conta(app: FastifyInstance) {
     if (dados.perfil != null && dados.perfil !== existente.perfil) {
       await banco
         .update(movimento)
-        .set({ perfil: dados.perfil, dataAtualizacao: new Date() })
+        .set({ tipoGasto: dados.perfil, dataAtualizacao: new Date() })
         .where(and(eq(movimento.contaId, id), eq(movimento.fonte, "open_finance")));
     }
 

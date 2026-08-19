@@ -53,7 +53,7 @@ export type ResultadoCriarRegraDeCorrecao =
   | { criada: false; motivo: "sem_trecho" | "ja_existe"; proposta?: PropostaRegra; regra?: Regra };
 
 /**
- * Enriquecimento do Lançai sobre uma movimentação: categoria, pessoa, perfil,
+ * Enriquecimento do Lançai sobre uma movimentação: categoria, pessoa, tipo de gasto,
  * tags, observações e visibilidade em relatório.
  */
 export class ServicoConhecimento {
@@ -71,7 +71,7 @@ export class ServicoConhecimento {
     const campos: Partial<NovoMovimento> = {};
 
     if (dados.descricao !== undefined) campos.descricao = dados.descricao;
-    if (dados.perfil !== undefined) campos.perfil = dados.perfil;
+    if (dados.tipoGasto !== undefined) campos.tipoGasto = dados.tipoGasto;
     if (dados.tags !== undefined) campos.tags = dados.tags;
     if (dados.observacoes !== undefined) campos.observacoes = dados.observacoes;
     if (dados.ignoradoEmRelatorio !== undefined) {
@@ -454,7 +454,7 @@ export class ServicoConhecimento {
           conhecimento.ignoradoEmRelatorio = true;
           break;
         case "definir_perfil":
-          conhecimento.perfil = acao.perfil;
+          conhecimento.tipoGasto = acao.perfil;
           break;
       }
     }
@@ -493,7 +493,7 @@ function conhecimento_ja_aplicado(
   if (conhecimento.pessoaId !== undefined && movimento.pessoaId !== conhecimento.pessoaId) {
     return false;
   }
-  if (conhecimento.perfil !== undefined && movimento.perfil !== conhecimento.perfil) {
+  if (conhecimento.tipoGasto !== undefined && movimento.tipoGasto !== conhecimento.tipoGasto) {
     return false;
   }
   if (conhecimento.ignoradoEmRelatorio === true && !movimento.ignoradoEmRelatorio) {

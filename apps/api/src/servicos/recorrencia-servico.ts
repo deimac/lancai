@@ -131,7 +131,7 @@ export async function gerar_recorrencias_do_dia(
       valor: Number(item.valor),
       tipo: item.tipo === "receita" ? "receita" : "despesa",
       status: "realizado",
-      perfil: "pf",
+      tipoGasto: "pf",
       dataMovimento: data_no_mes(mesChave, item.diaDoMes),
       contaId: item.contaId ?? undefined,
       cartaoId: item.cartaoId ?? undefined,

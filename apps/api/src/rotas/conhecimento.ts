@@ -15,12 +15,12 @@ const schemaAtualizar = z.object({
   usuarioId: z.string().uuid(),
   movimentoId: z.string().uuid(),
   categoriaId: z.string().uuid().optional(),
-  perfil: perfilSchema.optional(),
+  tipoGasto: perfilSchema.optional(),
   ignoradoEmRelatorio: z.boolean().optional(),
 }).refine(
   (dados) =>
     dados.categoriaId !== undefined ||
-    dados.perfil !== undefined ||
+    dados.tipoGasto !== undefined ||
     dados.ignoradoEmRelatorio !== undefined,
   { message: "Informe ao menos um campo de conhecimento." },
 );
@@ -43,13 +43,13 @@ export async function registrar_rotas_conhecimento(app: FastifyInstance) {
         alteradoPor: dados.usuarioId,
         conhecimento: {
           ...(dados.categoriaId !== undefined ? { categoriaId: dados.categoriaId } : {}),
-          ...(dados.perfil !== undefined ? { perfil: dados.perfil } : {}),
+          ...(dados.tipoGasto !== undefined ? { tipoGasto: dados.tipoGasto } : {}),
           ...(dados.ignoradoEmRelatorio !== undefined
             ? { ignoradoEmRelatorio: dados.ignoradoEmRelatorio }
             : {}),
           /**
            * Só marca como classificação manual quando a categoria muda.
-           * Esconder do relatório ou só mexer no perfil não pode apagar
+           * Esconder do relatório ou só mexer no tipo de gasto não pode apagar
            * “classificado pela regra IFOOD”.
            */
           ...(dados.categoriaId !== undefined
@@ -70,7 +70,7 @@ export async function registrar_rotas_conhecimento(app: FastifyInstance) {
           ? atualizado.classificadoEm.toISOString()
           : null,
         confiancaIa: atualizado.confiancaIa === null ? null : Number(atualizado.confiancaIa),
-        perfil: atualizado.perfil,
+        tipoGasto: atualizado.tipoGasto,
         ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
       };
     } catch (erro) {

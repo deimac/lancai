@@ -48,8 +48,8 @@ export type ResultadoCriarMovimento = ResultadoOperacaoPersistencia;
 
 /**
  * O que a ingestão precisa saber e que o evento não carrega, porque não é Fato.
- * Categoria inicial vem daqui; o perfil do movimento segue o da conta/cartão
- * destino (com `perfilPadrao` só como fallback).
+ * Categoria inicial vem daqui; o tipo de gasto do movimento segue o perfil da
+ * conta/cartão destino (com `perfilPadrao` só como fallback).
  */
 export interface ContextoIngestao {
   usuarioId: string;
@@ -401,7 +401,7 @@ export class MotorFinanceiro {
 
       const fingerprint = await this.gerar_fingerprint(evento);
 
-      const perfil = await this.perfil_destino_ingestao(
+      const tipoGasto = await this.perfil_destino_ingestao(
         { contaId: evento.contaId, cartaoId: evento.cartaoId },
         contexto.perfilPadrao,
         perfilPorConta,
@@ -424,7 +424,7 @@ export class MotorFinanceiro {
         tipo: evento.tipo,
         status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
         ...parcelamento_em_colunas(evento.parcelamento),
-        perfil,
+        tipoGasto,
         dataMovimento: evento.ocorridoEm,
         contaId: evento.contaId,
         cartaoId: evento.cartaoId,
@@ -490,7 +490,7 @@ export class MotorFinanceiro {
    * Fato de `open_finance` sem passar por ela é escrever no banco à mão — o que o
    * trigger recusa.
    *
-   * O Conhecimento não é tocado. Categoria, pessoa, tags, observações, perfil,
+   * O Conhecimento não é tocado. Categoria, pessoa, tags, observações, tipo de gasto,
    * `ignorado_em_relatorio` e a `descricao` que o usuário vê seguem intactos: o
    * banco corrigiu o extrato dele, não a opinião do usuário sobre ele.
    */
@@ -793,7 +793,7 @@ export class MotorFinanceiro {
       valor: paraColuna(entrada.valor),
       tipo: entrada.tipo,
       status: entrada.status,
-      perfil: entrada.perfil,
+      tipoGasto: entrada.tipoGasto,
       formaPagamento: entrada.formaPagamento ?? "pix",
       dataMovimento: entrada.dataMovimento,
       contaId: conta.id,
@@ -816,7 +816,7 @@ export class MotorFinanceiro {
       registroId: movimentoId,
       acao: "INSERCAO",
       estadoAnterior: null,
-      estadoAtual: { ...novoMovimento, fluxoCruzado: eh_fluxo_cruzado(entrada.perfil, conta.perfil) },
+      estadoAtual: { ...novoMovimento, fluxoCruzado: eh_fluxo_cruzado(entrada.tipoGasto, conta.perfil) },
       alteradoPor: entrada.criadoPor,
     };
 
@@ -868,7 +868,7 @@ export class MotorFinanceiro {
       valor: paraColuna(entrada.valor),
       tipo: "transferencia",
       status: entrada.status,
-      perfil: entrada.perfil,
+      tipoGasto: entrada.tipoGasto,
       formaPagamento: formaTransferencia,
       dataMovimento: entrada.dataMovimento,
       contaId: contaOrigem.id,
@@ -888,7 +888,7 @@ export class MotorFinanceiro {
       valor: paraColuna(entrada.valor),
       tipo: "transferencia",
       status: entrada.status,
-      perfil: entrada.perfil,
+      tipoGasto: entrada.tipoGasto,
       formaPagamento: formaTransferencia,
       dataMovimento: entrada.dataMovimento,
       contaId: contaDestino.id,
@@ -988,7 +988,7 @@ export class MotorFinanceiro {
       valor: paraColuna(entrada.valor),
       tipo: entrada.tipo,
       status: entrada.status,
-      perfil: entrada.perfil,
+      tipoGasto: entrada.tipoGasto,
       formaPagamento: "credito",
       dataMovimento: entrada.dataMovimento,
       cartaoId: cartao.id,
@@ -1024,7 +1024,7 @@ export class MotorFinanceiro {
       estadoAtual: {
         ...novoMovimento,
         parcelas: novasParcelas,
-        fluxoCruzado: eh_fluxo_cruzado(entrada.perfil, cartao.perfil),
+        fluxoCruzado: eh_fluxo_cruzado(entrada.tipoGasto, cartao.perfil),
       },
       alteradoPor: entrada.criadoPor,
     };
@@ -1089,7 +1089,7 @@ export class MotorFinanceiro {
       valor: paraColuna(entrada.valor),
       tipo: entrada.tipo,
       status: entrada.status,
-      perfil: entrada.perfil,
+      tipoGasto: entrada.tipoGasto,
       formaPagamento: "debito",
       dataMovimento: entrada.dataMovimento,
       cartaoId: cartao.id,
@@ -1115,7 +1115,7 @@ export class MotorFinanceiro {
       estadoAnterior: null,
       estadoAtual: {
         ...novoMovimento,
-        fluxoCruzado: eh_fluxo_cruzado(entrada.perfil, cartao.perfil),
+        fluxoCruzado: eh_fluxo_cruzado(entrada.tipoGasto, cartao.perfil),
       },
       alteradoPor: entrada.criadoPor,
     };

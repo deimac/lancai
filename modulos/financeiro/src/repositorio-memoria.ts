@@ -123,7 +123,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         valor: String(novoMovimento.valor),
         tipo: novoMovimento.tipo,
         status: novoMovimento.status ?? "realizado",
-        perfil: novoMovimento.perfil,
+        tipoGasto: novoMovimento.tipoGasto,
         formaPagamento: novoMovimento.formaPagamento ?? null,
         dataMovimento: novoMovimento.dataMovimento,
         dataLancamento: novoMovimento.dataLancamento ?? agora,

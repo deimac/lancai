@@ -97,7 +97,7 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     valor: "100.00",
     tipo: "despesa",
     status: "realizado",
-    perfil: "pf",
+    tipoGasto: "pf",
     formaPagamento: null,
     dataMovimento: DATA_ATUAL,
     dataLancamento: agora,
@@ -414,7 +414,7 @@ describe("ModuloRelatorios", () => {
         randomUUID(),
         criarMovimento(usuarioId, categoria.id, {
           descricao: "Churrasco do Marcio",
-          perfil: "pf",
+          tipoGasto: "pf",
           contaId: contaEmpresa.id,
           valor: "100.00",
           dataMovimento: "2026-08-10",
@@ -439,7 +439,7 @@ describe("ModuloRelatorios", () => {
         randomUUID(),
         criarMovimento(usuarioId, categoria.id, {
           descricao: "Passagem para viagem de negócios",
-          perfil: "pj",
+          tipoGasto: "pj",
           cartaoId: cartaoPf.id,
           valor: "2300.00",
           dataMovimento: "2026-08-10",
@@ -449,7 +449,7 @@ describe("ModuloRelatorios", () => {
         randomUUID(),
         criarMovimento(usuarioId, categoria.id, {
           descricao: "Combustível pessoal normal",
-          perfil: "pf",
+          tipoGasto: "pf",
           contaId: contaPf.id,
           valor: "180.00",
           dataMovimento: "2026-08-11",

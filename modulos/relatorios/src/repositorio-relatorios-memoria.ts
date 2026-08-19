@@ -41,7 +41,7 @@ export class RepositorioRelatoriosMemoria implements RepositorioRelatorios {
       if (movimento.usuarioId !== usuarioId) return false;
       if (movimento.ignoradoEmRelatorio) return false;
       if (statusExcluir.includes(movimento.status)) return false;
-      if (filtro.perfil && movimento.perfil !== filtro.perfil) return false;
+      if (filtro.perfil && movimento.tipoGasto !== filtro.perfil) return false;
       if (filtro.contaId && movimento.contaId !== filtro.contaId) return false;
       if (filtro.cartaoId && movimento.cartaoId !== filtro.cartaoId) return false;
       if (filtro.categoriaId && movimento.categoriaId !== filtro.categoriaId) return false;

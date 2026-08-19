@@ -1,8 +1,8 @@
 import type { Perfil } from "@lancai/tipos";
 
 /**
- * Um movimento é "fluxo cruzado" quando o perfil do próprio lançamento
- * (o gasto/ganho em si) é diferente do perfil da conta/cartão usado para
+ * Um movimento é "fluxo cruzado" quando o tipo de gasto do lançamento
+ * (pessoal vs empresa) é diferente do perfil da conta/cartão usado para
  * pagá-lo — ex.: gasto pessoal pago com conta da empresa, ou gasto da
  * empresa pago com cartão pessoal.
  *

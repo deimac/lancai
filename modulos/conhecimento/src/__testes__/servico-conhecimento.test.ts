@@ -187,7 +187,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     valor: "185.00",
     tipo: "despesa",
     status: "realizado",
-    perfil: "pf",
+    tipoGasto: "pf",
     formaPagamento: null,
     dataMovimento: "2026-08-01",
     dataLancamento: agora,
@@ -274,6 +274,21 @@ describe("ServicoConhecimento", () => {
     expect(depois.contaId).toBe(movimento.contaId);
     expect(depois.fonte).toBe("open_finance");
     expect(depois.idExterno).toBe("tx-1");
+  });
+
+  it("altera o tipo de gasto sem tocar na conta", async () => {
+    const movimento = criarMovimento({ tipoGasto: "pj", contaId: randomUUID() });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const atualizado = await servico.atualizar({
+      movimentoId: movimento.id,
+      alteradoPor: usuarioId,
+      conhecimento: { tipoGasto: "pf" },
+    });
+
+    expect(atualizado.tipoGasto).toBe("pf");
+    expect(atualizado.contaId).toBe(movimento.contaId);
+    expect(repositorio.movimentos.get(movimento.id)?.tipoGasto).toBe("pf");
   });
 
   it("esconde do relatório sem apagar o Fato", async () => {

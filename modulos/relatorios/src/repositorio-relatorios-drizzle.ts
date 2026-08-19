@@ -82,7 +82,7 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
       eq(movimentoTabela.ignoradoEmRelatorio, false),
     ];
     condicoes.push(notInArray(movimentoTabela.status, filtro.statusExcluir ?? ["cancelado"]));
-    if (filtro.perfil) condicoes.push(eq(movimentoTabela.perfil, filtro.perfil));
+    if (filtro.perfil) condicoes.push(eq(movimentoTabela.tipoGasto, filtro.perfil));
     if (filtro.contaId) condicoes.push(eq(movimentoTabela.contaId, filtro.contaId));
     if (filtro.cartaoId) condicoes.push(eq(movimentoTabela.cartaoId, filtro.cartaoId));
     if (filtro.categoriaId) condicoes.push(eq(movimentoTabela.categoriaId, filtro.categoriaId));

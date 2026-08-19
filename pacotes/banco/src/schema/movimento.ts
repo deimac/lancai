@@ -101,8 +101,11 @@ export const movimento = pgTable(
       .notNull()
       .references(() => categoria.id),
     pessoaId: uuid("pessoa_id").references(() => pessoa.id),
-    /** Define se o gasto/ganho em si é pessoal ('pf') ou empresarial ('pj'). */
-    perfil: perfilEnum("perfil").notNull(),
+    /**
+     * Pessoal (`pf`) ou empresa (`pj`) — independente do perfil da conta/cartão.
+     * Conta PJ com gasto pessoal (Mercado Pago + churrasco) é `pf` aqui.
+     */
+    tipoGasto: perfilEnum("tipo_gasto").notNull(),
     tags: text("tags").array().notNull().default([]),
     observacoes: text("observacoes"),
     /** Impede que uma regra sobrescreva o que a pessoa classificou à mão. */

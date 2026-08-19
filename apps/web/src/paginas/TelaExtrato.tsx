@@ -12,6 +12,7 @@ import {
   type ContaResumo,
   type MovimentoResumo,
 } from "../lib/api";
+import type { Perfil } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -33,10 +34,13 @@ import {
   origem_para_query,
   paginar,
   tamanho_pagina_da_query,
+  tipo_gasto_da_query,
+  tipo_gasto_para_query,
   TAMANHO_PAGINA_PADRAO,
   type ClassificacaoExtrato,
   type FilaExtrato,
   type OrigemExtrato,
+  type TipoGastoExtrato,
 } from "../lib/filtrar-extrato";
 import { unir_classes } from "../lib/unir-classes";
 
@@ -100,6 +104,26 @@ function cor_valor(tipo: string, status: MovimentoResumo["status"]): string {
 const CLASSE_SELECT =
   "rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria disabled:opacity-60";
 
+function perfil_origem_movimento(
+  movimento: Pick<MovimentoResumo, "contaId" | "cartaoId">,
+  contas: ContaResumo[],
+  cartoes: CartaoResumo[],
+): Perfil | null {
+  if (movimento.contaId) {
+    return contas.find((c) => c.id === movimento.contaId)?.perfil ?? null;
+  }
+  if (movimento.cartaoId) {
+    return cartoes.find((c) => c.id === movimento.cartaoId)?.perfil ?? null;
+  }
+  return null;
+}
+
+function rotulo_tipo_gasto(tipo: Perfil | null | undefined): string {
+  if (tipo === "pj") return "Empresa";
+  if (tipo === "pf") return "Pessoal";
+  return "";
+}
+
 export function TelaExtrato() {
   const { usuario } = useAutenticacao();
   const toast = useToast();
@@ -111,6 +135,7 @@ export function TelaExtrato() {
   const categoriaId = searchParams.get("categoria");
   const classificacao = classificacao_da_query(searchParams.get("classificacao"));
   const origem = origem_da_query(searchParams.get("origem"));
+  const tipoGasto = tipo_gasto_da_query(searchParams.get("tipoGasto"));
   const porPagina = tamanho_pagina_da_query(searchParams.get("porPagina"));
   const [pagina, setPagina] = useState(1);
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
@@ -176,6 +201,7 @@ export function TelaExtrato() {
     categoriaId?: string | null;
     classificacao?: ClassificacaoExtrato;
     origem?: OrigemExtrato;
+    tipoGasto?: TipoGastoExtrato;
     porPagina?: number;
   }) {
     const proximoFiltro = entrada.filtro ?? filtro;
@@ -185,6 +211,7 @@ export function TelaExtrato() {
       entrada.categoriaId === undefined ? categoriaId : entrada.categoriaId;
     const proximaClassificacao = entrada.classificacao ?? classificacao;
     const proximaOrigem = entrada.origem ?? origem;
+    const proximoTipoGasto = entrada.tipoGasto ?? tipoGasto;
     const proximoPorPagina = entrada.porPagina ?? porPagina;
     const params = new URLSearchParams();
     if (proximoFiltro !== "todas") params.set("fila", proximoFiltro);
@@ -194,6 +221,8 @@ export function TelaExtrato() {
     if (proximaClassificacao !== "todas") params.set("classificacao", proximaClassificacao);
     const origemQuery = origem_para_query(proximaOrigem);
     if (origemQuery) params.set("origem", origemQuery);
+    const tipoGastoQuery = tipo_gasto_para_query(proximoTipoGasto);
+    if (tipoGastoQuery) params.set("tipoGasto", tipoGastoQuery);
     if (proximoPorPagina !== TAMANHO_PAGINA_PADRAO) {
       params.set("porPagina", String(proximoPorPagina));
     }
@@ -251,8 +280,9 @@ export function TelaExtrato() {
         categoriaId,
         classificacao,
         origem,
+        tipoGasto,
       }),
-    [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem],
+    [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem, tipoGasto],
   );
 
   const paginaAtual = useMemo(
@@ -264,7 +294,8 @@ export function TelaExtrato() {
     busca.trim() !== "" ||
     Boolean(categoriaId) ||
     classificacao !== "todas" ||
-    origem.tipo !== "todas";
+    origem.tipo !== "todas" ||
+    tipoGasto !== "todas";
 
   async function classificar(movimentoId: string, categoriaId: string) {
     if (!usuario || !categoriaId) return;
@@ -288,7 +319,7 @@ export function TelaExtrato() {
                 regraTrecho: null,
                 classificadoEm: atualizado.classificadoEm,
                 confiancaIa: atualizado.confiancaIa,
-                perfil: atualizado.perfil,
+                tipoGasto: atualizado.tipoGasto,
               }
             : item,
         ),
@@ -297,6 +328,29 @@ export function TelaExtrato() {
       toast.sucesso("Movimento classificado.");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível classificar.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  async function alterar_tipo_gasto(movimentoId: string, proximo: Perfil) {
+    if (!usuario) return;
+    setSalvandoId(movimentoId);
+    setErro(null);
+    try {
+      const atualizado = await clienteApi.atualizar_conhecimento({
+        usuarioId: usuario.id,
+        movimentoId,
+        tipoGasto: proximo,
+      });
+      setMovimentos((atual) =>
+        atual.map((item) =>
+          item.id === movimentoId ? { ...item, tipoGasto: atualizado.tipoGasto } : item,
+        ),
+      );
+      contexto?.invalidar("extrato", "dashboard");
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível atualizar o tipo de gasto.");
     } finally {
       setSalvandoId(null);
     }
@@ -355,7 +409,7 @@ export function TelaExtrato() {
             className="pl-9"
           />
         </label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
             Origens
             <select
@@ -415,6 +469,20 @@ export function TelaExtrato() {
               <option value="regra">Regra</option>
               <option value="ia">IA</option>
               <option value="sem_classificar">Sem classificar</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Tipo de gasto
+            <select
+              value={tipoGasto === "todas" ? "" : tipoGasto}
+              onChange={(e) =>
+                sincronizar_params({ tipoGasto: tipo_gasto_da_query(e.target.value || null) })
+              }
+              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
+            >
+              <option value="">Todos</option>
+              <option value="pessoal">Pessoal</option>
+              <option value="empresa">Empresa</option>
             </select>
           </label>
         </div>
@@ -525,8 +593,8 @@ export function TelaExtrato() {
                       <p className="mt-1 text-xs text-texto-suave">
                         {formatar_data(movimento.dataMovimento)} ·{" "}
                         {nome_origem_movimento(movimento, contas, cartoes)}
-                        {movimento.perfil
-                          ? ` · ${movimento.perfil === "pj" ? "Jurídica" : "Física"}`
+                        {rotulo_tipo_gasto(movimento.tipoGasto)
+                          ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
                           : ""}
                       </p>
                       {!eh_nao_classificado(movimento.categoriaNome) && (
@@ -605,7 +673,7 @@ export function TelaExtrato() {
                     )}
 
                   {movimento.status !== "cancelado" && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-3 flex flex-wrap items-end gap-3">
                       <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
                         Categoria
                         <select
@@ -632,8 +700,43 @@ export function TelaExtrato() {
                           ))}
                         </select>
                       </label>
+                      {(() => {
+                        const origemPerfil = perfil_origem_movimento(
+                          movimento,
+                          contas,
+                          cartoes,
+                        );
+                        if (!origemPerfil) return null;
+                        const cruzado =
+                          origemPerfil === "pj"
+                            ? movimento.tipoGasto === "pf"
+                            : movimento.tipoGasto === "pj";
+                        return (
+                          <label className="flex items-center gap-2 pb-2 text-sm text-texto">
+                            <input
+                              type="checkbox"
+                              className="size-4 rounded border-borda"
+                              checked={cruzado}
+                              disabled={salvandoId === movimento.id}
+                              onChange={() => {
+                                const proximo: Perfil = cruzado
+                                  ? origemPerfil
+                                  : origemPerfil === "pj"
+                                    ? "pf"
+                                    : "pj";
+                                void alterar_tipo_gasto(movimento.id, proximo);
+                              }}
+                            />
+                            <span className="normal-case">
+                              {origemPerfil === "pj"
+                                ? "Gasto pessoal?"
+                                : "É um gasto da empresa?"}
+                            </span>
+                          </label>
+                        );
+                      })()}
                       {salvandoId === movimento.id && (
-                        <span className="text-xs text-texto-suave">Salvando...</span>
+                        <span className="pb-2 text-xs text-texto-suave">Salvando...</span>
                       )}
                     </div>
                   )}
