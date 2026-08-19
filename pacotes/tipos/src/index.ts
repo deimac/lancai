@@ -7,3 +7,4 @@ export * from "./intencoes";
 export * from "./relatorio";
 export * from "./regra";
 export * from "./confianca";
+export * from "./pagamento-fatura";

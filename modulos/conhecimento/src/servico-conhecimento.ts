@@ -1,4 +1,4 @@
-import { CATEGORIA_NAO_CLASSIFICADO } from "@lancai/banco";
+import { CATEGORIA_NAO_CLASSIFICADO, CATEGORIA_PAGAMENTO_FATURA } from "@lancai/banco";
 import {
   schemaAtualizarConhecimento,
   schemaAtualizarRegra,
@@ -74,11 +74,14 @@ export class ServicoConhecimento {
     if (dados.tipoGasto !== undefined) campos.tipoGasto = dados.tipoGasto;
     if (dados.tags !== undefined) campos.tags = dados.tags;
     if (dados.observacoes !== undefined) campos.observacoes = dados.observacoes;
-    if (dados.ignoradoEmRelatorio !== undefined) {
-      campos.ignoradoEmRelatorio = dados.ignoradoEmRelatorio;
-    }
     if (dados.confiancaIa !== undefined) {
       campos.confiancaIa = dados.confiancaIa === null ? null : dados.confiancaIa.toFixed(3);
+    }
+
+    if (dados.pessoaId !== undefined) {
+      const pessoa = await this.repositorio.obterPessoa(dados.pessoaId);
+      if (!pessoa) throw new ErroConhecimentoInvalido(`Pessoa ${dados.pessoaId} não existe.`);
+      campos.pessoaId = dados.pessoaId;
     }
 
     if (dados.categoriaId !== undefined) {
@@ -86,15 +89,16 @@ export class ServicoConhecimento {
       if (!categoria) throw new ErroConhecimentoInvalido(`Categoria ${dados.categoriaId} não existe.`);
       campos.categoriaId = dados.categoriaId;
     }
-    if (dados.pessoaId !== undefined) {
-      const pessoa = await this.repositorio.obterPessoa(dados.pessoaId);
-      if (!pessoa) throw new ErroConhecimentoInvalido(`Pessoa ${dados.pessoaId} não existe.`);
-      campos.pessoaId = dados.pessoaId;
+
+    await this.aplicar_papel(movimentoAtual, dados, campos);
+
+    if (dados.ignoradoEmRelatorio !== undefined && dados.papel === undefined) {
+      campos.ignoradoEmRelatorio = dados.ignoradoEmRelatorio;
     }
 
     if (dados.classificadoPor !== undefined) {
       campos.classificadoPor = dados.classificadoPor;
-    } else if (dados.categoriaId !== undefined) {
+    } else if (dados.categoriaId !== undefined || dados.papel !== undefined) {
       campos.classificadoPor = "usuario";
     }
 
@@ -108,7 +112,8 @@ export class ServicoConhecimento {
       dados.classificadoPor !== undefined ||
       dados.categoriaId !== undefined ||
       dados.regraId !== undefined ||
-      dados.confiancaIa !== undefined;
+      dados.confiancaIa !== undefined ||
+      dados.papel !== undefined;
     if (classificacaoMudou) {
       campos.classificadoEm = new Date();
     }
@@ -199,7 +204,9 @@ export class ServicoConhecimento {
     const elegiveis = categorias.filter(
       (categoria) =>
         categoria.nome.toLocaleLowerCase("pt-BR") !==
-        CATEGORIA_NAO_CLASSIFICADO.toLocaleLowerCase("pt-BR"),
+          CATEGORIA_NAO_CLASSIFICADO.toLocaleLowerCase("pt-BR") &&
+        categoria.nome.toLocaleLowerCase("pt-BR") !==
+          CATEGORIA_PAGAMENTO_FATURA.toLocaleLowerCase("pt-BR"),
     );
     if (elegiveis.length === 0) return { aplicada: false, motivo: "sem_categorias" };
 
@@ -338,7 +345,9 @@ export class ServicoConhecimento {
 
     const workspaceIds = await this.workspaces_do_usuario(movimento.usuarioId, movimento.workspaceId);
     const existentes = await this.repositorio.listarRegrasAtivas(workspaceIds);
-    const jaExiste = existentes.some((regra) => regra_simples_igual(regra, trecho, categoria.id));
+    const jaExiste = existentes.some((regra) =>
+      regra_simples_igual(regra, trecho, categoria.id, movimento.papel),
+    );
     if (jaExiste) return null;
 
     return {
@@ -371,9 +380,14 @@ export class ServicoConhecimento {
     const workspaceIds = await this.workspaces_do_usuario(movimento.usuarioId, movimento.workspaceId);
     const existentes = await this.repositorio.listarRegrasAtivas(workspaceIds);
     const igual = existentes.find((regra) =>
-      regra_simples_igual(regra, proposta.trecho, proposta.categoriaId),
+      regra_simples_igual(regra, proposta.trecho, proposta.categoriaId, movimento.papel),
     );
     if (igual) return { criada: false, motivo: "ja_existe", proposta, regra: igual };
+
+    const acoes =
+      movimento.papel === "pagamento_fatura"
+        ? [{ tipo: "marcar_pagamento_fatura" as const }]
+        : [{ tipo: "definir_categoria" as const, categoriaId: proposta.categoriaId }];
 
     const regra = await this.criar_regra({
       workspaceId: movimento.workspaceId,
@@ -381,7 +395,7 @@ export class ServicoConhecimento {
       nome: `"${proposta.trecho}" → ${proposta.categoriaNome}`,
       logicaCondicoes: "ou",
       condicoes: [{ campo: "descricao", operador: "contem", valor: proposta.trecho }],
-      acoes: [{ tipo: "definir_categoria", categoriaId: proposta.categoriaId }],
+      acoes,
     });
 
     return { criada: true, regra, proposta };
@@ -453,6 +467,9 @@ export class ServicoConhecimento {
         case "ignorar_transacao":
           conhecimento.ignoradoEmRelatorio = true;
           break;
+        case "marcar_pagamento_fatura":
+          conhecimento.papel = "pagamento_fatura";
+          break;
         case "definir_perfil":
           conhecimento.tipoGasto = acao.perfil;
           break;
@@ -460,14 +477,92 @@ export class ServicoConhecimento {
     }
     return conhecimento;
   }
+
+  private async aplicar_papel(
+    movimentoAtual: Movimento,
+    dados: EntradaAtualizarConhecimento["conhecimento"],
+    campos: Partial<NovoMovimento>,
+  ): Promise<void> {
+    const marcadoPelaCategoria =
+      dados.papel === undefined &&
+      dados.categoriaId !== undefined &&
+      eh_nome_pagamento_fatura(await this.nome_categoria(dados.categoriaId));
+
+    const desmarcandoPorCategoria =
+      dados.papel === undefined &&
+      movimentoAtual.papel === "pagamento_fatura" &&
+      dados.categoriaId !== undefined &&
+      !eh_nome_pagamento_fatura(await this.nome_categoria(dados.categoriaId));
+
+    const papel =
+      dados.papel ??
+      (marcadoPelaCategoria ? "pagamento_fatura" : desmarcandoPorCategoria ? "gasto" : undefined);
+
+    if (papel === "pagamento_fatura") {
+      campos.papel = "pagamento_fatura";
+      campos.ignoradoEmRelatorio = true;
+      const catFatura = await this.repositorio.buscarCategoriaPorNome(
+        movimentoAtual.workspaceId,
+        CATEGORIA_PAGAMENTO_FATURA,
+      );
+      if (!catFatura) {
+        throw new ErroConhecimentoInvalido(
+          "Categoria sistema «Pagamento de fatura» não existe neste workspace.",
+        );
+      }
+      campos.categoriaId = catFatura.id;
+      if (dados.cartaoFaturaId !== undefined) campos.cartaoFaturaId = dados.cartaoFaturaId;
+      if (dados.competenciaFatura !== undefined) campos.competenciaFatura = dados.competenciaFatura;
+      return;
+    }
+
+    if (papel === "gasto") {
+      campos.papel = "gasto";
+      campos.ignoradoEmRelatorio = dados.ignoradoEmRelatorio ?? false;
+      campos.cartaoFaturaId = null;
+      campos.competenciaFatura = null;
+      const categoriaAtualId = campos.categoriaId ?? movimentoAtual.categoriaId;
+      const nomeAtual = await this.nome_categoria(categoriaAtualId);
+      if (eh_nome_pagamento_fatura(nomeAtual) && dados.categoriaId === undefined) {
+        const naoClassificado = await this.repositorio.buscarCategoriaPorNome(
+          movimentoAtual.workspaceId,
+          CATEGORIA_NAO_CLASSIFICADO,
+        );
+        if (naoClassificado) campos.categoriaId = naoClassificado.id;
+      }
+      return;
+    }
+
+    if (movimentoAtual.papel === "pagamento_fatura") {
+      if (dados.cartaoFaturaId !== undefined) campos.cartaoFaturaId = dados.cartaoFaturaId;
+      if (dados.competenciaFatura !== undefined) campos.competenciaFatura = dados.competenciaFatura;
+    }
+  }
+
+  private async nome_categoria(categoriaId: string | null | undefined): Promise<string | undefined> {
+    if (!categoriaId) return undefined;
+    const categoria = await this.repositorio.obterCategoria(categoriaId);
+    return categoria?.nome;
+  }
 }
 
 export { propor_trecho_regra } from "./trecho-regra";
 export { regra_casa, categoria_id_da_regra, acoes_da_regra, condicoes_da_regra } from "./avaliar-regra";
 
-function regra_simples_igual(regra: Regra, trecho: string, categoriaId: string): boolean {
-  const cat = categoria_id_da_regra(regra);
-  if (cat !== categoriaId) return false;
+function regra_simples_igual(
+  regra: Regra,
+  trecho: string,
+  categoriaId: string,
+  papel?: Movimento["papel"] | null,
+): boolean {
+  if (!mesmo_trecho_regra(regra, trecho)) return false;
+  if (papel === "pagamento_fatura") {
+    return acoes_da_regra(regra).some((acao) => acao.tipo === "marcar_pagamento_fatura");
+  }
+  return categoria_id_da_regra(regra) === categoriaId;
+}
+
+function mesmo_trecho_regra(regra: Regra, trecho: string): boolean {
   const condicoes = regra.condicoes ?? [];
   if (condicoes.length === 1) {
     const c = condicoes[0];
@@ -496,6 +591,9 @@ function conhecimento_ja_aplicado(
   if (conhecimento.tipoGasto !== undefined && movimento.tipoGasto !== conhecimento.tipoGasto) {
     return false;
   }
+  if (conhecimento.papel !== undefined && movimento.papel !== conhecimento.papel) {
+    return false;
+  }
   if (conhecimento.ignoradoEmRelatorio === true && !movimento.ignoradoEmRelatorio) {
     return false;
   }
@@ -509,4 +607,8 @@ function conhecimento_ja_aplicado(
     return false;
   }
   return true;
+}
+
+function eh_nome_pagamento_fatura(nome: string | undefined): boolean {
+  return nome?.toLocaleLowerCase("pt-BR") === CATEGORIA_PAGAMENTO_FATURA.toLocaleLowerCase("pt-BR");
 }

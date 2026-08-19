@@ -9,6 +9,8 @@ import {
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
   tipo_gasto_para_query,
+  papel_da_query,
+  papel_para_query,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
@@ -38,6 +40,9 @@ function movimento(parcial: Partial<MovimentoResumo> & Pick<MovimentoResumo, "id
     classificadoEm: null,
     confiancaIa: null,
     tipoGasto: "pf",
+    papel: "gasto",
+    cartaoFaturaId: null,
+    competenciaFatura: null,
     ...parcial,
   };
 }
@@ -56,6 +61,7 @@ const base: FiltrosExtrato = {
   classificacao: "todas",
   origem: { tipo: "todas" },
   tipoGasto: "todas",
+  papel: "todas",
 };
 
 const lote: MovimentoResumo[] = [
@@ -175,6 +181,21 @@ describe("filtrar_extrato", () => {
       filtrar_extrato(misto, contas, cartoes, { ...base, tipoGasto: "empresa" }).map((m) => m.id),
     ).toEqual(["e"]);
   });
+
+  it("filtra só gastos vs pagamentos de fatura", () => {
+    const misto = [
+      movimento({ id: "g", papel: "gasto" }),
+      movimento({ id: "f", papel: "pagamento_fatura", descricao: "Fatura Itaú" }),
+    ];
+    expect(
+      filtrar_extrato(misto, contas, cartoes, { ...base, papel: "gastos" }).map((m) => m.id),
+    ).toEqual(["g"]);
+    expect(
+      filtrar_extrato(misto, contas, cartoes, { ...base, papel: "pagamentos_fatura" }).map(
+        (m) => m.id,
+      ),
+    ).toEqual(["f"]);
+  });
 });
 
 describe("paginar", () => {
@@ -223,5 +244,13 @@ describe("parsers da URL", () => {
     expect(tipo_gasto_da_query("pf")).toBe("todas");
     expect(tipo_gasto_para_query("pessoal")).toBe("pessoal");
     expect(tipo_gasto_para_query("todas")).toBeNull();
+  });
+
+  it("lê papel gastos/pagamentos de fatura", () => {
+    expect(papel_da_query("gastos")).toBe("gastos");
+    expect(papel_da_query("pagamentos_fatura")).toBe("pagamentos_fatura");
+    expect(papel_da_query("x")).toBe("todas");
+    expect(papel_para_query("gastos")).toBe("gastos");
+    expect(papel_para_query("todas")).toBeNull();
   });
 });

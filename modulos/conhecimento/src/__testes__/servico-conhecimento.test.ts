@@ -202,6 +202,9 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     classificadoEm: null,
     confiancaIa: null,
     ignoradoEmRelatorio: false,
+    papel: "gasto" as const,
+    cartaoFaturaId: null,
+    competenciaFatura: null,
     usuarioId: randomUUID(),
     dataCriacao: agora,
     dataAtualizacao: agora,
@@ -303,6 +306,72 @@ describe("ServicoConhecimento", () => {
 
     expect(atualizado.ignoradoEmRelatorio).toBe(true);
     expect(repositorio.movimentos.has(movimento.id)).toBe(true);
+  });
+
+  it("marca pagamento de fatura com categoria sistema e some dos totais", async () => {
+    const catFatura = randomUUID();
+    repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
+    const movimento = criarMovimento({ ignoradoEmRelatorio: false });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const atualizado = await servico.atualizar({
+      movimentoId: movimento.id,
+      alteradoPor: usuarioId,
+      conhecimento: {
+        papel: "pagamento_fatura",
+        cartaoFaturaId: randomUUID(),
+        competenciaFatura: "2026-08",
+      },
+    });
+
+    expect(atualizado.papel).toBe("pagamento_fatura");
+    expect(atualizado.ignoradoEmRelatorio).toBe(true);
+    expect(atualizado.categoriaId).toBe(catFatura);
+    expect(atualizado.competenciaFatura).toBe("2026-08");
+    expect(atualizado.valor).toBe(movimento.valor);
+    expect(atualizado.tipo).toBe(movimento.tipo);
+  });
+
+  it("desmarca pagamento de fatura e devolve a linha aos totais", async () => {
+    const catFatura = randomUUID();
+    const catNc = randomUUID();
+    repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
+    repositorio.cadastrarCategoria(catNc, "Não classificado");
+    const movimento = criarMovimento({
+      papel: "pagamento_fatura",
+      ignoradoEmRelatorio: true,
+      categoriaId: catFatura,
+      competenciaFatura: "2026-08",
+    });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const atualizado = await servico.atualizar({
+      movimentoId: movimento.id,
+      alteradoPor: usuarioId,
+      conhecimento: { papel: "gasto" },
+    });
+
+    expect(atualizado.papel).toBe("gasto");
+    expect(atualizado.ignoradoEmRelatorio).toBe(false);
+    expect(atualizado.categoriaId).toBe(catNc);
+    expect(atualizado.cartaoFaturaId).toBeNull();
+    expect(atualizado.competenciaFatura).toBeNull();
+  });
+
+  it("trata a categoria sistema como pagamento de fatura", async () => {
+    const catFatura = randomUUID();
+    repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
+    const movimento = criarMovimento();
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const atualizado = await servico.atualizar({
+      movimentoId: movimento.id,
+      alteradoPor: usuarioId,
+      conhecimento: { categoriaId: catFatura },
+    });
+
+    expect(atualizado.papel).toBe("pagamento_fatura");
+    expect(atualizado.ignoradoEmRelatorio).toBe(true);
   });
 
   it("marca como classificação do usuário quando a categoria muda sem origem", async () => {
@@ -613,6 +682,33 @@ describe("ServicoConhecimento", () => {
       const resultado = await servico.aplicar_regras(movimento.id);
       expect(resultado).toEqual({ aplicada: false, motivo: "nenhuma_casou" });
     });
+
+    it("marca pagamento de fatura pela ação da regra", async () => {
+      const catFatura = randomUUID();
+      repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
+      const movimento = criarMovimento({
+        descricaoFonte: "PAGTO FATURA ITAU",
+        descricao: "PAGTO FATURA ITAU",
+        categoriaId: categoriaNaoClassificado,
+        classificadoPor: "regra",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      await servico.criar_regra({
+        workspaceId: WORKSPACE,
+        nome: "Fatura → pagamento",
+        logicaCondicoes: "ou",
+        condicoes: [{ campo: "descricao", operador: "contem", valor: "FATURA" }],
+        acoes: [{ tipo: "marcar_pagamento_fatura" }],
+      });
+
+      const resultado = await servico.aplicar_regras(movimento.id);
+      expect(resultado.aplicada).toBe(true);
+      if (!resultado.aplicada) return;
+      expect(resultado.movimento.papel).toBe("pagamento_fatura");
+      expect(resultado.movimento.ignoradoEmRelatorio).toBe(true);
+      expect(resultado.movimento.categoriaId).toBe(catFatura);
+    });
   });
 });
 
@@ -849,6 +945,27 @@ describe("criar_regra_a_partir_de_correcao", () => {
     await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaId));
 
     expect(await servico.propor_regra_de_movimento(movimento.id)).toBeNull();
+  });
+
+  it("cria regra com ação marcar_pagamento_fatura após correção manual", async () => {
+    const catFatura = randomUUID();
+    repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
+    const movimento = criarMovimento({
+      descricaoFonte: "PAGTO FATURA NUBANK",
+      descricao: "Fatura Nubank",
+      categoriaId: catFatura,
+      papel: "pagamento_fatura",
+      ignoradoEmRelatorio: true,
+      classificadoPor: "usuario",
+    });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const resultado = await servico.criar_regra_a_partir_de_correcao(movimento.id);
+
+    expect(resultado.criada).toBe(true);
+    if (!resultado.criada) return;
+    expect(resultado.regra.acoes).toEqual([{ tipo: "marcar_pagamento_fatura" }]);
+    expect(resultado.proposta.categoriaNome).toBe("Pagamento de fatura");
   });
 });
 

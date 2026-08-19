@@ -12,7 +12,7 @@ import {
   type ContaResumo,
   type MovimentoResumo,
 } from "../lib/api";
-import type { Perfil } from "@lancai/tipos";
+import { sugerir_pagamento_fatura, type Perfil } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -20,11 +20,19 @@ import { Paginador } from "../componentes/Paginador";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import {
+  eh_categoria_pagamento_fatura,
   eh_nao_classificado,
   precisa_revisao,
   explicacao_classificacao,
   rotulo_classificado_por,
 } from "../lib/fila-revisao";
+import {
+  cartao_preferencial_fatura,
+  competencia_default_fatura,
+  mostra_check_pagamento_fatura,
+  opcoes_competencia,
+  rotulo_check_pagamento_fatura,
+} from "../lib/extrato-pagamento-fatura";
 import {
   classificacao_da_query,
   fila_da_query,
@@ -33,6 +41,8 @@ import {
   origem_da_query,
   origem_para_query,
   paginar,
+  papel_da_query,
+  papel_para_query,
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
   tipo_gasto_para_query,
@@ -40,6 +50,7 @@ import {
   type ClassificacaoExtrato,
   type FilaExtrato,
   type OrigemExtrato,
+  type PapelExtrato,
   type TipoGastoExtrato,
 } from "../lib/filtrar-extrato";
 import { unir_classes } from "../lib/unir-classes";
@@ -136,6 +147,7 @@ export function TelaExtrato() {
   const classificacao = classificacao_da_query(searchParams.get("classificacao"));
   const origem = origem_da_query(searchParams.get("origem"));
   const tipoGasto = tipo_gasto_da_query(searchParams.get("tipoGasto"));
+  const papel = papel_da_query(searchParams.get("papel"));
   const porPagina = tamanho_pagina_da_query(searchParams.get("porPagina"));
   const [pagina, setPagina] = useState(1);
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
@@ -151,6 +163,10 @@ export function TelaExtrato() {
     Record<string, ParcelasIrmasResposta>
   >({});
   const [carregandoParcelasId, setCarregandoParcelasId] = useState<string | null>(null);
+  const [ofertaRegra, setOfertaRegra] = useState<{
+    movimentoId: string;
+    trecho: string;
+  } | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "extrato",
@@ -202,6 +218,7 @@ export function TelaExtrato() {
     classificacao?: ClassificacaoExtrato;
     origem?: OrigemExtrato;
     tipoGasto?: TipoGastoExtrato;
+    papel?: PapelExtrato;
     porPagina?: number;
   }) {
     const proximoFiltro = entrada.filtro ?? filtro;
@@ -212,6 +229,7 @@ export function TelaExtrato() {
     const proximaClassificacao = entrada.classificacao ?? classificacao;
     const proximaOrigem = entrada.origem ?? origem;
     const proximoTipoGasto = entrada.tipoGasto ?? tipoGasto;
+    const proximoPapel = entrada.papel ?? papel;
     const proximoPorPagina = entrada.porPagina ?? porPagina;
     const params = new URLSearchParams();
     if (proximoFiltro !== "todas") params.set("fila", proximoFiltro);
@@ -223,6 +241,8 @@ export function TelaExtrato() {
     if (origemQuery) params.set("origem", origemQuery);
     const tipoGastoQuery = tipo_gasto_para_query(proximoTipoGasto);
     if (tipoGastoQuery) params.set("tipoGasto", tipoGastoQuery);
+    const papelQuery = papel_para_query(proximoPapel);
+    if (papelQuery) params.set("papel", papelQuery);
     if (proximoPorPagina !== TAMANHO_PAGINA_PADRAO) {
       params.set("porPagina", String(proximoPorPagina));
     }
@@ -267,7 +287,10 @@ export function TelaExtrato() {
   );
 
   const categoriasParaClassificar = useMemo(
-    () => categorias.filter((c) => !eh_nao_classificado(c.nome)),
+    () =>
+      categorias.filter(
+        (c) => !eh_nao_classificado(c.nome) && !eh_categoria_pagamento_fatura(c.nome),
+      ),
     [categorias],
   );
 
@@ -281,8 +304,9 @@ export function TelaExtrato() {
         classificacao,
         origem,
         tipoGasto,
+        papel,
       }),
-    [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem, tipoGasto],
+    [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem, tipoGasto, papel],
   );
 
   const paginaAtual = useMemo(
@@ -295,7 +319,8 @@ export function TelaExtrato() {
     Boolean(categoriaId) ||
     classificacao !== "todas" ||
     origem.tipo !== "todas" ||
-    tipoGasto !== "todas";
+    tipoGasto !== "todas" ||
+    papel !== "todas";
 
   async function classificar(movimentoId: string, categoriaId: string) {
     if (!usuario || !categoriaId) return;
@@ -320,6 +345,10 @@ export function TelaExtrato() {
                 classificadoEm: atualizado.classificadoEm,
                 confiancaIa: atualizado.confiancaIa,
                 tipoGasto: atualizado.tipoGasto,
+                ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+                papel: atualizado.papel,
+                cartaoFaturaId: atualizado.cartaoFaturaId,
+                competenciaFatura: atualizado.competenciaFatura,
               }
             : item,
         ),
@@ -351,6 +380,111 @@ export function TelaExtrato() {
       contexto?.invalidar("extrato", "dashboard");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível atualizar o tipo de gasto.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  function aplicar_conhecimento_local(
+    movimentoId: string,
+    atualizado: Awaited<ReturnType<typeof clienteApi.atualizar_conhecimento>>,
+  ) {
+    setMovimentos((atual) =>
+      atual.map((item) =>
+        item.id === movimentoId
+          ? {
+              ...item,
+              categoriaId: atualizado.categoriaId,
+              categoriaNome: atualizado.categoriaNome,
+              classificadoPor: atualizado.classificadoPor,
+              regraId: atualizado.regraId,
+              regraTrecho: null,
+              classificadoEm: atualizado.classificadoEm,
+              confiancaIa: atualizado.confiancaIa,
+              tipoGasto: atualizado.tipoGasto,
+              ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+              papel: atualizado.papel,
+              cartaoFaturaId: atualizado.cartaoFaturaId,
+              competenciaFatura: atualizado.competenciaFatura,
+            }
+          : item,
+      ),
+    );
+  }
+
+  async function marcar_pagamento_fatura(
+    movimento: MovimentoResumo,
+    marcado: boolean,
+    cartaoFaturaId?: string | null,
+    competenciaFatura?: string | null,
+  ) {
+    if (!usuario) return;
+    setSalvandoId(movimento.id);
+    setErro(null);
+    try {
+      const atualizado = await clienteApi.atualizar_conhecimento({
+        usuarioId: usuario.id,
+        movimentoId: movimento.id,
+        papel: marcado ? "pagamento_fatura" : "gasto",
+        ...(marcado
+          ? {
+              cartaoFaturaId: cartaoFaturaId ?? cartao_preferencial_fatura(movimento, cartoes),
+              competenciaFatura:
+                competenciaFatura ??
+                competencia_default_fatura(
+                  movimento,
+                  cartoes.find(
+                    (c) =>
+                      c.id ===
+                      (cartaoFaturaId ?? cartao_preferencial_fatura(movimento, cartoes)),
+                  ),
+                ),
+            }
+          : {}),
+      });
+      aplicar_conhecimento_local(movimento.id, atualizado);
+      contexto?.invalidar("extrato", "dashboard");
+      if (marcado && movimento.papel !== "pagamento_fatura") {
+        toast.sucesso("Pagamento de fatura — não entra nos totais.");
+        if (atualizado.propostaRegra) {
+          setOfertaRegra({
+            movimentoId: movimento.id,
+            trecho: atualizado.propostaRegra.trecho,
+          });
+        }
+      } else if (!marcado) {
+        setOfertaRegra((atual) => (atual?.movimentoId === movimento.id ? null : atual));
+      }
+    } catch (e) {
+      toast.erro(
+        e instanceof ErroApi ? e.message : "Não foi possível marcar o pagamento de fatura.",
+      );
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
+  async function criar_regra_do_pagamento(movimentoId: string) {
+    if (!usuario) return;
+    setSalvandoId(movimentoId);
+    try {
+      const resultado = await clienteApi.criar_regra_de_correcao({
+        usuarioId: usuario.id,
+        movimentoId,
+      });
+      setOfertaRegra(null);
+      if (resultado.criada && resultado.proposta) {
+        toast.sucesso(
+          `Regra criada: "${resultado.proposta.trecho} → ${resultado.proposta.categoriaNome}".`,
+        );
+        contexto?.invalidar("regras", "extrato");
+      } else if (resultado.motivo === "ja_existe") {
+        toast.info("Essa regra já existia.");
+      } else {
+        toast.info("Não deu para criar a regra com este trecho.");
+      }
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível criar a regra.");
     } finally {
       setSalvandoId(null);
     }
@@ -409,7 +543,7 @@ export function TelaExtrato() {
             className="pl-9"
           />
         </label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
             Origens
             <select
@@ -483,6 +617,20 @@ export function TelaExtrato() {
               <option value="">Todos</option>
               <option value="pessoal">Pessoal</option>
               <option value="empresa">Empresa</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Papel
+            <select
+              value={papel === "todas" ? "" : papel}
+              onChange={(e) =>
+                sincronizar_params({ papel: papel_da_query(e.target.value || null) })
+              }
+              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
+            >
+              <option value="">Todos</option>
+              <option value="gastos">Só gastos</option>
+              <option value="pagamentos_fatura">Pagamentos de fatura</option>
             </select>
           </label>
         </div>
@@ -586,6 +734,17 @@ export function TelaExtrato() {
                             Parcela {movimento.parcelaNumero}/{movimento.parcelaTotal}
                             {movimento.parcelaCompraValor
                               ? ` · total ${formatar_moeda_br(movimento.parcelaCompraValor)}`
+                              : ""}
+                          </span>
+                        )}
+                        {movimento.papel === "pagamento_fatura" && (
+                          <span
+                            className="rounded-md border border-primaria/40 bg-primaria/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-primaria"
+                            title="Quitação da fatura — some dos totais de despesa e receita"
+                          >
+                            Pagamento de fatura
+                            {movimento.competenciaFatura
+                              ? ` · ${formatar_mes_competencia(`${movimento.competenciaFatura}-01`)}`
                               : ""}
                           </span>
                         )}
@@ -735,6 +894,25 @@ export function TelaExtrato() {
                           </label>
                         );
                       })()}
+                      {mostra_check_pagamento_fatura(movimento) && (
+                        <CheckPagamentoFatura
+                          movimento={movimento}
+                          cartoes={cartoes}
+                          movimentos={movimentos}
+                          salvando={salvandoId === movimento.id}
+                          ofertaRegra={
+                            ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
+                          }
+                          onMarcar={(marcado, cartaoId, competencia) =>
+                            void marcar_pagamento_fatura(movimento, marcado, cartaoId, competencia)
+                          }
+                          onVincular={(cartaoId, competencia) =>
+                            void marcar_pagamento_fatura(movimento, true, cartaoId, competencia)
+                          }
+                          onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
+                          onDispensarRegra={() => setOfertaRegra(null)}
+                        />
+                      )}
                       {salvandoId === movimento.id && (
                         <span className="pb-2 text-xs text-texto-suave">Salvando...</span>
                       )}
@@ -766,6 +944,133 @@ export function TelaExtrato() {
           </Link>
           .
         </p>
+      )}
+    </div>
+  );
+}
+
+function CheckPagamentoFatura({
+  movimento,
+  cartoes,
+  movimentos,
+  salvando,
+  ofertaRegra,
+  onMarcar,
+  onVincular,
+  onCriarRegra,
+  onDispensarRegra,
+}: {
+  movimento: MovimentoResumo;
+  cartoes: CartaoResumo[];
+  movimentos: MovimentoResumo[];
+  salvando: boolean;
+  ofertaRegra: { movimentoId: string; trecho: string } | null;
+  onMarcar: (marcado: boolean, cartaoId?: string | null, competencia?: string | null) => void;
+  onVincular: (cartaoId: string | null, competencia: string) => void;
+  onCriarRegra: () => void;
+  onDispensarRegra: () => void;
+}) {
+  const marcado = movimento.papel === "pagamento_fatura";
+  const cartaoId = cartao_preferencial_fatura(movimento, cartoes);
+  const cartao = cartoes.find((c) => c.id === cartaoId);
+  const competencia = competencia_default_fatura(movimento, cartao);
+  const competencias = opcoes_competencia(movimento.dataMovimento);
+  const sugestao = marcado
+    ? null
+    : sugerir_pagamento_fatura(movimento, cartoes, movimentos);
+
+  return (
+    <div className="flex w-full min-w-[16rem] flex-col gap-2 pb-1">
+      <label className="flex items-center gap-2 text-sm text-texto">
+        <input
+          type="checkbox"
+          className="size-4 rounded border-borda"
+          checked={marcado}
+          disabled={salvando}
+          onChange={(e) => onMarcar(e.target.checked, cartaoId, competencia)}
+        />
+        <span className="normal-case">{rotulo_check_pagamento_fatura(movimento)}</span>
+      </label>
+
+      {sugestao && (
+        <div className="rounded-xl border border-primaria/30 bg-primaria/5 px-3 py-2">
+          <p className="text-xs text-texto">
+            Parece pagamento da fatura de {sugestao.cartaoNome} (
+            {formatar_mes_competencia(`${sugestao.competencia}-01`)}). Confirmar?
+          </p>
+          <button
+            type="button"
+            disabled={salvando}
+            onClick={() => onVincular(sugestao.cartaoId, sugestao.competencia)}
+            className="mt-1 text-xs font-medium text-primaria hover:underline"
+          >
+            Confirmar
+          </button>
+        </div>
+      )}
+
+      {marcado && cartoes.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Cartão
+            <select
+              value={movimento.cartaoFaturaId ?? cartaoId ?? ""}
+              disabled={salvando}
+              onChange={(e) =>
+                onVincular(e.target.value || null, movimento.competenciaFatura ?? competencia)
+              }
+              className="rounded-lg border border-borda bg-superficie px-2 py-1.5 text-sm normal-case tracking-normal text-texto outline-none focus:border-primaria disabled:opacity-60"
+            >
+              <option value="">Sem vínculo</option>
+              {cartoes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-[7rem] flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
+            Competência
+            <select
+              value={movimento.competenciaFatura ?? competencia}
+              disabled={salvando}
+              onChange={(e) =>
+                onVincular(movimento.cartaoFaturaId ?? cartaoId, e.target.value)
+              }
+              className="rounded-lg border border-borda bg-superficie px-2 py-1.5 text-sm normal-case tracking-normal text-texto outline-none focus:border-primaria disabled:opacity-60"
+            >
+              {competencias.map((item) => (
+                <option key={item.valor} value={item.valor}>
+                  {item.rotulo}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {ofertaRegra && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-texto">
+          <span>
+            Criar regra para descrições como «{ofertaRegra.trecho}»?
+          </span>
+          <button
+            type="button"
+            disabled={salvando}
+            onClick={onCriarRegra}
+            className="font-medium text-primaria hover:underline"
+          >
+            Criar
+          </button>
+          <button
+            type="button"
+            disabled={salvando}
+            onClick={onDispensarRegra}
+            className="text-texto-suave hover:underline"
+          >
+            Agora não
+          </button>
+        </div>
       )}
     </div>
   );

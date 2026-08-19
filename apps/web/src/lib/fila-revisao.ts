@@ -7,9 +7,14 @@ export function eh_nao_classificado(nome: string): boolean {
   return nome.toLocaleLowerCase("pt-BR") === "não classificado";
 }
 
+export function eh_categoria_pagamento_fatura(nome: string): boolean {
+  return nome.toLocaleLowerCase("pt-BR") === "pagamento de fatura";
+}
+
 /** Não classificado ou IA com confiança baixa — fila de trabalho do extrato. */
 export function precisa_revisao(movimento: MovimentoResumo): boolean {
   if (movimento.status === "cancelado") return false;
+  if (movimento.papel === "pagamento_fatura") return false;
   if (eh_nao_classificado(movimento.categoriaNome)) return true;
   if (
     movimento.classificadoPor === "ia" &&

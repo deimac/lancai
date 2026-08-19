@@ -114,7 +114,8 @@ export type AcaoRegraApi =
   | { tipo: "definir_beneficiario"; pessoaId: string }
   | { tipo: "adicionar_tags_notas"; tags?: string[]; observacoes?: string }
   | { tipo: "ignorar_transacao" }
-  | { tipo: "definir_perfil"; perfil: Perfil };
+  | { tipo: "definir_perfil"; perfil: Perfil }
+  | { tipo: "marcar_pagamento_fatura" };
 
 export interface RegraResumo {
   id: string;
@@ -420,6 +421,9 @@ export interface MovimentoResumo {
   classificadoEm: string | null;
   confiancaIa: number | null;
   tipoGasto: Perfil | null;
+  papel: "gasto" | "pagamento_fatura";
+  cartaoFaturaId: string | null;
+  competenciaFatura: string | null;
 }
 
 class ErroApi extends Error {
@@ -766,6 +770,9 @@ export const clienteApi = {
     categoriaId?: string;
     tipoGasto?: Perfil;
     ignoradoEmRelatorio?: boolean;
+    papel?: "gasto" | "pagamento_fatura";
+    cartaoFaturaId?: string | null;
+    competenciaFatura?: string | null;
   }): Promise<{
     id: string;
     descricao: string;
@@ -777,9 +784,24 @@ export const clienteApi = {
     confiancaIa: number | null;
     tipoGasto: Perfil | null;
     ignoradoEmRelatorio: boolean;
+    papel: "gasto" | "pagamento_fatura";
+    cartaoFaturaId: string | null;
+    competenciaFatura: string | null;
+    propostaRegra: { trecho: string; categoriaNome: string } | null;
   }> {
     return requisitar("/conhecimento", {
       method: "PATCH",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  criar_regra_de_correcao(dados: { usuarioId: string; movimentoId: string }): Promise<{
+    criada: boolean;
+    motivo: string | null;
+    proposta: { trecho: string; categoriaNome: string } | null;
+  }> {
+    return requisitar("/conhecimento/virar-regra", {
+      method: "POST",
       body: JSON.stringify(dados),
     });
   },

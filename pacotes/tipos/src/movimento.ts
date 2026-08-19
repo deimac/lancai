@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { formaPagamentoSchema, perfilSchema } from "./cadastro";
+import { formaPagamentoSchema, papelConhecimentoSchema, perfilSchema } from "./cadastro";
 import { classificadoPorSchema, statusFonteSchema, tipoFonteSchema } from "./fonte";
 
 export const tipoMovimentoSchema = z.enum([
@@ -117,6 +117,10 @@ export const schemaCamposFatoManual = z.object({
 });
 export type CamposFatoManual = z.infer<typeof schemaCamposFatoManual>;
 
+const competenciaFaturaSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/, "Competência deve estar no formato YYYY-MM");
+
 /**
  * Conhecimento do LançAI. Sempre editável, inclusive em conta sincronizada —
  * é justamente o que o produto agrega em cima do extrato bruto.
@@ -133,6 +137,9 @@ export const schemaConhecimentoMovimento = z.object({
   regraId: z.string().uuid().nullable().optional(),
   confiancaIa: z.number().min(0).max(1).nullable().optional(),
   ignoradoEmRelatorio: z.boolean().optional(),
+  papel: papelConhecimentoSchema.optional(),
+  cartaoFaturaId: z.string().uuid().nullable().optional(),
+  competenciaFatura: competenciaFaturaSchema.nullable().optional(),
 });
 export type ConhecimentoMovimento = z.infer<typeof schemaConhecimentoMovimento>;
 

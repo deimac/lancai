@@ -61,12 +61,17 @@ export const schemaAcaoDefinirPerfil = z.object({
   perfil: perfilSchema,
 });
 
+export const schemaAcaoMarcarPagamentoFatura = z.object({
+  tipo: z.literal("marcar_pagamento_fatura"),
+});
+
 export const schemaAcaoRegra = z.discriminatedUnion("tipo", [
   schemaAcaoDefinirCategoria,
   schemaAcaoDefinirBeneficiario,
   schemaAcaoAdicionarTagsNotas,
   schemaAcaoIgnorarTransacao,
   schemaAcaoDefinirPerfil,
+  schemaAcaoMarcarPagamentoFatura,
 ]);
 export type AcaoRegra = z.infer<typeof schemaAcaoRegra>;
 

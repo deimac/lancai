@@ -3,6 +3,9 @@ import { z } from "zod";
 export const perfilSchema = z.enum(["pf", "pj"]);
 export type Perfil = z.infer<typeof perfilSchema>;
 
+export const papelConhecimentoSchema = z.enum(["gasto", "pagamento_fatura"]);
+export type PapelConhecimento = z.infer<typeof papelConhecimentoSchema>;
+
 export const modalidadeCartaoSchema = z.enum(["credito", "debito", "multiplo"]);
 export type ModalidadeCartao = z.infer<typeof modalidadeCartaoSchema>;
 

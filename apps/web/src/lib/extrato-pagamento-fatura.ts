@@ -1,0 +1,68 @@
+import {
+  competencia_vencimento_proximo,
+  linha_aceita_pagamento_fatura,
+} from "@lancai/tipos";
+import type { CartaoResumo, MovimentoResumo } from "./api";
+
+const ROTULOS_MES = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
+
+export function cartao_preferencial_fatura(
+  movimento: Pick<MovimentoResumo, "contaId" | "cartaoId" | "cartaoFaturaId">,
+  cartoes: CartaoResumo[],
+): string | null {
+  if (movimento.cartaoFaturaId) return movimento.cartaoFaturaId;
+  if (movimento.cartaoId) return movimento.cartaoId;
+  const preferidos = cartoes.filter((c) => c.contaId && c.contaId === movimento.contaId);
+  return (preferidos[0] ?? cartoes[0])?.id ?? null;
+}
+
+export function competencia_default_fatura(
+  movimento: Pick<MovimentoResumo, "dataMovimento" | "competenciaFatura">,
+  cartao: Pick<CartaoResumo, "vencimento"> | undefined,
+): string {
+  if (movimento.competenciaFatura) return movimento.competenciaFatura;
+  return competencia_vencimento_proximo(movimento.dataMovimento, cartao?.vencimento ?? 10);
+}
+
+export function opcoes_competencia(referenciaISO: string): Array<{ valor: string; rotulo: string }> {
+  const [anoStr, mesStr] = referenciaISO.slice(0, 7).split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  if (!ano || !mes) return [];
+  const opcoes: Array<{ valor: string; rotulo: string }> = [];
+  for (let i = 0; i < 14; i += 1) {
+    const data = new Date(Date.UTC(ano, mes - 1 - i, 1));
+    const y = data.getUTCFullYear();
+    const m = data.getUTCMonth();
+    const valor = `${y}-${String(m + 1).padStart(2, "0")}`;
+    opcoes.push({ valor, rotulo: `${ROTULOS_MES[m]}/${String(y).slice(2)}` });
+  }
+  return opcoes;
+}
+
+export function mostra_check_pagamento_fatura(movimento: Pick<
+  MovimentoResumo,
+  "tipo" | "contaId" | "cartaoId" | "status"
+>): boolean {
+  if (movimento.status === "cancelado") return false;
+  return linha_aceita_pagamento_fatura(movimento);
+}
+
+export function rotulo_check_pagamento_fatura(movimento: Pick<MovimentoResumo, "cartaoId">): string {
+  return movimento.cartaoId
+    ? "Crédito de pagamento da fatura?"
+    : "É pagamento de fatura?";
+}

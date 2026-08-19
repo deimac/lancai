@@ -321,6 +321,9 @@ export function ModalRegra({ aberto, regra, categorias, aoFechar, aoSalvar }: Pr
                           if (tipo === "definir_perfil") {
                             return { tipo, perfil: "pf" };
                           }
+                          if (tipo === "marcar_pagamento_fatura") {
+                            return { tipo };
+                          }
                           return { tipo: "ignorar_transacao" };
                         }),
                       );
@@ -331,6 +334,7 @@ export function ModalRegra({ aberto, regra, categorias, aoFechar, aoSalvar }: Pr
                     <option value="definir_beneficiario">Definir beneficiário</option>
                     <option value="adicionar_tags_notas">Adicionar tags/notas</option>
                     <option value="ignorar_transacao">Ignorar transação</option>
+                    <option value="marcar_pagamento_fatura">Marcar pagamento de fatura</option>
                   </select>
                   <ValorAcao
                     acao={acao}
@@ -562,6 +566,13 @@ function ValorAcao({
           placeholder="Notas / observações"
         />
       </div>
+    );
+  }
+  if (acao.tipo === "marcar_pagamento_fatura") {
+    return (
+      <p className="self-center text-xs text-texto-suave">
+        Marca como pagamento de fatura e some dos totais
+      </p>
     );
   }
   return <p className="self-center text-xs text-texto-suave">Marca como ignorada nos relatórios</p>;

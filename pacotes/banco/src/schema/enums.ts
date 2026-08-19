@@ -117,3 +117,9 @@ export const papelWorkspaceEnum = pgEnum("papel_workspace", ["dono", "editor", "
 
 /** Preferência do painel do assistente no cockpit web. */
 export const posicaoPainelEnum = pgEnum("posicao_painel", ["lateral", "inferior"]);
+
+/**
+ * Papel do lançamento no Conhecimento (ADR-009). O Fato continua débito/crédito
+ * da instituição; `pagamento_fatura` só interpreta a linha como quitação.
+ */
+export const papelConhecimentoEnum = pgEnum("papel_conhecimento", ["gasto", "pagamento_fatura"]);

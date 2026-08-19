@@ -66,6 +66,8 @@ function badges_acoes(acoes: AcaoRegraApi[], categoriaNome: string | null): stri
       badges.push("Tags/notas");
     } else if (acao.tipo === "ignorar_transacao") {
       badges.push("Ignorar");
+    } else if (acao.tipo === "marcar_pagamento_fatura") {
+      badges.push("Pagamento de fatura");
     } else if (acao.tipo === "definir_perfil") {
       badges.push(acao.perfil === "pj" ? "Jurídica" : "Física");
     }

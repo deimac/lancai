@@ -14,6 +14,7 @@ import {
 import {
   classificadoPorEnum,
   formaPagamentoEnum,
+  papelConhecimentoEnum,
   perfilEnum,
   statusFonteEnum,
   statusMovimentoEnum,
@@ -121,6 +122,15 @@ export const movimento = pgTable(
     confiancaIa: numeric("confianca_ia", { precision: 4, scale: 3 }),
     /** Esconde das agregações sem tocar no Fato. É a saída para "apagar" algo vindo do banco. */
     ignoradoEmRelatorio: boolean("ignorado_em_relatorio").notNull().default(false),
+    /**
+     * Interpretação do lançamento. `pagamento_fatura` some dos totais (via
+     * `ignorado_em_relatorio`) sem mudar o Fato — o dinheiro saiu da conta.
+     */
+    papel: papelConhecimentoEnum("papel").notNull().default("gasto"),
+    /** Cartão cuja fatura esta linha quitou — opcional, só com `papel = pagamento_fatura`. */
+    cartaoFaturaId: uuid("cartao_fatura_id").references(() => cartao.id, { onDelete: "set null" }),
+    /** Competência da fatura quitada (`YYYY-MM`). */
+    competenciaFatura: text("competencia_fatura"),
 
     // -------------------------------------------------------------------
     // Auditoria
