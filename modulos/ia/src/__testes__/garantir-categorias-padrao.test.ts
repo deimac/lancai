@@ -23,7 +23,6 @@ describe("garantir_categorias_padrao", () => {
     const repositorio = new RepositorioContextoEmMemoria();
     const usuarioId = randomUUID();
 
-    await repositorio.criarCategoria(usuarioId, "transporte", "despesa");
     await garantir_categorias_padrao(usuarioId, repositorio);
     const segunda = await garantir_categorias_padrao(usuarioId, repositorio);
 
@@ -32,5 +31,20 @@ describe("garantir_categorias_padrao", () => {
     );
     expect(transportes).toHaveLength(1);
     expect(segunda).toHaveLength(CATEGORIAS_PADRAO.length);
+  });
+
+  it("não recria uma categoria padrão que o usuário renomeou", async () => {
+    const repositorio = new RepositorioContextoEmMemoria();
+    const usuarioId = randomUUID();
+
+    await garantir_categorias_padrao(usuarioId, repositorio);
+    const lista = await repositorio.listarCategorias(usuarioId);
+    const servicos = lista.find((categoria) => categoria.nome === "Serviços prestados");
+    expect(servicos).toBeDefined();
+    servicos!.nome = "Prestador de serviço";
+
+    const depois = await garantir_categorias_padrao(usuarioId, repositorio);
+    expect(depois.some((categoria) => categoria.nome === "Serviços prestados")).toBe(false);
+    expect(depois.some((categoria) => categoria.nome === "Prestador de serviço")).toBe(true);
   });
 });

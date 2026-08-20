@@ -19,9 +19,11 @@ import {
 } from "../lib/visual-categoria";
 import { Botao } from "../componentes/ui/Botao";
 import { Campo } from "../componentes/ui/Campo";
+import { CampoValor } from "../componentes/ui/CampoValor";
 import { MenuAcoes } from "../componentes/ui/MenuAcoes";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { useContextoLayout } from "../layout/useContextoLayout";
+import { parsear_valor_mascara, valor_para_mascara } from "../lib/mascara-valor";
 import { unir_classes } from "../lib/unir-classes";
 
 const ROTULO_TIPO: Record<TipoCategoria, string> = {
@@ -99,7 +101,7 @@ export function TelaCategorias() {
     if (!usuario || !form || !form.nome.trim()) return;
     setSalvando(true);
     setErro(null);
-    const limite = form.limite.trim() === "" ? null : Number(form.limite.replace(",", "."));
+    const limite = parsear_valor_mascara(form.limite);
     try {
       if (form.id) {
         await clienteApi.atualizar_categoria(form.id, {
@@ -108,7 +110,7 @@ export function TelaCategorias() {
           tipo: form.tipo,
           icone: form.icone,
           cor: form.cor,
-          limite: Number.isFinite(limite) ? limite : null,
+          limite: limite != null && Number.isFinite(limite) ? limite : null,
         });
         toast.sucesso("Categoria atualizada.");
       } else {
@@ -118,7 +120,7 @@ export function TelaCategorias() {
           tipo: form.tipo,
           icone: form.icone,
           cor: form.cor,
-          limite: Number.isFinite(limite) ? limite : null,
+          limite: limite != null && Number.isFinite(limite) ? limite : null,
         });
         toast.sucesso("Categoria criada.");
       }
@@ -249,7 +251,7 @@ export function TelaCategorias() {
                                   tipo: categoria.tipo,
                                   icone: categoria.icone ?? "geral",
                                   cor: categoria.cor ?? "neutro",
-                                  limite: categoria.limite != null ? String(categoria.limite) : "",
+                                  limite: categoria.limite != null ? valor_para_mascara(categoria.limite) : "",
                                 }),
                             },
                           ]}
@@ -297,11 +299,10 @@ export function TelaCategorias() {
             </label>
             <label className="flex flex-col gap-1 text-xs text-texto-suave">
               Limite mensal (opcional)
-              <Campo
-                inputMode="decimal"
+              <CampoValor
                 placeholder="Sem limite"
                 value={form.limite}
-                onChange={(e) => setForm({ ...form, limite: e.target.value })}
+                onChange={(limite) => setForm({ ...form, limite })}
               />
             </label>
             <div>
