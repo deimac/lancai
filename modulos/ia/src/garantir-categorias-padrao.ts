@@ -18,7 +18,7 @@ export async function garantir_categorias_padrao(
 
   for (const padrao of CATEGORIAS_PADRAO) {
     if (nomes.has(padrao.nome.toLocaleLowerCase("pt-BR"))) continue;
-    await repositorio.criarCategoria(usuarioId, padrao.nome, padrao.tipo);
+    await repositorio.criarCategoria(usuarioId, padrao.nome, padrao.tipo, padrao.icone, padrao.cor);
     nomes.add(padrao.nome.toLocaleLowerCase("pt-BR"));
   }
 

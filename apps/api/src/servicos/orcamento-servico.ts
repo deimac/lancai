@@ -60,6 +60,32 @@ export async function definir_orcamento(entrada: {
   return criado;
 }
 
+export async function definir_limite_categoria(entrada: {
+  usuarioId: string;
+  categoriaId: string;
+  valorLimite: number | null;
+}): Promise<void> {
+  if (entrada.valorLimite == null || entrada.valorLimite <= 0) {
+    const banco = obter_banco();
+    await banco
+      .update(orcamentoTabela)
+      .set({ ativo: false, dataAtualizacao: new Date() })
+      .where(
+        and(
+          eq(orcamentoTabela.usuarioId, entrada.usuarioId),
+          eq(orcamentoTabela.categoriaId, entrada.categoriaId),
+          eq(orcamentoTabela.ativo, true),
+        ),
+      );
+    return;
+  }
+  await definir_orcamento({
+    usuarioId: entrada.usuarioId,
+    categoriaId: entrada.categoriaId,
+    valorLimite: entrada.valorLimite,
+  });
+}
+
 export type StatusOrcamento = {
   orcamento: Orcamento;
   categoriaNome: string | null;

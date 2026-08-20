@@ -17,6 +17,7 @@ import { registrar_rotas_webhooks_open_finance } from "./rotas/webhooks-open-fin
 import { registrar_rotas_open_finance } from "./rotas/open-finance";
 import { registrar_rotas_cron } from "./rotas/cron";
 import { registrar_rotas_workspaces } from "./rotas/workspaces";
+import { registrar_rotas_recorrencia } from "./rotas/recorrencias";
 import { tratar_erro } from "./tratar-erro";
 
 export function criar_servidor() {
@@ -36,6 +37,7 @@ export function criar_servidor() {
 
   app.register(registrar_rotas_usuario, { prefix: "/usuarios" });
   app.register(registrar_rotas_workspaces, { prefix: "/workspaces" });
+  app.register(registrar_rotas_recorrencia, { prefix: "/recorrencias" });
   app.register(registrar_rotas_conta, { prefix: "/contas" });
   app.register(registrar_rotas_cartao, { prefix: "/cartoes" });
   app.register(registrar_rotas_categoria, { prefix: "/categorias" });

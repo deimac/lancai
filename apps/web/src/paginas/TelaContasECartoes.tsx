@@ -41,6 +41,7 @@ import { ModalContaCartao, type TipoCadastro } from "../componentes/ModalContaCa
 import { ModalReconectar } from "../componentes/ModalReconectar";
 import { PainelWorkspaces } from "../componentes/PainelWorkspaces";
 import { Botao } from "../componentes/ui/Botao";
+import { MenuAcoes, type AcaoMenu } from "../componentes/ui/MenuAcoes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 
 type Aba = "contas" | "cartoes" | "bancos";
@@ -452,6 +453,7 @@ export function TelaContasECartoes() {
                 e.stopPropagation();
                 setMenuId(menuId === conta.id ? null : conta.id);
               },
+              aoFecharMenu: () => setMenuId(null),
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_conta(conta) },
                 ...(precisa_reconectar(conta)
@@ -508,6 +510,7 @@ export function TelaContasECartoes() {
                 e.stopPropagation();
                 setMenuId(menuId === cartao.id ? null : cartao.id);
               },
+              aoFecharMenu: () => setMenuId(null),
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_cartao(cartao) },
                 ...(precisa_reconectar(cartao)
@@ -585,6 +588,7 @@ export function TelaContasECartoes() {
                         </Botao>
                         {menuId === conexao.id && (
                           <MenuAcoes
+                            aoEscolher={() => setMenuId(null)}
                             acoes={[
                               ...(conexao.status !== "removida"
                                 ? [
@@ -700,39 +704,6 @@ export function TelaContasECartoes() {
   );
 }
 
-type AcaoMenu = {
-  rotulo: string;
-  icone: typeof Pencil;
-  onClick: () => void;
-  perigo?: boolean;
-};
-
-function MenuAcoes({ acoes }: { acoes: AcaoMenu[] }) {
-  return (
-    <div
-      className="absolute right-0 top-full z-20 mt-1 min-w-[11rem] rounded-xl border border-borda bg-superficie py-1 shadow-lg"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {acoes.map((acao) => (
-        <button
-          key={acao.rotulo}
-          type="button"
-          className={unir_classes(
-            "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-fundo",
-            acao.perigo ? "text-despesa" : "text-texto",
-          )}
-          onClick={() => {
-            acao.onClick();
-          }}
-        >
-          <acao.icone size={14} />
-          {acao.rotulo}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ListaDestinos({
   carregando,
   vazia,
@@ -749,6 +720,7 @@ function ListaDestinos({
     valorClasse: string;
     menuAberto: boolean;
     aoMenu: (e: MouseEvent) => void;
+    aoFecharMenu: () => void;
     acoes: AcaoMenu[];
   }>;
 }) {
@@ -799,7 +771,7 @@ function ListaDestinos({
             <Botao variante="fantasma" className="px-2" onClick={item.aoMenu}>
               <MoreHorizontal size={16} />
             </Botao>
-            {item.menuAberto && <MenuAcoes acoes={item.acoes} />}
+            {item.menuAberto && <MenuAcoes acoes={item.acoes} aoEscolher={item.aoFecharMenu} />}
           </div>
         </motion.li>
       ))}

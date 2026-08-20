@@ -142,10 +142,16 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     return linhas[0];
   }
 
-  async criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria> {
+  async criarCategoria(
+    usuarioId: string,
+    nome: string,
+    tipo: Categoria["tipo"],
+    icone = "geral",
+    cor = "neutro",
+  ): Promise<Categoria> {
     const linhas = await this.banco
       .insert(categoriaTabela)
-      .values({ usuarioId, nome, tipo })
+      .values({ usuarioId, nome, tipo, icone, cor })
       .returning();
     const categoria = linhas[0];
     if (!categoria) throw new Error("Falha ao criar categoria automaticamente.");

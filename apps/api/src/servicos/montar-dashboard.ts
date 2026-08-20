@@ -5,8 +5,9 @@ import {
   RepositorioRelatoriosDrizzle,
   inicioFimMesAtual,
 } from "@lancai/relatorios";
-import { hojeISO } from "@lancai/tipos";
+import { adicionarMeses, deISOParaData, hojeISO, paraDataISO } from "@lancai/tipos";
 import { mapear_origem_cartoes } from "./origem-conta-cartao";
+import { listar_status_orcamentos } from "./orcamento-servico";
 
 const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
 const repositorio = new RepositorioRelatoriosDrizzle();
@@ -25,6 +26,32 @@ export interface DashboardCartao {
   final4: string | null;
   gastoMes: number;
   quantidadeLancamentos: number;
+}
+
+export interface RankingCategoria {
+  categoriaNome: string;
+  total: number;
+  icone: string;
+  cor: string;
+}
+
+export interface ProximoPagamento {
+  id: string;
+  data: string;
+  descricao: string;
+  valor: number;
+  origem: "previsto" | "parcela" | "fatura" | "recorrente";
+  contaNome: string | null;
+  vencida: boolean;
+}
+
+export interface OrcamentoDashboard {
+  categoriaNome: string | null;
+  gasto: number;
+  limite: number;
+  percentual: number;
+  icone: string;
+  cor: string;
 }
 
 export interface DashboardResposta {
@@ -49,13 +76,18 @@ export interface DashboardResposta {
     resultadoMes: number;
     /** Usado no gráfico de fluxo; não é KPI da área superior. */
     saldoPeriodo: number;
+    variacaoReceitas: number | null;
+    variacaoDespesas: number | null;
+    variacaoResultado: number | null;
   };
   naoClassificado: {
     quantidade: number;
     total: number;
   };
-  gastosPorCategoria: Array<{ categoriaNome: string; total: number }>;
+  gastosPorCategoria: RankingCategoria[];
+  receitasPorCategoria: RankingCategoria[];
   fluxoSaldo: Array<{ data: string; saldo: number }>;
+  fluxoResultado: Array<{ data: string; entradas: number; saidas: number; resultado: number }>;
   recentes: Array<{
     id: string;
     data: string;
@@ -65,6 +97,8 @@ export interface DashboardResposta {
     categoriaNome: string | null;
     origemNome: string | null;
   }>;
+  proximosPagamentos: ProximoPagamento[];
+  orcamentos: OrcamentoDashboard[];
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
   cartoes: DashboardCartao[];
 }
@@ -78,8 +112,21 @@ export async function montar_dashboard(
 ): Promise<DashboardResposta> {
   const periodo = inicioFimMesAtual(dataAtual);
   const filtros = { usuarioId, periodo };
+  const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
+  const periodoAnterior = inicioFimMesAtual(dataAnterior);
 
-  const [saldosVisao, categoriaVisao, historicoVisao, cartoesVisao, despesasCartaoMes, cartoesDb] =
+  const [
+    saldosVisao,
+    categoriaVisao,
+    historicoVisao,
+    cartoesVisao,
+    despesasCartaoMes,
+    cartoesDb,
+    categoriaAnteriorVisao,
+    futuroVisao,
+    movimentosMes,
+    categoriasDb,
+  ] =
     await Promise.all([
       relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
       relatorios.consultar_visao("categoria", filtros, dataAtual),
@@ -87,13 +134,19 @@ export async function montar_dashboard(
       relatorios.consultar_visao("cartoes", { usuarioId }, dataAtual),
       repositorio.listarMovimentos(usuarioId, { periodo, tipos: ["despesa"] }),
       repositorio.listarCartoes(usuarioId),
+      relatorios.consultar_visao("categoria", { usuarioId, periodo: periodoAnterior }, dataAnterior),
+      relatorios.consultar_visao("futuro", { usuarioId, periodo }, dataAtual),
+      repositorio.listarMovimentos(usuarioId, { periodo }),
+      repositorio.listarCategorias(usuarioId),
     ]);
 
   if (
     saldosVisao.tipo !== "saldos" ||
     categoriaVisao.tipo !== "categoria" ||
     historicoVisao.tipo !== "historico" ||
-    cartoesVisao.tipo !== "cartoes"
+    cartoesVisao.tipo !== "cartoes" ||
+    categoriaAnteriorVisao.tipo !== "categoria" ||
+    futuroVisao.tipo !== "futuro"
   ) {
     throw new Error("Resposta inesperada do ModuloRelatorios no dashboard.");
   }
@@ -161,6 +214,19 @@ export async function montar_dashboard(
 
   const naoClassificado = await contar_nao_classificados(usuarioId, periodo);
   const fluxoSaldo = montar_fluxo_saldo(saldos.totalGeral, historico.saldoPeriodo, historico.dias);
+  const fluxoResultado = montar_fluxo_resultado(movimentosMes, periodo);
+  const visualPorNome = new Map(
+    categoriasDb.map((item) => [item.nome, { icone: item.icone, cor: item.cor }] as const),
+  );
+  const gastosPorCategoria = categoria.ranking.map((item) => ({
+    ...item,
+    icone: visualPorNome.get(item.categoriaNome)?.icone ?? "geral",
+    cor: visualPorNome.get(item.categoriaNome)?.cor ?? "neutro",
+  }));
+  const receitasPorCategoria = montar_ranking_tipo(movimentosMes, categoriasDb, "receita");
+  const resultadoAnterior = arredondar(
+    categoriaAnteriorVisao.dados.totalReceitas - categoriaAnteriorVisao.dados.totalDespesas,
+  );
 
   const recentes = historico.dias
     .flatMap((dia) =>
@@ -175,6 +241,33 @@ export async function montar_dashboard(
       })),
     )
     .slice(0, 12);
+
+  let orcamentos: OrcamentoDashboard[] = [];
+  try {
+    const status = await listar_status_orcamentos(usuarioId, dataAtual);
+    orcamentos = status.map((item) => ({
+      categoriaNome: item.categoriaNome,
+      gasto: item.gasto,
+      limite: item.limite,
+      percentual: item.percentual,
+      icone: item.categoriaNome
+        ? (visualPorNome.get(item.categoriaNome)?.icone ?? "geral")
+        : "geral",
+      cor: item.categoriaNome
+        ? (visualPorNome.get(item.categoriaNome)?.cor ?? "neutro")
+        : "neutro",
+    }));
+  } catch {
+    orcamentos = [];
+  }
+
+  const proximosPagamentos = montar_proximos_pagamentos({
+    futuro: futuroVisao.dados.itens,
+    cartoes: cartoesDetalhe,
+    movimentos: movimentosMes,
+    hoje: dataAtual,
+    periodo,
+  });
 
   return {
     mes: dataAtual.slice(0, 7),
@@ -193,11 +286,24 @@ export async function montar_dashboard(
       despesasMes: categoria.totalDespesas,
       resultadoMes,
       saldoPeriodo: historico.saldoPeriodo,
+      variacaoReceitas: variacao_percentual(
+        categoria.totalReceitas,
+        categoriaAnteriorVisao.dados.totalReceitas,
+      ),
+      variacaoDespesas: variacao_percentual(
+        categoria.totalDespesas,
+        categoriaAnteriorVisao.dados.totalDespesas,
+      ),
+      variacaoResultado: variacao_percentual(resultadoMes, resultadoAnterior),
     },
     naoClassificado,
-    gastosPorCategoria: categoria.ranking,
+    gastosPorCategoria,
+    receitasPorCategoria,
     fluxoSaldo,
+    fluxoResultado,
     recentes,
+    proximosPagamentos,
+    orcamentos,
     contas: saldos.contas,
     cartoes: cartoesDetalhe,
   };
@@ -260,4 +366,134 @@ function montar_fluxo_saldo(
   }
 
   return pontos;
+}
+
+function variacao_percentual(atual: number, anterior: number): number | null {
+  if (anterior === 0) return atual === 0 ? 0 : null;
+  return Math.round(((atual - anterior) / Math.abs(anterior)) * 1000) / 10;
+}
+
+function montar_ranking_tipo(
+  movimentos: Array<{ tipo: string; valor: string | number; categoriaId: string | null }>,
+  categorias: Array<{ id: string; nome: string; icone: string; cor: string }>,
+  tipo: "receita" | "despesa",
+): RankingCategoria[] {
+  const mapa = new Map(categorias.map((item) => [item.id, item]));
+  const totais = new Map<string, RankingCategoria>();
+  for (const movimento of movimentos) {
+    if (movimento.tipo !== tipo) continue;
+    const cat = movimento.categoriaId ? mapa.get(movimento.categoriaId) : undefined;
+    const nome = cat?.nome ?? "Sem categoria";
+    const atual = totais.get(nome) ?? {
+      categoriaNome: nome,
+      total: 0,
+      icone: cat?.icone ?? "geral",
+      cor: cat?.cor ?? "neutro",
+    };
+    atual.total += Number(movimento.valor);
+    totais.set(nome, atual);
+  }
+  return [...totais.values()].sort((a, b) => b.total - a.total).slice(0, 8);
+}
+
+function montar_fluxo_resultado(
+  movimentos: Array<{ dataMovimento: string; tipo: string; valor: string | number }>,
+  periodo: { de: string; ate: string },
+): Array<{ data: string; entradas: number; saidas: number; resultado: number }> {
+  const porDia = new Map<string, { entradas: number; saidas: number }>();
+  for (const movimento of movimentos) {
+    const dia = String(movimento.dataMovimento).slice(0, 10);
+    const atual = porDia.get(dia) ?? { entradas: 0, saidas: 0 };
+    const valor = Number(movimento.valor);
+    if (["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo)) {
+      atual.entradas += valor;
+    } else if (movimento.tipo === "despesa" || movimento.tipo === "retirada") {
+      atual.saidas += valor;
+    }
+    porDia.set(dia, atual);
+  }
+
+  const pontos: Array<{ data: string; entradas: number; saidas: number; resultado: number }> = [];
+  const inicio = deISOParaData(periodo.de);
+  const fim = deISOParaData(periodo.ate);
+  for (let cursor = new Date(inicio); cursor.getTime() <= fim.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const data = paraDataISO(cursor);
+    const dia = porDia.get(data) ?? { entradas: 0, saidas: 0 };
+    pontos.push({
+      data,
+      entradas: arredondar(dia.entradas),
+      saidas: arredondar(dia.saidas),
+      resultado: arredondar(dia.entradas - dia.saidas),
+    });
+  }
+  return pontos.filter((p) => p.entradas !== 0 || p.saidas !== 0);
+}
+
+function montar_proximos_pagamentos(entrada: {
+  futuro: Array<{ descricao: string; valor: number; data: string; origem: "parcela" | "movimento" }>;
+  cartoes: DashboardCartao[];
+  movimentos: Array<{
+    id: string;
+    descricao: string;
+    valor: string | number;
+    status: string;
+    dataMovimento: string;
+    fonte: string;
+    tipo: string;
+  }>;
+  hoje: string;
+  periodo: { de: string; ate: string };
+}): ProximoPagamento[] {
+  const itens: ProximoPagamento[] = [];
+
+  for (const item of entrada.futuro) {
+    itens.push({
+      id: `${item.origem}-${item.data}-${item.descricao}`,
+      data: item.data,
+      descricao: item.descricao,
+      valor: item.valor,
+      origem: item.origem === "parcela" ? "parcela" : "previsto",
+      contaNome: null,
+      vencida: item.data < entrada.hoje,
+    });
+  }
+
+  for (const movimento of entrada.movimentos) {
+    if (movimento.status !== "previsto") continue;
+    if (movimento.tipo !== "despesa" && movimento.tipo !== "retirada") continue;
+    itens.push({
+      id: movimento.id,
+      data: String(movimento.dataMovimento).slice(0, 10),
+      descricao: movimento.descricao,
+      valor: Number(movimento.valor),
+      origem: movimento.fonte === "recorrencia" ? "recorrente" : "previsto",
+      contaNome: null,
+      vencida: String(movimento.dataMovimento).slice(0, 10) < entrada.hoje,
+    });
+  }
+
+  for (const cartao of entrada.cartoes) {
+    const dia = String(cartao.vencimento).padStart(2, "0");
+    const data = `${entrada.periodo.de.slice(0, 7)}-${dia}`;
+    itens.push({
+      id: `fatura-${cartao.id}`,
+      data,
+      descricao: `Fatura ${cartao.nome}`,
+      valor: cartao.gastoMes,
+      origem: "fatura",
+      contaNome: cartao.nome,
+      vencida: data < entrada.hoje,
+    });
+  }
+
+  const vistos = new Set<string>();
+  return itens
+    .filter((item) => {
+      const chave = `${item.descricao}|${item.data}|${item.valor}`;
+      if (vistos.has(chave)) return false;
+      vistos.add(chave);
+      return true;
+    })
+    .sort((a, b) => a.data.localeCompare(b.data) || a.descricao.localeCompare(b.descricao, "pt-BR"))
+    .slice(0, 16);
 }

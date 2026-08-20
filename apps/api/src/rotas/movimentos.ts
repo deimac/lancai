@@ -223,4 +223,56 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
       };
     });
   });
+
+  app.delete("/:id", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const { usuarioId } = requisicao.query as { usuarioId?: string };
+    if (!usuarioId) {
+      return resposta.status(400).send({ erro: "usuarioId é obrigatório." });
+    }
+
+    const banco = obter_banco();
+    const escopo = await obter_escopo_leitura(usuarioId);
+    if (escopo.workspaceIds.length === 0) {
+      return resposta.status(404).send({ erro: "Movimento não encontrado." });
+    }
+
+    const [atual] = await banco
+      .select({
+        id: movimento.id,
+        fonte: movimento.fonte,
+        descricao: movimento.descricao,
+      })
+      .from(movimento)
+      .where(
+        and(
+          eq(movimento.id, id),
+          eq(movimento.usuarioId, usuarioId),
+          inArray(movimento.workspaceId, escopo.workspaceIds),
+        ),
+      )
+      .limit(1);
+
+    if (!atual) {
+      return resposta.status(404).send({ erro: "Movimento não encontrado." });
+    }
+    if (atual.fonte === "open_finance") {
+      return resposta.status(403).send({
+        erro: "Lançamentos do Open Finance não podem ser excluídos.",
+      });
+    }
+
+    try {
+      await motor.corrigir_fato_manual({
+        movimentoId: id,
+        alteradoPor: usuarioId,
+        campos: { status: "cancelado" },
+      });
+      return { ok: true };
+    } catch (erro) {
+      const mensagem =
+        erro instanceof Error ? erro.message : "Não foi possível excluir o lançamento.";
+      return resposta.status(400).send({ erro: mensagem });
+    }
+  });
 }

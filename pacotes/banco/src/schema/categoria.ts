@@ -9,6 +9,8 @@ export const categoria = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     nome: text("nome").notNull(),
     tipo: tipoCategoriaEnum("tipo").notNull(),
+    icone: text("icone").notNull().default("geral"),
+    cor: text("cor").notNull().default("neutro"),
     ativo: boolean("ativo").notNull().default(true),
     usuarioId: uuid("usuario_id")
       .notNull()

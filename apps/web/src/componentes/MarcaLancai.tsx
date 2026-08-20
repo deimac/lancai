@@ -6,6 +6,8 @@ type Props = {
   tamanho?: "sm" | "md";
   /** Quando false, só marca visual (login etc.), sem navegar. */
   link?: boolean;
+  /** Só o ícone — sidebar recolhida. */
+  compacto?: boolean;
 };
 
 function IconeMarca({ className }: { className?: string }) {
@@ -36,16 +38,18 @@ function IconeMarca({ className }: { className?: string }) {
   );
 }
 
-export function MarcaLancai({ className, tamanho = "md", link = true }: Props) {
+export function MarcaLancai({ className, tamanho = "md", link = true, compacto = false }: Props) {
   const texto = tamanho === "sm" ? "text-base" : "text-lg";
   const icone = tamanho === "sm" ? "h-7 w-7" : "h-8 w-8";
 
   const conteudo = (
     <>
       <IconeMarca className={unir_classes(icone, "shrink-0")} />
-      <span className={unir_classes("font-semibold tracking-tight text-texto", texto)}>
-        Lançai
-      </span>
+      {compacto ? null : (
+        <span className={unir_classes("font-semibold tracking-tight text-texto", texto)}>
+          Lançai
+        </span>
+      )}
     </>
   );
 

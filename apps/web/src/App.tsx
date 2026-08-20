@@ -9,6 +9,8 @@ import { TelaConfiguracoes } from "./paginas/TelaConfiguracoes";
 import { TelaContasECartoes } from "./paginas/TelaContasECartoes";
 import { TelaDashboard } from "./paginas/TelaDashboard";
 import { TelaExtrato } from "./paginas/TelaExtrato";
+import { TelaAgendadas } from "./paginas/TelaAgendadas";
+import { TelaRecorrentes } from "./paginas/TelaRecorrentes";
 import { TelaLogin } from "./paginas/TelaLogin";
 import { TelaRegras } from "./paginas/TelaRegras";
 
@@ -33,6 +35,8 @@ export function App() {
                 <Route path="/categorias" element={<TelaCategorias />} />
                 <Route path="/regras" element={<TelaRegras />} />
                 <Route path="/extrato" element={<TelaExtrato />} />
+                <Route path="/agendadas" element={<TelaAgendadas />} />
+                <Route path="/recorrentes" element={<TelaRecorrentes />} />
                 <Route path="/conexoes" element={<Navigate to="/contas#bancos" replace />} />
                 <Route path="/configuracoes" element={<TelaConfiguracoes />} />
               </Route>

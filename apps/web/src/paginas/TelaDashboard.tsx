@@ -5,6 +5,9 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,6 +18,8 @@ import {
   AlertTriangle,
   ChevronRight,
   CreditCard,
+  Eye,
+  EyeOff,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -24,9 +29,11 @@ import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
 import { formatar_data_curta, formatar_mes, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
+import { IconeCategoria } from "../componentes/IconeCategoria";
 import { Botao } from "../componentes/ui/Botao";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
+import { hex_cor_categoria } from "../lib/visual-categoria";
 import { unir_classes } from "../lib/unir-classes";
 
 const fade = {
@@ -36,6 +43,20 @@ const fade = {
 
 function eh_entrada(tipo: string): boolean {
   return ["receita", "reembolso", "estorno", "aporte"].includes(tipo);
+}
+
+function formatar_oculto(valor: string, ocultar: boolean): string {
+  return ocultar ? "R$ •••" : valor;
+}
+
+function Variacao({ valor }: { valor: number | null | undefined }) {
+  if (valor == null) return null;
+  const positivo = valor >= 0;
+  return (
+    <p className={unir_classes("mt-1 text-xs", positivo ? "text-receita" : "text-despesa")}>
+      {positivo ? "▲" : "▼"} {Math.abs(valor).toFixed(1).replace(".", ",")}% vs mês anterior
+    </p>
+  );
 }
 
 export function TelaDashboard() {
@@ -48,6 +69,7 @@ export function TelaDashboard() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [drawerCartoesAberto, setDrawerCartoesAberto] = useState(false);
+  const [ocultarValores, setOcultarValores] = useState(false);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "dashboard",
@@ -119,7 +141,6 @@ export function TelaDashboard() {
   const resultadoMes =
     dados.resumo.resultadoMes ?? dados.resumo.receitasMes - dados.resumo.despesasMes;
 
-  const maxCategoria = Math.max(...dados.gastosPorCategoria.map((c) => c.total), 1);
   const fluxoChart = dados.fluxoSaldo.map((ponto) => ({
     ...ponto,
     rotulo: formatar_data_curta(ponto.data),
@@ -137,7 +158,17 @@ export function TelaDashboard() {
             <p className="text-sm text-texto-suave">Todos os workspaces</p>
           ) : null}
         </div>
-        <SeletorMes mes={mes} onChange={escolher_mes} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOcultarValores((v) => !v)}
+            className="rounded-lg border border-borda p-2 text-texto-suave hover:text-texto"
+            title={ocultarValores ? "Mostrar valores" : "Ocultar valores"}
+          >
+            {ocultarValores ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+          <SeletorMes mes={mes} onChange={escolher_mes} />
+        </div>
       </div>
 
       {dados.naoClassificado.quantidade > 0 && (
@@ -175,7 +206,7 @@ export function TelaDashboard() {
             <Wallet size={16} className="text-primaria" />
           </div>
           <p className="text-2xl font-semibold tracking-tight text-texto tabular-nums">
-            {formatar_moeda(dados.resumo.saldoTotal)}
+            {formatar_oculto(formatar_moeda(dados.resumo.saldoTotal), ocultarValores)}
           </p>
           <p className="mt-2 text-xs text-texto-suave">
             {quantidadeContas === 0
@@ -224,11 +255,11 @@ export function TelaDashboard() {
               <CreditCard size={16} className="text-primaria" />
             </div>
             <p className="text-2xl font-semibold tracking-tight text-despesa tabular-nums">
-              {formatar_moeda(gastoCartoesMes)}
+              {formatar_oculto(formatar_moeda(gastoCartoesMes), ocultarValores)}
             </p>
             <p className="mt-1 text-xs text-texto-suave">gasto no mês</p>
             <p className="mt-2 text-sm font-medium text-receita tabular-nums">
-              {formatar_moeda(cartoesDisponivel)} disponível
+              {formatar_oculto(formatar_moeda(cartoesDisponivel), ocultarValores)} disponível
             </p>
             <p className="mt-3 flex items-center gap-1 text-xs font-medium text-primaria">
               {quantidadeCartoes === 1 ? "1 cartão" : `${quantidadeCartoes} cartões`}
@@ -251,9 +282,9 @@ export function TelaDashboard() {
             <TrendingUp size={16} className="text-receita" />
           </div>
           <p className="text-2xl font-semibold tracking-tight text-receita tabular-nums">
-            {formatar_moeda(dados.resumo.receitasMes)}
+            {formatar_oculto(formatar_moeda(dados.resumo.receitasMes), ocultarValores)}
           </p>
-          <p className="mt-2 text-xs text-texto-suave">no mês</p>
+          <Variacao valor={dados.resumo.variacaoReceitas} />
         </motion.div>
 
         <motion.div
@@ -268,14 +299,9 @@ export function TelaDashboard() {
             <TrendingDown size={16} className="text-despesa" />
           </div>
           <p className="text-2xl font-semibold tracking-tight text-despesa tabular-nums">
-            {formatar_moeda(dados.resumo.despesasMes)}
+            {formatar_oculto(formatar_moeda(dados.resumo.despesasMes), ocultarValores)}
           </p>
-          <p className="mt-2 text-xs text-texto-suave">
-            no mês
-            {dados.cartoes.some((c) => c.sincronizada)
-              ? " · cartão OF pode vir incompleto até fechar a fatura"
-              : ""}
-          </p>
+          <Variacao valor={dados.resumo.variacaoDespesas} />
         </motion.div>
       </div>
 
@@ -301,6 +327,7 @@ export function TelaDashboard() {
               Resultado do mês
             </p>
             <p className="text-sm text-texto-suave">Receitas − despesas</p>
+            <Variacao valor={dados.resumo.variacaoResultado} />
           </div>
         </div>
         <p
@@ -309,8 +336,10 @@ export function TelaDashboard() {
             resultadoMes >= 0 ? "text-receita" : "text-despesa",
           )}
         >
-          {resultadoMes >= 0 ? "+" : "−"}
-          {formatar_moeda(Math.abs(resultadoMes))}
+          {formatar_oculto(
+            `${resultadoMes >= 0 ? "+" : "−"}${formatar_moeda(Math.abs(resultadoMes))}`,
+            ocultarValores,
+          )}
         </p>
       </motion.div>
 
@@ -335,10 +364,10 @@ export function TelaDashboard() {
                       <stop offset="100%" stopColor="#2dd4a0" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="#2a3441" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="rotulo" tick={{ fill: "#8b9aaf", fontSize: 11 }} axisLine={false} />
+                  <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="rotulo" tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }} axisLine={false} />
                   <YAxis
-                    tick={{ fill: "#8b9aaf", fontSize: 11 }}
+                    tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
                     axisLine={false}
                     tickFormatter={(v: number) =>
                       v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
@@ -346,9 +375,10 @@ export function TelaDashboard() {
                   />
                   <Tooltip
                     contentStyle={{
-                      background: "#12181f",
-                      border: "1px solid #2a3441",
+                      background: "var(--color-superficie)",
+                      border: "1px solid var(--color-borda)",
                       borderRadius: 12,
+                      color: "var(--color-texto)",
                     }}
                     formatter={(valor) => formatar_moeda(Number(valor))}
                     labelFormatter={(rotulo) => `Dia ${rotulo}`}
@@ -375,24 +405,40 @@ export function TelaDashboard() {
           {dados.gastosPorCategoria.length === 0 ? (
             <p className="py-10 text-center text-sm text-texto-suave">Nenhuma despesa no mês.</p>
           ) : (
-            <ul className="space-y-3">
-              {dados.gastosPorCategoria.map((item) => (
-                <li key={item.categoriaNome} className="text-xs text-texto-suave">
-                  <div className="mb-1 flex justify-between gap-2">
-                    <span className="truncate text-sm text-texto">{item.categoriaNome}</span>
-                    <span className="shrink-0 tabular-nums text-texto">
-                      {formatar_moeda(item.total)}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="h-44 w-full sm:w-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={dados.gastosPorCategoria}
+                      dataKey="total"
+                      nameKey="categoriaNome"
+                      innerRadius={42}
+                      outerRadius={68}
+                      paddingAngle={2}
+                    >
+                      {dados.gastosPorCategoria.map((item) => (
+                        <Cell key={item.categoriaNome} fill={hex_cor_categoria(item.cor)} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(valor) => formatar_oculto(formatar_moeda(Number(valor)), ocultarValores)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ul className="min-w-0 flex-1 space-y-2">
+                {dados.gastosPorCategoria.map((item) => (
+                  <li key={item.categoriaNome} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
+                      <span className="truncate text-sm text-texto">{item.categoriaNome}</span>
                     </span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-borda">
-                    <div
-                      className="h-full rounded-full bg-primaria"
-                      style={{ width: `${(item.total / maxCategoria) * 100}%` }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <span className="shrink-0 tabular-nums text-texto">
+                      {formatar_oculto(formatar_moeda(item.total), ocultarValores)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </motion.section>
       </div>
@@ -430,7 +476,7 @@ export function TelaDashboard() {
                     )}
                   >
                     {eh_entrada(item.tipo) ? "+" : "−"}
-                    {formatar_moeda(item.valor)}
+                    {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
                   </span>
                 </li>
               ))}
@@ -463,7 +509,7 @@ export function TelaDashboard() {
                     {conta.perfil === "pj" ? "Jurídica" : "Física"}
                   </p>
                 </div>
-                <span className="font-medium">{formatar_moeda(conta.saldoAtual)}</span>
+                <span className="font-medium">{formatar_oculto(formatar_moeda(conta.saldoAtual), ocultarValores)}</span>
               </li>
             ))}
             {dados.cartoes.map((cartao) => (
@@ -474,12 +520,14 @@ export function TelaDashboard() {
                 <div>
                   <p className="font-medium">{cartao.nome}</p>
                   <p className="text-xs text-texto-suave">
-                    Disponível {formatar_moeda(cartao.disponivel)}
+                    Disponível {formatar_oculto(formatar_moeda(cartao.disponivel), ocultarValores)}
                     {" · "}
-                    Usado {formatar_moeda(cartao.comprometido)}
+                    Usado {formatar_oculto(formatar_moeda(cartao.comprometido), ocultarValores)}
                   </p>
                 </div>
-                <span className="text-texto-suave">{formatar_moeda(cartao.limite)}</span>
+                <span className="text-texto-suave">
+                  {formatar_oculto(formatar_moeda(cartao.limite), ocultarValores)}
+                </span>
               </li>
             ))}
             {dados.contas.length === 0 && dados.cartoes.length === 0 && (
@@ -488,6 +536,95 @@ export function TelaDashboard() {
               </p>
             )}
           </ul>
+        </motion.section>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <motion.section
+          {...fade}
+          className="rounded-2xl border border-borda bg-superficie/80 p-4"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-texto">Próximos pagamentos</h2>
+            <Link to="/agendadas" className="text-xs text-primaria hover:underline">
+              Ver agenda
+            </Link>
+          </div>
+          {(dados.proximosPagamentos ?? []).length === 0 ? (
+            <p className="py-8 text-center text-sm text-texto-suave">Nada previsto neste mês.</p>
+          ) : (
+            <ul className="divide-y divide-borda">
+              {(dados.proximosPagamentos ?? []).slice(0, 8).map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-texto">{item.descricao}</p>
+                    <p className="text-xs text-texto-suave">
+                      {formatar_data_curta(item.data)}
+                      {item.origem === "fatura"
+                        ? " · Fatura"
+                        : item.origem === "parcela"
+                          ? " · Parcela"
+                          : item.origem === "recorrente"
+                            ? " · Recorrente"
+                            : " · Previsto"}
+                      {item.vencida ? " · vencida" : ""}
+                    </p>
+                  </div>
+                  <span className={item.vencida ? "text-despesa" : "text-texto"}>
+                    {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </motion.section>
+
+        <motion.section
+          {...fade}
+          className="rounded-2xl border border-borda bg-superficie/80 p-4"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-texto">Orçamentos</h2>
+            <Link to="/categorias" className="text-xs text-primaria hover:underline">
+              Categorias
+            </Link>
+          </div>
+          {(dados.orcamentos ?? []).length === 0 ? (
+            <p className="py-8 text-center text-sm text-texto-suave">
+              Nenhum limite definido. Cadastre na tela de Categorias.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {(dados.orcamentos ?? []).map((item) => {
+                const estourou = item.percentual >= 100;
+                return (
+                  <li key={item.categoriaNome ?? "geral"} className="text-xs">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
+                        <span className="truncate text-sm text-texto">
+                          {item.categoriaNome ?? "Geral"}
+                        </span>
+                      </span>
+                      <span className="tabular-nums text-texto-suave">
+                        {formatar_oculto(formatar_moeda(item.gasto), ocultarValores)} /{" "}
+                        {formatar_oculto(formatar_moeda(item.limite), ocultarValores)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-borda">
+                      <div
+                        className={unir_classes(
+                          "h-full rounded-full",
+                          estourou ? "bg-despesa" : "bg-primaria",
+                        )}
+                        style={{ width: `${Math.min(item.percentual, 100)}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </motion.section>
       </div>
 

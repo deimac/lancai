@@ -708,6 +708,8 @@ describe("ServicoConexaoOpenFinance", () => {
         id: randomUUID(),
         nome: "Não classificado",
         tipo: "despesa" as const,
+        icone: "geral",
+        cor: "neutro",
         ativo: true,
         usuarioId,
         dataCriacao: agora,

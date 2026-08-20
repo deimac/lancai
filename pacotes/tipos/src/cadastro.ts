@@ -204,8 +204,21 @@ export const schemaCriarCategoria = z.object({
   nome: z.string().min(1),
   tipo: z.enum(["receita", "despesa", "ambos"]),
   usuarioId: z.string().uuid(),
+  icone: z.string().min(1).optional(),
+  cor: z.string().min(1).optional(),
+  limite: z.number().nonnegative().nullable().optional(),
 });
 export type EntradaCriarCategoria = z.infer<typeof schemaCriarCategoria>;
+
+export const schemaAtualizarCategoria = z.object({
+  usuarioId: z.string().uuid(),
+  nome: z.string().min(1).optional(),
+  tipo: z.enum(["receita", "despesa", "ambos"]).optional(),
+  icone: z.string().min(1).optional(),
+  cor: z.string().min(1).optional(),
+  limite: z.number().nonnegative().nullable().optional(),
+});
+export type EntradaAtualizarCategoria = z.infer<typeof schemaAtualizarCategoria>;
 
 export const schemaCriarPessoa = z.object({
   nome: z.string().min(1),

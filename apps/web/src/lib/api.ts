@@ -83,6 +83,13 @@ export interface CategoriaResumo {
   nome: string;
   tipo: TipoCategoria;
   ativo?: boolean;
+  icone?: string;
+  cor?: string;
+  sistema?: boolean;
+  limite?: number | null;
+  gastoMes?: number;
+  percentual?: number | null;
+  movimentosMes?: number;
 }
 
 export type OrigemRegra = "manual" | "aprendizado_conversa";
@@ -353,6 +360,32 @@ export interface DashboardCartao {
   quantidadeLancamentos: number;
 }
 
+export interface RankingCategoria {
+  categoriaNome: string;
+  total: number;
+  icone?: string;
+  cor?: string;
+}
+
+export interface ProximoPagamento {
+  id: string;
+  data: string;
+  descricao: string;
+  valor: number;
+  origem: "previsto" | "parcela" | "fatura" | "recorrente";
+  contaNome: string | null;
+  vencida: boolean;
+}
+
+export interface OrcamentoDashboard {
+  categoriaNome: string | null;
+  gasto: number;
+  limite: number;
+  percentual: number;
+  icone?: string;
+  cor?: string;
+}
+
 export interface DashboardResposta {
   mes: string;
   periodo: { de: string; ate: string };
@@ -370,10 +403,15 @@ export interface DashboardResposta {
     despesasMes: number;
     resultadoMes: number;
     saldoPeriodo: number;
+    variacaoReceitas?: number | null;
+    variacaoDespesas?: number | null;
+    variacaoResultado?: number | null;
   };
   naoClassificado: { quantidade: number; total: number };
-  gastosPorCategoria: Array<{ categoriaNome: string; total: number }>;
+  gastosPorCategoria: RankingCategoria[];
+  receitasPorCategoria?: RankingCategoria[];
   fluxoSaldo: Array<{ data: string; saldo: number }>;
+  fluxoResultado?: Array<{ data: string; entradas: number; saidas: number; resultado: number }>;
   recentes: Array<{
     id: string;
     data: string;
@@ -383,6 +421,8 @@ export interface DashboardResposta {
     categoriaNome: string | null;
     origemNome: string | null;
   }>;
+  proximosPagamentos?: ProximoPagamento[];
+  orcamentos?: OrcamentoDashboard[];
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
   cartoes: DashboardCartao[];
 }
@@ -674,9 +714,29 @@ export const clienteApi = {
     usuarioId: string;
     nome: string;
     tipo: TipoCategoria;
+    icone?: string;
+    cor?: string;
+    limite?: number | null;
   }): Promise<CategoriaResumo> {
     return requisitar<CategoriaResumo>("/categorias", {
       method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  atualizar_categoria(
+    categoriaId: string,
+    dados: {
+      usuarioId: string;
+      nome?: string;
+      tipo?: TipoCategoria;
+      icone?: string;
+      cor?: string;
+      limite?: number | null;
+    },
+  ): Promise<CategoriaResumo> {
+    return requisitar<CategoriaResumo>(`/categorias/${categoriaId}`, {
+      method: "PATCH",
       body: JSON.stringify(dados),
     });
   },
@@ -741,6 +801,13 @@ export const clienteApi = {
 
   listar_movimentos(usuarioId: string): Promise<MovimentoResumo[]> {
     return requisitar<MovimentoResumo[]>(`/movimentos?usuarioId=${usuarioId}`);
+  },
+
+  excluir_movimento(movimentoId: string, usuarioId: string): Promise<{ ok: boolean }> {
+    return requisitar<{ ok: boolean }>(
+      `/movimentos/${movimentoId}?usuarioId=${encodeURIComponent(usuarioId)}`,
+      { method: "DELETE" },
+    );
   },
 
   listar_parcelas_irmas(
@@ -811,6 +878,44 @@ export const clienteApi = {
     const query = new URLSearchParams({ usuarioId });
     if (data) query.set("data", data);
     return requisitar<DashboardResposta>(`/dashboard?${query.toString()}`);
+  },
+
+  listar_recorrencias(usuarioId: string): Promise<
+    Array<{
+      id: string;
+      descricao: string;
+      valor: number;
+      tipo: string;
+      diaDoMes: number;
+      categoriaId: string;
+      categoriaNome: string | null;
+      icone: string;
+      cor: string;
+      contaNome: string | null;
+      cartaoNome: string | null;
+    }>
+  > {
+    return requisitar(`/recorrencias?usuarioId=${encodeURIComponent(usuarioId)}`);
+  },
+
+  listar_parcelamentos(
+    usuarioId: string,
+    data?: string,
+  ): Promise<{
+    compras: Array<{
+      descricao: string;
+      cartaoNome: string;
+      valorTotal: number;
+      parcelasTotais: number;
+      parcelasPagas: number;
+      parcelasRestantes: number;
+      valorRestante: number;
+      proximaParcelaData: string | null;
+    }>;
+  }> {
+    const query = new URLSearchParams({ usuarioId });
+    if (data) query.set("data", data);
+    return requisitar(`/recorrencias/parcelamentos?${query.toString()}`);
   },
 
   enviar_mensagem_chat(dados: { usuarioId: string; mensagem: string; sessaoId?: string }): Promise<RespostaChat> {

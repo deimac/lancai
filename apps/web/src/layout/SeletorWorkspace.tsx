@@ -9,6 +9,7 @@ import { unir_classes } from "../lib/unir-classes";
 
 type Props = {
   aoMudar: () => void;
+  compacto?: boolean;
 };
 
 function IconeWorkspace({ item }: { item: WorkspaceResumo }) {
@@ -27,7 +28,7 @@ function IconeWorkspace({ item }: { item: WorkspaceResumo }) {
   );
 }
 
-export function SeletorWorkspace({ aoMudar }: Props) {
+export function SeletorWorkspace({ aoMudar, compacto = false }: Props) {
   const { usuario } = useAutenticacao();
   const navigate = useNavigate();
   const [workspaces, setWorkspaces] = useState<WorkspaceResumo[]>([]);
@@ -110,9 +111,9 @@ export function SeletorWorkspace({ aoMudar }: Props) {
 
   if (carregando && !ativo) {
     return (
-      <div className="px-3 pb-2">
+      <div className={compacto ? "px-2 pb-2" : "px-3 pb-2"}>
         <div className="rounded-lg border border-borda bg-superficie px-3 py-2 text-xs text-texto-suave">
-          Carregando workspace...
+          {compacto ? "…" : "Carregando workspace..."}
         </div>
       </div>
     );
@@ -137,7 +138,7 @@ export function SeletorWorkspace({ aoMudar }: Props) {
 
   return (
     <>
-      <div className="relative px-3 pb-2">
+      <div className={unir_classes("relative pb-2", compacto ? "px-2" : "px-3")}>
         <button
           type="button"
           disabled={ocupado}
@@ -145,23 +146,36 @@ export function SeletorWorkspace({ aoMudar }: Props) {
             setInduzir(false);
             setAberto((v) => !v);
           }}
-          className="flex w-full items-center justify-between gap-2 rounded-lg border border-borda bg-superficie px-3 py-2 text-left text-sm transition hover:border-primaria/50"
-          title={ativo.descricao ?? "Trocar workspace"}
+          className={unir_classes(
+            "flex w-full items-center gap-2 rounded-lg border border-borda bg-superficie text-left text-sm transition hover:border-primaria/50",
+            compacto ? "justify-center px-2 py-2" : "justify-between px-3 py-2",
+          )}
+          title={ativo.nome}
+          aria-label={`Workspace ${ativo.nome}`}
         >
           <span className="flex min-w-0 items-center gap-2">
             <IconeWorkspace item={ativo} />
-            <span className="min-w-0">
-              <span className="block truncate font-medium text-texto">{ativo.nome}</span>
-              {ativo.descricao ? (
-                <span className="block truncate text-[11px] text-texto-suave">{ativo.descricao}</span>
-              ) : null}
-            </span>
+            {compacto ? null : (
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-texto">{ativo.nome}</span>
+                {ativo.descricao ? (
+                  <span className="block truncate text-[11px] text-texto-suave">{ativo.descricao}</span>
+                ) : null}
+              </span>
+            )}
           </span>
-          <ChevronsUpDown size={14} className="shrink-0 text-texto-suave" aria-hidden />
+          {compacto ? null : (
+            <ChevronsUpDown size={14} className="shrink-0 text-texto-suave" aria-hidden />
+          )}
         </button>
 
         {aberto && (
-          <div className="absolute left-3 right-3 z-30 mt-1 rounded-xl border border-borda bg-superficie p-2 shadow-lg">
+          <div
+            className={unir_classes(
+              "absolute z-30 mt-1 rounded-xl border border-borda bg-superficie p-2 shadow-lg",
+              compacto ? "left-2 w-56" : "left-3 right-3",
+            )}
+          >
             <ul className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
               {workspaces.map((item) => (
                 <li key={item.id}>

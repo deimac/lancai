@@ -55,6 +55,8 @@ async function semear() {
       categoriasFaltantes.map((categoriaPadrao) => ({
         nome: categoriaPadrao.nome,
         tipo: categoriaPadrao.tipo,
+        icone: categoriaPadrao.icone,
+        cor: categoriaPadrao.cor,
         usuarioId: usuarioAtual.id,
       })),
     );

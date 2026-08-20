@@ -68,6 +68,8 @@ function criarCategoria(usuarioId: string, sobrepor: Partial<Categoria> = {}): C
     id: randomUUID(),
     nome: "Combustível",
     tipo: "despesa",
+    icone: "geral",
+    cor: "neutro",
     ativo: true,
     usuarioId,
     dataCriacao: agora,

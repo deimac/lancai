@@ -1,8 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertTriangle, Building2, PenLine, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  MoreHorizontal,
+  Repeat,
+  Search,
+  Tags,
+  Trash2,
+  UserRound,
+  X,
+} from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
@@ -16,6 +28,8 @@ import { sugerir_pagamento_fatura, type Perfil } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
+import { MenuAcoes } from "../componentes/ui/MenuAcoes";
+import { IconeCategoria } from "../componentes/IconeCategoria";
 import { Paginador } from "../componentes/Paginador";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
@@ -23,7 +37,6 @@ import {
   eh_categoria_pagamento_fatura,
   eh_nao_classificado,
   precisa_revisao,
-  explicacao_classificacao,
   rotulo_classificado_por,
 } from "../lib/fila-revisao";
 import {
@@ -31,8 +44,6 @@ import {
   competencia_default_fatura,
   modo_convite_pagamento_fatura,
   mostra_check_pagamento_fatura,
-  opcoes_competencia,
-  rotulo_check_pagamento_fatura,
 } from "../lib/extrato-pagamento-fatura";
 import {
   classificacao_da_query,
@@ -54,6 +65,10 @@ import {
   type PapelExtrato,
   type TipoGastoExtrato,
 } from "../lib/filtrar-extrato";
+import {
+  pode_excluir_movimento,
+  rotulo_natureza,
+} from "../lib/natureza-extrato";
 import { unir_classes } from "../lib/unir-classes";
 
 function formatar_data(valor: string): string {
@@ -139,6 +154,7 @@ function rotulo_tipo_gasto(tipo: Perfil | null | undefined): string {
 export function TelaExtrato() {
   const { usuario } = useAutenticacao();
   const toast = useToast();
+  const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
   const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
@@ -171,6 +187,7 @@ export function TelaExtrato() {
   const [faturasDispensadas, setFaturasDispensadas] = useState<Set<string>>(
     () => new Set(),
   );
+  const [menuId, setMenuId] = useState<string | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "extrato",
@@ -494,6 +511,33 @@ export function TelaExtrato() {
     }
   }
 
+  async function excluir_movimento(movimento: MovimentoResumo) {
+    if (!usuario || !pode_excluir_movimento(movimento.fonte)) return;
+    const ok = await confirmar({
+      titulo: "Excluir lançamento?",
+      mensagem: `“${movimento.descricao}” será cancelado. Lançamentos do banco não podem ser apagados.`,
+      confirmarRotulo: "Excluir",
+      perigo: true,
+    });
+    if (!ok) return;
+    setSalvandoId(movimento.id);
+    try {
+      await clienteApi.excluir_movimento(movimento.id, usuario.id);
+      setMovimentos((atual) =>
+        atual.map((item) =>
+          item.id === movimento.id ? { ...item, status: "cancelado" } : item,
+        ),
+      );
+      contexto?.invalidar("extrato", "dashboard");
+      toast.sucesso("Lançamento excluído.");
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível excluir.");
+    } finally {
+      setSalvandoId(null);
+      setMenuId(null);
+    }
+  }
+
   if (!usuario) {
     return (
       <div className="flex h-full items-center justify-center text-texto-suave">Carregando...</div>
@@ -501,7 +545,7 @@ export function TelaExtrato() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
@@ -672,236 +716,56 @@ export function TelaExtrato() {
         </Cartao>
       ) : (
         <>
-        <ul className="flex flex-col gap-2">
-          {paginaAtual.itens.map((movimento, indice) => {
-            const doBanco = movimento.fonte === "open_finance";
-            const revisao = precisa_revisao(movimento);
-            return (
-              <motion.li
-                key={movimento.id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(indice, 12) * 0.015 }}
-              >
-                <div
-                  className={unir_classes(
-                    "rounded-2xl border px-4 py-3",
-                    revisao
-                      ? "border-aviso/35 bg-aviso/5"
-                      : "border-borda bg-superficie/80",
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-medium text-texto">
-                          {movimento.descricao}
-                        </p>
-                        <span
-                          className="inline-flex items-center gap-1 rounded-md border border-borda px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-texto-suave"
-                          title={
-                            doBanco
-                              ? movimento.descricaoFonte
-                              : "Lançamento criado manualmente"
-                          }
-                        >
-                          {doBanco ? <Building2 size={10} /> : <PenLine size={10} />}
-                          {doBanco ? "Banco" : "Manual"}
-                        </span>
-                        <span
-                          className={unir_classes(
-                            "rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
-                            revisao
-                              ? "border-aviso/40 text-aviso"
-                              : "border-borda text-texto-suave",
-                          )}
-                          title={explicacao_classificacao(movimento)}
-                        >
-                          {rotulo_classificado_por(
-                            movimento.classificadoPor,
-                            movimento.confiancaIa,
-                          )}
-                        </span>
-                        {movimento.status === "previsto" && (
-                          <span className="text-[10px] uppercase text-texto-suave">Pendente</span>
+        <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie/80">
+          <table className="min-w-[56rem] w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-borda text-left text-[11px] uppercase tracking-wide text-texto-suave">
+                <th className="w-10 px-3 py-2 font-medium">Tipo</th>
+                <th className="px-3 py-2 font-medium">Descrição</th>
+                <th className="px-3 py-2 font-medium">Natureza</th>
+                <th className="px-3 py-2 font-medium">Conta</th>
+                <th className="px-3 py-2 font-medium">Categoria</th>
+                <th className="px-3 py-2 font-medium">Data</th>
+                <th className="px-3 py-2 text-right font-medium">Valor</th>
+                <th className="w-12 px-2 py-2 font-medium"><span className="sr-only">Ações</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginaAtual.itens.map((movimento) => {
+                const revisao = precisa_revisao(movimento);
+                const entrada = ["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo);
+                const origemPerfil = perfil_origem_movimento(movimento, contas, cartoes);
+                const ehGasto = movimento.tipo === "despesa" || movimento.tipo === "retirada";
+                const categoriaAtual = categorias.find((c) => c.id === movimento.categoriaId);
+                return (
+                  <tr
+                    key={movimento.id}
+                    className={unir_classes(
+                      "border-b border-borda/70 last:border-0",
+                      revisao ? "bg-aviso/5" : "hover:bg-fundo/40",
+                      movimento.status === "cancelado" && "opacity-60",
+                    )}
+                  >
+                    <td className="px-3 py-2.5">
+                      <span
+                        className={unir_classes(
+                          "inline-flex h-7 w-7 items-center justify-center rounded-lg",
+                          entrada ? "bg-receita/15 text-receita" : "bg-despesa/15 text-despesa",
                         )}
-                        {movimento.status === "cancelado" && (
-                          <span className="text-[10px] uppercase text-texto-suave">Cancelado</span>
-                        )}
-                        {movimento.parcelaNumero &&
-                          movimento.parcelaTotal &&
-                          movimento.parcelaTotal >= 2 && (
-                          <span
-                            className="rounded-md border border-borda px-1.5 py-0.5 text-[10px] text-texto-suave"
-                            title="Parcela da compra no cartão (competência da fatura)"
-                          >
-                            Parcela {movimento.parcelaNumero}/{movimento.parcelaTotal}
-                            {movimento.parcelaCompraValor
-                              ? ` · total ${formatar_moeda_br(movimento.parcelaCompraValor)}`
-                              : ""}
-                          </span>
-                        )}
-                        {movimento.papel === "pagamento_fatura" && (
-                          <span
-                            className="rounded-md border border-primaria/40 bg-primaria/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-primaria"
-                            title="Quitação da fatura — some dos totais de despesa e receita"
-                          >
-                            Pagamento de fatura
-                            {movimento.competenciaFatura
-                              ? ` · ${formatar_mes_competencia(`${movimento.competenciaFatura}-01`)}`
-                              : ""}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-texto-suave">
-                        {formatar_data(movimento.dataMovimento)} ·{" "}
-                        {nome_origem_movimento(movimento, contas, cartoes)}
+                      >
+                        {entrada ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
+                      </span>
+                    </td>
+                    <td className="max-w-[16rem] px-3 py-2.5">
+                      <p className="truncate font-medium text-texto">{movimento.descricao}</p>
+                      <p className="truncate text-[11px] text-texto-suave">
+                        {rotulo_classificado_por(movimento.classificadoPor, movimento.confiancaIa)}
                         {rotulo_tipo_gasto(movimento.tipoGasto)
                           ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
                           : ""}
                       </p>
-                      {!eh_nao_classificado(movimento.categoriaNome) && (
-                        <p className="mt-0.5 text-xs text-texto-suave">
-                          {explicacao_classificacao(movimento)}
-                        </p>
-                      )}
-                    </div>
-                    <p
-                      className={`shrink-0 text-sm font-medium tabular-nums ${cor_valor(movimento.tipo, movimento.status)}`}
-                    >
-                      {formatar_valor(movimento.tipo, movimento.valor)}
-                    </p>
-                  </div>
-
-                  {movimento.parcelaNumero &&
-                    movimento.parcelaTotal &&
-                    movimento.parcelaTotal >= 2 && (
-                      <div className="mt-2">
-                        <button
-                          type="button"
-                          onClick={() => void alternar_parcelas(movimento.id)}
-                          className="text-xs text-primaria hover:underline"
-                        >
-                          {parcelasExpandidasId === movimento.id
-                            ? "Ocultar parcelas"
-                            : "Ver parcelas"}
-                        </button>
-                        {parcelasExpandidasId === movimento.id && (
-                          <div className="mt-2 rounded-xl border border-borda bg-fundo/40 px-3 py-2">
-                            {carregandoParcelasId === movimento.id ? (
-                              <p className="text-xs text-texto-suave">Carregando parcelas…</p>
-                            ) : (parcelasPorMovimento[movimento.id]?.parcelas.length ?? 0) === 0 ? (
-                              <p className="text-xs text-texto-suave">
-                                Não encontrei as outras parcelas deste parcelamento.
-                              </p>
-                            ) : (
-                              <>
-                                {parcelasPorMovimento[movimento.id]?.totalCompra != null && (
-                                  <p className="mb-1.5 text-[11px] text-texto-suave">
-                                    Compra em{" "}
-                                    {movimento.parcelaTotal}x · total{" "}
-                                    {formatar_moeda_br(
-                                      parcelasPorMovimento[movimento.id]!.totalCompra!,
-                                    )}{" "}
-                                    (só a parcela do mês entra no total do extrato)
-                                  </p>
-                                )}
-                                <ul className="flex flex-col gap-1">
-                                  {parcelasPorMovimento[movimento.id]!.parcelas.map((parcela) => (
-                                    <li
-                                      key={parcela.id}
-                                      className={unir_classes(
-                                        "flex items-center justify-between gap-2 text-xs",
-                                        parcela.id === movimento.id
-                                          ? "font-medium text-texto"
-                                          : "text-texto-suave",
-                                      )}
-                                    >
-                                      <span>
-                                        {parcela.parcelaNumero}/{parcela.parcelaTotal} ·{" "}
-                                        {formatar_mes_competencia(parcela.dataMovimento)}
-                                        {parcela.status === "previsto" ? " · pendente" : ""}
-                                      </span>
-                                      <span className="tabular-nums">
-                                        {formatar_moeda_br(parcela.valor)}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                  {movimento.status !== "cancelado" && (
-                    <div className="mt-3 flex flex-wrap items-end gap-3">
-                      <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-                        Categoria
-                        <select
-                          value={
-                            eh_nao_classificado(movimento.categoriaNome)
-                              ? ""
-                              : movimento.categoriaId
-                          }
-                          disabled={salvandoId === movimento.id || categoriasParaClassificar.length === 0}
-                          onChange={(e) => {
-                            if (e.target.value) void classificar(movimento.id, e.target.value);
-                          }}
-                          className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm normal-case tracking-normal text-texto outline-none focus:border-primaria disabled:opacity-60"
-                        >
-                          <option value="">
-                            {eh_nao_classificado(movimento.categoriaNome)
-                              ? "Escolher categoria..."
-                              : movimento.categoriaNome}
-                          </option>
-                          {categoriasParaClassificar.map((categoria) => (
-                            <option key={categoria.id} value={categoria.id}>
-                              {categoria.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {(() => {
-                        const origemPerfil = perfil_origem_movimento(
-                          movimento,
-                          contas,
-                          cartoes,
-                        );
-                        const ehGasto =
-                          movimento.tipo === "despesa" || movimento.tipo === "retirada";
-                        if (!origemPerfil || !ehGasto) return null;
-                        const cruzado =
-                          origemPerfil === "pj"
-                            ? movimento.tipoGasto === "pf"
-                            : movimento.tipoGasto === "pj";
-                        return (
-                          <label className="flex items-center gap-2 pb-2 text-sm text-texto">
-                            <input
-                              type="checkbox"
-                              className="size-4 rounded border-borda"
-                              checked={cruzado}
-                              disabled={salvandoId === movimento.id}
-                              onChange={() => {
-                                const proximo: Perfil = cruzado
-                                  ? origemPerfil
-                                  : origemPerfil === "pj"
-                                    ? "pf"
-                                    : "pj";
-                                void alterar_tipo_gasto(movimento.id, proximo);
-                              }}
-                            />
-                            <span className="normal-case">
-                              {origemPerfil === "pj"
-                                ? "Gasto pessoal?"
-                                : "É um gasto da empresa?"}
-                            </span>
-                          </label>
-                        );
-                      })()}
                       {mostra_check_pagamento_fatura(movimento) && (
-                        <CheckPagamentoFatura
+                        <BannerFatura
                           movimento={movimento}
                           cartoes={cartoes}
                           movimentos={movimentos}
@@ -909,9 +773,6 @@ export function TelaExtrato() {
                           dispensou={faturasDispensadas.has(movimento.id)}
                           ofertaRegra={
                             ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
-                          }
-                          onMarcar={(marcado, cartaoId, competencia) =>
-                            void marcar_pagamento_fatura(movimento, marcado, cartaoId, competencia)
                           }
                           onVincular={(cartaoId, competencia) =>
                             void marcar_pagamento_fatura(movimento, true, cartaoId, competencia)
@@ -927,16 +788,163 @@ export function TelaExtrato() {
                           onDispensarRegra={() => setOfertaRegra(null)}
                         />
                       )}
-                      {salvandoId === movimento.id && (
-                        <span className="pb-2 text-xs text-texto-suave">Salvando...</span>
+                      {parcelasExpandidasId === movimento.id && (
+                        <div className="mt-2 rounded-lg border border-borda bg-fundo/40 px-2 py-1.5">
+                          {carregandoParcelasId === movimento.id ? (
+                            <p className="text-[11px] text-texto-suave">Carregando parcelas…</p>
+                          ) : (parcelasPorMovimento[movimento.id]?.parcelas.length ?? 0) === 0 ? (
+                            <p className="text-[11px] text-texto-suave">Não encontrei as outras parcelas.</p>
+                          ) : (
+                            <ul className="flex flex-col gap-0.5">
+                              {parcelasPorMovimento[movimento.id]!.parcelas.map((parcela) => (
+                                <li
+                                  key={parcela.id}
+                                  className={unir_classes(
+                                    "flex justify-between gap-2 text-[11px]",
+                                    parcela.id === movimento.id ? "font-medium text-texto" : "text-texto-suave",
+                                  )}
+                                >
+                                  <span>
+                                    {parcela.parcelaNumero}/{parcela.parcelaTotal} ·{" "}
+                                    {formatar_mes_competencia(parcela.dataMovimento)}
+                                  </span>
+                                  <span className="tabular-nums">{formatar_moeda_br(parcela.valor)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                </div>
-              </motion.li>
-            );
-          })}
-        </ul>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-texto-suave">
+                      {rotulo_natureza(movimento)}
+                    </td>
+                    <td className="max-w-[9rem] truncate px-3 py-2.5 text-texto-suave">
+                      {nome_origem_movimento(movimento, contas, cartoes)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex max-w-[10rem] items-center gap-1.5">
+                        <IconeCategoria icone={categoriaAtual?.icone} cor={categoriaAtual?.cor} tamanho={12} />
+                        <span className="truncate text-texto">
+                          {eh_nao_classificado(movimento.categoriaNome)
+                            ? "—"
+                            : movimento.categoriaNome}
+                        </span>
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-texto-suave">
+                      {formatar_data(movimento.dataMovimento)}
+                    </td>
+                    <td
+                      className={unir_classes(
+                        "whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums",
+                        cor_valor(movimento.tipo, movimento.status),
+                      )}
+                    >
+                      {formatar_valor(movimento.tipo, movimento.valor)}
+                    </td>
+                    <td className="relative px-2 py-2.5">
+                      <button
+                        type="button"
+                        className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
+                        aria-label="Ações"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuId(menuId === movimento.id ? null : movimento.id);
+                        }}
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                      {menuId === movimento.id && (
+                        <MenuAcoes
+                          aoEscolher={() => setMenuId(null)}
+                          acoes={[
+                            {
+                              rotulo: "Categoria",
+                              icone: Tags,
+                              submenu: categoriasParaClassificar.map((categoria) => ({
+                                rotulo: categoria.nome,
+                                ativo: categoria.id === movimento.categoriaId,
+                                onClick: () => void classificar(movimento.id, categoria.id),
+                              })),
+                            },
+                            ...(origemPerfil && ehGasto
+                              ? [
+                                  {
+                                    rotulo:
+                                      origemPerfil === "pj"
+                                        ? movimento.tipoGasto === "pf"
+                                          ? "Marcar como empresa"
+                                          : "Marcar como pessoal"
+                                        : movimento.tipoGasto === "pj"
+                                          ? "Marcar como pessoal"
+                                          : "Marcar como empresa",
+                                    icone: UserRound,
+                                    onClick: () => {
+                                      const cruzado =
+                                        origemPerfil === "pj"
+                                          ? movimento.tipoGasto === "pf"
+                                          : movimento.tipoGasto === "pj";
+                                      const proximo: Perfil = cruzado
+                                        ? origemPerfil
+                                        : origemPerfil === "pj"
+                                          ? "pf"
+                                          : "pj";
+                                      void alterar_tipo_gasto(movimento.id, proximo);
+                                    },
+                                  },
+                                ]
+                              : []),
+                            ...(mostra_check_pagamento_fatura(movimento)
+                              ? [
+                                  {
+                                    rotulo:
+                                      movimento.papel === "pagamento_fatura"
+                                        ? "Desmarcar pagamento de fatura"
+                                        : "Marcar pagamento de fatura",
+                                    icone: Repeat,
+                                    onClick: () =>
+                                      void marcar_pagamento_fatura(
+                                        movimento,
+                                        movimento.papel !== "pagamento_fatura",
+                                      ),
+                                  },
+                                ]
+                              : []),
+                            ...(movimento.parcelaNumero &&
+                            movimento.parcelaTotal &&
+                            movimento.parcelaTotal >= 2
+                              ? [
+                                  {
+                                    rotulo:
+                                      parcelasExpandidasId === movimento.id
+                                        ? "Ocultar parcelas"
+                                        : "Ver parcelas",
+                                    icone: Repeat,
+                                    onClick: () => void alternar_parcelas(movimento.id),
+                                  },
+                                ]
+                              : []),
+                            ...(pode_excluir_movimento(movimento.fonte)
+                              ? [
+                                  {
+                                    rotulo: "Excluir",
+                                    icone: Trash2,
+                                    perigo: true,
+                                    onClick: () => void excluir_movimento(movimento),
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <Paginador
           pagina={paginaAtual.pagina}
           paginas={paginaAtual.paginas}
@@ -963,14 +971,13 @@ export function TelaExtrato() {
   );
 }
 
-function CheckPagamentoFatura({
+function BannerFatura({
   movimento,
   cartoes,
   movimentos,
   salvando,
   dispensou,
   ofertaRegra,
-  onMarcar,
   onVincular,
   onDispensar,
   onCriarRegra,
@@ -982,115 +989,53 @@ function CheckPagamentoFatura({
   salvando: boolean;
   dispensou: boolean;
   ofertaRegra: { movimentoId: string; trecho: string } | null;
-  onMarcar: (marcado: boolean, cartaoId?: string | null, competencia?: string | null) => void;
   onVincular: (cartaoId: string | null, competencia: string) => void;
   onDispensar: () => void;
   onCriarRegra: () => void;
   onDispensarRegra: () => void;
 }) {
-  const marcado = movimento.papel === "pagamento_fatura";
-  const cartaoId = cartao_preferencial_fatura(movimento, cartoes);
-  const cartao = cartoes.find((c) => c.id === cartaoId);
-  const competencia = competencia_default_fatura(movimento, cartao);
-  const competencias = opcoes_competencia(movimento.dataMovimento);
-  const sugestao = marcado
-    ? null
-    : sugerir_pagamento_fatura(movimento, cartoes, movimentos);
+  const sugestao =
+    movimento.papel === "pagamento_fatura"
+      ? null
+      : sugerir_pagamento_fatura(movimento, cartoes, movimentos);
   const modo = modo_convite_pagamento_fatura({
     movimento,
     temSugestao: Boolean(sugestao),
     dispensou,
   });
 
-  if (modo === "nada") return null;
+  if (modo === "nada" && !ofertaRegra) return null;
 
   return (
-    <div className="flex w-full min-w-[16rem] flex-col gap-2 pb-1">
-      {modo === "check" || modo === "marcado" ? (
-        <label className="flex items-center gap-2 text-sm text-texto">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-borda"
-            checked={marcado}
-            disabled={salvando}
-            onChange={(e) => onMarcar(e.target.checked, cartaoId, competencia)}
-          />
-          <span className="normal-case">{rotulo_check_pagamento_fatura(movimento)}</span>
-        </label>
-      ) : null}
-
-      {modo === "banner" && sugestao && (
-        <div className="relative rounded-xl border border-primaria/30 bg-primaria/5 px-3 py-2 pr-8">
+    <div className="mt-1 flex flex-col gap-1">
+      {modo === "banner" && sugestao ? (
+        <div className="relative rounded-lg border border-primaria/30 bg-primaria/5 px-2 py-1.5 pr-7">
           <button
             type="button"
             disabled={salvando}
             onClick={onDispensar}
             aria-label="Não é pagamento de fatura"
-            title="Não é pagamento de fatura"
-            className="absolute right-1.5 top-1.5 rounded-md p-0.5 text-texto-suave hover:bg-superficie/80 hover:text-texto disabled:opacity-60"
+            className="absolute right-1 top-1 rounded p-0.5 text-texto-suave hover:text-texto"
           >
-            <X size={14} />
+            <X size={12} />
           </button>
-          <p className="text-xs text-texto">
-            Parece pagamento da fatura de {sugestao.cartaoNome} (
-            {formatar_mes_competencia(`${sugestao.competencia}-01`)}). Confirmar?
+          <p className="text-[11px] text-texto">
+            Parece fatura de {sugestao.cartaoNome} (
+            {formatar_mes_competencia(`${sugestao.competencia}-01`)}).
           </p>
           <button
             type="button"
             disabled={salvando}
             onClick={() => onVincular(sugestao.cartaoId, sugestao.competencia)}
-            className="mt-1 text-xs font-medium text-primaria hover:underline"
+            className="text-[11px] font-medium text-primaria hover:underline"
           >
             Confirmar
           </button>
         </div>
-      )}
-
-      {modo === "marcado" && cartoes.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Cartão
-            <select
-              value={movimento.cartaoFaturaId ?? cartaoId ?? ""}
-              disabled={salvando}
-              onChange={(e) =>
-                onVincular(e.target.value || null, movimento.competenciaFatura ?? competencia)
-              }
-              className="rounded-lg border border-borda bg-superficie px-2 py-1.5 text-sm normal-case tracking-normal text-texto outline-none focus:border-primaria disabled:opacity-60"
-            >
-              <option value="">Sem vínculo</option>
-              {cartoes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex min-w-[7rem] flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Competência
-            <select
-              value={movimento.competenciaFatura ?? competencia}
-              disabled={salvando}
-              onChange={(e) =>
-                onVincular(movimento.cartaoFaturaId ?? cartaoId, e.target.value)
-              }
-              className="rounded-lg border border-borda bg-superficie px-2 py-1.5 text-sm normal-case tracking-normal text-texto outline-none focus:border-primaria disabled:opacity-60"
-            >
-              {competencias.map((item) => (
-                <option key={item.valor} value={item.valor}>
-                  {item.rotulo}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-
-      {ofertaRegra && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-texto">
-          <span>
-            Criar regra para descrições como «{ofertaRegra.trecho}»?
-          </span>
+      ) : null}
+      {ofertaRegra ? (
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-texto">
+          <span>Criar regra para «{ofertaRegra.trecho}»?</span>
           <button
             type="button"
             disabled={salvando}
@@ -1099,16 +1044,12 @@ function CheckPagamentoFatura({
           >
             Criar
           </button>
-          <button
-            type="button"
-            disabled={salvando}
-            onClick={onDispensarRegra}
-            className="text-texto-suave hover:underline"
-          >
+          <button type="button" disabled={salvando} onClick={onDispensarRegra} className="text-texto-suave">
             Agora não
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
+

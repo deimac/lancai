@@ -65,6 +65,8 @@ function criarCategoria(sobrepor: Partial<Categoria> = {}): Categoria {
     id: randomUUID(),
     nome: "Combustível",
     tipo: "despesa",
+    icone: "geral",
+    cor: "neutro",
     ativo: true,
     usuarioId: randomUUID(),
     dataCriacao: agora,

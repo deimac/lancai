@@ -204,6 +204,13 @@
       "when": 1786202100000,
       "tag": "0028_categoria_global_por_usuario",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786202200000,
+      "tag": "0029_categoria_icone_cor",
+      "breakpoints": true
     }
   ]
 }

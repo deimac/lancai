@@ -35,7 +35,13 @@ export interface RepositorioContexto {
   buscarCategoriaPorNome(usuarioId: string, nome: string): Promise<Categoria | undefined>;
   buscarPessoaPorNome(usuarioId: string, nome: string): Promise<Pessoa | undefined>;
 
-  criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria>;
+  criarCategoria(
+    usuarioId: string,
+    nome: string,
+    tipo: Categoria["tipo"],
+    icone?: string,
+    cor?: string,
+  ): Promise<Categoria>;
   criarPessoa(usuarioId: string, nome: string, tipo: Pessoa["tipo"]): Promise<Pessoa>;
 
   /** Usado pelo onboarding conversacional (CRIAR_CONTA) — mesma regra de negócio do POST /contas. */

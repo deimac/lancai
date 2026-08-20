@@ -1,20 +1,53 @@
 @import "tailwindcss";
 
+:root,
+html[data-tema="escuro"] {
+  color-scheme: dark;
+  --lancai-fundo: #0a0e13;
+  --lancai-superficie: #12181f;
+  --lancai-superficie-alta: #1a222c;
+  --lancai-borda: #2a3441;
+  --lancai-texto: #eef2f7;
+  --lancai-texto-suave: #8b9aaf;
+  --lancai-primaria: #2dd4a0;
+  --lancai-primaria-forte: #1fb885;
+  --lancai-perigo: #f07178;
+  --lancai-aviso: #e6b450;
+  --lancai-receita: #2dd4a0;
+  --lancai-despesa: #f07178;
+}
+
+html[data-tema="claro"] {
+  color-scheme: light;
+  --lancai-fundo: #f3f5f8;
+  --lancai-superficie: #ffffff;
+  --lancai-superficie-alta: #eef1f5;
+  --lancai-borda: #d5dce6;
+  --lancai-texto: #12181f;
+  --lancai-texto-suave: #5c6b7e;
+  --lancai-primaria: #1aaa7a;
+  --lancai-primaria-forte: #158f66;
+  --lancai-perigo: #d94a52;
+  --lancai-aviso: #c9922a;
+  --lancai-receita: #1aaa7a;
+  --lancai-despesa: #d94a52;
+}
+
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 
-  --color-fundo: #0a0e13;
-  --color-superficie: #12181f;
-  --color-superficie-alta: #1a222c;
-  --color-borda: #2a3441;
-  --color-texto: #eef2f7;
-  --color-texto-suave: #8b9aaf;
-  --color-primaria: #2dd4a0;
-  --color-primaria-forte: #1fb885;
-  --color-perigo: #f07178;
-  --color-aviso: #e6b450;
-  --color-receita: #2dd4a0;
-  --color-despesa: #f07178;
+  --color-fundo: var(--lancai-fundo);
+  --color-superficie: var(--lancai-superficie);
+  --color-superficie-alta: var(--lancai-superficie-alta);
+  --color-borda: var(--lancai-borda);
+  --color-texto: var(--lancai-texto);
+  --color-texto-suave: var(--lancai-texto-suave);
+  --color-primaria: var(--lancai-primaria);
+  --color-primaria-forte: var(--lancai-primaria-forte);
+  --color-perigo: var(--lancai-perigo);
+  --color-aviso: var(--lancai-aviso);
+  --color-receita: var(--lancai-receita);
+  --color-despesa: var(--lancai-despesa);
 }
 
 html,
@@ -35,7 +68,6 @@ body {
   box-sizing: border-box;
 }
 
-/* Scrollbar discreta no cockpit */
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
