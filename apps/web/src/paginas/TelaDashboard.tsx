@@ -5,9 +5,10 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
+  ComposedChart,
+  Legend,
+  Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -28,12 +29,12 @@ import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
 import { formatar_data_curta, formatar_mes, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
+import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { Botao } from "../componentes/ui/Botao";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
-import { hex_cor_categoria } from "../lib/visual-categoria";
 import { unir_classes } from "../lib/unir-classes";
 
 const fade = {
@@ -70,6 +71,7 @@ export function TelaDashboard() {
   const [erro, setErro] = useState<string | null>(null);
   const [drawerCartoesAberto, setDrawerCartoesAberto] = useState(false);
   const [ocultarValores, setOcultarValores] = useState(false);
+  const [abaGrafico, setAbaGrafico] = useState<"resultado" | "saldo">("resultado");
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "dashboard",
@@ -145,6 +147,15 @@ export function TelaDashboard() {
     ...ponto,
     rotulo: formatar_data_curta(ponto.data),
   }));
+  const resultadoChart = (dados.fluxoResultado ?? []).map((ponto) => ({
+    rotulo: formatar_data_curta(ponto.data),
+    entradas: ponto.entradas,
+    saidas: -ponto.saidas,
+    resultadoAcumulado: ponto.resultadoAcumulado ?? ponto.resultado,
+  }));
+  const temResultado = resultadoChart.some(
+    (ponto) => ponto.entradas !== 0 || ponto.saidas !== 0,
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
@@ -349,8 +360,113 @@ export function TelaDashboard() {
           transition={{ delay: 0.1 }}
           className="rounded-2xl border border-borda bg-superficie/80 p-4"
         >
-          <h2 className="mb-4 text-sm font-medium text-texto">Fluxo de saldo</h2>
-          {fluxoChart.length === 0 ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-texto">
+              {abaGrafico === "resultado" ? "Resultado do mês" : "Fluxo de saldo"}
+            </h2>
+            <div className="flex rounded-lg border border-borda p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setAbaGrafico("resultado")}
+                className={unir_classes(
+                  "rounded-md px-2.5 py-1 font-medium transition",
+                  abaGrafico === "resultado"
+                    ? "bg-primaria/15 text-primaria"
+                    : "text-texto-suave hover:text-texto",
+                )}
+              >
+                Resultado
+              </button>
+              <button
+                type="button"
+                onClick={() => setAbaGrafico("saldo")}
+                className={unir_classes(
+                  "rounded-md px-2.5 py-1 font-medium transition",
+                  abaGrafico === "saldo"
+                    ? "bg-primaria/15 text-primaria"
+                    : "text-texto-suave hover:text-texto",
+                )}
+              >
+                Saldo
+              </button>
+            </div>
+          </div>
+          {abaGrafico === "resultado" ? (
+            !temResultado ? (
+              <p className="py-10 text-center text-sm text-texto-suave">
+                Sem movimentos neste mês para montar o gráfico.
+              </p>
+            ) : (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={resultadoChart}>
+                    <defs>
+                      <linearGradient id="entradasFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#2dd4a0" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="saidasFill" x1="0" y1="1" x2="0" y2="0">
+                        <stop offset="0%" stopColor="#f07178" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#f07178" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="rotulo"
+                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                      axisLine={false}
+                      tickFormatter={(v: number) =>
+                        v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
+                      }
+                    />
+                    <ReferenceLine y={0} stroke="var(--color-borda)" />
+                    <Tooltip
+                      contentStyle={{
+                        background: "var(--color-superficie)",
+                        border: "1px solid var(--color-borda)",
+                        borderRadius: 12,
+                        color: "var(--color-texto)",
+                      }}
+                      formatter={(valor, nome) => [
+                        formatar_oculto(formatar_moeda(Math.abs(Number(valor))), ocultarValores),
+                        String(nome),
+                      ]}
+                      labelFormatter={(rotulo) => `Dia ${rotulo}`}
+                    />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="entradas"
+                      name="Entradas"
+                      stroke="#2dd4a0"
+                      fill="url(#entradasFill)"
+                      strokeWidth={1.5}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="saidas"
+                      name="Saídas"
+                      stroke="#f07178"
+                      fill="url(#saidasFill)"
+                      strokeWidth={1.5}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="resultadoAcumulado"
+                      name="Resultado"
+                      stroke="var(--color-texto)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            )
+          ) : fluxoChart.length === 0 ? (
             <p className="py-10 text-center text-sm text-texto-suave">
               Sem movimentos neste mês para montar o gráfico.
             </p>
@@ -380,7 +496,7 @@ export function TelaDashboard() {
                       borderRadius: 12,
                       color: "var(--color-texto)",
                     }}
-                    formatter={(valor) => formatar_moeda(Number(valor))}
+                    formatter={(valor) => formatar_oculto(formatar_moeda(Number(valor)), ocultarValores)}
                     labelFormatter={(rotulo) => `Dia ${rotulo}`}
                   />
                   <Area
@@ -401,45 +517,11 @@ export function TelaDashboard() {
           transition={{ delay: 0.15 }}
           className="rounded-2xl border border-borda bg-superficie/80 p-4"
         >
-          <h2 className="mb-4 text-sm font-medium text-texto">Gastos por categoria</h2>
-          {dados.gastosPorCategoria.length === 0 ? (
-            <p className="py-10 text-center text-sm text-texto-suave">Nenhuma despesa no mês.</p>
-          ) : (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="h-44 w-full sm:w-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={dados.gastosPorCategoria}
-                      dataKey="total"
-                      nameKey="categoriaNome"
-                      innerRadius={42}
-                      outerRadius={68}
-                      paddingAngle={2}
-                    >
-                      {dados.gastosPorCategoria.map((item) => (
-                        <Cell key={item.categoriaNome} fill={hex_cor_categoria(item.cor)} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(valor) => formatar_oculto(formatar_moeda(Number(valor)), ocultarValores)} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <ul className="min-w-0 flex-1 space-y-2">
-                {dados.gastosPorCategoria.map((item) => (
-                  <li key={item.categoriaNome} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
-                      <span className="truncate text-sm text-texto">{item.categoriaNome}</span>
-                    </span>
-                    <span className="shrink-0 tabular-nums text-texto">
-                      {formatar_oculto(formatar_moeda(item.total), ocultarValores)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <DonutCategoriasDashboard
+            gastos={dados.gastosPorCategoria}
+            receitas={dados.receitasPorCategoria ?? []}
+            ocultarValores={ocultarValores}
+          />
         </motion.section>
       </div>
 

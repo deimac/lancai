@@ -411,7 +411,13 @@ export interface DashboardResposta {
   gastosPorCategoria: RankingCategoria[];
   receitasPorCategoria?: RankingCategoria[];
   fluxoSaldo: Array<{ data: string; saldo: number }>;
-  fluxoResultado?: Array<{ data: string; entradas: number; saidas: number; resultado: number }>;
+  fluxoResultado?: Array<{
+    data: string;
+    entradas: number;
+    saidas: number;
+    resultado: number;
+    resultadoAcumulado?: number;
+  }>;
   recentes: Array<{
     id: string;
     data: string;

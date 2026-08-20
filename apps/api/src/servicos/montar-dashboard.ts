@@ -87,7 +87,13 @@ export interface DashboardResposta {
   gastosPorCategoria: RankingCategoria[];
   receitasPorCategoria: RankingCategoria[];
   fluxoSaldo: Array<{ data: string; saldo: number }>;
-  fluxoResultado: Array<{ data: string; entradas: number; saidas: number; resultado: number }>;
+  fluxoResultado: Array<{
+    data: string;
+    entradas: number;
+    saidas: number;
+    resultado: number;
+    resultadoAcumulado: number;
+  }>;
   recentes: Array<{
     id: string;
     data: string;
@@ -399,7 +405,13 @@ function montar_ranking_tipo(
 function montar_fluxo_resultado(
   movimentos: Array<{ dataMovimento: string; tipo: string; valor: string | number }>,
   periodo: { de: string; ate: string },
-): Array<{ data: string; entradas: number; saidas: number; resultado: number }> {
+): Array<{
+  data: string;
+  entradas: number;
+  saidas: number;
+  resultado: number;
+  resultadoAcumulado: number;
+}> {
   const porDia = new Map<string, { entradas: number; saidas: number }>();
   for (const movimento of movimentos) {
     const dia = String(movimento.dataMovimento).slice(0, 10);
@@ -413,20 +425,30 @@ function montar_fluxo_resultado(
     porDia.set(dia, atual);
   }
 
-  const pontos: Array<{ data: string; entradas: number; saidas: number; resultado: number }> = [];
+  const pontos: Array<{
+    data: string;
+    entradas: number;
+    saidas: number;
+    resultado: number;
+    resultadoAcumulado: number;
+  }> = [];
   const inicio = deISOParaData(periodo.de);
   const fim = deISOParaData(periodo.ate);
+  let acumulado = 0;
   for (let cursor = new Date(inicio); cursor.getTime() <= fim.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
     const data = paraDataISO(cursor);
     const dia = porDia.get(data) ?? { entradas: 0, saidas: 0 };
+    const resultado = arredondar(dia.entradas - dia.saidas);
+    acumulado = arredondar(acumulado + resultado);
     pontos.push({
       data,
       entradas: arredondar(dia.entradas),
       saidas: arredondar(dia.saidas),
-      resultado: arredondar(dia.entradas - dia.saidas),
+      resultado,
+      resultadoAcumulado: acumulado,
     });
   }
-  return pontos.filter((p) => p.entradas !== 0 || p.saidas !== 0);
+  return pontos;
 }
 
 function montar_proximos_pagamentos(entrada: {
