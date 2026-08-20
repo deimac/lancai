@@ -211,6 +211,13 @@
       "when": 1786202200000,
       "tag": "0029_categoria_icone_cor",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786202300000,
+      "tag": "0030_ocorrido_em_instante",
+      "breakpoints": true
     }
   ]
 }

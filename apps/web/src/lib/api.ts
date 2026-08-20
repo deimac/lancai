@@ -447,6 +447,8 @@ export interface MovimentoResumo {
   provedor: string | null;
   idExterno: string | null;
   dataMovimento: string;
+  /** ISO da instituição, quando há hora além do dia. */
+  ocorridoEmInstante?: string | null;
   contaId: string | null;
   cartaoId: string | null;
   statusFonte: string;

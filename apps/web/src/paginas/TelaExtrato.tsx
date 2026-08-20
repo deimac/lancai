@@ -24,7 +24,7 @@ import {
   type ContaResumo,
   type MovimentoResumo,
 } from "../lib/api";
-import { sugerir_pagamento_fatura, type Perfil } from "@lancai/tipos";
+import { sugerir_pagamento_fatura, type Perfil, formatarHoraBrasil } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -849,11 +849,18 @@ export function TelaExtrato() {
                     </td>
                     <td
                       className={unir_classes(
-                        "whitespace-nowrap px-3 py-2.5 text-right font-medium tabular-nums",
+                        "whitespace-nowrap px-3 py-2.5",
                         cor_valor(movimento.tipo, movimento.status),
                       )}
                     >
-                      {formatar_valor(movimento.tipo, movimento.valor)}
+                      <p className="text-right font-medium tabular-nums">
+                        {formatar_valor(movimento.tipo, movimento.valor)}
+                      </p>
+                      {movimento.ocorridoEmInstante ? (
+                        <p className="text-left text-[11px] tabular-nums text-texto-suave">
+                          {formatarHoraBrasil(movimento.ocorridoEmInstante)}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="relative px-2 py-2.5">
                       <button

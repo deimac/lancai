@@ -388,6 +388,9 @@ export class ModuloRelatorios {
     const ordenados = [...movimentos].sort((a, b) => {
       const porData = b.dataMovimento.localeCompare(a.dataMovimento);
       if (porData !== 0) return porData;
+      const instanteA = a.ocorridoEmInstante?.getTime() ?? 0;
+      const instanteB = b.ocorridoEmInstante?.getTime() ?? 0;
+      if (instanteA !== instanteB) return instanteB - instanteA;
       return b.dataLancamento.getTime() - a.dataLancamento.getTime();
     });
 

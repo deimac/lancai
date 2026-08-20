@@ -118,6 +118,12 @@ try {
       emSavepoint,
     );
     await esperar_recusa(
+      "recusa alteração de ocorrido_em_instante em movimento de open_finance",
+      () => tx`update movimento set ocorrido_em_instante = now() where id = ${doBanco}`,
+      "Fato Financeiro",
+      emSavepoint,
+    );
+    await esperar_recusa(
       "recusa exclusão de movimento de open_finance",
       () => tx`delete from movimento where id = ${doBanco}`,
       "Fato Financeiro",

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { categoria, movimento, obter_banco, regra } from "@lancai/banco";
 import { total_compra_parcela } from "@lancai/relatorios";
 import { schemaCriarMovimento } from "@lancai/tipos";
@@ -161,6 +161,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         provedor: movimento.provedor,
         idExterno: movimento.idExterno,
         dataMovimento: movimento.dataMovimento,
+        ocorridoEmInstante: movimento.ocorridoEmInstante,
         contaId: movimento.contaId,
         cartaoId: movimento.cartaoId,
         statusFonte: movimento.statusFonte,
@@ -185,7 +186,12 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
       .from(movimento)
       .innerJoin(categoria, eq(movimento.categoriaId, categoria.id))
       .leftJoin(regra, eq(movimento.regraId, regra.id))
-      .orderBy(desc(movimento.dataMovimento));
+      .orderBy(
+        desc(movimento.dataMovimento),
+        sql`${movimento.ocorridoEmInstante} DESC NULLS LAST`,
+        desc(movimento.dataLancamento),
+        desc(movimento.id),
+      );
 
     const linhas = usuarioId
       ? await (async () => {
@@ -210,6 +216,9 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
       return {
         ...linha,
         dataMovimento: String(linha.dataMovimento).slice(0, 10),
+        ocorridoEmInstante: linha.ocorridoEmInstante
+          ? linha.ocorridoEmInstante.toISOString()
+          : null,
         parcelaCompraEm: linha.parcelaCompraEm
           ? String(linha.parcelaCompraEm).slice(0, 10)
           : null,

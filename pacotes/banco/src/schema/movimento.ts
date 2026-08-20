@@ -65,6 +65,12 @@ export const movimento = pgTable(
      */
     formaPagamento: formaPagamentoEnum("forma_pagamento"),
     dataMovimento: date("data_movimento").notNull(),
+    /**
+     * Instante informado pela instituição, quando ela manda hora além do dia.
+     * Nulo se a fonte só trouxe a data. Ordena o extrato como no banco, sem
+     * mudar a competência (`data_movimento`).
+     */
+    ocorridoEmInstante: timestamp("ocorrido_em_instante", { withTimezone: true }),
     contaId: uuid("conta_id").references(() => conta.id),
     cartaoId: uuid("cartao_id").references(() => cartao.id),
     /** Descrição original da instituição ou do lançamento. Nunca reescrita. */

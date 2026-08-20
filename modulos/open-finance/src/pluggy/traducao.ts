@@ -67,12 +67,14 @@ function dia_do_mes(iso: string | null | undefined): number | undefined {
 export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExterna {
   const favorecido = transacao.merchant?.name ?? transacao.paymentData?.receiver?.name ?? undefined;
   const statusFonte = traduzir_status_transacao(transacao.status);
+  const ocorridoEm = data_do_movimento(transacao, statusFonte);
 
   return {
     idExterno: transacao.id,
     contaExternaId: transacao.accountId,
     /** Competência = mês da fatura (`billForecastDate`), não a data da compra. */
-    ocorridoEm: data_do_movimento(transacao, statusFonte),
+    ocorridoEm,
+    ocorridoEmInstante: instante_do_movimento(transacao.date, ocorridoEm),
     /** `amount` vem com sinal; a direção mora em `tipo`. */
     valor: Math.abs(transacao.amount),
     /** A Pluggy já normaliza a inversão do cartão: compra é sempre DEBIT. */
@@ -110,6 +112,19 @@ function data_do_movimento(transacao: TransacaoPluggy, status: StatusFonte): str
   }
 
   return transacao.date.slice(0, 10);
+}
+
+/**
+ * Guarda a hora só quando ela descreve o mesmo dia que gravamos em `ocorridoEm`.
+ * Parcela cuja competência foi deslocada para o mês da fatura não herda o relógio
+ * da compra — senão o extrato de outubro ordenaria com horas de julho.
+ */
+export function instante_do_movimento(dateIso: string, diaMovimento: string): string | undefined {
+  if (!dateIso.includes("T")) return undefined;
+  const parsed = new Date(dateIso);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  if (dateIso.slice(0, 10) !== diaMovimento) return undefined;
+  return parsed.toISOString();
 }
 
 /** Soma meses calendário preservando o dia (ajusta 31→último dia do mês destino). */

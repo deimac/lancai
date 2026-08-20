@@ -35,6 +35,36 @@ export function formatarDataHoraBrasil(
   return `${pegar("day")}/${pegar("month")}/${pegar("year")} ${pegar("hour")}:${pegar("minute")}`;
 }
 
+/**
+ * Hora civil `HH:mm` no fuso do app. Meia-noite UTC (o que a Pluggy manda quando
+ * só tem o dia) vira `00:00`, sem deslocar para o dia anterior.
+ */
+export function formatarHoraBrasil(
+  quando: Date | string,
+  fuso = "America/Sao_Paulo",
+): string {
+  const data = typeof quando === "string" ? new Date(quando) : quando;
+  if (Number.isNaN(data.getTime())) return "";
+  const soDia =
+    data.getUTCHours() === 0 &&
+    data.getUTCMinutes() === 0 &&
+    data.getUTCSeconds() === 0 &&
+    data.getUTCMilliseconds() === 0;
+  if (soDia) return "00:00";
+  const partes = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: fuso,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(data);
+  const pegar = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((parte) => parte.type === tipo)?.value ?? "";
+  const hora = pegar("hour").padStart(2, "0");
+  const minuto = pegar("minute").padStart(2, "0");
+  return hora && minuto ? `${hora}:${minuto}` : "";
+}
+
 export function paraDataISO(data: Date): string {
   return data.toISOString().slice(0, 10);
 }

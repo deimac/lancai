@@ -761,6 +761,7 @@ export class ServicoIngestaoOpenFinance {
         provedor: this.provedor.id,
         idExterno: movimentacao.idExterno,
         ocorridoEm: movimentacao.ocorridoEm,
+        ocorridoEmInstante: movimentacao.ocorridoEmInstante,
         valor: movimentacao.valor,
         tipo: movimentacao.tipo,
         descricaoFonte: movimentacao.descricaoFonte,

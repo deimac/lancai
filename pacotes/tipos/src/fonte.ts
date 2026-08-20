@@ -68,6 +68,14 @@ export const schemaEventoFinanceiroNormalizado = z.object({
   /** Identificador na instituição ou hash do arquivo importado. Chave de deduplicação. */
   idExterno: z.string().nullable(),
   ocorridoEm: dataISOSchema,
+  /**
+   * Instante ISO da instituição, quando ela informa hora. Ausente se só veio o dia
+   * ou se a competência do movimento não é o `date` original (parcela/fatura).
+   */
+  ocorridoEmInstante: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/)
+    .optional(),
   valor: z.number().positive(),
   /**
    * Só entrada ou saída. Uma linha de extrato é dinheiro entrando ou saindo de

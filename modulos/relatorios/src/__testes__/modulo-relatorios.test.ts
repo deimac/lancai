@@ -101,6 +101,7 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     tipoGasto: "pf",
     formaPagamento: null,
     dataMovimento: DATA_ATUAL,
+    ocorridoEmInstante: null,
     dataLancamento: agora,
     contaId: null,
     cartaoId: null,

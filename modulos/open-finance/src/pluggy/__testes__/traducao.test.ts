@@ -66,6 +66,24 @@ describe("traduzir_transacao", () => {
     expect(mov.ocorridoEm).toBe("2026-07-12");
   });
 
+  it("guarda a hora da Pluggy quando o dia do movimento é o mesmo do date", () => {
+    const mov = traduzir_transacao(
+      tx({
+        status: "POSTED",
+        date: "2026-08-20T18:00:00.000Z",
+        creditCardMetadata: null,
+      }),
+    );
+    expect(mov.ocorridoEm).toBe("2026-08-20");
+    expect(mov.ocorridoEmInstante).toBe("2026-08-20T18:00:00.000Z");
+  });
+
+  it("não herda a hora da compra quando a competência cai em outro mês", () => {
+    const mov = traduzir_transacao(tx());
+    expect(mov.ocorridoEm).toBe("2026-10-01");
+    expect(mov.ocorridoEmInstante).toBeUndefined();
+  });
+
   it("sem forecast, espalha PENDING por compra + (N-1) meses", () => {
     const mov = traduzir_transacao(
       tx({

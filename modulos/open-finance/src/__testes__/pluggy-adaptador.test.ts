@@ -331,6 +331,7 @@ describe("AdaptadorPluggy", () => {
           idExterno: "a8534c85-53ce-4f21-94d7-50e9d2ee4957",
           contaExternaId: CONTA,
           ocorridoEm: "2020-10-15",
+          ocorridoEmInstante: "2020-10-15T00:00:00.000Z",
           valor: 212.45,
           tipo: "despesa",
           descricaoFonte: "* PROV * COMPRA TESOURO DIRETO CLIENTES",

@@ -185,6 +185,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     tipoGasto: "pf",
     formaPagamento: null,
     dataMovimento: "2026-08-01",
+    ocorridoEmInstante: null,
     dataLancamento: agora,
     contaId: null,
     cartaoId: null,

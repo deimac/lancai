@@ -33,6 +33,8 @@ export interface MovimentacaoExterna {
   contaExternaId: string;
   /** Data no formato YYYY-MM-DD. */
   ocorridoEm: string;
+  /** Instante ISO da instituição, quando ela informa hora além do dia. */
+  ocorridoEmInstante?: string;
   /** Sempre positivo. A direção está em `tipo`. */
   valor: number;
   tipo: "receita" | "despesa";

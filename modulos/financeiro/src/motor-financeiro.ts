@@ -426,6 +426,9 @@ export class MotorFinanceiro {
         ...parcelamento_em_colunas(evento.parcelamento),
         tipoGasto,
         dataMovimento: evento.ocorridoEm,
+        ocorridoEmInstante: evento.ocorridoEmInstante
+          ? new Date(evento.ocorridoEmInstante)
+          : undefined,
         contaId: evento.contaId,
         cartaoId: evento.cartaoId,
         categoriaId: contexto.categoriaIdNaoClassificado,
@@ -713,6 +716,14 @@ export class MotorFinanceiro {
     }
 
     if (atual.dataMovimento !== evento.ocorridoEm) campos.dataMovimento = evento.ocorridoEm;
+
+    if (evento.ocorridoEmInstante) {
+      const novoIso = new Date(evento.ocorridoEmInstante).toISOString();
+      const atualIso = atual.ocorridoEmInstante
+        ? new Date(atual.ocorridoEmInstante).toISOString()
+        : undefined;
+      if (atualIso !== novoIso) campos.ocorridoEmInstante = new Date(novoIso);
+    }
 
     /**
      * O parcelamento também é corrigido pela instituição — cartão que reprocessa

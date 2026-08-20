@@ -810,6 +810,23 @@ describe("MotorFinanceiro", () => {
       expect(criados[0]?.fonte).toBe("open_finance");
     });
 
+    it("grava o instante da instituição para ordenar o extrato no mesmo dia", async () => {
+      const conta = criarConta({ usuarioId });
+      repositorio.contas.set(conta.id, conta);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            contaId: conta.id,
+            ocorridoEmInstante: "2026-08-01T18:00:00.000Z",
+          }),
+        ],
+        contexto(),
+      );
+
+      expect(criados[0]?.ocorridoEmInstante?.toISOString()).toBe("2026-08-01T18:00:00.000Z");
+    });
+
     it("herda o perfil da conta destino na ingestão (não o perfilPadrao)", async () => {
       const conta = criarConta({ usuarioId, perfil: "pj" });
       repositorio.contas.set(conta.id, conta);
