@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
-import { formatar_data_curta, formatar_mes, formatar_moeda } from "../lib/formatar";
+import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
@@ -161,10 +161,7 @@ export function TelaDashboard() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wider text-texto-suave">Cockpit</p>
-          <h1 className="text-2xl font-semibold capitalize tracking-tight">
-            {formatar_mes(dados.mes)}
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Cockpit</h1>
           {visaoGeral ? (
             <p className="text-sm text-texto-suave">Todos os workspaces</p>
           ) : null}
