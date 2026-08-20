@@ -31,6 +31,7 @@ import { Cartao } from "../componentes/ui/Cartao";
 import { MenuAcoes } from "../componentes/ui/MenuAcoes";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { Paginador } from "../componentes/Paginador";
+import { Dica } from "../componentes/ui/Dica";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import {
@@ -45,6 +46,10 @@ import {
   modo_convite_pagamento_fatura,
   mostra_check_pagamento_fatura,
 } from "../lib/extrato-pagamento-fatura";
+import {
+  dispensar_convite_fatura,
+  ler_faturas_dispensadas,
+} from "../lib/preferencias-fatura-dispensada";
 import {
   classificacao_da_query,
   fila_da_query,
@@ -185,7 +190,7 @@ export function TelaExtrato() {
     trecho: string;
   } | null>(null);
   const [faturasDispensadas, setFaturasDispensadas] = useState<Set<string>>(
-    () => new Set(),
+    () => (usuario ? ler_faturas_dispensadas(usuario.id) : new Set()),
   );
   const [menuId, setMenuId] = useState<string | null>(null);
   const depsDados = chave_dependencia(
@@ -230,6 +235,11 @@ export function TelaExtrato() {
   useEffect(() => {
     void carregar();
   }, [carregar, depsDados]);
+
+  useEffect(() => {
+    if (!usuario) return;
+    setFaturasDispensadas(ler_faturas_dispensadas(usuario.id));
+  }, [usuario?.id]);
 
   function sincronizar_params(entrada: {
     filtro?: FilaExtrato;
@@ -475,6 +485,9 @@ export function TelaExtrato() {
         }
       } else if (!marcado) {
         setOfertaRegra((atual) => (atual?.movimentoId === movimento.id ? null : atual));
+        setFaturasDispensadas((atuais) =>
+          dispensar_convite_fatura(usuario.id, movimento.id, atuais),
+        );
       }
     } catch (e) {
       toast.erro(
@@ -757,7 +770,9 @@ export function TelaExtrato() {
                       </span>
                     </td>
                     <td className="max-w-[16rem] px-3 py-2.5">
-                      <p className="truncate font-medium text-texto">{movimento.descricao}</p>
+                      <Dica texto={movimento.descricao}>
+                        <p className="truncate font-medium text-texto">{movimento.descricao}</p>
+                      </Dica>
                       <p className="truncate text-[11px] text-texto-suave">
                         {rotulo_classificado_por(movimento.classificadoPor, movimento.confiancaIa)}
                         {rotulo_tipo_gasto(movimento.tipoGasto)
@@ -777,13 +792,12 @@ export function TelaExtrato() {
                           onVincular={(cartaoId, competencia) =>
                             void marcar_pagamento_fatura(movimento, true, cartaoId, competencia)
                           }
-                          onDispensar={() =>
-                            setFaturasDispensadas((atuais) => {
-                              const proximo = new Set(atuais);
-                              proximo.add(movimento.id);
-                              return proximo;
-                            })
-                          }
+                          onDispensar={() => {
+                            if (!usuario) return;
+                            setFaturasDispensadas((atuais) =>
+                              dispensar_convite_fatura(usuario.id, movimento.id, atuais),
+                            );
+                          }}
                           onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
                           onDispensarRegra={() => setOfertaRegra(null)}
                         />

@@ -41,7 +41,7 @@ describe("modo_convite_pagamento_fatura", () => {
     ).toBe("check");
   });
 
-  it("depois do X some o convite na sessão", () => {
+  it("depois do X some o convite e não volta naquele movimento", () => {
     expect(
       modo_convite_pagamento_fatura({
         movimento: creditoCartao,
@@ -57,6 +57,29 @@ describe("modo_convite_pagamento_fatura", () => {
         movimento: { ...creditoCartao, papel: "pagamento_fatura" },
         temSugestao: true,
         dispensou: false,
+      }),
+    ).toBe("marcado");
+  });
+
+  it("depois do X o menu ainda oferece marcar pagamento de fatura", () => {
+    expect(mostra_check_pagamento_fatura(creditoCartao)).toBe(true);
+    expect(
+      modo_convite_pagamento_fatura({
+        movimento: creditoCartao,
+        temSugestao: true,
+        dispensou: true,
+      }),
+    ).toBe("nada");
+  });
+
+  it("já marcado como fatura continua disponível para desmarcar no menu", () => {
+    const marcado = { ...creditoCartao, papel: "pagamento_fatura" as const };
+    expect(mostra_check_pagamento_fatura(marcado)).toBe(true);
+    expect(
+      modo_convite_pagamento_fatura({
+        movimento: marcado,
+        temSugestao: true,
+        dispensou: true,
       }),
     ).toBe("marcado");
   });
