@@ -55,6 +55,7 @@ export function TelaCategorias() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [form, setForm] = useState<FormCategoria | null>(null);
+  const [filtroIcone, setFiltroIcone] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [menuId, setMenuId] = useState<string | null>(null);
   const depsDados = chave_dependencia(contexto?.versoes, "categorias");
@@ -75,6 +76,14 @@ export function TelaCategorias() {
   useEffect(() => {
     void carregar();
   }, [carregar, depsDados]);
+
+  const iconesFiltrados = useMemo(() => {
+    const busca = filtroIcone.trim().toLocaleLowerCase("pt-BR");
+    if (!busca) return ICONES_CATEGORIA;
+    return ICONES_CATEGORIA.filter((icone) =>
+      ROTULO_ICONE_CATEGORIA[icone].toLocaleLowerCase("pt-BR").includes(busca),
+    );
+  }, [filtroIcone]);
 
   const ordenadas = useMemo(
     () =>
@@ -123,6 +132,11 @@ export function TelaCategorias() {
     }
   }
 
+  function abrirForm(proximo: FormCategoria) {
+    setFiltroIcone("");
+    setForm(proximo);
+  }
+
   if (!usuario) return null;
 
   return (
@@ -134,7 +148,7 @@ export function TelaCategorias() {
             Ícone, cor e limite mensal — as mesmas categorias nos dois workspaces
           </p>
         </div>
-        <Botao onClick={() => setForm({ ...FORM_VAZIO })}>
+        <Botao onClick={() => abrirForm({ ...FORM_VAZIO })}>
           <Plus size={14} />
           Nova categoria
         </Botao>
@@ -229,7 +243,7 @@ export function TelaCategorias() {
                               rotulo: "Editar",
                               icone: Pencil,
                               onClick: () =>
-                                setForm({
+                                abrirForm({
                                   id: categoria.id,
                                   nome: categoria.nome,
                                   tipo: categoria.tipo,
@@ -310,21 +324,32 @@ export function TelaCategorias() {
             </div>
             <div>
               <p className="mb-2 text-xs text-texto-suave">Ícone</p>
-              <div className="grid grid-cols-8 gap-1.5">
-                {ICONES_CATEGORIA.map((icone) => (
-                  <button
-                    key={icone}
-                    type="button"
-                    title={ROTULO_ICONE_CATEGORIA[icone]}
-                    onClick={() => setForm({ ...form, icone })}
-                    className={unir_classes(
-                      "flex items-center justify-center rounded-lg p-1.5",
-                      form.icone === icone ? "bg-primaria/15 ring-1 ring-primaria" : "hover:bg-fundo",
-                    )}
-                  >
-                    <IconeCategoria icone={icone} cor={form.cor} tamanho={14} />
-                  </button>
-                ))}
+              <Campo
+                placeholder="Buscar ícone"
+                value={filtroIcone}
+                onChange={(e) => setFiltroIcone(e.target.value)}
+              />
+              <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-borda p-1.5">
+                {iconesFiltrados.length === 0 ? (
+                  <p className="px-2 py-4 text-center text-xs text-texto-suave">Nenhum ícone com esse nome.</p>
+                ) : (
+                  <div className="grid grid-cols-8 gap-1">
+                    {iconesFiltrados.map((icone) => (
+                      <button
+                        key={icone}
+                        type="button"
+                        title={ROTULO_ICONE_CATEGORIA[icone]}
+                        onClick={() => setForm({ ...form, icone })}
+                        className={unir_classes(
+                          "flex items-center justify-center rounded-lg p-1.5",
+                          form.icone === icone ? "bg-primaria/15 ring-1 ring-primaria" : "hover:bg-fundo",
+                        )}
+                      >
+                        <IconeCategoria icone={icone} variante="padrao" tamanho={16} />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-2">
