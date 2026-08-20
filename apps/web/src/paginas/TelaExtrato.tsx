@@ -826,9 +826,7 @@ export function TelaExtrato() {
                       <span className="inline-flex max-w-[10rem] items-center gap-1.5">
                         <IconeCategoria icone={categoriaAtual?.icone} cor={categoriaAtual?.cor} tamanho={14} />
                         <span className="truncate text-texto">
-                          {eh_nao_classificado(movimento.categoriaNome)
-                            ? "—"
-                            : movimento.categoriaNome}
+                          {movimento.categoriaNome ?? "Não classificado"}
                         </span>
                       </span>
                     </td>
