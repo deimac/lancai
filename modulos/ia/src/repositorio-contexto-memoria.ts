@@ -71,7 +71,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
 
   async criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria> {
     const agora = new Date();
-    const categoria: Categoria = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, workspaceId: WORKSPACE_EM_MEMORIA, dataCriacao: agora, dataAtualizacao: agora };
+    const categoria: Categoria = { id: randomUUID(), nome, tipo, ativo: true, usuarioId, dataCriacao: agora, dataAtualizacao: agora };
     this.categorias.set(categoria.id, categoria);
     return categoria;
   }

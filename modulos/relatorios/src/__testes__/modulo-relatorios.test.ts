@@ -70,7 +70,6 @@ function criarCategoria(usuarioId: string, sobrepor: Partial<Categoria> = {}): C
     tipo: "despesa",
     ativo: true,
     usuarioId,
-    workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
     ...sobrepor,

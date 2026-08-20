@@ -200,7 +200,7 @@ export class ServicoConhecimento {
       return { aplicada: false, motivo: "ja_classificado" };
     }
 
-    const categorias = await this.repositorio.listarCategoriasAtivas(movimento.workspaceId);
+    const categorias = await this.repositorio.listarCategoriasAtivas(movimento.usuarioId);
     const elegiveis = categorias.filter(
       (categoria) =>
         categoria.nome.toLocaleLowerCase("pt-BR") !==
@@ -435,12 +435,7 @@ export class ServicoConhecimento {
       switch (acao.tipo) {
         case "definir_categoria": {
           const origem = await this.repositorio.obterCategoria(acao.categoriaId);
-          if (!origem) break;
-          const local = await this.repositorio.buscarCategoriaPorNome(
-            movimento.workspaceId,
-            origem.nome,
-          );
-          if (local) conhecimento.categoriaId = local.id;
+          if (origem) conhecimento.categoriaId = origem.id;
           break;
         }
         case "definir_beneficiario": {
@@ -502,12 +497,12 @@ export class ServicoConhecimento {
       campos.papel = "pagamento_fatura";
       campos.ignoradoEmRelatorio = true;
       const catFatura = await this.repositorio.buscarCategoriaPorNome(
-        movimentoAtual.workspaceId,
+        movimentoAtual.usuarioId,
         CATEGORIA_PAGAMENTO_FATURA,
       );
       if (!catFatura) {
         throw new ErroConhecimentoInvalido(
-          "Categoria sistema «Pagamento de fatura» não existe neste workspace.",
+          "Categoria sistema «Pagamento de fatura» não existe.",
         );
       }
       campos.categoriaId = catFatura.id;
@@ -525,7 +520,7 @@ export class ServicoConhecimento {
       const nomeAtual = await this.nome_categoria(categoriaAtualId);
       if (eh_nome_pagamento_fatura(nomeAtual) && dados.categoriaId === undefined) {
         const naoClassificado = await this.repositorio.buscarCategoriaPorNome(
-          movimentoAtual.workspaceId,
+          movimentoAtual.usuarioId,
           CATEGORIA_NAO_CLASSIFICADO,
         );
         if (naoClassificado) campos.categoriaId = naoClassificado.id;

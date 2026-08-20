@@ -183,5 +183,5 @@ export interface RepositorioOpenFinance {
    * faltar: uma conta conectada antes de o usuário ver a tela de categorias é
    * caso normal, e o webhook não pode falhar por isso.
    */
-  garantirCategoriaNaoClassificado(workspaceId: string, usuarioId: string): Promise<string>;
+  garantirCategoriaNaoClassificado(usuarioId: string): Promise<string>;
 }

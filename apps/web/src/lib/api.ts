@@ -424,6 +424,7 @@ export interface MovimentoResumo {
   papel: "gasto" | "pagamento_fatura";
   cartaoFaturaId: string | null;
   competenciaFatura: string | null;
+  workspaceId?: string | null;
 }
 
 class ErroApi extends Error {

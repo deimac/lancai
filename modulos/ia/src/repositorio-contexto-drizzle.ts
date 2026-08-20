@@ -59,18 +59,10 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async listarCategorias(usuarioId: string): Promise<Categoria[]> {
-    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
-    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(categoriaTabela)
-      .where(
-        and(
-          eq(categoriaTabela.usuarioId, usuarioId),
-          inArray(categoriaTabela.workspaceId, escopo.workspaceIds),
-          eq(categoriaTabela.ativo, true),
-        ),
-      );
+      .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.ativo, true)));
   }
 
   async listarPessoas(usuarioId: string): Promise<Pessoa[]> {
@@ -125,18 +117,10 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async buscarCategoriaPorNome(usuarioId: string, nome: string): Promise<Categoria | undefined> {
-    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
-    if (escopo.workspaceIds.length === 0) return undefined;
     const linhas = await this.banco
       .select()
       .from(categoriaTabela)
-      .where(
-        and(
-          eq(categoriaTabela.usuarioId, usuarioId),
-          inArray(categoriaTabela.workspaceId, escopo.workspaceIds),
-          ilike(categoriaTabela.nome, nome),
-        ),
-      )
+      .where(and(eq(categoriaTabela.usuarioId, usuarioId), ilike(categoriaTabela.nome, nome)))
       .limit(1);
     return linhas[0];
   }
@@ -159,10 +143,9 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
   }
 
   async criarCategoria(usuarioId: string, nome: string, tipo: Categoria["tipo"]): Promise<Categoria> {
-    const workspaceId = await garantir_workspace_do_usuario(this.banco, usuarioId);
     const linhas = await this.banco
       .insert(categoriaTabela)
-      .values({ usuarioId, workspaceId, nome, tipo })
+      .values({ usuarioId, nome, tipo })
       .returning();
     const categoria = linhas[0];
     if (!categoria) throw new Error("Falha ao criar categoria automaticamente.");

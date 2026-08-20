@@ -24,9 +24,9 @@ export interface RepositorioConhecimento {
   obterMovimento(id: string): Promise<Movimento | undefined>;
   obterCategoria(id: string): Promise<{ id: string; nome: string } | undefined>;
   obterPessoa(id: string): Promise<{ id: string; nome: string } | undefined>;
-  /** Resolve categoria pelo nome no workspace do movimento (regras cross-workspace). */
+  /** Resolve categoria pelo nome do usuário (lista global, não por workspace). */
   buscarCategoriaPorNome(
-    workspaceId: string,
+    usuarioId: string,
     nome: string,
   ): Promise<{ id: string; nome: string } | undefined>;
   buscarPessoaPorNome(
@@ -46,8 +46,8 @@ export interface RepositorioConhecimento {
   listarMovimentoIdsParaRegras(workspaceIds: string[]): Promise<string[]>;
   /** Workspaces em que o usuário é dono. */
   listarWorkspaceIdsDoUsuario(usuarioId: string): Promise<string[]>;
-  /** Categorias ativas do workspace — lista que o sugeridor de IA pode escolher. */
+  /** Categorias ativas do usuário — lista que o sugeridor de IA pode escolher. */
   listarCategoriasAtivas(
-    workspaceId: string,
+    usuarioId: string,
   ): Promise<Array<{ id: string; nome: string; tipo: string }>>;
 }

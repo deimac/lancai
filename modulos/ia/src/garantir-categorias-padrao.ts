@@ -6,6 +6,7 @@ type RepositorioCategorias = Pick<RepositorioContexto, "listarCategorias" | "cri
 
 /**
  * Garante as categorias padrão do produto para o usuário (idempotente).
+ * Uma lista por usuário — o mesmo id vale em todos os workspaces.
  * Chamado no primeiro uso do chat / listagem de categorias.
  */
 export async function garantir_categorias_padrao(

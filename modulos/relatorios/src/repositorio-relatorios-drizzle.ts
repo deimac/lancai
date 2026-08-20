@@ -55,17 +55,10 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
   }
 
   async listarCategorias(usuarioId: string) {
-    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
-    if (escopo.workspaceIds.length === 0) return [];
     return this.banco
       .select()
       .from(categoriaTabela)
-      .where(
-        and(
-          eq(categoriaTabela.usuarioId, usuarioId),
-          inArray(categoriaTabela.workspaceId, escopo.workspaceIds),
-        ),
-      );
+      .where(eq(categoriaTabela.usuarioId, usuarioId));
   }
 
   async obterCategoria(id: string) {

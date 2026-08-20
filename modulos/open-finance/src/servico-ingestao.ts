@@ -601,10 +601,7 @@ export class ServicoIngestaoOpenFinance {
   }
 
   private async contexto_de_ingestao(conexao: ConexaoRegistrada): Promise<ContextoIngestao> {
-    const categoriaId = await this.repositorio.garantirCategoriaNaoClassificado(
-      conexao.workspaceId,
-      conexao.criadoPor,
-    );
+    const categoriaId = await this.repositorio.garantirCategoriaNaoClassificado(conexao.criadoPor);
 
     return {
       usuarioId: conexao.criadoPor,

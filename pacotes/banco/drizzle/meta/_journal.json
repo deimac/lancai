@@ -197,6 +197,13 @@
       "when": 1786202000000,
       "tag": "0027_pagamento_fatura",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786202100000,
+      "tag": "0028_categoria_global_por_usuario",
+      "breakpoints": true
     }
   ]
 }

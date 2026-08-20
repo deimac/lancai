@@ -42,7 +42,7 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
   /** Chaveado por id da conexão. */
   readonly conexoes = new Map<string, ConexaoDetalhada>();
   readonly contasExternas = new Map<string, ContaExternaRegistrada[]>();
-  readonly categoriasPorWorkspace = new Map<string, string>();
+  readonly categoriasPorUsuario = new Map<string, string>();
 
   /** Histórico de escritas de estado, para o teste afirmar o que foi gravado. */
   readonly estadosGravados: Array<{ conexaoId: string; estado: EstadoConexaoParaGravar }> = [];
@@ -281,12 +281,12 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
     this.estadosGravados.push({ conexaoId, estado });
   }
 
-  async garantirCategoriaNaoClassificado(workspaceId: string): Promise<string> {
-    const existente = this.categoriasPorWorkspace.get(workspaceId);
+  async garantirCategoriaNaoClassificado(usuarioId: string): Promise<string> {
+    const existente = this.categoriasPorUsuario.get(usuarioId);
     if (existente) return existente;
 
     const criada = randomUUID();
-    this.categoriasPorWorkspace.set(workspaceId, criada);
+    this.categoriasPorUsuario.set(usuarioId, criada);
     return criada;
   }
 }

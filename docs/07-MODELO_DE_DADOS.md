@@ -241,7 +241,7 @@ Detalhamento do módulo em [13-OPEN_FINANCE.md](13-OPEN_FINANCE.md).
 
 ## 6. `workspace_id`
 
-`workspace_id` entra em todas as tabelas de dados na primeira migração da F1, mesmo antes de existir qualquer interface de workspace.
+`workspace_id` entra nas tabelas que agrupam contas, cartões e movimentos na primeira migração da F1, mesmo antes de existir qualquer interface de workspace. `categoria` é lista do usuário (sem `workspace_id`): o mesmo id vale em Pessoal e Empresa.
 
 Esta é a **única** antecipação aceita na arquitetura, porque é barata agora e proibitivamente caro depois: retrofitar escopo de tenancy em um banco com dados de produção é uma migração de risco. Ver [ADR-013](adr/013-workspace-id-desde-a-primeira-migracao.md).
 

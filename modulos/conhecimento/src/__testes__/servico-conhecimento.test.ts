@@ -26,8 +26,8 @@ function entrada_regra_contem(workspaceId: string, trecho: string, categoriaId: 
 
 class RepositorioEmMemoria implements RepositorioConhecimento {
   movimentos = new Map<string, Movimento>();
-  /** id → { nome, workspaceId } */
-  categorias = new Map<string, { nome: string; workspaceId: string }>();
+  /** id → { nome } */
+  categorias = new Map<string, { nome: string }>();
   pessoas = new Map<string, { nome: string; workspaceId: string }>();
   workspacesPorUsuario = new Map<string, string[]>();
   regras: Regra[] = [];
@@ -47,13 +47,10 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
     return pessoa ? { id, nome: pessoa.nome } : undefined;
   }
 
-  async buscarCategoriaPorNome(workspaceId: string, nome: string) {
+  async buscarCategoriaPorNome(_usuarioId: string, nome: string) {
     const alvo = nome.toLocaleLowerCase("pt-BR");
     for (const [id, cat] of this.categorias) {
-      if (
-        cat.workspaceId === workspaceId &&
-        cat.nome.toLocaleLowerCase("pt-BR") === alvo
-      ) {
+      if (cat.nome.toLocaleLowerCase("pt-BR") === alvo) {
         return { id, nome: cat.nome };
       }
     }
@@ -153,18 +150,16 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
     return this.workspacesPorUsuario.get(usuarioId) ?? [WORKSPACE];
   }
 
-  async listarCategoriasAtivas(workspaceId: string) {
-    return [...this.categorias.entries()]
-      .filter(([, cat]) => cat.workspaceId === workspaceId)
-      .map(([id, cat]) => ({
-        id,
-        nome: cat.nome,
-        tipo: "ambos",
-      }));
+  async listarCategoriasAtivas(_usuarioId: string) {
+    return [...this.categorias.entries()].map(([id, cat]) => ({
+      id,
+      nome: cat.nome,
+      tipo: "ambos",
+    }));
   }
 
-  cadastrarCategoria(id: string, nome: string, workspaceId = WORKSPACE) {
-    this.categorias.set(id, { nome, workspaceId });
+  cadastrarCategoria(id: string, nome: string) {
+    this.categorias.set(id, { nome });
   }
 }
 
@@ -509,12 +504,8 @@ describe("ServicoConhecimento", () => {
       expect(resultado.movimento.classificadoEm).toBeInstanceOf(Date);
     });
 
-    it("aplica regra de outro workspace remapeando a categoria pelo nome", async () => {
+    it("aplica regra de outro workspace com o mesmo id de categoria", async () => {
       const workspaceB = "00000000-0000-4000-8000-000000000099";
-      const catNaoB = randomUUID();
-      const catRestB = randomUUID();
-      repositorio.cadastrarCategoria(catNaoB, "Não classificado", workspaceB);
-      repositorio.cadastrarCategoria(catRestB, "Restaurantes", workspaceB);
       repositorio.workspacesPorUsuario.set(usuarioId, [WORKSPACE, workspaceB]);
 
       await servico.criar_regra(entrada_regra_contem(WORKSPACE, "IFOOD", categoriaRestaurante));
@@ -524,7 +515,7 @@ describe("ServicoConhecimento", () => {
         workspaceId: workspaceB,
         descricaoFonte: "IFOOD *LOOP",
         descricao: "IFOOD *LOOP",
-        categoriaId: catNaoB,
+        categoriaId: categoriaNaoClassificado,
         classificadoPor: "ia",
       });
       repositorio.movimentos.set(movimentoB.id, movimentoB);
@@ -533,16 +524,12 @@ describe("ServicoConhecimento", () => {
 
       expect(resultado.aplicada).toBe(true);
       if (!resultado.aplicada) return;
-      expect(resultado.movimento.categoriaId).toBe(catRestB);
+      expect(resultado.movimento.categoriaId).toBe(categoriaRestaurante);
       expect(resultado.movimento.classificadoPor).toBe("regra");
     });
 
     it("reaplica existentes em todos os workspaces do usuário", async () => {
       const workspaceB = "00000000-0000-4000-8000-000000000098";
-      const catNaoB = randomUUID();
-      const catRestB = randomUUID();
-      repositorio.cadastrarCategoria(catNaoB, "Não classificado", workspaceB);
-      repositorio.cadastrarCategoria(catRestB, "Restaurantes", workspaceB);
       repositorio.workspacesPorUsuario.set(usuarioId, [WORKSPACE, workspaceB]);
 
       await servico.criar_regra(entrada_regra_contem(WORKSPACE, "UBER", categoriaRestaurante));
@@ -557,7 +544,7 @@ describe("ServicoConhecimento", () => {
         usuarioId,
         workspaceId: workspaceB,
         descricaoFonte: "UBER TRIP",
-        categoriaId: catNaoB,
+        categoriaId: categoriaNaoClassificado,
         classificadoPor: "ia",
       });
       repositorio.movimentos.set(movA.id, movA);
@@ -567,7 +554,7 @@ describe("ServicoConhecimento", () => {
 
       expect(aplicadas).toBe(2);
       expect(repositorio.movimentos.get(movA.id)?.categoriaId).toBe(categoriaRestaurante);
-      expect(repositorio.movimentos.get(movB.id)?.categoriaId).toBe(catRestB);
+      expect(repositorio.movimentos.get(movB.id)?.categoriaId).toBe(categoriaRestaurante);
     });
 
     it("não sobrescreve classificação feita à mão", async () => {

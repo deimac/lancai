@@ -49,16 +49,14 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
   }
 
   async buscarCategoriaPorNome(
-    workspaceId: string,
+    usuarioId: string,
     nome: string,
   ): Promise<{ id: string; nome: string } | undefined> {
     const alvo = nome.trim().toLocaleLowerCase("pt-BR");
     const linhas = await this.banco
       .select({ id: categoriaTabela.id, nome: categoriaTabela.nome })
       .from(categoriaTabela)
-      .where(
-        and(eq(categoriaTabela.workspaceId, workspaceId), eq(categoriaTabela.ativo, true)),
-      );
+      .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.ativo, true)));
     return linhas.find((c) => c.nome.toLocaleLowerCase("pt-BR") === alvo);
   }
 
@@ -161,7 +159,7 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
   }
 
   async listarCategoriasAtivas(
-    workspaceId: string,
+    usuarioId: string,
   ): Promise<Array<{ id: string; nome: string; tipo: string }>> {
     return this.banco
       .select({
@@ -170,7 +168,7 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
         tipo: categoriaTabela.tipo,
       })
       .from(categoriaTabela)
-      .where(and(eq(categoriaTabela.workspaceId, workspaceId), eq(categoriaTabela.ativo, true)))
+      .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.ativo, true)))
       .orderBy(asc(categoriaTabela.nome));
   }
 }

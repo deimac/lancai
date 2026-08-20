@@ -2,7 +2,6 @@ import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import type { Banco } from "./cliente";
 import {
   cartao as cartaoTabela,
-  categoria as categoriaTabela,
   conta as contaTabela,
   memoria as memoriaTabela,
   movimento as movimentoTabela,
@@ -581,22 +580,6 @@ async function acompanhar_membros_no_workspace(
         );
     }
 
-    // Categoria é por workspace — ao mudar o pouso do Fato, reaponte para a
-    // homônima no destino (senão "Não classificado" de outro workspace vaza no ranking).
-    await tx.execute(sql`
-      UPDATE movimento AS m
-      SET categoria_id = destino.id
-      FROM categoria AS origem
-      INNER JOIN categoria AS destino
-        ON destino.usuario_id = origem.usuario_id
-       AND destino.workspace_id = ${destinoWorkspaceId}
-       AND destino.nome = origem.nome
-      WHERE m.usuario_id = ${usuarioId}
-        AND m.workspace_id = ${destinoWorkspaceId}
-        AND m.categoria_id = origem.id
-        AND origem.workspace_id IS DISTINCT FROM ${destinoWorkspaceId}
-    `);
-
     const filtrosVinculo = [];
     if (contaIds.length > 0) filtrosVinculo.push(inArray(contaExternaTabela.contaId, contaIds));
     if (cartaoIds.length > 0) filtrosVinculo.push(inArray(contaExternaTabela.cartaoId, cartaoIds));
@@ -639,7 +622,6 @@ async function reatribuir_tudo(
       .update(movimentoTabela)
       .set({ workspaceId: para })
       .where(eq(movimentoTabela.workspaceId, de));
-    await tx.update(categoriaTabela).set({ workspaceId: para }).where(eq(categoriaTabela.workspaceId, de));
     await tx.update(pessoaTabela).set({ workspaceId: para }).where(eq(pessoaTabela.workspaceId, de));
     await tx.update(regraTabela).set({ workspaceId: para }).where(eq(regraTabela.workspaceId, de));
     await tx.update(memoriaTabela).set({ workspaceId: para }).where(eq(memoriaTabela.workspaceId, de));

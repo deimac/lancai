@@ -67,7 +67,6 @@ function criarCategoria(sobrepor: Partial<Categoria> = {}): Categoria {
     tipo: "despesa",
     ativo: true,
     usuarioId: randomUUID(),
-    workspaceId: WORKSPACE,
     dataCriacao: agora,
     dataAtualizacao: agora,
     ...sobrepor,

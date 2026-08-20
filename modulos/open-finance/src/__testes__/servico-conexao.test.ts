@@ -710,7 +710,6 @@ describe("ServicoConexaoOpenFinance", () => {
         tipo: "despesa" as const,
         ativo: true,
         usuarioId,
-        workspaceId: WORKSPACE,
         dataCriacao: agora,
         dataAtualizacao: agora,
       };

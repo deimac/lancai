@@ -116,7 +116,7 @@ Um cron continua existindo, com papel menor: reprocessar lote que falhou e **imp
 
 ### Onde a movimentação pousa
 
-Toda movimentação ingerida entra na categoria **“Não classificado”**, criada por workspace na primeira ingestão. Ela é diferente de “Outros”: “Outros” é escolha do usuário, “Não classificado” é a ausência de escolha. Juntar as duas tornaria impossível listar o que ainda falta classificar, que é exatamente a fila de trabalho do Conhecimento na F3.
+Toda movimentação ingerida entra na categoria **“Não classificado”**, criada por usuário na primeira ingestão. Ela é diferente de “Outros”: “Outros” é escolha do usuário, “Não classificado” é a ausência de escolha. Juntar as duas tornaria impossível listar o que ainda falta classificar, que é exatamente a fila de trabalho do Conhecimento na F3.
 
 Movimentação de conta externa que ninguém associou a uma conta local é **descartada**, e a contagem aparece no resumo da ingestão. Associar conta é ato do usuário; o webhook não cria conta sozinho.
 

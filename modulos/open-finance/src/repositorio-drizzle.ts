@@ -371,13 +371,13 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
       .where(eq(conexaoTabela.id, conexaoId));
   }
 
-  async garantirCategoriaNaoClassificado(workspaceId: string, usuarioId: string): Promise<string> {
+  async garantirCategoriaNaoClassificado(usuarioId: string): Promise<string> {
     const existentes = await this.banco
       .select({ id: categoriaTabela.id })
       .from(categoriaTabela)
       .where(
         and(
-          eq(categoriaTabela.workspaceId, workspaceId),
+          eq(categoriaTabela.usuarioId, usuarioId),
           eq(categoriaTabela.nome, CATEGORIA_NAO_CLASSIFICADO),
         ),
       )
@@ -392,7 +392,6 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
         nome: CATEGORIA_NAO_CLASSIFICADO,
         tipo: "ambos",
         usuarioId,
-        workspaceId,
       })
       .returning({ id: categoriaTabela.id });
 
