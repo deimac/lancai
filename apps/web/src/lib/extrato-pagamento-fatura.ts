@@ -61,6 +61,20 @@ export function mostra_check_pagamento_fatura(movimento: Pick<
   return linha_aceita_pagamento_fatura(movimento);
 }
 
+export type ModoConvitePagamentoFatura = "nada" | "banner" | "check" | "marcado";
+
+export function modo_convite_pagamento_fatura(entrada: {
+  movimento: Pick<MovimentoResumo, "tipo" | "contaId" | "cartaoId" | "status" | "papel">;
+  temSugestao: boolean;
+  dispensou: boolean;
+}): ModoConvitePagamentoFatura {
+  if (!mostra_check_pagamento_fatura(entrada.movimento)) return "nada";
+  if (entrada.movimento.papel === "pagamento_fatura") return "marcado";
+  if (entrada.dispensou) return "nada";
+  if (entrada.temSugestao) return "banner";
+  return "check";
+}
+
 export function rotulo_check_pagamento_fatura(movimento: Pick<MovimentoResumo, "cartaoId">): string {
   return movimento.cartaoId
     ? "Crédito de pagamento da fatura?"

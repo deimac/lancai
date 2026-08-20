@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertTriangle, Building2, PenLine, Search } from "lucide-react";
+import { AlertTriangle, Building2, PenLine, Search, X } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
@@ -29,6 +29,7 @@ import {
 import {
   cartao_preferencial_fatura,
   competencia_default_fatura,
+  modo_convite_pagamento_fatura,
   mostra_check_pagamento_fatura,
   opcoes_competencia,
   rotulo_check_pagamento_fatura,
@@ -167,6 +168,9 @@ export function TelaExtrato() {
     movimentoId: string;
     trecho: string;
   } | null>(null);
+  const [faturasDispensadas, setFaturasDispensadas] = useState<Set<string>>(
+    () => new Set(),
+  );
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "extrato",
@@ -865,7 +869,9 @@ export function TelaExtrato() {
                           contas,
                           cartoes,
                         );
-                        if (!origemPerfil) return null;
+                        const ehGasto =
+                          movimento.tipo === "despesa" || movimento.tipo === "retirada";
+                        if (!origemPerfil || !ehGasto) return null;
                         const cruzado =
                           origemPerfil === "pj"
                             ? movimento.tipoGasto === "pf"
@@ -900,6 +906,7 @@ export function TelaExtrato() {
                           cartoes={cartoes}
                           movimentos={movimentos}
                           salvando={salvandoId === movimento.id}
+                          dispensou={faturasDispensadas.has(movimento.id)}
                           ofertaRegra={
                             ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
                           }
@@ -908,6 +915,13 @@ export function TelaExtrato() {
                           }
                           onVincular={(cartaoId, competencia) =>
                             void marcar_pagamento_fatura(movimento, true, cartaoId, competencia)
+                          }
+                          onDispensar={() =>
+                            setFaturasDispensadas((atuais) => {
+                              const proximo = new Set(atuais);
+                              proximo.add(movimento.id);
+                              return proximo;
+                            })
                           }
                           onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
                           onDispensarRegra={() => setOfertaRegra(null)}
@@ -954,9 +968,11 @@ function CheckPagamentoFatura({
   cartoes,
   movimentos,
   salvando,
+  dispensou,
   ofertaRegra,
   onMarcar,
   onVincular,
+  onDispensar,
   onCriarRegra,
   onDispensarRegra,
 }: {
@@ -964,9 +980,11 @@ function CheckPagamentoFatura({
   cartoes: CartaoResumo[];
   movimentos: MovimentoResumo[];
   salvando: boolean;
+  dispensou: boolean;
   ofertaRegra: { movimentoId: string; trecho: string } | null;
   onMarcar: (marcado: boolean, cartaoId?: string | null, competencia?: string | null) => void;
   onVincular: (cartaoId: string | null, competencia: string) => void;
+  onDispensar: () => void;
   onCriarRegra: () => void;
   onDispensarRegra: () => void;
 }) {
@@ -978,22 +996,41 @@ function CheckPagamentoFatura({
   const sugestao = marcado
     ? null
     : sugerir_pagamento_fatura(movimento, cartoes, movimentos);
+  const modo = modo_convite_pagamento_fatura({
+    movimento,
+    temSugestao: Boolean(sugestao),
+    dispensou,
+  });
+
+  if (modo === "nada") return null;
 
   return (
     <div className="flex w-full min-w-[16rem] flex-col gap-2 pb-1">
-      <label className="flex items-center gap-2 text-sm text-texto">
-        <input
-          type="checkbox"
-          className="size-4 rounded border-borda"
-          checked={marcado}
-          disabled={salvando}
-          onChange={(e) => onMarcar(e.target.checked, cartaoId, competencia)}
-        />
-        <span className="normal-case">{rotulo_check_pagamento_fatura(movimento)}</span>
-      </label>
+      {modo === "check" || modo === "marcado" ? (
+        <label className="flex items-center gap-2 text-sm text-texto">
+          <input
+            type="checkbox"
+            className="size-4 rounded border-borda"
+            checked={marcado}
+            disabled={salvando}
+            onChange={(e) => onMarcar(e.target.checked, cartaoId, competencia)}
+          />
+          <span className="normal-case">{rotulo_check_pagamento_fatura(movimento)}</span>
+        </label>
+      ) : null}
 
-      {sugestao && (
-        <div className="rounded-xl border border-primaria/30 bg-primaria/5 px-3 py-2">
+      {modo === "banner" && sugestao && (
+        <div className="relative rounded-xl border border-primaria/30 bg-primaria/5 px-3 py-2 pr-8">
+          <button
+            type="button"
+            disabled={salvando}
+            onClick={onDispensar}
+            aria-label="Não é pagamento de fatura"
+            title="Não é pagamento de fatura"
+            className="absolute right-1.5 top-1.5 rounded-md p-0.5 text-texto-suave hover:bg-superficie/80 hover:text-texto disabled:opacity-60"
+          >
+            <X size={14} />
+          </button>
           <p className="text-xs text-texto">
             Parece pagamento da fatura de {sugestao.cartaoNome} (
             {formatar_mes_competencia(`${sugestao.competencia}-01`)}). Confirmar?
@@ -1009,7 +1046,7 @@ function CheckPagamentoFatura({
         </div>
       )}
 
-      {marcado && cartoes.length > 0 && (
+      {modo === "marcado" && cartoes.length > 0 && (
         <div className="flex flex-wrap gap-2">
           <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
             Cartão
