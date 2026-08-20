@@ -142,7 +142,7 @@ export function DonutCategoriasDashboard({ gastos, receitas, ocultarValores }: P
                     )}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
+                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={14} />
                       <span className="truncate text-sm text-texto">{item.categoriaNome}</span>
                     </span>
                     <span className="shrink-0 tabular-nums text-texto-suave">

@@ -683,7 +683,7 @@ export function TelaDashboard() {
                   <li key={item.categoriaNome ?? "geral"} className="text-xs">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2">
-                        <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
+                        <IconeCategoria icone={item.icone} cor={item.cor} tamanho={14} />
                         <span className="truncate text-sm text-texto">
                           {item.categoriaNome ?? "Geral"}
                         </span>

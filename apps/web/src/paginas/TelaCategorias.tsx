@@ -345,7 +345,12 @@ export function TelaCategorias() {
                           form.icone === icone ? "bg-primaria/15 ring-1 ring-primaria" : "hover:bg-fundo",
                         )}
                       >
-                        <IconeCategoria icone={icone} variante="padrao" tamanho={16} />
+                        <IconeCategoria
+                          icone={icone}
+                          variante={form.icone === icone ? "cor" : "padrao"}
+                          cor={form.icone === icone ? form.cor : undefined}
+                          tamanho={16}
+                        />
                       </button>
                     ))}
                   </div>

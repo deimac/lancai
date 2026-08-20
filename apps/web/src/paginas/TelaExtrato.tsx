@@ -824,7 +824,7 @@ export function TelaExtrato() {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="inline-flex max-w-[10rem] items-center gap-1.5">
-                        <IconeCategoria icone={categoriaAtual?.icone} cor={categoriaAtual?.cor} tamanho={12} />
+                        <IconeCategoria icone={categoriaAtual?.icone} cor={categoriaAtual?.cor} tamanho={14} />
                         <span className="truncate text-texto">
                           {eh_nao_classificado(movimento.categoriaNome)
                             ? "—"
