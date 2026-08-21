@@ -77,7 +77,7 @@ export function TelaDashboard() {
   const [erro, setErro] = useState<string | null>(null);
   const [drawerCartoesAberto, setDrawerCartoesAberto] = useState(false);
   const [ocultarValores, setOcultarValores] = useState(false);
-  const [abaGrafico, setAbaGrafico] = useState<"resultado" | "saldo">("resultado");
+  const [abaGrafico, setAbaGrafico] = useState<"resultado" | "caixa">("resultado");
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "dashboard",
@@ -364,9 +364,16 @@ export function TelaDashboard() {
           className="rounded-2xl border border-borda bg-superficie/80 p-4"
         >
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-texto">
-              {abaGrafico === "resultado" ? "Resultado do mês" : "Fluxo de saldo"}
-            </h2>
+            <div>
+              <h2 className="text-sm font-medium text-texto">
+                {abaGrafico === "resultado" ? "Resultado do mês" : "Caixa da conta"}
+              </h2>
+              {abaGrafico === "caixa" ? (
+                <p className="mt-0.5 text-xs text-texto-suave">
+                  Saldo na conta ao fim de cada dia — o último ponto é o disponível
+                </p>
+              ) : null}
+            </div>
             <div className="flex rounded-lg border border-borda p-0.5 text-xs">
               <button
                 type="button"
@@ -382,15 +389,15 @@ export function TelaDashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => setAbaGrafico("saldo")}
+                onClick={() => setAbaGrafico("caixa")}
                 className={unir_classes(
                   "rounded-md px-2.5 py-1 font-medium transition",
-                  abaGrafico === "saldo"
+                  abaGrafico === "caixa"
                     ? "bg-primaria/15 text-primaria"
                     : "text-texto-suave hover:text-texto",
                 )}
               >
-                Saldo
+                Caixa
               </button>
             </div>
           </div>
@@ -469,9 +476,9 @@ export function TelaDashboard() {
                 </ResponsiveContainer>
               </div>
             )
-          ) : fluxoChart.length === 0 ? (
+          ) : quantidadeContas === 0 ? (
             <p className="py-10 text-center text-sm text-texto-suave">
-              Sem movimentos neste mês para montar o gráfico.
+              Sem conta neste workspace para montar o caixa.
             </p>
           ) : (
             <div className="h-56">
@@ -499,7 +506,10 @@ export function TelaDashboard() {
                       borderRadius: 12,
                       color: "var(--color-texto)",
                     }}
-                    formatter={(valor) => formatar_oculto(formatar_moeda(Number(valor)), ocultarValores)}
+                    formatter={(valor) => [
+                      formatar_oculto(formatar_moeda(Number(valor)), ocultarValores),
+                      "Saldo da conta",
+                    ]}
                     labelFormatter={(rotulo) => `Dia ${rotulo}`}
                   />
                   <Area

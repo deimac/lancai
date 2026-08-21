@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { montar_proximos_pagamentos, type DashboardCartao } from "../servicos/montar-dashboard";
+import { montar_fluxo_caixa, montar_proximos_pagamentos, type DashboardCartao } from "../servicos/montar-dashboard";
 
 const cartao: DashboardCartao = {
   id: "cartao-mp",
@@ -151,5 +151,72 @@ describe("contrato dashboard", () => {
     expect(amostra.resumo.quantidadeCartoes).toBe(1);
     expect(amostra.cartoes[0]?.gastoMes).toBe(320);
     expect(amostra.gastosPorCategoria[0]?.categoriaNome).toBe("Alimentação");
+  });
+});
+
+describe("montar_fluxo_caixa", () => {
+  const periodo = { de: "2026-08-01", ate: "2026-08-31" };
+
+  it("termina no saldo atual e inclui Pix de fatura da conta", () => {
+    const pontos = montar_fluxo_caixa({
+      saldoAtual: 100,
+      hoje: "2026-08-21",
+      periodo,
+      movimentos: [
+        {
+          dataMovimento: "2026-08-10",
+          tipo: "receita",
+          valor: 40,
+          status: "realizado",
+          contaId: "conta",
+        },
+        {
+          dataMovimento: "2026-08-12",
+          tipo: "despesa",
+          valor: 20,
+          status: "realizado",
+          contaId: "conta",
+        },
+        {
+          dataMovimento: "2026-08-15",
+          tipo: "despesa",
+          valor: 50,
+          status: "realizado",
+          cartaoId: "cartao",
+        },
+      ],
+    });
+    expect(pontos[8]?.saldo).toBe(80);
+    expect(pontos[9]?.saldo).toBe(120);
+    expect(pontos[11]?.saldo).toBe(100);
+    expect(pontos[20]?.saldo).toBe(100);
+    expect(pontos.at(-1)?.saldo).toBe(100);
+  });
+
+  it("no mês passado, desconta o caixa de depois para achar o saldo do fim", () => {
+    const pontos = montar_fluxo_caixa({
+      saldoAtual: 100,
+      hoje: "2026-08-21",
+      periodo: { de: "2026-07-01", ate: "2026-07-31" },
+      movimentos: [
+        {
+          dataMovimento: "2026-07-10",
+          tipo: "receita",
+          valor: 40,
+          status: "realizado",
+          contaId: "conta",
+        },
+        {
+          dataMovimento: "2026-08-05",
+          tipo: "despesa",
+          valor: 10,
+          status: "realizado",
+          contaId: "conta",
+        },
+      ],
+    });
+    expect(pontos[0]?.saldo).toBe(70);
+    expect(pontos[9]?.saldo).toBe(110);
+    expect(pontos.at(-1)?.saldo).toBe(110);
   });
 });

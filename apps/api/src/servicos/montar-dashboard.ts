@@ -88,6 +88,7 @@ export interface DashboardResposta {
   };
   gastosPorCategoria: RankingCategoria[];
   receitasPorCategoria: RankingCategoria[];
+  /** Saldo das contas ao fim de cada dia (caixa), não o resultado P&L. */
   fluxoSaldo: Array<{ data: string; saldo: number }>;
   fluxoResultado: Array<{
     data: string;
@@ -118,10 +119,12 @@ export async function montar_dashboard(
   usuarioId: string,
   dataAtual = hojeISO(),
 ): Promise<DashboardResposta> {
+  const hoje = hojeISO();
   const periodo = inicioFimMesAtual(dataAtual);
   const filtros = { usuarioId, periodo };
   const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
+  const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
 
   const [
     saldosVisao,
@@ -135,6 +138,7 @@ export async function montar_dashboard(
     movimentosMes,
     categoriasDb,
     movimentosQuitadas,
+    movimentosCaixa,
   ] =
     await Promise.all([
       relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
@@ -152,6 +156,10 @@ export async function montar_dashboard(
           de: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1))).de,
           ate: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), 1))).ate,
         },
+        incluirIgnorados: true,
+      }),
+      repositorio.listarMovimentos(usuarioId, {
+        periodo: { de: periodo.de, ate: ateCaixa },
         incluirIgnorados: true,
       }),
     ]);
@@ -229,7 +237,12 @@ export async function montar_dashboard(
   const resultadoMes = arredondar(categoria.totalReceitas - categoria.totalDespesas);
 
   const naoClassificado = await contar_nao_classificados(usuarioId, periodo);
-  const fluxoSaldo = montar_fluxo_saldo(saldos.totalGeral, historico.saldoPeriodo, historico.dias);
+  const fluxoSaldo = montar_fluxo_caixa({
+    saldoAtual: saldos.totalGeral,
+    hoje,
+    periodo,
+    movimentos: movimentosCaixa,
+  });
   const fluxoResultado = montar_fluxo_resultado(movimentosMes, periodo);
   const visualPorNome = new Map(
     categoriasDb.map((item) => [item.nome, { icone: item.icone, cor: item.cor }] as const),
@@ -279,7 +292,7 @@ export async function montar_dashboard(
     movimentos: movimentosMes,
     pagamentosFatura: movimentosQuitadas,
     // O web manda o dia 1 do mês selecionado; vencido/em aberto compara com hoje de verdade.
-    hoje: hojeISO(),
+    hoje,
     periodo,
   });
 
@@ -355,33 +368,67 @@ async function contar_nao_classificados(
   return { quantidade, total };
 }
 
-function montar_fluxo_saldo(
-  saldoAtual: number,
-  saldoPeriodo: number,
-  dias: Array<{
-    data: string;
-    itens: Array<{ tipo: string; valor: number }>;
-  }>,
-): Array<{ data: string; saldo: number }> {
-  let saldo = saldoAtual - saldoPeriodo;
-  const pontos: Array<{ data: string; saldo: number }> = [];
+function efeito_caixa(tipo: string, valor: number): number {
+  if (tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte") {
+    return valor;
+  }
+  if (tipo === "despesa" || tipo === "retirada") {
+    return -valor;
+  }
+  return 0;
+}
 
-  for (const dia of [...dias].sort((a, b) => a.data.localeCompare(b.data))) {
-    for (const item of dia.itens) {
-      if (
-        item.tipo === "receita" ||
-        item.tipo === "reembolso" ||
-        item.tipo === "estorno" ||
-        item.tipo === "aporte"
-      ) {
-        saldo += item.valor;
-      } else if (item.tipo === "despesa" || item.tipo === "retirada") {
-        saldo -= item.valor;
-      }
+/**
+ * Saldo das contas ao fim de cada dia do mês. Inclui Pix de fatura (saiu da
+ * conta) e ignora compra no cartão (ainda não saiu). O último dia com o mês
+ * ainda em curso coincide com o saldo disponível.
+ */
+export function montar_fluxo_caixa(entrada: {
+  saldoAtual: number;
+  hoje: string;
+  periodo: { de: string; ate: string };
+  movimentos: Array<{
+    dataMovimento: string;
+    tipo: string;
+    valor: string | number;
+    status: string;
+    contaId?: string | null;
+    cartaoId?: string | null;
+  }>;
+}): Array<{ data: string; saldo: number }> {
+  const naConta = entrada.movimentos.filter(
+    (movimento) => movimento.status === "realizado" && movimento.contaId,
+  );
+
+  let netPeriodo = 0;
+  let netDepois = 0;
+  const porDia = new Map<string, number>();
+  for (const movimento of naConta) {
+    const dia = String(movimento.dataMovimento).slice(0, 10);
+    const efeito = efeito_caixa(movimento.tipo, Number(movimento.valor));
+    if (efeito === 0) continue;
+    if (dia >= entrada.periodo.de && dia <= entrada.periodo.ate) {
+      netPeriodo += efeito;
+      porDia.set(dia, (porDia.get(dia) ?? 0) + efeito);
+    } else if (dia > entrada.periodo.ate && dia <= entrada.hoje) {
+      netDepois += efeito;
     }
-    pontos.push({ data: dia.data, saldo: Math.round(saldo * 100) / 100 });
   }
 
+  const saldoFim = arredondar(entrada.saldoAtual - netDepois);
+  let saldo = arredondar(saldoFim - netPeriodo);
+  const pontos: Array<{ data: string; saldo: number }> = [];
+  const inicio = deISOParaData(entrada.periodo.de);
+  const fim = deISOParaData(entrada.periodo.ate);
+  for (
+    let cursor = new Date(inicio);
+    cursor.getTime() <= fim.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const data = paraDataISO(cursor);
+    saldo = arredondar(saldo + (porDia.get(data) ?? 0));
+    pontos.push({ data, saldo });
+  }
   return pontos;
 }
 
