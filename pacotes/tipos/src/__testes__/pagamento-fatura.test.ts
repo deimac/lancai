@@ -34,9 +34,15 @@ function mov(parcial: Partial<MovimentoSugestaoFatura> & Pick<MovimentoSugestaoF
 }
 
 describe("heurística de pagamento de fatura", () => {
-  it("reconhece descrição de fatura e ignora compra comum", () => {
+  it("reconhece descrição de fatura e ignora Pix/boleto genérico", () => {
     expect(descricao_parece_pagamento_fatura("PAGTO FATURA ITAU")).toBe(true);
+    expect(descricao_parece_pagamento_fatura("pagamento do cartão C6")).toBe(true);
+    expect(descricao_parece_pagamento_fatura("Fatura C6")).toBe(true);
     expect(descricao_parece_pagamento_fatura("UBER TRIP")).toBe(false);
+    expect(descricao_parece_pagamento_fatura("Pagamento de conta COPEL-DIS")).toBe(false);
+    expect(descricao_parece_pagamento_fatura("Pagamento com QR Pix MUNICIPIO")).toBe(false);
+    expect(descricao_parece_pagamento_fatura("Pagamento PIX")).toBe(false);
+    expect(descricao_parece_pagamento_fatura("Pagamento recebido")).toBe(false);
   });
 
   it("só oferece o check em débito de conta ou crédito no cartão", () => {
@@ -113,6 +119,43 @@ describe("heurística de pagamento de fatura", () => {
     );
     expect(sugestao?.motivo).toBe("valor_ciclo");
     expect(sugestao?.cartaoId).toBe("cartao-itau");
+  });
+
+  it("prefere o cartão cujo nome aparece na descrição", () => {
+    const c6: CartaoSugestaoFatura = {
+      id: "cartao-c6",
+      nome: "C6",
+      vencimento: 10,
+    };
+    const sugestao = sugerir_pagamento_fatura(
+      mov({
+        id: "pix",
+        descricao: "Fatura C6",
+        descricaoFonte: "PAGTO FATURA C6",
+        valor: "200.00",
+        dataMovimento: "2026-08-10",
+      }),
+      [cartao, c6],
+      [],
+    );
+    expect(sugestao?.cartaoId).toBe("cartao-c6");
+    expect(sugestao?.motivo).toBe("descricao");
+  });
+
+  it("não sugere boleto/Pix só porque a fonte tem a palavra pagamento", () => {
+    expect(
+      sugerir_pagamento_fatura(
+        mov({
+          id: "boleto",
+          descricao: "COPEL-DIS",
+          descricaoFonte: "Pagamento de conta COPEL-DIS",
+          valor: "180.00",
+          dataMovimento: "2026-08-17",
+        }),
+        [cartao],
+        [],
+      ),
+    ).toBeNull();
   });
 
   it("não sugere compra comum longe do vencimento", () => {

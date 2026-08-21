@@ -5,10 +5,8 @@
 
 const PADROES_DESCRICAO = [
   /\bfatura\b/i,
-  /\bpagto\b/i,
-  /\bpgto\b/i,
-  /\bpagamento\b/i,
-  /\bcart[aã]o\b/i,
+  /\b(?:pagto|pgto|pagamento)\b.{0,32}\b(?:fatura|cart[aã]o)\b/i,
+  /\b(?:fatura|cart[aã]o)\b.{0,32}\b(?:pagto|pgto|pagamento)\b/i,
 ];
 
 const TOLERANCIA_VALOR_REAIS = 1;
@@ -146,10 +144,8 @@ export function sugerir_pagamento_fatura(
   if (!linha_aceita_pagamento_fatura(movimento)) return null;
 
   const valor = Number(movimento.valor);
-  const descricaoCasa = descricao_parece_pagamento_fatura(
-    movimento.descricao,
-    movimento.descricaoFonte,
-  );
+  const textoDescricao = [movimento.descricao, movimento.descricaoFonte].filter(Boolean).join(" ");
+  const descricaoCasa = descricao_parece_pagamento_fatura(textoDescricao);
 
   const candidatos = cartoes_candidatos(movimento, cartoes);
   if (candidatos.length === 0) return null;
@@ -157,17 +153,31 @@ export function sugerir_pagamento_fatura(
   const par = sugestao_par_credito(movimento, valor, candidatos, movimentos);
   if (par) return par;
 
-  for (const cartao of candidatos) {
-    const competencia = competencia_vencimento_proximo(movimento.dataMovimento, cartao.vencimento);
-    if (descricaoCasa) {
+  const citado = cartoes.find((cartao) => texto_cita_nome(textoDescricao, cartao.nome));
+  if (citado) {
+    return {
+      cartaoId: citado.id,
+      cartaoNome: citado.nome,
+      competencia: competencia_vencimento_proximo(movimento.dataMovimento, citado.vencimento),
+      motivo: "descricao",
+    };
+  }
+
+  if (descricaoCasa) {
+    const alvo = candidatos[0];
+    if (alvo) {
       return {
-        cartaoId: cartao.id,
-        cartaoNome: cartao.nome,
-        competencia,
+        cartaoId: alvo.id,
+        cartaoNome: alvo.nome,
+        competencia: competencia_vencimento_proximo(movimento.dataMovimento, alvo.vencimento),
         motivo: "descricao",
       };
     }
+  }
 
+  const paraValorCiclo = movimento.cartaoId ? candidatos : cartoes;
+  for (const cartao of paraValorCiclo) {
+    const competencia = competencia_vencimento_proximo(movimento.dataMovimento, cartao.vencimento);
     const pertoVencimento = data_proxima_do_vencimento(
       movimento.dataMovimento,
       cartao.vencimento,
@@ -188,6 +198,13 @@ export function sugerir_pagamento_fatura(
   }
 
   return null;
+}
+
+function texto_cita_nome(texto: string, nome: string): boolean {
+  const trecho = nome.trim();
+  if (trecho.length < 2) return false;
+  const escapado = trecho.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(escapado, "i").test(texto);
 }
 
 function cartoes_candidatos(

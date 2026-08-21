@@ -29,6 +29,7 @@ import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
 import { MenuAcoes } from "../componentes/ui/MenuAcoes";
+import { ModalPagamentoFatura } from "../componentes/ui/ModalPagamentoFatura";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { Paginador } from "../componentes/Paginador";
 import { Dica } from "../componentes/ui/Dica";
@@ -41,7 +42,6 @@ import {
   rotulo_classificado_por,
 } from "../lib/fila-revisao";
 import {
-  cartao_preferencial_fatura,
   competencia_default_fatura,
   modo_convite_pagamento_fatura,
   mostra_check_pagamento_fatura,
@@ -175,6 +175,7 @@ export function TelaExtrato() {
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
   const [contas, setContas] = useState<ContaResumo[]>([]);
   const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
+  const [cartoesTodos, setCartoesTodos] = useState<CartaoResumo[]>([]);
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
   const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
@@ -192,6 +193,11 @@ export function TelaExtrato() {
   const [faturasDispensadas, setFaturasDispensadas] = useState<Set<string>>(
     () => (usuario ? ler_faturas_dispensadas(usuario.id) : new Set()),
   );
+  const [pedidoFatura, setPedidoFatura] = useState<{
+    movimento: MovimentoResumo;
+    cartaoId: string | null;
+    competencia: string;
+  } | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const depsDados = chave_dependencia(
     contexto?.versoes,
@@ -210,18 +216,21 @@ export function TelaExtrato() {
         movimentosCarregados,
         contasCarregadas,
         cartoesCarregados,
+        cartoesTodosCarregados,
         categoriasCarregadas,
         workspaces,
       ] = await Promise.all([
         clienteApi.listar_movimentos(usuario.id),
         clienteApi.listar_contas(usuario.id),
         clienteApi.listar_cartoes(usuario.id),
+        clienteApi.listar_cartoes(usuario.id, true),
         clienteApi.listar_categorias(usuario.id),
         clienteApi.listar_workspaces(usuario.id).catch(() => []),
       ]);
       setMovimentos(movimentosCarregados);
       setContas(contasCarregadas);
       setCartoes(cartoesCarregados);
+      setCartoesTodos(cartoesTodosCarregados);
       setCategorias(categoriasCarregadas);
       const ativo = workspaces.find((w) => w.ativo);
       setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
@@ -448,8 +457,9 @@ export function TelaExtrato() {
     marcado: boolean,
     cartaoFaturaId?: string | null,
     competenciaFatura?: string | null,
-  ) {
-    if (!usuario) return;
+  ): Promise<boolean> {
+    if (!usuario) return false;
+    if (marcado && (!cartaoFaturaId || !competenciaFatura)) return false;
     setSalvandoId(movimento.id);
     setErro(null);
     try {
@@ -458,19 +468,7 @@ export function TelaExtrato() {
         movimentoId: movimento.id,
         papel: marcado ? "pagamento_fatura" : "gasto",
         ...(marcado
-          ? {
-              cartaoFaturaId: cartaoFaturaId ?? cartao_preferencial_fatura(movimento, cartoes),
-              competenciaFatura:
-                competenciaFatura ??
-                competencia_default_fatura(
-                  movimento,
-                  cartoes.find(
-                    (c) =>
-                      c.id ===
-                      (cartaoFaturaId ?? cartao_preferencial_fatura(movimento, cartoes)),
-                  ),
-                ),
-            }
+          ? { cartaoFaturaId, competenciaFatura }
           : {}),
       });
       aplicar_conhecimento_local(movimento.id, atualizado);
@@ -489,13 +487,30 @@ export function TelaExtrato() {
           dispensar_convite_fatura(usuario.id, movimento.id, atuais),
         );
       }
+      return true;
     } catch (e) {
       toast.erro(
         e instanceof ErroApi ? e.message : "Não foi possível marcar o pagamento de fatura.",
       );
+      return false;
     } finally {
       setSalvandoId(null);
     }
+  }
+
+  function abrir_modal_fatura(movimento: MovimentoResumo) {
+    const sugestao = sugerir_pagamento_fatura(movimento, cartoesTodos, movimentos);
+    const cartaoId =
+      movimento.cartaoFaturaId ?? sugestao?.cartaoId ?? movimento.cartaoId ?? null;
+    const cartao = cartoesTodos.find((item) => item.id === cartaoId);
+    setPedidoFatura({
+      movimento,
+      cartaoId,
+      competencia:
+        movimento.competenciaFatura ??
+        sugestao?.competencia ??
+        competencia_default_fatura(movimento, cartao),
+    });
   }
 
   async function criar_regra_do_pagamento(movimentoId: string) {
@@ -782,16 +797,14 @@ export function TelaExtrato() {
                       {mostra_check_pagamento_fatura(movimento) && (
                         <BannerFatura
                           movimento={movimento}
-                          cartoes={cartoes}
+                          cartoes={cartoesTodos}
                           movimentos={movimentos}
                           salvando={salvandoId === movimento.id}
                           dispensou={faturasDispensadas.has(movimento.id)}
                           ofertaRegra={
                             ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
                           }
-                          onVincular={(cartaoId, competencia) =>
-                            void marcar_pagamento_fatura(movimento, true, cartaoId, competencia)
-                          }
+                          onPedirConfirmacao={() => abrir_modal_fatura(movimento)}
                           onDispensar={() => {
                             if (!usuario) return;
                             setFaturasDispensadas((atuais) =>
@@ -922,11 +935,13 @@ export function TelaExtrato() {
                                         ? "Desmarcar pagamento de fatura"
                                         : "Marcar pagamento de fatura",
                                     icone: Repeat,
-                                    onClick: () =>
-                                      void marcar_pagamento_fatura(
-                                        movimento,
-                                        movimento.papel !== "pagamento_fatura",
-                                      ),
+                                    onClick: () => {
+                                      if (movimento.papel === "pagamento_fatura") {
+                                        void marcar_pagamento_fatura(movimento, false);
+                                        return;
+                                      }
+                                      abrir_modal_fatura(movimento);
+                                    },
                                   },
                                 ]
                               : []),
@@ -986,6 +1001,21 @@ export function TelaExtrato() {
           .
         </p>
       )}
+      <ModalPagamentoFatura
+        aberto={Boolean(pedidoFatura)}
+        cartoes={cartoesTodos}
+        cartaoIdInicial={pedidoFatura?.cartaoId ?? null}
+        competenciaInicial={pedidoFatura?.competencia ?? mes}
+        confirmando={salvandoId === pedidoFatura?.movimento.id}
+        aoCancelar={() => setPedidoFatura(null)}
+        aoConfirmar={(cartaoId, competencia) => {
+          const movimento = pedidoFatura?.movimento;
+          if (!movimento) return;
+          void marcar_pagamento_fatura(movimento, true, cartaoId, competencia).then((ok) => {
+            if (ok) setPedidoFatura(null);
+          });
+        }}
+      />
     </div>
   );
 }
@@ -997,7 +1027,7 @@ function BannerFatura({
   salvando,
   dispensou,
   ofertaRegra,
-  onVincular,
+  onPedirConfirmacao,
   onDispensar,
   onCriarRegra,
   onDispensarRegra,
@@ -1008,7 +1038,7 @@ function BannerFatura({
   salvando: boolean;
   dispensou: boolean;
   ofertaRegra: { movimentoId: string; trecho: string } | null;
-  onVincular: (cartaoId: string | null, competencia: string) => void;
+  onPedirConfirmacao: () => void;
   onDispensar: () => void;
   onCriarRegra: () => void;
   onDispensarRegra: () => void;
@@ -1038,14 +1068,11 @@ function BannerFatura({
           >
             <X size={12} />
           </button>
-          <p className="text-[11px] text-texto">
-            Parece fatura de {sugestao.cartaoNome} (
-            {formatar_mes_competencia(`${sugestao.competencia}-01`)}).
-          </p>
+          <p className="text-[11px] text-texto">É pagamento de fatura?</p>
           <button
             type="button"
             disabled={salvando}
-            onClick={() => onVincular(sugestao.cartaoId, sugestao.competencia)}
+            onClick={onPedirConfirmacao}
             className="text-[11px] font-medium text-primaria hover:underline"
           >
             Confirmar
