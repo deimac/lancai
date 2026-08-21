@@ -6,7 +6,6 @@ import {
   AreaChart,
   CartesianGrid,
   ComposedChart,
-  Legend,
   Line,
   ReferenceLine,
   ResponsiveContainer,
@@ -58,6 +57,64 @@ function selo_pagamento(item: ProximoPagamento): { rotulo: string; classe: strin
   return { rotulo: "Em aberto", classe: "bg-fundo text-texto-suave" };
 }
 
+type PontoResultadoGrafico = {
+  rotulo: string;
+  entradas: number;
+  saidas: number;
+  resultadoAcumulado: number;
+};
+
+function LegendaResultado({
+  entradas,
+  saidas,
+  resultado,
+  rotulo,
+  ocultarValores,
+}: {
+  entradas: number;
+  saidas: number;
+  resultado: number;
+  rotulo: string | null;
+  ocultarValores: boolean;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
+      {rotulo ? (
+        <span className="w-full text-center text-[11px] text-texto-suave">Dia {rotulo}</span>
+      ) : null}
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-[#2dd4a0]" />
+        Entradas
+        <span className="font-medium tabular-nums text-receita">
+          {formatar_oculto(formatar_moeda(entradas), ocultarValores)}
+        </span>
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-texto" />
+        Resultado
+        <span
+          className={unir_classes(
+            "font-medium tabular-nums",
+            resultado >= 0 ? "text-receita" : "text-despesa",
+          )}
+        >
+          {formatar_oculto(
+            `${resultado >= 0 ? "" : "−"}${formatar_moeda(Math.abs(resultado))}`,
+            ocultarValores,
+          )}
+        </span>
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-[#f07178]" />
+        Saídas
+        <span className="font-medium tabular-nums text-despesa">
+          {formatar_oculto(formatar_moeda(saidas), ocultarValores)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function Variacao({ valor }: { valor: number | null | undefined }) {
   if (valor == null) return null;
   const positivo = valor >= 0;
@@ -80,6 +137,9 @@ export function TelaDashboard() {
   const [drawerCartoesAberto, setDrawerCartoesAberto] = useState(false);
   const [ocultarValores, setOcultarValores] = useState(false);
   const [abaGrafico, setAbaGrafico] = useState<"resultado" | "caixa">("resultado");
+  const [pontoResultadoHover, setPontoResultadoHover] = useState<PontoResultadoGrafico | null>(
+    null,
+  );
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "dashboard",
@@ -109,6 +169,10 @@ export function TelaDashboard() {
   useEffect(() => {
     void carregar();
   }, [carregar, depsDados]);
+
+  useEffect(() => {
+    setPontoResultadoHover(null);
+  }, [mes, abaGrafico]);
 
   function escolher_mes(proximo: string) {
     const params = new URLSearchParams(searchParams);
@@ -164,6 +228,19 @@ export function TelaDashboard() {
   const temResultado = resultadoChart.some(
     (ponto) => ponto.entradas !== 0 || ponto.saidas !== 0,
   );
+  const totaisResultado = {
+    entradas: resultadoChart.reduce((soma, ponto) => soma + ponto.entradas, 0),
+    saidas: resultadoChart.reduce((soma, ponto) => soma + Math.abs(ponto.saidas), 0),
+    resultado: resultadoChart.at(-1)?.resultadoAcumulado ?? 0,
+  };
+  const legendaResultado = pontoResultadoHover
+    ? {
+        entradas: pontoResultadoHover.entradas,
+        saidas: Math.abs(pontoResultadoHover.saidas),
+        resultado: pontoResultadoHover.resultadoAcumulado,
+        rotulo: pontoResultadoHover.rotulo,
+      }
+    : { ...totaisResultado, rotulo: null as string | null };
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
@@ -409,9 +486,19 @@ export function TelaDashboard() {
                 Sem movimentos neste mês para montar o gráfico.
               </p>
             ) : (
-              <div className="h-56">
+              <div>
+                <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={resultadoChart}>
+                  <ComposedChart
+                    data={resultadoChart}
+                    onMouseMove={(estado) => {
+                      const ponto = estado?.activePayload?.[0]?.payload as
+                        | PontoResultadoGrafico
+                        | undefined;
+                      if (ponto) setPontoResultadoHover(ponto);
+                    }}
+                    onMouseLeave={() => setPontoResultadoHover(null)}
+                  >
                     <defs>
                       <linearGradient id="entradasFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
@@ -437,19 +524,9 @@ export function TelaDashboard() {
                     />
                     <ReferenceLine y={0} stroke="var(--color-borda)" />
                     <Tooltip
-                      contentStyle={{
-                        background: "var(--color-superficie)",
-                        border: "1px solid var(--color-borda)",
-                        borderRadius: 12,
-                        color: "var(--color-texto)",
-                      }}
-                      formatter={(valor, nome) => [
-                        formatar_oculto(formatar_moeda(Math.abs(Number(valor))), ocultarValores),
-                        String(nome),
-                      ]}
-                      labelFormatter={(rotulo) => `Dia ${rotulo}`}
+                      content={() => null}
+                      cursor={{ stroke: "var(--color-texto-suave)", strokeDasharray: "4 4" }}
                     />
-                    <Legend />
                     <Area
                       type="monotone"
                       dataKey="entradas"
@@ -476,6 +553,14 @@ export function TelaDashboard() {
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
+                </div>
+                <LegendaResultado
+                  entradas={legendaResultado.entradas}
+                  saidas={legendaResultado.saidas}
+                  resultado={legendaResultado.resultado}
+                  rotulo={legendaResultado.rotulo}
+                  ocultarValores={ocultarValores}
+                />
               </div>
             )
           ) : quantidadeContas === 0 ? (
