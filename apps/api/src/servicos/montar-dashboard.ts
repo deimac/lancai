@@ -132,6 +132,7 @@ export async function montar_dashboard(
     futuroVisao,
     movimentosMes,
     categoriasDb,
+    movimentosQuitadas,
   ] =
     await Promise.all([
       relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
@@ -144,6 +145,12 @@ export async function montar_dashboard(
       relatorios.consultar_visao("futuro", { usuarioId, periodo }, dataAtual),
       repositorio.listarMovimentos(usuarioId, { periodo }),
       repositorio.listarCategorias(usuarioId),
+      repositorio.listarMovimentos(usuarioId, {
+        periodo: {
+          de: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1))).de,
+          ate: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), 1))).ate,
+        },
+      }),
     ]);
 
   if (
@@ -267,6 +274,7 @@ export async function montar_dashboard(
     futuro: futuroVisao.dados.itens,
     cartoes: cartoesDetalhe,
     movimentos: movimentosMes,
+    pagamentosFatura: movimentosQuitadas,
     hoje: dataAtual,
     periodo,
   });
@@ -449,7 +457,7 @@ function montar_fluxo_resultado(
   return pontos;
 }
 
-function montar_proximos_pagamentos(entrada: {
+export function montar_proximos_pagamentos(entrada: {
   futuro: Array<{ descricao: string; valor: number; data: string; origem: "parcela" | "movimento" }>;
   cartoes: DashboardCartao[];
   movimentos: Array<{
@@ -464,10 +472,24 @@ function montar_proximos_pagamentos(entrada: {
     parcelaTotal?: number | null;
     parcelaCompraEm?: string | Date | null;
   }>;
+  pagamentosFatura?: Array<{
+    status: string;
+    papel?: string | null;
+    cartaoFaturaId?: string | null;
+    competenciaFatura?: string | null;
+  }>;
   hoje: string;
   periodo: { de: string; ate: string };
 }): ProximoPagamento[] {
   const itens: ProximoPagamento[] = [];
+  const mesAgenda = entrada.periodo.de.slice(0, 7);
+  const faturasQuitadas = new Set<string>();
+  for (const movimento of entrada.pagamentosFatura ?? []) {
+    if (movimento.status === "cancelado") continue;
+    if (movimento.papel !== "pagamento_fatura") continue;
+    if (!movimento.cartaoFaturaId || !movimento.competenciaFatura) continue;
+    faturasQuitadas.add(`${movimento.cartaoFaturaId}|${movimento.competenciaFatura}`);
+  }
 
   for (const item of entrada.futuro) {
     itens.push({
@@ -497,8 +519,9 @@ function montar_proximos_pagamentos(entrada: {
   }
 
   for (const cartao of entrada.cartoes) {
+    if (faturasQuitadas.has(`${cartao.id}|${mesAgenda}`)) continue;
     const dia = String(cartao.vencimento).padStart(2, "0");
-    const data = `${entrada.periodo.de.slice(0, 7)}-${dia}`;
+    const data = `${mesAgenda}-${dia}`;
     itens.push({
       id: `fatura-${cartao.id}`,
       data,

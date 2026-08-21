@@ -62,7 +62,10 @@ export function ModalPagamentoFatura({
             <X size={18} />
           </button>
         </div>
-        <p className="mb-4 text-sm text-texto-suave">Qual cartão e de qual mês?</p>
+        <p className="mb-4 text-sm text-texto-suave">
+          Qual cartão e a fatura que este lançamento quitou? Em geral é a que vence neste mês (compras
+          do ciclo anterior).
+        </p>
         <label className="mb-3 block text-xs font-medium text-texto-suave">
           Cartão
           <select
@@ -81,7 +84,7 @@ export function ModalPagamentoFatura({
           </select>
         </label>
         <label className="mb-4 block text-xs font-medium text-texto-suave">
-          Mês
+          Fatura que vence em
           <select
             className="mt-1 w-full rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria"
             value={competencia}

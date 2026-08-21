@@ -1,4 +1,69 @@
 import { describe, expect, it } from "vitest";
+import { montar_proximos_pagamentos, type DashboardCartao } from "../servicos/montar-dashboard";
+
+const cartao: DashboardCartao = {
+  id: "cartao-mp",
+  nome: "Mercado Pago Visa",
+  perfil: "pj",
+  limite: 5000,
+  comprometido: 800,
+  disponivel: 4200,
+  fechamento: 10,
+  vencimento: 17,
+  sincronizada: true,
+  instituicao: "Mercado Pago",
+  final4: "1234",
+  gastoMes: 320,
+  quantidadeLancamentos: 4,
+};
+
+describe("montar_proximos_pagamentos", () => {
+  it("omite a fatura do mês quando há pagamento ligado àquele cartão e vencimento", () => {
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [cartao],
+      movimentos: [],
+      pagamentosFatura: [
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          cartaoFaturaId: "cartao-mp",
+          competenciaFatura: "2026-08",
+        },
+      ],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.some((item) => item.origem === "fatura")).toBe(false);
+  });
+
+  it("mantém a fatura se o pagamento for de outro mês de vencimento", () => {
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [cartao],
+      movimentos: [],
+      pagamentosFatura: [
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          cartaoFaturaId: "cartao-mp",
+          competenciaFatura: "2026-07",
+        },
+      ],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          descricao: "Fatura Mercado Pago Visa",
+          origem: "fatura",
+          data: "2026-08-17",
+        }),
+      ]),
+    );
+  });
+});
 
 /**
  * Smoke do contrato da rota: o serviço real depende do banco.
