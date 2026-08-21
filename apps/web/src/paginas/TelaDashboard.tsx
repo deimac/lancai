@@ -636,7 +636,14 @@ export function TelaDashboard() {
               {(dados.proximosPagamentos ?? []).slice(0, 8).map((item) => (
                 <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-texto">{item.descricao}</p>
+                    <p
+                      className={unir_classes(
+                        "truncate font-medium",
+                        item.pago ? "text-texto-suave" : "text-texto",
+                      )}
+                    >
+                      {item.descricao}
+                    </p>
                     <p className="text-xs text-texto-suave">
                       {formatar_data_curta(item.data)}
                       {item.origem === "fatura"
@@ -646,10 +653,18 @@ export function TelaDashboard() {
                           : item.origem === "recorrente"
                             ? " · Recorrente"
                             : " · Previsto"}
-                      {item.vencida ? " · vencida" : ""}
+                      {item.pago ? " · paga" : item.vencida ? " · vencida" : ""}
                     </p>
                   </div>
-                  <span className={item.vencida ? "text-despesa" : "text-texto"}>
+                  <span
+                    className={
+                      item.pago
+                        ? "text-receita"
+                        : item.vencida
+                          ? "text-despesa"
+                          : "text-texto"
+                    }
+                  >
                     {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
                   </span>
                 </li>

@@ -39,7 +39,7 @@ export class RepositorioRelatoriosMemoria implements RepositorioRelatorios {
     const statusExcluir = filtro.statusExcluir ?? ["cancelado"];
     return [...this.movimentos.values()].filter((movimento) => {
       if (movimento.usuarioId !== usuarioId) return false;
-      if (movimento.ignoradoEmRelatorio) return false;
+      if (movimento.ignoradoEmRelatorio && !filtro.incluirIgnorados) return false;
       if (statusExcluir.includes(movimento.status)) return false;
       if (filtro.perfil && movimento.tipoGasto !== filtro.perfil) return false;
       if (filtro.contaId && movimento.contaId !== filtro.contaId) return false;

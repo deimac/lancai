@@ -43,6 +43,8 @@ export interface ProximoPagamento {
   origem: "previsto" | "parcela" | "fatura" | "recorrente";
   contaNome: string | null;
   vencida: boolean;
+  /** Fatura com Pix/TED ligado ao cartão e ao mês de vencimento. */
+  pago: boolean;
 }
 
 export interface OrcamentoDashboard {
@@ -150,6 +152,7 @@ export async function montar_dashboard(
           de: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1))).de,
           ate: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), 1))).ate,
         },
+        incluirIgnorados: true,
       }),
     ]);
 
@@ -500,6 +503,7 @@ export function montar_proximos_pagamentos(entrada: {
       origem: item.origem === "parcela" ? "parcela" : "previsto",
       contaNome: null,
       vencida: item.data < entrada.hoje,
+      pago: false,
     });
   }
 
@@ -515,13 +519,14 @@ export function montar_proximos_pagamentos(entrada: {
       origem: movimento.fonte === "recorrencia" ? "recorrente" : "previsto",
       contaNome: null,
       vencida: String(movimento.dataMovimento).slice(0, 10) < entrada.hoje,
+      pago: false,
     });
   }
 
   for (const cartao of entrada.cartoes) {
-    if (faturasQuitadas.has(`${cartao.id}|${mesAgenda}`)) continue;
     const dia = String(cartao.vencimento).padStart(2, "0");
     const data = `${mesAgenda}-${dia}`;
+    const pago = faturasQuitadas.has(`${cartao.id}|${mesAgenda}`);
     itens.push({
       id: `fatura-${cartao.id}`,
       data,
@@ -529,7 +534,8 @@ export function montar_proximos_pagamentos(entrada: {
       valor: cartao.gastoMes,
       origem: "fatura",
       contaNome: cartao.nome,
-      vencida: data < entrada.hoje,
+      vencida: !pago && data < entrada.hoje,
+      pago,
     });
   }
 

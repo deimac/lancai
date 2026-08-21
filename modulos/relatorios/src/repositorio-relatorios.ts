@@ -12,6 +12,11 @@ export interface FiltroMovimentos {
   tipos?: TipoMovimento[];
   /** Por padrão, exclui apenas `'cancelado'` — quase toda visão quer isso. */
   statusExcluir?: StatusMovimento[];
+  /**
+   * Pagamento de fatura fica `ignoradoEmRelatorio` para não inflar despesa.
+   * A agenda precisa lê-lo mesmo assim para marcar a fatura como paga.
+   */
+  incluirIgnorados?: boolean;
 }
 
 export interface FiltroParcelas {

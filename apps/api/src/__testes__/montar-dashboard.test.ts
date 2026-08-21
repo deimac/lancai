@@ -18,7 +18,7 @@ const cartao: DashboardCartao = {
 };
 
 describe("montar_proximos_pagamentos", () => {
-  it("omite a fatura do mês quando há pagamento ligado àquele cartão e vencimento", () => {
+  it("marca a fatura como paga quando há pagamento ligado àquele cartão e vencimento", () => {
     const itens = montar_proximos_pagamentos({
       futuro: [],
       cartoes: [cartao],
@@ -34,7 +34,17 @@ describe("montar_proximos_pagamentos", () => {
       hoje: "2026-08-21",
       periodo: { de: "2026-08-01", ate: "2026-08-31" },
     });
-    expect(itens.some((item) => item.origem === "fatura")).toBe(false);
+    expect(itens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          descricao: "Fatura Mercado Pago Visa",
+          origem: "fatura",
+          data: "2026-08-17",
+          pago: true,
+          vencida: false,
+        }),
+      ]),
+    );
   });
 
   it("mantém a fatura se o pagamento for de outro mês de vencimento", () => {
@@ -59,6 +69,8 @@ describe("montar_proximos_pagamentos", () => {
           descricao: "Fatura Mercado Pago Visa",
           origem: "fatura",
           data: "2026-08-17",
+          pago: false,
+          vencida: true,
         }),
       ]),
     );

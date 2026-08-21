@@ -375,6 +375,7 @@ export interface ProximoPagamento {
   origem: "previsto" | "parcela" | "fatura" | "recorrente";
   contaNome: string | null;
   vencida: boolean;
+  pago?: boolean;
 }
 
 export interface OrcamentoDashboard {
