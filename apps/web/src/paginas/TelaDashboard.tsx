@@ -492,9 +492,9 @@ export function TelaDashboard() {
                   <ComposedChart
                     data={resultadoChart}
                     onMouseMove={(estado) => {
-                      const ponto = estado?.activePayload?.[0]?.payload as
-                        | PontoResultadoGrafico
-                        | undefined;
+                      const rotulo = estado.activeLabel;
+                      if (rotulo == null) return;
+                      const ponto = resultadoChart.find((item) => item.rotulo === String(rotulo));
                       if (ponto) setPontoResultadoHover(ponto);
                     }}
                     onMouseLeave={() => setPontoResultadoHover(null)}
