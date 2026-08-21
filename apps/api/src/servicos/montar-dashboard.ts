@@ -224,11 +224,7 @@ export async function montar_dashboard(
   const visualPorNome = new Map(
     categoriasDb.map((item) => [item.nome, { icone: item.icone, cor: item.cor }] as const),
   );
-  const gastosPorCategoria = categoria.ranking.map((item) => ({
-    ...item,
-    icone: visualPorNome.get(item.categoriaNome)?.icone ?? "geral",
-    cor: visualPorNome.get(item.categoriaNome)?.cor ?? "neutro",
-  }));
+  const gastosPorCategoria = montar_ranking_tipo(movimentosMes, categoriasDb, "despesa");
   const receitasPorCategoria = montar_ranking_tipo(movimentosMes, categoriasDb, "receita");
   const resultadoAnterior = arredondar(
     categoriaAnteriorVisao.dados.totalReceitas - categoriaAnteriorVisao.dados.totalDespesas,
@@ -399,7 +395,9 @@ function montar_ranking_tipo(
     atual.total += Number(movimento.valor);
     totais.set(nome, atual);
   }
-  return [...totais.values()].sort((a, b) => b.total - a.total).slice(0, 8);
+  return [...totais.values()]
+    .map((item) => ({ ...item, total: arredondar(item.total) }))
+    .sort((a, b) => b.total - a.total);
 }
 
 function montar_fluxo_resultado(

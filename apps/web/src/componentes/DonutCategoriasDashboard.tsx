@@ -125,7 +125,7 @@ export function DonutCategoriasDashboard({ gastos, receitas, ocultarValores }: P
             </div>
           </div>
 
-          <ul className="space-y-0.5">
+          <ul className="max-h-44 space-y-0.5 overflow-y-auto overscroll-contain pr-1">
             {itens.map((item) => {
               const ativo = destaque?.nome === item.categoriaNome;
               return (
