@@ -115,6 +115,31 @@ function LegendaResultado({
   );
 }
 
+function LegendaCaixa({
+  saldo,
+  rotulo,
+  ocultarValores,
+}: {
+  saldo: number;
+  rotulo: string | null;
+  ocultarValores: boolean;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
+      {rotulo ? (
+        <span className="w-full text-center text-[11px] text-texto-suave">Dia {rotulo}</span>
+      ) : null}
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-[#2dd4a0]" />
+        Saldo da conta
+        <span className="font-medium tabular-nums text-texto">
+          {formatar_oculto(formatar_moeda(saldo), ocultarValores)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function Variacao({ valor }: { valor: number | null | undefined }) {
   if (valor == null) return null;
   const positivo = valor >= 0;
@@ -138,6 +163,9 @@ export function TelaDashboard() {
   const [ocultarValores, setOcultarValores] = useState(false);
   const [abaGrafico, setAbaGrafico] = useState<"resultado" | "caixa">("resultado");
   const [pontoResultadoHover, setPontoResultadoHover] = useState<PontoResultadoGrafico | null>(
+    null,
+  );
+  const [pontoCaixaHover, setPontoCaixaHover] = useState<{ rotulo: string; saldo: number } | null>(
     null,
   );
   const depsDados = chave_dependencia(
@@ -172,6 +200,7 @@ export function TelaDashboard() {
 
   useEffect(() => {
     setPontoResultadoHover(null);
+    setPontoCaixaHover(null);
   }, [mes, abaGrafico]);
 
   function escolher_mes(proximo: string) {
@@ -241,6 +270,10 @@ export function TelaDashboard() {
         rotulo: pontoResultadoHover.rotulo,
       }
     : { ...totaisResultado, rotulo: null as string | null };
+  const ultimoCaixa = fluxoChart.at(-1);
+  const legendaCaixa = pontoCaixaHover
+    ? pontoCaixaHover
+    : { saldo: ultimoCaixa?.saldo ?? 0, rotulo: null as string | null };
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
@@ -568,9 +601,19 @@ export function TelaDashboard() {
               Sem conta neste workspace para montar o caixa.
             </p>
           ) : (
-            <div className="h-56">
+            <div>
+              <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={fluxoChart}>
+                <AreaChart
+                  data={fluxoChart}
+                  onMouseMove={(estado) => {
+                    const rotulo = estado.activeLabel;
+                    if (rotulo == null) return;
+                    const ponto = fluxoChart.find((item) => item.rotulo === String(rotulo));
+                    if (ponto) setPontoCaixaHover({ rotulo: ponto.rotulo, saldo: ponto.saldo });
+                  }}
+                  onMouseLeave={() => setPontoCaixaHover(null)}
+                >
                   <defs>
                     <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
@@ -587,17 +630,8 @@ export function TelaDashboard() {
                     }
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: "var(--color-superficie)",
-                      border: "1px solid var(--color-borda)",
-                      borderRadius: 12,
-                      color: "var(--color-texto)",
-                    }}
-                    formatter={(valor) => [
-                      formatar_oculto(formatar_moeda(Number(valor)), ocultarValores),
-                      "Saldo da conta",
-                    ]}
-                    labelFormatter={(rotulo) => `Dia ${rotulo}`}
+                    content={() => null}
+                    cursor={{ stroke: "var(--color-texto-suave)", strokeDasharray: "4 4" }}
                   />
                   <Area
                     type="monotone"
@@ -608,6 +642,12 @@ export function TelaDashboard() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              </div>
+              <LegendaCaixa
+                saldo={legendaCaixa.saldo}
+                rotulo={legendaCaixa.rotulo}
+                ocultarValores={ocultarValores}
+              />
             </div>
           )}
         </motion.section>
@@ -653,7 +693,13 @@ export function TelaDashboard() {
                     >
                       {entrada ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
                     </span>
-                    <div className="min-w-0 flex-1">
+                    <span className="flex w-[8.5rem] shrink-0 items-center gap-1.5">
+                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
+                      <span className="truncate text-left text-[11px] text-texto-suave">
+                        {item.categoriaNome ?? "Não classificado"}
+                      </span>
+                    </span>
+                    <div className="min-w-0 max-w-[14rem] flex-1">
                       <p className="truncate text-[13px] font-medium leading-tight text-texto">
                         {item.descricao}
                       </p>
@@ -662,20 +708,9 @@ export function TelaDashboard() {
                         {item.origemNome ? ` · ${item.origemNome}` : ""}
                       </p>
                     </div>
-                    <span className="inline-flex min-w-0 max-w-[8.5rem] shrink items-center gap-1">
-                      <IconeCategoria
-                        icone={item.icone}
-                        cor={item.cor}
-                        tamanho={11}
-                        compacto
-                      />
-                      <span className="hidden truncate text-[11px] text-texto-suave sm:inline">
-                        {item.categoriaNome ?? "Não classificado"}
-                      </span>
-                    </span>
                     <span
                       className={unir_classes(
-                        "shrink-0 text-[13px] font-medium tabular-nums",
+                        "ml-auto shrink-0 text-[13px] font-medium tabular-nums",
                         entrada ? "text-receita" : "text-despesa",
                       )}
                     >
