@@ -109,10 +109,10 @@ export function PainelAssistente({
         aria-label="Abrir assistente"
         aria-expanded={false}
         aria-controls="painel-assistente"
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-borda bg-superficie px-4 py-2.5 text-sm font-medium text-texto shadow-lg shadow-black/30 transition hover:border-primaria/40 hover:text-primaria"
+        title="Assistente"
+        className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-borda bg-superficie text-texto shadow-lg shadow-black/30 transition hover:border-primaria/40 hover:text-primaria"
       >
-        <MessageSquare size={16} aria-hidden />
-        Assistente
+        <MessageSquare size={18} aria-hidden />
       </motion.button>
     );
   }

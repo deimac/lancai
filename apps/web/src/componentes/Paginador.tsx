@@ -37,7 +37,7 @@ export function Paginador({
   if (total === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 pr-14 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs text-texto-suave">
         Mostrando {de}–{ate} de {total}
       </p>
