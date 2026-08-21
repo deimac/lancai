@@ -856,11 +856,11 @@ export function TelaExtrato() {
                       <p className="text-right font-medium tabular-nums">
                         {formatar_valor(movimento.tipo, movimento.valor)}
                       </p>
-                      {movimento.ocorridoEmInstante ? (
-                        <p className="text-left text-[11px] tabular-nums text-texto-suave">
-                          {formatarHoraBrasil(movimento.ocorridoEmInstante)}
-                        </p>
-                      ) : null}
+                      <p className="text-right text-[11px] tabular-nums text-texto-suave">
+                        {movimento.ocorridoEmInstante
+                          ? formatarHoraBrasil(movimento.ocorridoEmInstante)
+                          : "00:00"}
+                      </p>
                     </td>
                     <td className="relative px-2 py-2.5">
                       <button
