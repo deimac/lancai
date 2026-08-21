@@ -9,6 +9,10 @@ describe("enxugar_descricao_fonte", () => {
     expect(enxugar_descricao_fonte("Pix recebido Tayna Silva")).toBe("Tayna Silva");
     expect(enxugar_descricao_fonte("Pix enviado Mercado Livre")).toBe("Mercado Livre");
     expect(enxugar_descricao_fonte("Pagamento QR Pix PREFEITURA")).toBe("PREFEITURA");
+    expect(enxugar_descricao_fonte("Pagamento de conta COPEL-DIS")).toBe("COPEL-DIS");
+    expect(enxugar_descricao_fonte("Pagamento de conta MUNICIPIO DE MARINGA")).toBe(
+      "MUNICIPIO DE MARINGA",
+    );
     expect(enxugar_descricao_fonte("Transferência Pix Ana Costa")).toBe("Ana Costa");
     expect(enxugar_descricao_fonte("Transferencia Pix Ana Costa")).toBe("Ana Costa");
     expect(enxugar_descricao_fonte("Transferência Pix enviada TAYNA SANTOS SILVA")).toBe(
@@ -38,6 +42,7 @@ describe("enxugar_descricao_fonte", () => {
     expect(enxugar_descricao_fonte("Pix recebido")).toBe("Pix recebido");
     expect(enxugar_descricao_fonte("TED")).toBe("TED");
     expect(enxugar_descricao_fonte("  Pagamento com QR Pix  ")).toBe("Pagamento com QR Pix");
+    expect(enxugar_descricao_fonte("Pagamento de conta")).toBe("Pagamento de conta");
   });
 });
 

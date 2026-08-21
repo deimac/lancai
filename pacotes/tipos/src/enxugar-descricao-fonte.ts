@@ -1,5 +1,5 @@
 /**
- * Tira prefixos descartáveis do extrato (Pix, TED, QR) da descrição que a
+ * Tira prefixos descartáveis do extrato (Pix, TED, QR, boleto) da descrição que a
  * pessoa vê. O Fato (`descricaoFonte`) permanece o texto da instituição.
  *
  * Só casa o começo da linha. Não apaga "pix" no meio de um nome.
@@ -8,6 +8,7 @@
 const PREFIXOS = [
   "Pagamento com QR Pix",
   "Pagamento QR Pix",
+  "Pagamento de conta",
   "Transferência Pix enviada",
   "Transferência Pix recebida",
   "Pix recebido",
