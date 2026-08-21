@@ -9,6 +9,25 @@ import {
 } from "@lancai/banco";
 import { formatarMoeda } from "@lancai/tipos";
 
+type TipoCategoria = "receita" | "despesa" | "ambos";
+
+export const SOMA_SAIDAS = sql<string>`coalesce(sum(case when ${movimentoTabela.tipo}::text in ('despesa', 'retirada', 'emprestimo') then ${movimentoTabela.valor} else 0 end), 0)`;
+export const SOMA_ENTRADAS = sql<string>`coalesce(sum(case when ${movimentoTabela.tipo}::text in ('receita', 'reembolso', 'estorno', 'aporte') then ${movimentoTabela.valor} else 0 end), 0)`;
+
+/**
+ * Quanto do limite a categoria consumiu no mês.
+ * `ambos` é saldo: saídas menos entradas (reembolso/receita reduz o gasto).
+ * Demais tipos e o teto geral seguem só as saídas.
+ */
+export function gasto_do_orcamento(
+  tipoCategoria: TipoCategoria | null | undefined,
+  saidas: number,
+  entradas: number,
+): number {
+  const liquido = tipoCategoria === "ambos" ? saidas - entradas : saidas;
+  return Math.round(liquido * 100) / 100;
+}
+
 function mes_atual_iso(dataAtual: string): { inicio: string; fim: string; chave: string } {
   const [ano, mes] = dataAtual.split("-");
   const inicio = `${ano}-${mes}-01`;
@@ -99,11 +118,11 @@ async function somar_gastos(
   inicio: string,
   fim: string,
   categoriaId?: string | null,
+  tipoCategoria?: TipoCategoria | null,
 ): Promise<number> {
   const banco = obter_banco();
   const condicoes = [
     eq(movimentoTabela.usuarioId, usuarioId),
-    eq(movimentoTabela.tipo, "despesa"),
     gte(movimentoTabela.dataMovimento, inicio),
     lte(movimentoTabela.dataMovimento, fim),
     sql`${movimentoTabela.status} <> 'cancelado'`,
@@ -113,11 +132,11 @@ async function somar_gastos(
   }
 
   const [linha] = await banco
-    .select({ total: sql<string>`coalesce(sum(${movimentoTabela.valor}), 0)` })
+    .select({ saidas: SOMA_SAIDAS, entradas: SOMA_ENTRADAS })
     .from(movimentoTabela)
     .where(and(...condicoes));
 
-  return Number(linha?.total ?? 0);
+  return gasto_do_orcamento(tipoCategoria, Number(linha?.saidas ?? 0), Number(linha?.entradas ?? 0));
 }
 
 export async function listar_status_orcamentos(
@@ -140,16 +159,18 @@ export async function listar_status_orcamentos(
   const status: StatusOrcamento[] = [];
   for (const orc of filtrados) {
     let categoriaNome: string | null = null;
+    let tipoCategoria: TipoCategoria | null = null;
     if (orc.categoriaId) {
       const [cat] = await banco
-        .select({ nome: categoriaTabela.nome })
+        .select({ nome: categoriaTabela.nome, tipo: categoriaTabela.tipo })
         .from(categoriaTabela)
         .where(eq(categoriaTabela.id, orc.categoriaId))
         .limit(1);
       categoriaNome = cat?.nome ?? null;
+      tipoCategoria = cat?.tipo ?? null;
     }
     const limite = Number(orc.valorLimite);
-    const gasto = await somar_gastos(usuarioId, inicio, fim, orc.categoriaId);
+    const gasto = await somar_gastos(usuarioId, inicio, fim, orc.categoriaId, tipoCategoria);
     const percentual = limite > 0 ? (gasto / limite) * 100 : 0;
     status.push({ orcamento: orc, categoriaNome, gasto, limite, percentual });
   }

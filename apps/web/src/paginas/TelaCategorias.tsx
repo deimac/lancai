@@ -213,7 +213,7 @@ export function TelaCategorias() {
                                 "h-full rounded-full",
                                 estourou ? "bg-despesa" : "bg-primaria",
                               )}
-                              style={{ width: `${Math.min(pct ?? 0, 100)}%` }}
+                              style={{ width: `${Math.max(0, Math.min(pct ?? 0, 100))}%` }}
                             />
                           </div>
                           <p className={unir_classes("text-[11px]", estourou ? "text-despesa" : "text-texto-suave")}>

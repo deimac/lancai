@@ -696,7 +696,7 @@ export function TelaDashboard() {
                           "h-full rounded-full",
                           estourou ? "bg-despesa" : "bg-primaria",
                         )}
-                        style={{ width: `${Math.min(item.percentual, 100)}%` }}
+                        style={{ width: `${Math.max(0, Math.min(item.percentual, 100))}%` }}
                       />
                     </div>
                   </li>

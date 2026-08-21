@@ -6,7 +6,7 @@ import {
   obter_banco,
 } from "@lancai/banco";
 import { hojeISO } from "@lancai/tipos";
-import { listar_status_orcamentos } from "./orcamento-servico";
+import { gasto_do_orcamento, listar_status_orcamentos, SOMA_ENTRADAS, SOMA_SAIDAS } from "./orcamento-servico";
 
 export type CategoriaUi = {
   id: string;
@@ -44,14 +44,14 @@ export async function montar_categorias_ui(
   const totais = await banco
     .select({
       categoriaId: movimentoTabela.categoriaId,
-      total: sql<string>`coalesce(sum(${movimentoTabela.valor}), 0)`,
+      saidas: SOMA_SAIDAS,
+      entradas: SOMA_ENTRADAS,
       quantidade: sql<number>`count(*)::int`,
     })
     .from(movimentoTabela)
     .where(
       and(
         eq(movimentoTabela.usuarioId, usuarioId),
-        eq(movimentoTabela.tipo, "despesa"),
         gte(movimentoTabela.dataMovimento, inicio),
         lte(movimentoTabela.dataMovimento, fim),
         ne(movimentoTabela.status, "cancelado"),
@@ -62,7 +62,11 @@ export async function montar_categorias_ui(
   const mapaTotais = new Map(
     totais.map((linha) => [
       linha.categoriaId,
-      { gasto: Number(linha.total), quantidade: Number(linha.quantidade) },
+      {
+        saidas: Number(linha.saidas),
+        entradas: Number(linha.entradas),
+        quantidade: Number(linha.quantidade),
+      },
     ]),
   );
 
@@ -79,8 +83,9 @@ export async function montar_categorias_ui(
   );
 
   return categorias.map((categoria) => {
-    const stats = mapaTotais.get(categoria.id) ?? { gasto: 0, quantidade: 0 };
+    const stats = mapaTotais.get(categoria.id) ?? { saidas: 0, entradas: 0, quantidade: 0 };
     const limite = mapaLimite.get(categoria.id) ?? null;
+    const gastoMes = gasto_do_orcamento(categoria.tipo, stats.saidas, stats.entradas);
     return {
       id: categoria.id,
       nome: categoria.nome,
@@ -90,8 +95,8 @@ export async function montar_categorias_ui(
       ativo: categoria.ativo,
       sistema: eh_categoria_sistema(categoria.nome),
       limite,
-      gastoMes: stats.gasto,
-      percentual: limite && limite > 0 ? (stats.gasto / limite) * 100 : null,
+      gastoMes,
+      percentual: limite && limite > 0 ? (gastoMes / limite) * 100 : null,
       movimentosMes: stats.quantidade,
     };
   });
