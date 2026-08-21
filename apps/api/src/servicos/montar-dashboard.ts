@@ -278,7 +278,8 @@ export async function montar_dashboard(
     cartoes: cartoesDetalhe,
     movimentos: movimentosMes,
     pagamentosFatura: movimentosQuitadas,
-    hoje: dataAtual,
+    // O web manda o dia 1 do mês selecionado; vencido/em aberto compara com hoje de verdade.
+    hoje: hojeISO(),
     periodo,
   });
 
@@ -547,6 +548,10 @@ export function montar_proximos_pagamentos(entrada: {
       vistos.add(chave);
       return true;
     })
-    .sort((a, b) => a.data.localeCompare(b.data) || a.descricao.localeCompare(b.descricao, "pt-BR"))
+    .sort((a, b) => {
+      if (a.pago !== b.pago) return Number(a.pago) - Number(b.pago);
+      if (a.vencida !== b.vencida) return Number(b.vencida) - Number(a.vencida);
+      return a.data.localeCompare(b.data) || a.descricao.localeCompare(b.descricao, "pt-BR");
+    })
     .slice(0, 16);
 }

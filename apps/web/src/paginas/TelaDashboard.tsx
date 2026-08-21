@@ -26,7 +26,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
-import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
+import { clienteApi, ErroApi, type DashboardResposta, type ProximoPagamento } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
@@ -48,6 +48,12 @@ function eh_entrada(tipo: string): boolean {
 
 function formatar_oculto(valor: string, ocultar: boolean): string {
   return ocultar ? "R$ •••" : valor;
+}
+
+function selo_pagamento(item: ProximoPagamento): { rotulo: string; classe: string } {
+  if (item.pago) return { rotulo: "Paga", classe: "bg-receita/15 text-receita" };
+  if (item.vencida) return { rotulo: "Vencida", classe: "bg-despesa/15 text-despesa" };
+  return { rotulo: "Em aberto", classe: "bg-fundo text-texto-suave" };
 }
 
 function Variacao({ valor }: { valor: number | null | undefined }) {
@@ -633,42 +639,54 @@ export function TelaDashboard() {
             <p className="py-8 text-center text-sm text-texto-suave">Nada previsto neste mês.</p>
           ) : (
             <ul className="divide-y divide-borda">
-              {(dados.proximosPagamentos ?? []).slice(0, 8).map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p
-                      className={unir_classes(
-                        "truncate font-medium",
-                        item.pago ? "text-texto-suave" : "text-texto",
-                      )}
+              {(dados.proximosPagamentos ?? []).slice(0, 8).map((item) => {
+                const selo = selo_pagamento(item);
+                return (
+                  <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p
+                          className={unir_classes(
+                            "truncate font-medium",
+                            item.pago ? "text-texto-suave" : "text-texto",
+                          )}
+                        >
+                          {item.descricao}
+                        </p>
+                        <span
+                          className={unir_classes(
+                            "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                            selo.classe,
+                          )}
+                        >
+                          {selo.rotulo}
+                        </span>
+                      </div>
+                      <p className="text-xs text-texto-suave">
+                        {formatar_data_curta(item.data)}
+                        {item.origem === "fatura"
+                          ? " · Fatura"
+                          : item.origem === "parcela"
+                            ? " · Parcela"
+                            : item.origem === "recorrente"
+                              ? " · Recorrente"
+                              : " · Previsto"}
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        item.pago
+                          ? "text-texto-suave line-through"
+                          : item.vencida
+                            ? "text-despesa"
+                            : "text-texto"
+                      }
                     >
-                      {item.descricao}
-                    </p>
-                    <p className="text-xs text-texto-suave">
-                      {formatar_data_curta(item.data)}
-                      {item.origem === "fatura"
-                        ? " · Fatura"
-                        : item.origem === "parcela"
-                          ? " · Parcela"
-                          : item.origem === "recorrente"
-                            ? " · Recorrente"
-                            : " · Previsto"}
-                      {item.pago ? " · paga" : item.vencida ? " · vencida" : ""}
-                    </p>
-                  </div>
-                  <span
-                    className={
-                      item.pago
-                        ? "text-receita"
-                        : item.vencida
-                          ? "text-despesa"
-                          : "text-texto"
-                    }
-                  >
-                    {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
-                  </span>
-                </li>
-              ))}
+                      {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </motion.section>

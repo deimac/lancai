@@ -47,6 +47,27 @@ describe("montar_proximos_pagamentos", () => {
     );
   });
 
+  it("coloca fatura paga depois das que ainda estão em aberto", () => {
+    const outro: DashboardCartao = { ...cartao, id: "cartao-nu", nome: "Nu", vencimento: 10, gastoMes: 100 };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [cartao, outro],
+      movimentos: [],
+      pagamentosFatura: [
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          cartaoFaturaId: "cartao-mp",
+          competenciaFatura: "2026-08",
+        },
+      ],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    const faturas = itens.filter((item) => item.origem === "fatura");
+    expect(faturas.map((item) => item.pago)).toEqual([false, true]);
+  });
+
   it("mantém a fatura se o pagamento for de outro mês de vencimento", () => {
     const itens = montar_proximos_pagamentos({
       futuro: [],
