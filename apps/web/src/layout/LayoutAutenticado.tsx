@@ -48,7 +48,7 @@ import {
 
 const LINKS = [
   { para: "/", rotulo: "Cockpit", icone: Gauge, fim: true },
-  { para: "/extrato", rotulo: "Extrato", icone: List },
+  { para: "/extrato", rotulo: "Transações", icone: List },
   { para: "/agendadas", rotulo: "Agendadas", icone: CalendarDays },
   { para: "/recorrentes", rotulo: "Recorrentes", icone: Repeat },
   { para: "/contas", rotulo: "Contas", icone: Wallet },

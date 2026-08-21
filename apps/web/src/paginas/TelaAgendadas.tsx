@@ -166,7 +166,7 @@ export function TelaAgendadas() {
               <p className="py-6 text-center text-sm text-texto-suave">
                 Nada previsto neste mês.{" "}
                 <Link to="/extrato" className="text-primaria hover:underline">
-                  Ver extrato
+                  Ver transações
                 </Link>
               </p>
             ) : (

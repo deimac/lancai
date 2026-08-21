@@ -593,7 +593,7 @@ export function TelaExtrato() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-texto">Extrato</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-texto">Transações</h1>
           <p className="text-sm text-texto-suave">
             {visaoGeral
               ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"

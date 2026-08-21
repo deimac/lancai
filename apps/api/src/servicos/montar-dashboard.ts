@@ -105,6 +105,8 @@ export interface DashboardResposta {
     tipo: string;
     categoriaNome: string | null;
     origemNome: string | null;
+    icone: string;
+    cor: string;
   }>;
   proximosPagamentos: ProximoPagamento[];
   orcamentos: OrcamentoDashboard[];
@@ -255,15 +257,20 @@ export async function montar_dashboard(
 
   const recentes = historico.dias
     .flatMap((dia) =>
-      dia.itens.map((item) => ({
-        id: item.id,
-        data: dia.data,
-        descricao: item.descricao,
-        valor: item.valor,
-        tipo: item.tipo,
-        categoriaNome: item.categoriaNome,
-        origemNome: item.contaNome ?? (item.cartaoNome ? `Cartão ${item.cartaoNome}` : null),
-      })),
+      dia.itens.map((item) => {
+        const visual = item.categoriaNome ? visualPorNome.get(item.categoriaNome) : undefined;
+        return {
+          id: item.id,
+          data: dia.data,
+          descricao: item.descricao,
+          valor: item.valor,
+          tipo: item.tipo,
+          categoriaNome: item.categoriaNome,
+          origemNome: item.contaNome ?? (item.cartaoNome ? `Cartão ${item.cartaoNome}` : null),
+          icone: visual?.icone ?? "geral",
+          cor: visual?.cor ?? "neutro",
+        };
+      }),
     )
     .slice(0, 12);
 

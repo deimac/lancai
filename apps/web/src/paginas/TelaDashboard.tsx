@@ -17,6 +17,8 @@ import {
 import {
   Activity,
   AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
   ChevronRight,
   CreditCard,
   Eye,
@@ -545,36 +547,59 @@ export function TelaDashboard() {
           className="rounded-2xl border border-borda bg-superficie/80 p-4"
         >
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-texto">Lançamentos recentes</h2>
+            <h2 className="text-sm font-medium text-texto">Transações recentes</h2>
             <Link to="/extrato" className="text-xs text-primaria hover:underline">
-              Ver extrato
+              Ver transações
             </Link>
           </div>
           {dados.recentes.length === 0 ? (
             <p className="py-8 text-center text-sm text-texto-suave">Nada neste mês ainda.</p>
           ) : (
             <ul className="divide-y divide-borda">
-              {dados.recentes.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-texto">{item.descricao}</p>
-                    <p className="truncate text-xs text-texto-suave">
-                      {formatar_data_curta(item.data)}
-                      {item.categoriaNome ? ` · ${item.categoriaNome}` : ""}
-                      {item.origemNome ? ` · ${item.origemNome}` : ""}
-                    </p>
-                  </div>
-                  <span
-                    className={unir_classes(
-                      "shrink-0 font-medium",
-                      eh_entrada(item.tipo) ? "text-receita" : "text-despesa",
-                    )}
-                  >
-                    {eh_entrada(item.tipo) ? "+" : "−"}
-                    {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
-                  </span>
-                </li>
-              ))}
+              {dados.recentes.map((item) => {
+                const entrada = eh_entrada(item.tipo);
+                return (
+                  <li key={item.id} className="flex items-center gap-2 py-1.5 text-sm">
+                    <span
+                      className={unir_classes(
+                        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+                        entrada ? "bg-receita/15 text-receita" : "bg-despesa/15 text-despesa",
+                      )}
+                    >
+                      {entrada ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium leading-tight text-texto">
+                        {item.descricao}
+                      </p>
+                      <p className="truncate text-[10px] leading-tight text-texto-suave">
+                        {formatar_data_curta(item.data)}
+                        {item.origemNome ? ` · ${item.origemNome}` : ""}
+                      </p>
+                    </div>
+                    <span className="inline-flex min-w-0 max-w-[8.5rem] shrink items-center gap-1">
+                      <IconeCategoria
+                        icone={item.icone}
+                        cor={item.cor}
+                        tamanho={11}
+                        compacto
+                      />
+                      <span className="hidden truncate text-[11px] text-texto-suave sm:inline">
+                        {item.categoriaNome ?? "Não classificado"}
+                      </span>
+                    </span>
+                    <span
+                      className={unir_classes(
+                        "shrink-0 text-[13px] font-medium tabular-nums",
+                        entrada ? "text-receita" : "text-despesa",
+                      )}
+                    >
+                      {entrada ? "+" : "−"}
+                      {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </motion.section>

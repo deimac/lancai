@@ -8,6 +8,8 @@ type Props = {
   className?: string;
   /** No seletor, deixa o traço visível em vez de pintar com a cor da categoria. */
   variante?: "cor" | "padrao";
+  /** Caixa menor, para listas densas como o Cockpit. */
+  compacto?: boolean;
 };
 
 export function IconeCategoria({
@@ -16,20 +18,23 @@ export function IconeCategoria({
   tamanho = 16,
   className,
   variante = "cor",
+  compacto = false,
 }: Props) {
   const Icone = icone_lucide_categoria(icone);
   const padrao = variante === "padrao";
   const hex = hex_cor_categoria(cor);
+  const caixa = tamanho + (compacto ? 6 : 12);
   return (
     <span
       className={unir_classes(
-        "inline-flex shrink-0 items-center justify-center rounded-md",
+        "inline-flex shrink-0 items-center justify-center",
+        compacto ? "rounded" : "rounded-md",
         padrao ? "bg-borda/60 text-texto" : "",
         className,
       )}
       style={{
-        width: tamanho + 12,
-        height: tamanho + 12,
+        width: caixa,
+        height: caixa,
         ...(padrao
           ? {}
           : {

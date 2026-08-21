@@ -427,6 +427,8 @@ export interface DashboardResposta {
     tipo: string;
     categoriaNome: string | null;
     origemNome: string | null;
+    icone?: string;
+    cor?: string;
   }>;
   proximosPagamentos?: ProximoPagamento[];
   orcamentos?: OrcamentoDashboard[];
