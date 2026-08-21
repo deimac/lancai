@@ -3,6 +3,7 @@ import {
   LIMITE_ITENS_HISTORICO,
   agrupar_series_parcelamento,
   eh_movimento_parcelado,
+  enxugar_indice_parcela,
   paraNumero,
   schemaFiltrosVisaoResolvidos,
   somar,
@@ -171,7 +172,7 @@ export class ModuloRelatorios {
       const cartao = mapaCartoes.get(primeira.cartaoId ?? "");
       compras.push(
         montar_compra_de_itens({
-          descricao: primeira.descricao,
+          descricao: enxugar_indice_parcela(primeira.descricao),
           cartaoNome: cartao?.nome ?? "cartão desconhecido",
           valorTotal:
             total_compra_parcela({
@@ -204,7 +205,7 @@ export class ModuloRelatorios {
       const cartao = mapaCartoes.get(primeira.movimento.cartaoId ?? "");
       compras.push(
         montar_compra_de_itens({
-          descricao: primeira.movimento.descricao,
+          descricao: enxugar_indice_parcela(primeira.movimento.descricao),
           cartaoNome: cartao?.nome ?? "cartão desconhecido",
           valorTotal: paraNumero(primeira.movimento.valor),
           parcelasTotais: grupoParcelas.length,
@@ -490,6 +491,23 @@ export class ModuloRelatorios {
   }
 }
 
+function moda_valor(valores: number[]): number {
+  const contagem = new Map<number, number>();
+  for (const valor of valores) {
+    const centavos = Math.round(valor * 100);
+    contagem.set(centavos, (contagem.get(centavos) ?? 0) + 1);
+  }
+  let melhor = 0;
+  let moda = valores[0] ?? 0;
+  for (const [centavos, n] of contagem) {
+    if (n > melhor) {
+      melhor = n;
+      moda = centavos / 100;
+    }
+  }
+  return moda;
+}
+
 function montar_compra_de_itens(entrada: {
   descricao: string;
   cartaoNome: string;
@@ -507,10 +525,15 @@ function montar_compra_de_itens(entrada: {
     const mes = item.data.slice(0, 7);
     porMes.set(mes, somar(porMes.get(mes) ?? 0, item.valor));
   }
+  const valores = entrada.itens.map((item) => paraNumero(item.valor)).filter((valor) => valor > 0);
+  const valorParcela = restantes[0]
+    ? paraNumero(restantes[0].valor)
+    : moda_valor(valores);
   return {
     descricao: entrada.descricao,
     cartaoNome: entrada.cartaoNome,
     valorTotal: entrada.valorTotal,
+    valorParcela,
     parcelasTotais: entrada.parcelasTotais,
     parcelasPagas: pagas.length,
     parcelasRestantes: restantes.length,

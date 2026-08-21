@@ -305,6 +305,7 @@ describe("ModuloRelatorios", () => {
       const compra = dados.compras[0]!;
       expect(compra.descricao).toBe("Notebook");
       expect(compra.valorTotal).toBe(8000);
+      expect(compra.valorParcela).toBe(800);
       expect(compra.parcelasTotais).toBe(10);
       expect(compra.parcelasPagas).toBe(3);
       expect(compra.parcelasRestantes).toBe(7);
@@ -341,6 +342,7 @@ describe("ModuloRelatorios", () => {
       expect(compra.descricao).toBe("Passagem LATAM");
       expect(compra.cartaoNome).toBe("C6");
       expect(compra.valorTotal).toBe(1200);
+      expect(compra.valorParcela).toBe(400);
       expect(compra.parcelasTotais).toBe(3);
       expect(compra.parcelasPagas).toBe(1);
       expect(compra.parcelasRestantes).toBe(2);

@@ -61,7 +61,7 @@ export async function montar_comprometimento(
   const nomesCadastro = new Set(
     cadastradas.map((item) => normalizar_descricao_parcela(item.descricao)),
   );
-  const detectados = detectar_padroes_recorrentes(movimentos).filter(
+  const detectados = detectar_padroes_recorrentes(movimentos, dataAtual).filter(
     (item) => !nomesCadastro.has(normalizar_descricao_parcela(item.descricao)),
   );
 
@@ -89,7 +89,7 @@ export async function montar_comprometimento(
         descricao: item.descricao,
         valor: item.valor,
         origem: "detectado" as const,
-        diaDoMes: null,
+        diaDoMes: item.diaDoMes,
         categoriaNome: cat?.nome ?? null,
         icone: cat?.icone ?? "geral",
         cor: cat?.cor ?? "neutro",

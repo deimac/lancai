@@ -916,6 +916,7 @@ export const clienteApi = {
       descricao: string;
       cartaoNome: string;
       valorTotal: number;
+      valorParcela: number;
       parcelasTotais: number;
       parcelasPagas: number;
       parcelasRestantes: number;

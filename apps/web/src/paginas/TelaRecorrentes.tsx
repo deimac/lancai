@@ -231,10 +231,16 @@ export function TelaRecorrentes() {
                             {compra.proximaParcelaData
                               ? ` · próxima ${formatar_data_curta(compra.proximaParcelaData)}`
                               : ""}
+                            {compra.valorRestante > compra.valorParcela
+                              ? ` · faltam ${formatar_moeda(compra.valorRestante)}`
+                              : ""}
                           </p>
                         </div>
-                        <span className="shrink-0 text-sm tabular-nums text-despesa">
-                          {formatar_moeda(compra.valorRestante)}
+                        <span className="shrink-0 text-right">
+                          <span className="block text-sm tabular-nums text-despesa">
+                            {formatar_moeda(compra.valorParcela)}
+                          </span>
+                          <span className="text-xs text-texto-suave">parcela</span>
                         </span>
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-borda">
@@ -257,8 +263,8 @@ export function TelaRecorrentes() {
             </h2>
             {recorrentes.length === 0 ? (
               <p className="py-6 text-center text-sm text-texto-suave">
-                Nenhuma recorrência detectada no extrato. O assistente também cadastra: “todo mês dia 10
-                Netflix 55”.
+                Nenhuma recorrência vigente. Assinatura = mesmo valor ~1 vez por mês, ainda caindo. O
+                assistente também cadastra: “todo mês dia 10 Netflix 55”.
               </p>
             ) : (
               <ul className="divide-y divide-borda">

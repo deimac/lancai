@@ -70,6 +70,7 @@ describe("montar_resposta_visao", () => {
             descricao: "Notebook",
             cartaoNome: "Inter Black",
             valorTotal: 8000,
+            valorParcela: 800,
             parcelasTotais: 10,
             parcelasPagas: 3,
             parcelasRestantes: 7,

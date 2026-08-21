@@ -24,6 +24,8 @@ export interface CompraParcelada {
   descricao: string;
   cartaoNome: string;
   valorTotal: number;
+  /** Valor de uma parcela (o que cai no mês), não o total da compra. */
+  valorParcela: number;
   parcelasTotais: number;
   parcelasPagas: number;
   parcelasRestantes: number;

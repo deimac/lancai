@@ -57,6 +57,15 @@ describe("série de parcelamento OF", () => {
     expect(latam?.map((p) => p.id)).toEqual(["1", "2"]);
   });
 
+  it("agrupa 1/3 e 2/3 como a mesma compra", () => {
+    const grupos = agrupar_series_parcelamento([
+      parcela({ id: "1", parcelaNumero: 1, descricao: "Gol Linhas 1/3" }),
+      parcela({ id: "2", parcelaNumero: 2, descricao: "Gol Linhas 2/3", dataMovimento: "2026-09-10" }),
+    ]);
+    expect(grupos).toHaveLength(1);
+    expect(grupos[0]?.map((p) => p.id)).toEqual(["1", "2"]);
+  });
+
   it("irmas_da_serie prefere a mesma descrição dentro da compra", () => {
     const ancora = parcela({ id: "1", parcelaNumero: 1 });
     const irmas = irmas_da_serie(ancora, [

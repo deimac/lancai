@@ -25,6 +25,17 @@ export function normalizar_descricao_parcela(texto: string): string {
     .trim();
 }
 
+/** Tira o "1/3" / "01/02" que o cartão cola no fim — irmãs da mesma compra. */
+export function enxugar_indice_parcela(texto: string): string {
+  return texto.replace(/\s*\d{1,2}\s*\/\s*\d{1,2}\s*$/u, "").trim();
+}
+
+function normalizar_descricao_serie(texto: string): string {
+  return normalizar_descricao_parcela(enxugar_indice_parcela(texto)).replace(/\d{7,}/g, (digitos) =>
+    digitos.slice(0, 6),
+  );
+}
+
 export function data_iso_parcela(valor: string | Date | null | undefined): string | null {
   if (valor == null) return null;
   const texto = typeof valor === "string" ? valor : valor.toISOString();
@@ -47,7 +58,7 @@ export function chave_serie_parcelamento(movimento: MovimentoSerieParcela): stri
     movimento.cartaoId,
     compra,
     String(movimento.parcelaTotal),
-    normalizar_descricao_parcela(movimento.descricao),
+    normalizar_descricao_serie(movimento.descricao),
   ].join("|");
 }
 
