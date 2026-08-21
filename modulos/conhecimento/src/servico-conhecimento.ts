@@ -195,6 +195,54 @@ export class ServicoConhecimento {
     return atualizadas;
   }
 
+  /**
+   * Lançamento novo (ainda solto ou só IA) herda categoria de um igual já classificado.
+   * Prefere classificação da pessoa; senão a mais recente com categoria real.
+   */
+  async herdar_classificacao_de_iguais(movimentoId: string): Promise<boolean> {
+    const atual = await this.repositorio.obterMovimento(movimentoId);
+    if (!atual) throw new ErroMovimentoNaoEncontrado(movimentoId);
+    if (atual.papel === "pagamento_fatura") return false;
+    if (!(await this.pode_receber_serie(atual))) return false;
+
+    const fonte = await this.escolher_fonte_igual(atual);
+    if (!fonte) return false;
+
+    await this.atualizar({
+      movimentoId: atual.id,
+      alteradoPor: fonte.alteradoPor ?? fonte.usuarioId,
+      conhecimento: {
+        categoriaId: fonte.categoriaId,
+        tipoGasto: fonte.tipoGasto,
+        classificadoPor: "usuario",
+        regraId: null,
+        confiancaIa: null,
+      },
+    });
+    return true;
+  }
+
+  private async escolher_fonte_igual(atual: Movimento): Promise<Movimento | null> {
+    const candidatos = await this.repositorio.listarCandidatosIguais(atual);
+    const fontes: Movimento[] = [];
+    for (const candidato of candidatos) {
+      if (candidato.papel === "pagamento_fatura") continue;
+      if (!movimento_igual_para_classificar(candidato, atual)) continue;
+      if (await this.eh_nao_classificado(candidato.categoriaId)) continue;
+      fontes.push(candidato);
+    }
+    if (fontes.length === 0) return null;
+    fontes.sort((a, b) => {
+      const aUsuario = a.classificadoPor === "usuario" ? 1 : 0;
+      const bUsuario = b.classificadoPor === "usuario" ? 1 : 0;
+      if (bUsuario !== aUsuario) return bUsuario - aUsuario;
+      const porData = String(b.dataMovimento).localeCompare(String(a.dataMovimento));
+      if (porData !== 0) return porData;
+      return b.dataCriacao.getTime() - a.dataCriacao.getTime();
+    });
+    return fontes[0] ?? null;
+  }
+
   /** Parcela nova (projetada) herda Conhecimento de uma irmã já classificada pela pessoa. */
   async herdar_classificacao_da_serie(movimentoId: string): Promise<boolean> {
     const atual = await this.repositorio.obterMovimento(movimentoId);

@@ -1217,10 +1217,10 @@ export class MotorFinanceiro {
   }
 
   /**
-   * Porta de conciliação (primeira sync): cancela o lançamento manual/WhatsApp
-   * que casou com um Fato do banco. Não passa por `garantir_nao_sincronizada` —
-   * é operação do sistema, não do usuário. O Fato `open_finance` permanece;
-   * a migração de Conhecimento fica no composition root.
+   * Porta de conciliação (primeira sync): cancela o lançamento manual, WhatsApp
+   * ou de recorrência que casou com um Fato do banco. Não passa por
+   * `garantir_nao_sincronizada` — é operação do sistema, não do usuário. O Fato
+   * `open_finance` permanece; a migração de Conhecimento fica no composition root.
    */
   async cancelar_para_conciliacao(entrada: {
     manualId: string;
@@ -1237,7 +1237,9 @@ export class MotorFinanceiro {
       throw new ErroValidacaoFinanceira("Conciliação exige um Fato vindo do banco.");
     }
     if (manual.fonte === "open_finance") {
-      throw new ErroValidacaoFinanceira("Só lançamentos manuais ou do WhatsApp entram na conciliação.");
+      throw new ErroValidacaoFinanceira(
+        "Só lançamentos manuais, do WhatsApp ou de recorrência entram na conciliação.",
+      );
     }
     if (manual.status === "cancelado") {
       throw new ErroValidacaoFinanceira("Esse lançamento já está cancelado.");

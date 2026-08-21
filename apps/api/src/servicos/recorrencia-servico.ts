@@ -1,12 +1,54 @@
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, gte, ilike, lte, ne, or } from "drizzle-orm";
 import {
   garantir_workspace_do_usuario,
+  movimento as movimentoTabela,
   obter_banco,
   recorrencia as recorrenciaTabela,
   type Recorrencia,
 } from "@lancai/banco";
 import { MotorFinanceiro } from "@lancai/financeiro";
-import { formatarMoeda, hojeISO } from "@lancai/tipos";
+import { formatarMoeda, hojeISO, paraNumero } from "@lancai/tipos";
+import { score_descricao_conciliacao } from "./conciliar-manual-com-fonte";
+
+const LIMIAR_EQUIVALENTE = 0.35;
+
+export type CandidatoCobrancaEquivalente = {
+  descricao: string;
+  descricaoFonte: string | null;
+  favorecidoFonte?: string | null;
+  valor: string | number;
+  tipo: string;
+  contaId: string | null;
+  cartaoId: string | null;
+  status: string;
+  fonte: string;
+};
+
+/** Já existe no mês um Fato (OF ou outro ativo) que casa com a recorrência cadastrada. */
+export function ja_existe_cobranca_equivalente(entrada: {
+  descricao: string;
+  valor: number;
+  tipo: string;
+  contaId?: string | null;
+  cartaoId?: string | null;
+  movimentos: CandidatoCobrancaEquivalente[];
+}): boolean {
+  const contaId = entrada.contaId ?? null;
+  const cartaoId = entrada.cartaoId ?? null;
+  return entrada.movimentos.some((item) => {
+    if (item.status === "cancelado") return false;
+    if (item.fonte === "recorrencia") return false;
+    if (item.tipo !== entrada.tipo) return false;
+    if ((item.contaId ?? null) !== contaId || (item.cartaoId ?? null) !== cartaoId) return false;
+    if (paraNumero(item.valor) !== paraNumero(entrada.valor)) return false;
+    const score = score_descricao_conciliacao(
+      entrada.descricao,
+      item.descricaoFonte || item.descricao,
+      item.favorecidoFonte,
+    );
+    return score >= LIMIAR_EQUIVALENTE;
+  });
+}
 
 export async function criar_recorrencia(entrada: {
   usuarioId: string;
@@ -120,6 +162,49 @@ export async function gerar_recorrencias_do_dia(
       continue;
     }
     if (!item.contaId && !item.cartaoId) {
+      pulados += 1;
+      continue;
+    }
+
+    const inicioMes = `${mesChave}-01`;
+    const fimMes = data_no_mes(mesChave, 31);
+    const origemCond =
+      item.contaId && item.cartaoId
+        ? or(
+            eq(movimentoTabela.contaId, item.contaId),
+            eq(movimentoTabela.cartaoId, item.cartaoId),
+          )
+        : item.contaId
+          ? eq(movimentoTabela.contaId, item.contaId)
+          : eq(movimentoTabela.cartaoId, item.cartaoId!);
+    const existentes = await banco
+      .select()
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.usuarioId, item.usuarioId),
+          eq(movimentoTabela.workspaceId, item.workspaceId),
+          ne(movimentoTabela.status, "cancelado"),
+          gte(movimentoTabela.dataMovimento, inicioMes),
+          lte(movimentoTabela.dataMovimento, fimMes),
+          origemCond,
+        ),
+      );
+    const tipoMovimento = item.tipo === "receita" ? "receita" : "despesa";
+    if (
+      ja_existe_cobranca_equivalente({
+        descricao: item.descricao,
+        valor: Number(item.valor),
+        tipo: tipoMovimento,
+        contaId: item.contaId,
+        cartaoId: item.cartaoId,
+        movimentos: existentes,
+      })
+    ) {
+      await banco
+        .update(recorrenciaTabela)
+        .set({ ultimaGeracao: mesChave, dataAtualizacao: new Date() })
+        .where(eq(recorrenciaTabela.id, item.id));
       pulados += 1;
       continue;
     }

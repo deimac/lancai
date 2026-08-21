@@ -1300,4 +1300,167 @@ describe("lançamentos iguais", () => {
     expect(await servico.propagar_classificacao_de_iguais(ancora.id)).toBe(0);
     expect(repo.movimentos.get(outroPix.id)?.categoriaId).toBe(naoClassificado);
   });
+
+  it("lançamento novo herda a categoria de um Uber igual já classificado", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const naoClassificado = randomUUID();
+    const transporte = randomUUID();
+    repo.cadastrarCategoria(naoClassificado, "Não classificado");
+    repo.cadastrarCategoria(transporte, "Transporte");
+    const antigo = criarMovimento({
+      usuarioId: dono,
+      descricao: "Uber Trip",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: transporte,
+      classificadoPor: "usuario",
+      tipoGasto: "pj",
+      dataMovimento: "2026-07-10",
+    });
+    const novo = criarMovimento({
+      usuarioId: dono,
+      descricao: "UBER TRIP",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: naoClassificado,
+      classificadoPor: "ia",
+      dataMovimento: "2026-08-12",
+    });
+    repo.movimentos.set(antigo.id, antigo);
+    repo.movimentos.set(novo.id, novo);
+
+    expect(await servico.herdar_classificacao_de_iguais(novo.id)).toBe(true);
+    expect(repo.movimentos.get(novo.id)?.categoriaId).toBe(transporte);
+    expect(repo.movimentos.get(novo.id)?.tipoGasto).toBe("pj");
+    expect(repo.movimentos.get(novo.id)?.classificadoPor).toBe("usuario");
+  });
+
+  it("não herda iFood de outro estabelecimento", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const naoClassificado = randomUUID();
+    const alimentacao = randomUUID();
+    repo.cadastrarCategoria(naoClassificado, "Não classificado");
+    repo.cadastrarCategoria(alimentacao, "Alimentação");
+    const loop = criarMovimento({
+      usuarioId: dono,
+      descricao: "iFood Loop",
+      descricaoFonte: "IFOOD *LOOP",
+      categoriaId: alimentacao,
+      classificadoPor: "usuario",
+    });
+    const pizza = criarMovimento({
+      usuarioId: dono,
+      descricao: "iFood Pizza",
+      descricaoFonte: "IFOOD *PIZZA",
+      categoriaId: naoClassificado,
+      classificadoPor: "ia",
+    });
+    repo.movimentos.set(loop.id, loop);
+    repo.movimentos.set(pizza.id, pizza);
+
+    expect(await servico.herdar_classificacao_de_iguais(pizza.id)).toBe(false);
+    expect(repo.movimentos.get(pizza.id)?.categoriaId).toBe(naoClassificado);
+  });
+
+  it("não herda pix genérico", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const naoClassificado = randomUUID();
+    const transferencia = randomUUID();
+    repo.cadastrarCategoria(naoClassificado, "Não classificado");
+    repo.cadastrarCategoria(transferencia, "Transferência");
+    const antigo = criarMovimento({
+      usuarioId: dono,
+      descricao: "Pix",
+      descricaoFonte: "PIX ENVIADO",
+      categoriaId: transferencia,
+      classificadoPor: "usuario",
+    });
+    const novo = criarMovimento({
+      usuarioId: dono,
+      descricao: "Pix",
+      descricaoFonte: "PIX ENVIADO",
+      categoriaId: naoClassificado,
+      classificadoPor: "ia",
+    });
+    repo.movimentos.set(antigo.id, antigo);
+    repo.movimentos.set(novo.id, novo);
+
+    expect(await servico.herdar_classificacao_de_iguais(novo.id)).toBe(false);
+    expect(repo.movimentos.get(novo.id)?.categoriaId).toBe(naoClassificado);
+  });
+
+  it("não sobrescreve quem a pessoa já classificou", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const lazer = randomUUID();
+    const transporte = randomUUID();
+    repo.cadastrarCategoria(lazer, "Lazer");
+    repo.cadastrarCategoria(transporte, "Transporte");
+    const antigo = criarMovimento({
+      usuarioId: dono,
+      descricao: "Uber Trip",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: transporte,
+      classificadoPor: "usuario",
+    });
+    const jaClassificado = criarMovimento({
+      usuarioId: dono,
+      descricao: "Uber Trip",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: lazer,
+      classificadoPor: "usuario",
+    });
+    repo.movimentos.set(antigo.id, antigo);
+    repo.movimentos.set(jaClassificado.id, jaClassificado);
+
+    expect(await servico.herdar_classificacao_de_iguais(jaClassificado.id)).toBe(false);
+    expect(repo.movimentos.get(jaClassificado.id)?.categoriaId).toBe(lazer);
+  });
+
+  it("prefere a classificação da pessoa à da regra, mesmo mais antiga", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const naoClassificado = randomUUID();
+    const transporte = randomUUID();
+    const lazer = randomUUID();
+    repo.cadastrarCategoria(naoClassificado, "Não classificado");
+    repo.cadastrarCategoria(transporte, "Transporte");
+    repo.cadastrarCategoria(lazer, "Lazer");
+    const pelaPessoa = criarMovimento({
+      usuarioId: dono,
+      descricao: "Uber Trip",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: transporte,
+      classificadoPor: "usuario",
+      dataMovimento: "2026-06-01",
+    });
+    const pelaRegra = criarMovimento({
+      usuarioId: dono,
+      descricao: "Uber Trip",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: lazer,
+      classificadoPor: "regra",
+      dataMovimento: "2026-08-01",
+    });
+    const novo = criarMovimento({
+      usuarioId: dono,
+      descricao: "UBER TRIP",
+      descricaoFonte: "UBER *TRIP",
+      categoriaId: naoClassificado,
+      classificadoPor: "ia",
+      dataMovimento: "2026-08-20",
+    });
+    repo.movimentos.set(pelaPessoa.id, pelaPessoa);
+    repo.movimentos.set(pelaRegra.id, pelaRegra);
+    repo.movimentos.set(novo.id, novo);
+
+    expect(await servico.herdar_classificacao_de_iguais(novo.id)).toBe(true);
+    expect(repo.movimentos.get(novo.id)?.categoriaId).toBe(transporte);
+  });
 });

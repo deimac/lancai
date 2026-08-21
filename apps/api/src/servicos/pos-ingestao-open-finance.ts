@@ -40,7 +40,7 @@ export async function enriquecer_apos_ingestao(entrada: {
     if (conciliacao.casados > 0) {
       log.info(
         { eventoId, casados: conciliacao.casados },
-        "[open-finance] conciliação manual↔banco",
+        "[open-finance] conciliação manual/recorrência↔banco",
       );
     }
   } catch (erroConciliacao) {
@@ -53,8 +53,10 @@ export async function enriquecer_apos_ingestao(entrada: {
   for (const movimentoId of resumo.movimentoIdsCriados) {
     if (fatosCasados.has(movimentoId)) continue;
     try {
-      const herdou = await conhecimento.herdar_classificacao_da_serie(movimentoId);
-      if (herdou) continue;
+      const herdouSerie = await conhecimento.herdar_classificacao_da_serie(movimentoId);
+      if (herdouSerie) continue;
+      const herdouIgual = await conhecimento.herdar_classificacao_de_iguais(movimentoId);
+      if (herdouIgual) continue;
       if (!iaLigada) {
         const soRegra = await conhecimento.aplicar_regras(movimentoId);
         if (soRegra.aplicada) porRegra += 1;

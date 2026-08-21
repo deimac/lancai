@@ -14,7 +14,8 @@ import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeir
 import { chave_descricao_lancamento, descricao_corresponde_busca } from "@lancai/ia";
 import { paraNumero } from "@lancai/tipos";
 
-const JANELA_DIAS = 3;
+const JANELA_MANUAL_DIAS = 3;
+const JANELA_RECORRENCIA_DIAS = 7;
 const LIMIAR_SCORE = 0.35;
 
 export type ParConciliacao = {
@@ -69,6 +70,7 @@ export function score_descricao_conciliacao(
 export function escolher_pares_conciliacao(
   fatos: Movimento[],
   manuais: Movimento[],
+  janelaDias = JANELA_MANUAL_DIAS,
 ): ParConciliacao[] {
   type Candidato = ParConciliacao & { dias: number };
   const candidatos: Candidato[] = [];
@@ -80,7 +82,7 @@ export function escolher_pares_conciliacao(
       if (paraNumero(manual.valor) !== paraNumero(fato.valor)) continue;
 
       const dias = dias_entre(String(manual.dataMovimento).slice(0, 10), String(fato.dataMovimento).slice(0, 10));
-      if (dias > JANELA_DIAS) continue;
+      if (dias > janelaDias) continue;
 
       const score = score_descricao_conciliacao(
         manual.descricao,
@@ -142,8 +144,8 @@ async function conhecimento_manual_vale_migrar(
 }
 
 /**
- * Casamento pós-ingestão: Conhecimento do manual → Fato do banco; manual cancelado.
- * Rodar **antes** da classificação automática para não sobrescrever o que o usuário já ensinou.
+ * Casamento pós-ingestão: Conhecimento do manual/WhatsApp/recorrência → Fato do banco;
+ * o lançamento gerado é cancelado. Rodar **antes** da classificação automática.
  */
 export async function conciliar_manuais_com_fatos_criados(entrada: {
   movimentoIdsCriados: string[];
@@ -176,8 +178,8 @@ export async function conciliar_manuais_com_fatos_criados(entrada: {
   const alteradoPor = entrada.alteradoPor ?? fatos[0]!.usuarioId;
 
   const datas = fatos.map((f) => String(f.dataMovimento).slice(0, 10));
-  const minData = somar_dias_iso(datas.reduce((a, b) => (a < b ? a : b)), -JANELA_DIAS);
-  const maxData = somar_dias_iso(datas.reduce((a, b) => (a > b ? a : b)), JANELA_DIAS);
+  const minData = somar_dias_iso(datas.reduce((a, b) => (a < b ? a : b)), -JANELA_RECORRENCIA_DIAS);
+  const maxData = somar_dias_iso(datas.reduce((a, b) => (a > b ? a : b)), JANELA_RECORRENCIA_DIAS);
 
   const contaIds = [...new Set(fatos.map((f) => f.contaId).filter(Boolean))] as string[];
   const cartaoIds = [...new Set(fatos.map((f) => f.cartaoId).filter(Boolean))] as string[];
@@ -198,15 +200,24 @@ export async function conciliar_manuais_com_fatos_criados(entrada: {
       and(
         eq(movimento.usuarioId, fatos[0]!.usuarioId),
         ne(movimento.status, "cancelado"),
-        inArray(movimento.fonte, ["manual", "whatsapp"]),
+        inArray(movimento.fonte, ["manual", "whatsapp", "recorrencia"]),
         gte(movimento.dataMovimento, minData),
         lte(movimento.dataMovimento, maxData),
         origemCond,
       ),
     );
 
-  const pares = escolher_pares_conciliacao(fatos, manuais);
   const manuaisPorId = new Map(manuais.map((m) => [m.id, m]));
+  const manuaisWhatsapp = manuais.filter((m) => m.fonte === "manual" || m.fonte === "whatsapp");
+  const geradosRecorrencia = manuais.filter((m) => m.fonte === "recorrencia");
+  const paresManuais = escolher_pares_conciliacao(fatos, manuaisWhatsapp, JANELA_MANUAL_DIAS);
+  const fatosRestantes = fatos.filter((f) => !paresManuais.some((p) => p.fatoId === f.id));
+  const paresRecorrencia = escolher_pares_conciliacao(
+    fatosRestantes,
+    geradosRecorrencia,
+    JANELA_RECORRENCIA_DIAS,
+  );
+  const pares = [...paresManuais, ...paresRecorrencia];
   let casados = 0;
 
   for (const par of pares) {

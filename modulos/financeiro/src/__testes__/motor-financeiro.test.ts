@@ -1538,6 +1538,57 @@ describe("MotorFinanceiro", () => {
       expect(ativos[0]?.fonte).toBe("open_finance");
     });
 
+    it("cancela recorrência gerada por conciliação com o Fato do banco", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const criado = await criar_movimento(
+        despesa({
+          contaId: conta.id,
+          valor: 55.9,
+          fonte: "recorrencia",
+          descricao: "Netflix",
+        }),
+      );
+      const gerado = criado.movimentos[0]!;
+      repositorio.contas.set(conta.id, { ...conta, sincronizada: true });
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          {
+            workspaceId: WORKSPACE,
+            fonte: "open_finance",
+            provedor: "provedor_teste",
+            idExterno: "tx-netflix",
+            ocorridoEm: "2026-08-12",
+            valor: 55.9,
+            tipo: "despesa",
+            descricaoFonte: "NETFLIX.COM",
+            statusFonte: "confirmado",
+            fatoImutavel: true,
+            contaId: conta.id,
+          },
+        ],
+        {
+          usuarioId,
+          criadoPor: usuarioId,
+          categoriaIdNaoClassificado: categoria.id,
+          perfilPadrao: "pf",
+        },
+      );
+
+      const fato = criados[0]!;
+      const { manual: cancelado } = await motor.cancelar_para_conciliacao({
+        manualId: gerado.id,
+        fatoId: fato.id,
+        alteradoPor: usuarioId,
+      });
+
+      expect(cancelado.status).toBe("cancelado");
+      expect(cancelado.fonte).toBe("recorrencia");
+      expect(repositorio.movimentos.get(fato.id)?.status).toBe("realizado");
+    });
+
     it("deixa a ingestão gravar Fato na conta sincronizada", async () => {
       const conta = criarConta({ usuarioId, saldoAtual: "1000.00", sincronizada: true });
       repositorio.contas.set(conta.id, conta);
