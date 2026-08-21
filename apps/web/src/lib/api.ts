@@ -866,6 +866,7 @@ export const clienteApi = {
     competenciaFatura: string | null;
     propostaRegra: { trecho: string; categoriaNome: string } | null;
     parcelasAtualizadas?: number;
+    iguaisAtualizados?: number;
   }> {
     return requisitar("/conhecimento", {
       method: "PATCH",

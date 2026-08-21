@@ -120,11 +120,15 @@ export async function registrar_rotas_conhecimento(app: FastifyInstance) {
       });
 
       let parcelasAtualizadas = 0;
+      let iguaisAtualizados = 0;
       if (dados.categoriaId !== undefined || dados.tipoGasto !== undefined) {
         parcelasAtualizadas = await conhecimento.propagar_classificacao_da_serie(atualizado.id);
       }
+      if (dados.categoriaId !== undefined) {
+        iguaisAtualizados = await conhecimento.propagar_classificacao_de_iguais(atualizado.id);
+      }
 
-      return { ...(await serializar_conhecimento(atualizado)), parcelasAtualizadas };
+      return { ...(await serializar_conhecimento(atualizado)), parcelasAtualizadas, iguaisAtualizados };
     } catch (erro) {
       if (erro instanceof ErroMovimentoNaoEncontrado) {
         return resposta.status(404).send({ erro: erro.message });

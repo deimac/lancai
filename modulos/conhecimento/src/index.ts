@@ -1,3 +1,4 @@
+export * from "./iguais-classificacao";
 export * from "./avaliar-regra";
 export * from "./erros";
 export * from "./memoria";

@@ -88,6 +88,21 @@ function formatar_moeda_br(valor: number | string): string {
   return numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function mensagem_classificacao(parcelas: number, iguais: number): string {
+  if (iguais > 0 && parcelas > 0) {
+    return `Classifiquei as ${parcelas + 1} parcelas desta compra e mais ${iguais} lançamento${iguais === 1 ? "" : "s"} igual${iguais === 1 ? "" : "is"}.`;
+  }
+  if (iguais > 0) {
+    return iguais === 1
+      ? "Classifiquei este e mais 1 lançamento igual."
+      : `Classifiquei este e mais ${iguais} lançamentos iguais.`;
+  }
+  if (parcelas > 0) {
+    return `Classifiquei as ${parcelas + 1} parcelas desta compra.`;
+  }
+  return "Movimento classificado.";
+}
+
 function formatar_valor(tipo: string, valor: string): string {
   const numero = Number(valor);
   if (Number.isNaN(numero)) return valor;
@@ -395,9 +410,7 @@ export function TelaExtrato() {
       );
       contexto?.invalidar("extrato", "dashboard");
       toast.sucesso(
-        atualizado.parcelasAtualizadas
-          ? `Classifiquei as ${atualizado.parcelasAtualizadas + 1} parcelas desta compra.`
-          : "Movimento classificado.",
+        mensagem_classificacao(atualizado.parcelasAtualizadas ?? 0, atualizado.iguaisAtualizados ?? 0),
       );
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível classificar.");

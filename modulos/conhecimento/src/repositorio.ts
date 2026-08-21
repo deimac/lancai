@@ -52,4 +52,9 @@ export interface RepositorioConhecimento {
   ): Promise<Array<{ id: string; nome: string; tipo: string }>>;
   /** Parcelas da mesma compra OF (cartão + compraEm + total). */
   listarIrmasParcelamento(movimento: Movimento): Promise<Movimento[]>;
+  /**
+   * Candidatos do mesmo workspace e tipo para copiar categoria
+   * (a igualdade da descrição é decidida no serviço).
+   */
+  listarCandidatosIguais(movimento: Movimento): Promise<Movimento[]>;
 }

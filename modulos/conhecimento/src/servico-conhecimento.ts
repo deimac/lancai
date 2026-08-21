@@ -22,6 +22,7 @@ import { ErroConhecimentoInvalido, ErroMovimentoNaoEncontrado } from "./erros";
 import type { RepositorioConhecimento } from "./repositorio";
 import type { SugeridorCategoria } from "./sugeridor-categoria";
 import { propor_trecho_regra } from "./trecho-regra";
+import { movimento_igual_para_classificar } from "./iguais-classificacao";
 
 export type ResultadoAplicarRegra =
   | { aplicada: true; regraId: string; movimento: Movimento }
@@ -151,6 +152,35 @@ export class ServicoConhecimento {
       if (!(await this.pode_receber_serie(irma))) continue;
       await this.atualizar({
         movimentoId: irma.id,
+        alteradoPor: ancora.alteradoPor ?? ancora.usuarioId,
+        conhecimento: {
+          categoriaId: ancora.categoriaId,
+          tipoGasto: ancora.tipoGasto,
+          classificadoPor: "usuario",
+          regraId: null,
+          confiancaIa: null,
+        },
+      });
+      atualizadas += 1;
+    }
+    return atualizadas;
+  }
+
+  /** Copia categoria e tipo de gasto para lançamentos iguais ainda soltos no mesmo workspace. */
+  async propagar_classificacao_de_iguais(movimentoId: string): Promise<number> {
+    const ancora = await this.repositorio.obterMovimento(movimentoId);
+    if (!ancora) throw new ErroMovimentoNaoEncontrado(movimentoId);
+    if (ancora.papel === "pagamento_fatura") return 0;
+    if (await this.eh_nao_classificado(ancora.categoriaId)) return 0;
+
+    const candidatos = await this.repositorio.listarCandidatosIguais(ancora);
+    let atualizadas = 0;
+    for (const candidato of candidatos) {
+      if (candidato.papel === "pagamento_fatura") continue;
+      if (!movimento_igual_para_classificar(ancora, candidato)) continue;
+      if (!(await this.pode_receber_serie(candidato))) continue;
+      await this.atualizar({
+        movimentoId: candidato.id,
         alteradoPor: ancora.alteradoPor ?? ancora.usuarioId,
         conhecimento: {
           categoriaId: ancora.categoriaId,

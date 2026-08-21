@@ -197,6 +197,21 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
       )
       .orderBy(asc(movimentoTabela.parcelaNumero), asc(movimentoTabela.dataMovimento));
   }
+
+  async listarCandidatosIguais(movimento: Movimento): Promise<Movimento[]> {
+    return this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.usuarioId, movimento.usuarioId),
+          eq(movimentoTabela.workspaceId, movimento.workspaceId),
+          eq(movimentoTabela.tipo, movimento.tipo),
+          ne(movimentoTabela.id, movimento.id),
+          ne(movimentoTabela.status, "cancelado"),
+        ),
+      );
+  }
 }
 
 function ordenar_por_especificidade(regras: Regra[]): Regra[] {

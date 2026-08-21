@@ -294,6 +294,13 @@ export async function montar_resposta_chat(
 
       let base = `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
       if (correcao.campos_alterados.categoria_nome) {
+        await contexto.conhecimento.propagar_classificacao_da_serie(movimentoAtualizado.id);
+        const iguais = await contexto.conhecimento.propagar_classificacao_de_iguais(
+          movimentoAtualizado.id,
+        );
+        if (iguais > 0) {
+          base = `Lançamento "${movimentoAtualizado.descricao}" atualizado. Apliquei a mesma categoria em ${iguais} lançamento${iguais === 1 ? "" : "s"} igual${iguais === 1 ? "" : "is"}.`;
+        }
         const proposta = await contexto.conhecimento.propor_regra_de_movimento(movimentoAtualizado.id);
         if (proposta) {
           base = `${base}\n\n${montar_oferta_virar_regra(proposta)}`;
