@@ -693,12 +693,6 @@ export function TelaDashboard() {
                     >
                       {entrada ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
                     </span>
-                    <span className="flex w-[8.5rem] shrink-0 items-center gap-1.5">
-                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
-                      <span className="truncate text-left text-[11px] text-texto-suave">
-                        {item.categoriaNome ?? "Não classificado"}
-                      </span>
-                    </span>
                     <div className="min-w-0 max-w-[14rem] flex-1">
                       <p className="truncate text-[13px] font-medium leading-tight text-texto">
                         {item.descricao}
@@ -708,9 +702,15 @@ export function TelaDashboard() {
                         {item.origemNome ? ` · ${item.origemNome}` : ""}
                       </p>
                     </div>
+                    <span className="flex w-[8.5rem] shrink-0 items-center justify-end gap-1.5">
+                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
+                      <span className="truncate text-right text-[11px] text-texto-suave">
+                        {item.categoriaNome ?? "Não classificado"}
+                      </span>
+                    </span>
                     <span
                       className={unir_classes(
-                        "ml-auto shrink-0 text-[13px] font-medium tabular-nums",
+                        "shrink-0 text-[13px] font-medium tabular-nums",
                         entrada ? "text-receita" : "text-despesa",
                       )}
                     >
