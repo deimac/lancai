@@ -1,9 +1,7 @@
-import { LIMIAR_BAIXA_CONFIANCA } from "@lancai/tipos";
 import type { MovimentoResumo } from "./api";
 
-export { LIMIAR_BAIXA_CONFIANCA };
-
-export function eh_nao_classificado(nome: string): boolean {
+export function eh_nao_classificado(nome: string | null | undefined): boolean {
+  if (!nome?.trim()) return true;
   return nome.toLocaleLowerCase("pt-BR") === "não classificado";
 }
 
@@ -11,19 +9,11 @@ export function eh_categoria_pagamento_fatura(nome: string): boolean {
   return nome.toLocaleLowerCase("pt-BR") === "pagamento de fatura";
 }
 
-/** Não classificado ou IA com confiança baixa — fila de trabalho do extrato. */
+/** Só entra na fila quem ainda está sem categoria — IA baixa não conta se já tem classificação. */
 export function precisa_revisao(movimento: MovimentoResumo): boolean {
   if (movimento.status === "cancelado") return false;
   if (movimento.papel === "pagamento_fatura") return false;
-  if (eh_nao_classificado(movimento.categoriaNome)) return true;
-  if (
-    movimento.classificadoPor === "ia" &&
-    movimento.confiancaIa !== null &&
-    movimento.confiancaIa < LIMIAR_BAIXA_CONFIANCA
-  ) {
-    return true;
-  }
-  return false;
+  return eh_nao_classificado(movimento.categoriaNome);
 }
 
 export function rotulo_classificado_por(

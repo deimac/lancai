@@ -602,7 +602,7 @@ export function TelaExtrato() {
             <AlertTriangle size={16} className="text-aviso" />
             <p className="text-sm text-texto">
               {quantidadeRevisar} para revisar
-              <span className="text-texto-suave"> — sem categoria ou IA insegura</span>
+              <span className="text-texto-suave"> — sem classificação</span>
             </p>
           </div>
           <span className="text-sm font-medium text-primaria">Abrir fila</span>
@@ -737,7 +737,7 @@ export function TelaExtrato() {
               : filtro === "banco"
                 ? "Conecte um banco em Contas e associe as contas para o extrato aparecer."
                 : filtro === "revisar"
-                  ? "Quando a IA classificar com pouca certeza, o item aparece aqui."
+                  ? "Quando um lançamento ainda não tiver categoria, o item aparece aqui."
                   : "Lance pelo assistente ou conecte um banco para começar."}
           </p>
           {filtro === "banco" && !filtrosAtivos && (

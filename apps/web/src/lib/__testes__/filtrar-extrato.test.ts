@@ -103,12 +103,22 @@ const lote: MovimentoResumo[] = [
     dataMovimento: "2026-07-05",
     contaId: "conta-itau",
   }),
+  movimento({
+    id: "6",
+    descricao: "iFood",
+    descricaoFonte: "IFOOD",
+    contaId: "conta-itau",
+    categoriaId: "cat-alimentacao",
+    categoriaNome: "Alimentação",
+    classificadoPor: "ia",
+    confiancaIa: 0.4,
+  }),
 ];
 
 describe("filtrar_extrato", () => {
   it("corta pelo mês", () => {
     const ids = filtrar_extrato(lote, contas, cartoes, base).map((m) => m.id);
-    expect(ids).toEqual(["1", "2", "3", "4"]);
+    expect(ids).toEqual(["1", "2", "3", "4", "6"]);
   });
 
   it("busca sem acento nem caixa em descrição, fonte e origem", () => {
@@ -142,7 +152,7 @@ describe("filtrar_extrato", () => {
     ).toEqual(["2"]);
     expect(
       filtrar_extrato(lote, contas, cartoes, { ...base, classificacao: "ia" }).map((m) => m.id),
-    ).toEqual(["3", "4"]);
+    ).toEqual(["3", "4", "6"]);
     expect(
       filtrar_extrato(lote, contas, cartoes, { ...base, classificacao: "sem_classificar" }).map(
         (m) => m.id,
@@ -155,7 +165,7 @@ describe("filtrar_extrato", () => {
       ...base,
       origem: { tipo: "conta", id: "conta-itau" },
     }).map((m) => m.id);
-    expect(soItau).toEqual(["1", "4"]);
+    expect(soItau).toEqual(["1", "4", "6"]);
 
     const soAzul = filtrar_extrato(lote, contas, cartoes, {
       ...base,
@@ -164,7 +174,7 @@ describe("filtrar_extrato", () => {
     expect(soAzul).toEqual(["3"]);
   });
 
-  it("fila revisar pega sem categoria ou IA insegura", () => {
+  it("fila revisar pega só sem classificação, não IA com categoria", () => {
     const ids = filtrar_extrato(lote, contas, cartoes, { ...base, fila: "revisar" }).map((m) => m.id);
     expect(ids).toEqual(["4"]);
   });

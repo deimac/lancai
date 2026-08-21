@@ -346,10 +346,13 @@ async function contar_nao_classificados(
   });
 
   let total = 0;
+  let quantidade = 0;
   for (const movimento of movimentos) {
+    if (movimento.papel === "pagamento_fatura") continue;
+    quantidade += 1;
     total += Number(movimento.valor);
   }
-  return { quantidade: movimentos.length, total };
+  return { quantidade, total };
 }
 
 function montar_fluxo_saldo(
