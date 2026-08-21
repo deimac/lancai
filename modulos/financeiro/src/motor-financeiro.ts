@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   arredondar,
   deISOParaData,
+  descricao_ainda_automatica,
+  enxugar_descricao_fonte,
   paraColuna,
   paraNumero,
   schemaCorrigirFatoManual,
@@ -419,7 +421,7 @@ export class MotorFinanceiro {
         descricaoFonte: evento.descricaoFonte,
         favorecidoFonte: evento.favorecidoFonte,
         statusFonte: evento.statusFonte,
-        descricao: evento.descricaoFonte,
+        descricao: enxugar_descricao_fonte(evento.descricaoFonte),
         valor: paraColuna(evento.valor),
         tipo: evento.tipo,
         status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
@@ -493,9 +495,9 @@ export class MotorFinanceiro {
    * Fato de `open_finance` sem passar por ela é escrever no banco à mão — o que o
    * trigger recusa.
    *
-   * O Conhecimento não é tocado. Categoria, pessoa, tags, observações, tipo de gasto,
-   * `ignorado_em_relatorio` e a `descricao` que o usuário vê seguem intactos: o
-   * banco corrigiu o extrato dele, não a opinião do usuário sobre ele.
+   * Categoria, pessoa, tags, observações, tipo de gasto e `ignorado_em_relatorio`
+   * seguem intactos. A `descricao` só é reenxugada quando ainda é a cópia
+   * automática da fonte — se a pessoa rebatizou, o banco não sobrescreve.
    */
   async atualizar_fatos_da_fonte(
     eventos: EventoFinanceiroNormalizado[],
@@ -699,6 +701,10 @@ export class MotorFinanceiro {
     if (atual.tipo !== evento.tipo) campos.tipo = evento.tipo;
     if (atual.descricaoFonte !== evento.descricaoFonte) {
       campos.descricaoFonte = evento.descricaoFonte;
+      if (descricao_ainda_automatica(atual.descricao, atual.descricaoFonte)) {
+        const enxuta = enxugar_descricao_fonte(evento.descricaoFonte);
+        if (enxuta !== atual.descricao) campos.descricao = enxuta;
+      }
     }
     if ((atual.favorecidoFonte ?? undefined) !== evento.favorecidoFonte) {
       campos.favorecidoFonte = evento.favorecidoFonte;

@@ -807,7 +807,26 @@ describe("MotorFinanceiro", () => {
       const { criados } = await motor.ingerir_eventos([evento({ contaId: conta.id })], contexto());
 
       expect(criados[0]?.descricaoFonte).toBe("COMPRA CARTAO 1234 MERCADO XY");
+      expect(criados[0]?.descricao).toBe("COMPRA CARTAO 1234 MERCADO XY");
       expect(criados[0]?.fonte).toBe("open_finance");
+    });
+
+    it("grava a descrição enxuta no Conhecimento e deixa o Fato intacto", async () => {
+      const conta = criarConta({ usuarioId });
+      repositorio.contas.set(conta.id, conta);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            contaId: conta.id,
+            descricaoFonte: "Pix recebido Tayna Silva",
+          }),
+        ],
+        contexto(),
+      );
+
+      expect(criados[0]?.descricaoFonte).toBe("Pix recebido Tayna Silva");
+      expect(criados[0]?.descricao).toBe("Tayna Silva");
     });
 
     it("grava o instante da instituição para ordenar o extrato no mesmo dia", async () => {
@@ -1034,6 +1053,41 @@ describe("MotorFinanceiro", () => {
 
       expect(atualizados[0]?.valor).toBe("95.50");
       expect(atualizados[0]?.descricaoFonte).toBe("MERCADO XY LTDA");
+      expect(atualizados[0]?.descricao).toBe("MERCADO XY LTDA");
+    });
+
+    it("reenxuga a descrição automática quando a instituição muda o texto", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      await ingerir(conta.id, { descricaoFonte: "Pix recebido Tayna Silva" });
+
+      const { atualizados } = await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, descricaoFonte: "Pix recebido Tayna S." })],
+        contexto(),
+      );
+
+      expect(atualizados[0]?.descricaoFonte).toBe("Pix recebido Tayna S.");
+      expect(atualizados[0]?.descricao).toBe("Tayna S.");
+    });
+
+    it("não sobrescreve descrição que o usuário já editou", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      const criado = await ingerir(conta.id, { descricaoFonte: "Pix recebido Tayna Silva" });
+
+      repositorio.movimentos.set(criado.id, {
+        ...criado,
+        descricao: "Tayna da padaria",
+        classificadoPor: "usuario",
+      });
+
+      const { atualizados } = await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, descricaoFonte: "Pix recebido Tayna S." })],
+        contexto(),
+      );
+
+      expect(atualizados[0]?.descricaoFonte).toBe("Pix recebido Tayna S.");
+      expect(atualizados[0]?.descricao).toBe("Tayna da padaria");
     });
 
     /**
