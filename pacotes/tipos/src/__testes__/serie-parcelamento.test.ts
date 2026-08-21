@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   agrupar_series_parcelamento,
   chave_serie_parcelamento,
+  descricao_mais_completa,
+  descricoes_da_mesma_serie,
   eh_movimento_parcelado,
   irmas_da_serie,
   normalizar_descricao_parcela,
@@ -64,6 +66,32 @@ describe("série de parcelamento OF", () => {
     ]);
     expect(grupos).toHaveLength(1);
     expect(grupos[0]?.map((p) => p.id)).toEqual(["1", "2"]);
+  });
+
+  it("junta descrição cortada da fatura com a completa (KASM/KASMOBILE)", () => {
+    expect(descricoes_da_mesma_serie("MERCADOLIVRE*KASM", "MERCADOLIVRE*KASMOBILE")).toBe(true);
+    expect(descricao_mais_completa(["MERCADOLIVRE*KASM", "MERCADOLIVRE*KASMOBILE"])).toBe(
+      "MERCADOLIVRE*KASMOBILE",
+    );
+    const grupos = agrupar_series_parcelamento([
+      parcela({
+        id: "7",
+        parcelaNumero: 7,
+        parcelaTotal: 11,
+        descricao: "MERCADOLIVRE*KASMOBILE",
+        parcelaCompraEm: "2026-01-22",
+      }),
+      parcela({
+        id: "8",
+        parcelaNumero: 8,
+        parcelaTotal: 11,
+        descricao: "MERCADOLIVRE*KASM",
+        parcelaCompraEm: "2026-01-22",
+        dataMovimento: "2026-09-01",
+      }),
+    ]);
+    expect(grupos).toHaveLength(1);
+    expect(grupos[0]?.map((p) => p.id)).toEqual(["7", "8"]);
   });
 
   it("irmas_da_serie prefere a mesma descrição dentro da compra", () => {

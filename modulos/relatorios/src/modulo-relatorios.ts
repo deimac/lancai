@@ -2,6 +2,7 @@ import { eh_fluxo_cruzado } from "@lancai/financeiro";
 import {
   LIMITE_ITENS_HISTORICO,
   agrupar_series_parcelamento,
+  descricao_mais_completa,
   eh_movimento_parcelado,
   enxugar_indice_parcela,
   paraNumero,
@@ -172,7 +173,7 @@ export class ModuloRelatorios {
       const cartao = mapaCartoes.get(primeira.cartaoId ?? "");
       compras.push(
         montar_compra_de_itens({
-          descricao: enxugar_indice_parcela(primeira.descricao),
+          descricao: descricao_mais_completa(grupo.map((item) => item.descricao)),
           cartaoNome: cartao?.nome ?? "cartão desconhecido",
           valorTotal:
             total_compra_parcela({
@@ -184,6 +185,7 @@ export class ModuloRelatorios {
           itens: grupo.map((item) => ({
             data: String(item.dataMovimento).slice(0, 10),
             valor: item.valor,
+            parcelaNumero: item.parcelaNumero ?? null,
           })),
           dataAtual,
         }),
@@ -212,6 +214,7 @@ export class ModuloRelatorios {
           itens: grupoParcelas.map((parcela) => ({
             data: parcela.dataMovimento,
             valor: parcela.valor,
+            parcelaNumero: parcela.numeroParcela ?? null,
           })),
           dataAtual,
         }),
@@ -513,13 +516,19 @@ function montar_compra_de_itens(entrada: {
   cartaoNome: string;
   valorTotal: number;
   parcelasTotais: number;
-  itens: Array<{ data: string; valor: string | number }>;
+  itens: Array<{ data: string; valor: string | number; parcelaNumero?: number | null }>;
   dataAtual: string;
 }): CompraParcelada {
-  const pagas = entrada.itens.filter((item) => item.data < entrada.dataAtual);
+  const pagasPorData = entrada.itens.filter((item) => item.data < entrada.dataAtual);
   const restantes = entrada.itens
     .filter((item) => item.data >= entrada.dataAtual)
     .sort((a, b) => a.data.localeCompare(b.data));
+  const numerosRestantes = restantes
+    .map((item) => item.parcelaNumero)
+    .filter((n): n is number => n != null && n >= 1);
+  const menorRestante = numerosRestantes.length > 0 ? Math.min(...numerosRestantes) : null;
+  const pagasPorNumero = menorRestante != null ? menorRestante - 1 : pagasPorData.length;
+  const parcelasPagas = Math.min(entrada.parcelasTotais, Math.max(pagasPorData.length, pagasPorNumero));
   const porMes = new Map<string, number>();
   for (const item of entrada.itens) {
     const mes = item.data.slice(0, 7);
@@ -535,7 +544,7 @@ function montar_compra_de_itens(entrada: {
     valorTotal: entrada.valorTotal,
     valorParcela,
     parcelasTotais: entrada.parcelasTotais,
-    parcelasPagas: pagas.length,
+    parcelasPagas,
     parcelasRestantes: restantes.length,
     valorRestante: restantes.length ? somar(...restantes.map((item) => item.valor)) : 0,
     proximaParcelaData: restantes[0]?.data ?? null,

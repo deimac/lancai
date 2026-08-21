@@ -351,6 +351,42 @@ describe("ModuloRelatorios", () => {
       expect(compra.parcelasPorMes.map((item) => item.mes)).toEqual(["2026-07", "2026-08", "2026-09"]);
     });
 
+    it("junta KASM/KASMOBILE e conta pagas pelo número da próxima parcela", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, { nome: "Mercado Pago Visa" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const lancadas = [
+        { n: 6, data: "2026-08-12", descricao: "MERCADOLIVRE*KASMOBILE" },
+        { n: 7, data: "2026-09-01", descricao: "MERCADOLIVRE*KASM" },
+        { n: 8, data: "2026-10-01", descricao: "MERCADOLIVRE*KASM" },
+      ];
+      for (const item of lancadas) {
+        const movimento = criarMovimento(usuarioId, categoria.id, {
+          descricao: item.descricao,
+          cartaoId: cartao.id,
+          valor: "61.57",
+          dataMovimento: item.data,
+          parcelaNumero: item.n,
+          parcelaTotal: 10,
+          parcelaCompraEm: "2026-02-27",
+          status: item.data < DATA_ATUAL ? "realizado" : "previsto",
+        });
+        repositorio.movimentos.set(movimento.id, movimento);
+      }
+
+      const resultado = await relatorios.consultar_visao("parcelamentos", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoParcelamentos;
+      expect(dados.compras).toHaveLength(1);
+      const compra = dados.compras[0]!;
+      expect(compra.descricao).toBe("MERCADOLIVRE*KASMOBILE");
+      expect(compra.parcelasTotais).toBe(10);
+      expect(compra.parcelasPagas).toBe(6);
+      expect(compra.parcelasRestantes).toBe(2);
+      expect(compra.valorParcela).toBe(61.57);
+    });
+
     it("não lista compras à vista (uma única parcela) como parcelamento", async () => {
       const conta = criarConta(usuarioId);
       const cartao = criarCartao(usuarioId, conta.id);
