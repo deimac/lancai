@@ -50,4 +50,6 @@ export interface RepositorioConhecimento {
   listarCategoriasAtivas(
     usuarioId: string,
   ): Promise<Array<{ id: string; nome: string; tipo: string }>>;
+  /** Parcelas da mesma compra OF (cartão + compraEm + total). */
+  listarIrmasParcelamento(movimento: Movimento): Promise<Movimento[]>;
 }

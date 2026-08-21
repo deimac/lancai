@@ -2,25 +2,16 @@ import type { FastifyInstance } from "fastify";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { categoria, movimento, obter_banco, regra } from "@lancai/banco";
 import { total_compra_parcela } from "@lancai/relatorios";
-import { schemaCriarMovimento } from "@lancai/tipos";
+import { irmas_da_serie, schemaCriarMovimento } from "@lancai/tipos";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import { obter_escopo_leitura } from "../servicos/escopo-workspace";
 
 const motor = new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
 
 function para_numero_ou_nulo(valor: string | null): number | null {
-  if (valor === null) return null;
+  if (valor == null) return null;
   const n = Number(valor);
   return Number.isFinite(n) ? n : null;
-}
-
-function normalizar_descricao_parcela(texto: string): string {
-  return texto
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLocaleLowerCase("pt-BR")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export async function registrar_rotas_movimento(app: FastifyInstance) {
@@ -117,11 +108,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
       )
       .orderBy(asc(movimento.parcelaNumero), asc(movimento.dataMovimento));
 
-    const descricaoAncora = normalizar_descricao_parcela(ancora.descricao);
-    const mesmasDescricao = candidatas.filter(
-      (linha) => normalizar_descricao_parcela(linha.descricao) === descricaoAncora,
-    );
-    const irmas = mesmasDescricao.length > 0 ? mesmasDescricao : candidatas;
+    const irmas = irmas_da_serie(ancora, candidatas);
 
     const valorAncora = Number(ancora.valor);
     const totalCompra = total_compra_parcela({

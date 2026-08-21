@@ -7,10 +7,8 @@ import {
   obter_banco,
 } from "@lancai/banco";
 import { listar_recorrencias } from "../servicos/recorrencia-servico";
-import { ModuloRelatorios, RepositorioRelatoriosDrizzle } from "@lancai/relatorios";
+import { montar_comprometimento } from "../servicos/comprometimento-servico";
 import { hojeISO } from "@lancai/tipos";
-
-const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
 
 export async function registrar_rotas_recorrencia(app: FastifyInstance) {
   app.get("/", async (requisicao, resposta) => {
@@ -72,14 +70,6 @@ export async function registrar_rotas_recorrencia(app: FastifyInstance) {
     if (!usuarioId) {
       return resposta.status(400).send({ erro: "usuarioId é obrigatório." });
     }
-    const visao = await relatorios.consultar_visao(
-      "parcelamentos",
-      { usuarioId },
-      data ?? hojeISO(),
-    );
-    if (visao.tipo !== "parcelamentos") {
-      return resposta.status(500).send({ erro: "Resposta inesperada." });
-    }
-    return visao.dados;
+    return montar_comprometimento(usuarioId, data ?? hojeISO());
   });
 }

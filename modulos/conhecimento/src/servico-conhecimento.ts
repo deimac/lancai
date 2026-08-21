@@ -3,6 +3,8 @@ import {
   schemaAtualizarConhecimento,
   schemaAtualizarRegra,
   schemaCriarRegra,
+  eh_movimento_parcelado,
+  irmas_da_serie,
 } from "@lancai/tipos";
 import type {
   AcaoRegra,
@@ -134,6 +136,74 @@ export class ServicoConhecimento {
       campos,
       auditoria,
     });
+  }
+
+  /** Copia categoria e tipo de gasto da parcela classificada para as irmãs ainda soltas. */
+  async propagar_classificacao_da_serie(movimentoId: string): Promise<number> {
+    const ancora = await this.repositorio.obterMovimento(movimentoId);
+    if (!ancora) throw new ErroMovimentoNaoEncontrado(movimentoId);
+    if (!eh_movimento_parcelado(ancora)) return 0;
+
+    const candidatas = await this.repositorio.listarIrmasParcelamento(ancora);
+    const irmas = irmas_da_serie(ancora, candidatas).filter((item) => item.id !== ancora.id);
+    let atualizadas = 0;
+    for (const irma of irmas) {
+      if (!(await this.pode_receber_serie(irma))) continue;
+      await this.atualizar({
+        movimentoId: irma.id,
+        alteradoPor: ancora.alteradoPor ?? ancora.usuarioId,
+        conhecimento: {
+          categoriaId: ancora.categoriaId,
+          tipoGasto: ancora.tipoGasto,
+          classificadoPor: "usuario",
+          regraId: null,
+          confiancaIa: null,
+        },
+      });
+      atualizadas += 1;
+    }
+    return atualizadas;
+  }
+
+  /** Parcela nova (projetada) herda Conhecimento de uma irmã já classificada pela pessoa. */
+  async herdar_classificacao_da_serie(movimentoId: string): Promise<boolean> {
+    const atual = await this.repositorio.obterMovimento(movimentoId);
+    if (!atual) throw new ErroMovimentoNaoEncontrado(movimentoId);
+    if (!eh_movimento_parcelado(atual)) return false;
+    if (!(await this.pode_receber_serie(atual))) return false;
+
+    const candidatas = await this.repositorio.listarIrmasParcelamento(atual);
+    const fonte = irmas_da_serie(atual, candidatas).find(
+      (item) => item.id !== atual.id && item.classificadoPor === "usuario",
+    );
+    if (!fonte || (await this.eh_nao_classificado(fonte.categoriaId))) return false;
+
+    await this.atualizar({
+      movimentoId: atual.id,
+      alteradoPor: fonte.alteradoPor ?? fonte.usuarioId,
+      conhecimento: {
+        categoriaId: fonte.categoriaId,
+        tipoGasto: fonte.tipoGasto,
+        classificadoPor: "usuario",
+        regraId: null,
+        confiancaIa: null,
+      },
+    });
+    return true;
+  }
+
+  private async pode_receber_serie(movimento: Movimento): Promise<boolean> {
+    if (movimento.classificadoPor === "ia") return true;
+    return this.eh_nao_classificado(movimento.categoriaId);
+  }
+
+  private async eh_nao_classificado(categoriaId: string): Promise<boolean> {
+    const categoria = await this.repositorio.obterCategoria(categoriaId);
+    return (
+      !categoria ||
+      categoria.nome.toLocaleLowerCase("pt-BR") ===
+        CATEGORIA_NAO_CLASSIFICADO.toLocaleLowerCase("pt-BR")
+    );
   }
 
   async aplicar_regras(

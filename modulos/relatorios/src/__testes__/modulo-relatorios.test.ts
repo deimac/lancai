@@ -312,6 +312,43 @@ describe("ModuloRelatorios", () => {
       expect(compra.proximaParcelaData).toBe("2026-08-27");
     });
 
+    it("agrupa parcelas OF da mesma compra mesmo sem linhas na tabela parcela", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, { nome: "C6" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const datas = ["2026-07-10", "2026-08-27", "2026-09-27"];
+      datas.forEach((data, indice) => {
+        const movimento = criarMovimento(usuarioId, categoria.id, {
+          descricao: "Passagem LATAM",
+          cartaoId: cartao.id,
+          valor: "400.00",
+          dataMovimento: data,
+          parcelaNumero: indice + 1,
+          parcelaTotal: 3,
+          parcelaCompraEm: "2026-06-15",
+          parcelaCompraValor: "1200.00",
+          status: indice === 0 ? "realizado" : "previsto",
+        });
+        repositorio.movimentos.set(movimento.id, movimento);
+      });
+
+      const resultado = await relatorios.consultar_visao("parcelamentos", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoParcelamentos;
+      expect(dados.compras).toHaveLength(1);
+      const compra = dados.compras[0]!;
+      expect(compra.descricao).toBe("Passagem LATAM");
+      expect(compra.cartaoNome).toBe("C6");
+      expect(compra.valorTotal).toBe(1200);
+      expect(compra.parcelasTotais).toBe(3);
+      expect(compra.parcelasPagas).toBe(1);
+      expect(compra.parcelasRestantes).toBe(2);
+      expect(compra.valorRestante).toBe(800);
+      expect(compra.proximaParcelaData).toBe("2026-08-27");
+      expect(compra.parcelasPorMes.map((item) => item.mes)).toEqual(["2026-07", "2026-08", "2026-09"]);
+    });
+
     it("não lista compras à vista (uma única parcela) como parcelamento", async () => {
       const conta = criarConta(usuarioId);
       const cartao = criarCartao(usuarioId, conta.id);
@@ -407,6 +444,29 @@ describe("ModuloRelatorios", () => {
       expect(dados.periodo.ate).toBe("2026-12-31");
       expect(dados.totalComprometido).toBe(300);
       expect(dados.itens).toHaveLength(1);
+    });
+
+    it("inclui parcela OF prevista no comprometido futuro", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id);
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+      const movimento = criarMovimento(usuarioId, categoria.id, {
+        descricao: "LATAM",
+        cartaoId: cartao.id,
+        valor: "200.00",
+        dataMovimento: "2026-10-10",
+        status: "previsto",
+        parcelaNumero: 4,
+        parcelaTotal: 6,
+        parcelaCompraEm: "2026-06-15",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const resultado = await relatorios.consultar_visao("futuro", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoFuturo;
+      expect(dados.totalComprometido).toBe(200);
+      expect(dados.itens[0]).toMatchObject({ origem: "parcela", descricao: "LATAM (parcela 4)" });
     });
   });
 

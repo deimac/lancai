@@ -5,7 +5,7 @@ import {
   RepositorioRelatoriosDrizzle,
   inicioFimMesAtual,
 } from "@lancai/relatorios";
-import { adicionarMeses, deISOParaData, hojeISO, paraDataISO } from "@lancai/tipos";
+import { adicionarMeses, deISOParaData, eh_movimento_parcelado, hojeISO, paraDataISO } from "@lancai/tipos";
 import { mapear_origem_cartoes } from "./origem-conta-cartao";
 import { listar_status_orcamentos } from "./orcamento-servico";
 
@@ -460,6 +460,9 @@ function montar_proximos_pagamentos(entrada: {
     dataMovimento: string;
     fonte: string;
     tipo: string;
+    cartaoId?: string | null;
+    parcelaTotal?: number | null;
+    parcelaCompraEm?: string | Date | null;
   }>;
   hoje: string;
   periodo: { de: string; ate: string };
@@ -481,6 +484,7 @@ function montar_proximos_pagamentos(entrada: {
   for (const movimento of entrada.movimentos) {
     if (movimento.status !== "previsto") continue;
     if (movimento.tipo !== "despesa" && movimento.tipo !== "retirada") continue;
+    if (eh_movimento_parcelado(movimento)) continue;
     itens.push({
       id: movimento.id,
       data: String(movimento.dataMovimento).slice(0, 10),

@@ -9,3 +9,4 @@ export * from "./regra";
 export * from "./confianca";
 export * from "./pagamento-fatura";
 export * from "./enxugar-descricao-fonte";
+export * from "./serie-parcelamento";

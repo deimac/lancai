@@ -158,6 +158,32 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
     }));
   }
 
+  async listarIrmasParcelamento(movimento: Movimento) {
+    if (
+      !movimento.cartaoId ||
+      movimento.parcelaTotal == null ||
+      movimento.parcelaTotal < 2 ||
+      !movimento.parcelaCompraEm
+    ) {
+      return [];
+    }
+    const chave = [
+      movimento.cartaoId,
+      String(movimento.parcelaCompraEm).slice(0, 10),
+      String(movimento.parcelaTotal),
+    ].join("|");
+    return [...this.movimentos.values()].filter((item) => {
+      if (item.status === "cancelado") return false;
+      if (!item.cartaoId || item.parcelaTotal == null || !item.parcelaCompraEm) return false;
+      const outra = [
+        item.cartaoId,
+        String(item.parcelaCompraEm).slice(0, 10),
+        String(item.parcelaTotal),
+      ].join("|");
+      return outra === chave;
+    });
+  }
+
   cadastrarCategoria(id: string, nome: string) {
     this.categorias.set(id, { nome });
   }
@@ -1038,5 +1064,128 @@ describe("separar_correcao_por_grupo", () => {
     });
     expect(somenteFato.conhecimento).toBeUndefined();
     expect(somenteFato.fato).toBeDefined();
+  });
+});
+
+describe("série de parcelas", () => {
+  it("propaga categoria e tipo de gasto para irmãs ainda não classificadas", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    repo.workspacesPorUsuario.set(dono, [WORKSPACE]);
+    const servico = new ServicoConhecimento(repo);
+    const cartaoId = randomUUID();
+    const naoClassificado = randomUUID();
+    const lazer = randomUUID();
+    repo.cadastrarCategoria(naoClassificado, "Não classificado");
+    repo.cadastrarCategoria(lazer, "Lazer");
+
+    const base = {
+      usuarioId: dono,
+      cartaoId,
+      parcelaTotal: 3,
+      parcelaCompraEm: "2026-06-01",
+      descricao: "LATAM",
+    };
+    const p1 = criarMovimento({
+      ...base,
+      parcelaNumero: 1,
+      categoriaId: lazer,
+      classificadoPor: "usuario",
+      tipoGasto: "pf",
+    });
+    const p2 = criarMovimento({
+      ...base,
+      parcelaNumero: 2,
+      categoriaId: naoClassificado,
+      classificadoPor: "ia",
+    });
+    const p3 = criarMovimento({
+      ...base,
+      parcelaNumero: 3,
+      categoriaId: naoClassificado,
+      classificadoPor: "usuario",
+    });
+    repo.movimentos.set(p1.id, p1);
+    repo.movimentos.set(p2.id, p2);
+    repo.movimentos.set(p3.id, p3);
+
+    const n = await servico.propagar_classificacao_da_serie(p1.id);
+    expect(n).toBe(2);
+    expect(repo.movimentos.get(p2.id)?.categoriaId).toBe(lazer);
+    expect(repo.movimentos.get(p3.id)?.categoriaId).toBe(lazer);
+  });
+
+  it("não sobrescreve irmã classificada à mão em outra categoria", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const cartaoId = randomUUID();
+    const lazer = randomUUID();
+    const transporte = randomUUID();
+    repo.cadastrarCategoria(lazer, "Lazer");
+    repo.cadastrarCategoria(transporte, "Transporte");
+    const p1 = criarMovimento({
+      usuarioId: dono,
+      cartaoId,
+      parcelaNumero: 1,
+      parcelaTotal: 2,
+      parcelaCompraEm: "2026-06-01",
+      descricao: "LATAM",
+      categoriaId: lazer,
+      classificadoPor: "usuario",
+    });
+    const p2 = criarMovimento({
+      usuarioId: dono,
+      cartaoId,
+      parcelaNumero: 2,
+      parcelaTotal: 2,
+      parcelaCompraEm: "2026-06-01",
+      descricao: "LATAM",
+      categoriaId: transporte,
+      classificadoPor: "usuario",
+    });
+    repo.movimentos.set(p1.id, p1);
+    repo.movimentos.set(p2.id, p2);
+
+    expect(await servico.propagar_classificacao_da_serie(p1.id)).toBe(0);
+    expect(repo.movimentos.get(p2.id)?.categoriaId).toBe(transporte);
+  });
+
+  it("parcela projetada herda a irmã classificada pela pessoa", async () => {
+    const dono = randomUUID();
+    const repo = new RepositorioEmMemoria();
+    const servico = new ServicoConhecimento(repo);
+    const cartaoId = randomUUID();
+    const naoClassificado = randomUUID();
+    const lazer = randomUUID();
+    repo.cadastrarCategoria(naoClassificado, "Não classificado");
+    repo.cadastrarCategoria(lazer, "Lazer");
+    const p1 = criarMovimento({
+      usuarioId: dono,
+      cartaoId,
+      parcelaNumero: 1,
+      parcelaTotal: 2,
+      parcelaCompraEm: "2026-06-01",
+      descricao: "LATAM",
+      categoriaId: lazer,
+      classificadoPor: "usuario",
+      tipoGasto: "pj",
+    });
+    const p2 = criarMovimento({
+      usuarioId: dono,
+      cartaoId,
+      parcelaNumero: 2,
+      parcelaTotal: 2,
+      parcelaCompraEm: "2026-06-01",
+      descricao: "LATAM",
+      categoriaId: naoClassificado,
+      classificadoPor: "ia",
+    });
+    repo.movimentos.set(p1.id, p1);
+    repo.movimentos.set(p2.id, p2);
+
+    expect(await servico.herdar_classificacao_da_serie(p2.id)).toBe(true);
+    expect(repo.movimentos.get(p2.id)?.categoriaId).toBe(lazer);
+    expect(repo.movimentos.get(p2.id)?.tipoGasto).toBe("pj");
   });
 });

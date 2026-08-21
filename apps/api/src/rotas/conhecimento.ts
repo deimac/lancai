@@ -119,7 +119,12 @@ export async function registrar_rotas_conhecimento(app: FastifyInstance) {
         },
       });
 
-      return serializar_conhecimento(atualizado);
+      let parcelasAtualizadas = 0;
+      if (dados.categoriaId !== undefined || dados.tipoGasto !== undefined) {
+        parcelasAtualizadas = await conhecimento.propagar_classificacao_da_serie(atualizado.id);
+      }
+
+      return { ...(await serializar_conhecimento(atualizado)), parcelasAtualizadas };
     } catch (erro) {
       if (erro instanceof ErroMovimentoNaoEncontrado) {
         return resposta.status(404).send({ erro: erro.message });

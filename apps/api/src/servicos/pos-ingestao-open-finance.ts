@@ -53,6 +53,8 @@ export async function enriquecer_apos_ingestao(entrada: {
   for (const movimentoId of resumo.movimentoIdsCriados) {
     if (fatosCasados.has(movimentoId)) continue;
     try {
+      const herdou = await conhecimento.herdar_classificacao_da_serie(movimentoId);
+      if (herdou) continue;
       if (!iaLigada) {
         const soRegra = await conhecimento.aplicar_regras(movimentoId);
         if (soRegra.aplicada) porRegra += 1;

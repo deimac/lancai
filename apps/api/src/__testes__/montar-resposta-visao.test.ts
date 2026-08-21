@@ -75,6 +75,7 @@ describe("montar_resposta_visao", () => {
             parcelasRestantes: 7,
             valorRestante: 5600,
             proximaParcelaData: "2026-08-27",
+            parcelasPorMes: [{ mes: "2026-08", valor: 800 }],
           },
         ],
       },

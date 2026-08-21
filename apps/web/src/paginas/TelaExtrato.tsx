@@ -394,7 +394,11 @@ export function TelaExtrato() {
         ),
       );
       contexto?.invalidar("extrato", "dashboard");
-      toast.sucesso("Movimento classificado.");
+      toast.sucesso(
+        atualizado.parcelasAtualizadas
+          ? `Classifiquei as ${atualizado.parcelasAtualizadas + 1} parcelas desta compra.`
+          : "Movimento classificado.",
+      );
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível classificar.");
     } finally {

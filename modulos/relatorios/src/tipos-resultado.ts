@@ -29,6 +29,7 @@ export interface CompraParcelada {
   parcelasRestantes: number;
   valorRestante: number;
   proximaParcelaData: string | null;
+  parcelasPorMes: Array<{ mes: string; valor: number }>;
 }
 
 export interface ResultadoParcelamentos {

@@ -864,6 +864,7 @@ export const clienteApi = {
     cartaoFaturaId: string | null;
     competenciaFatura: string | null;
     propostaRegra: { trecho: string; categoriaNome: string } | null;
+    parcelasAtualizadas?: number;
   }> {
     return requisitar("/conhecimento", {
       method: "PATCH",
@@ -910,6 +911,7 @@ export const clienteApi = {
     usuarioId: string,
     data?: string,
   ): Promise<{
+    meses: Array<{ mes: string; parcelas: number; recorrentes: number }>;
     compras: Array<{
       descricao: string;
       cartaoNome: string;
@@ -919,6 +921,20 @@ export const clienteApi = {
       parcelasRestantes: number;
       valorRestante: number;
       proximaParcelaData: string | null;
+      parcelasPorMes: Array<{ mes: string; valor: number }>;
+    }>;
+    recorrentes: Array<{
+      id: string;
+      descricao: string;
+      valor: number;
+      origem: "cadastro" | "detectado";
+      diaDoMes: number | null;
+      categoriaNome: string | null;
+      icone: string;
+      cor: string;
+      contaNome: string | null;
+      cartaoNome: string | null;
+      tipo: string;
     }>;
   }> {
     const query = new URLSearchParams({ usuarioId });

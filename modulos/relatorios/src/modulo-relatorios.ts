@@ -1,6 +1,8 @@
 import { eh_fluxo_cruzado } from "@lancai/financeiro";
 import {
   LIMITE_ITENS_HISTORICO,
+  agrupar_series_parcelamento,
+  eh_movimento_parcelado,
   paraNumero,
   schemaFiltrosVisaoResolvidos,
   somar,
@@ -144,45 +146,75 @@ export class ModuloRelatorios {
   }
 
   /**
-   * O schema atual não tem um campo "parcela paga" — nenhuma tela marca uma
-   * fatura como quitada. Convenção assumida aqui (ajustável se o produto
-   * ganhar essa funcionalidade): parcelas com vencimento antes de `dataAtual`
-   * já foram cobertas pela fatura correspondente ("pagas"); as demais contam
-   * como "restantes".
+   * Parcelas com vencimento antes de `dataAtual` já foram cobertas pela fatura
+   * ("pagas"); as demais contam como restantes. Série OF = N movimentos;
+   * lançamento manual = 1 movimento + linhas na tabela `parcela`.
    */
   private async consultar_parcelamentos(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
-    const parcelas = await this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: filtros.cartaoId });
-    const cartoes = await this.repositorio.listarCartoes(filtros.usuarioId, filtros.perfil);
+    const [movimentos, parcelas, cartoes] = await Promise.all([
+      this.repositorio.listarMovimentos(filtros.usuarioId, { cartaoId: filtros.cartaoId }),
+      this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: filtros.cartaoId }),
+      this.repositorio.listarCartoes(filtros.usuarioId, filtros.perfil),
+    ]);
     const mapaCartoes = new Map(cartoes.map((cartao) => [cartao.id, cartao]));
+    const idsSerieOf = new Set(
+      movimentos.filter((movimento) => eh_movimento_parcelado(movimento)).map((movimento) => movimento.id),
+    );
+
+    const compras: CompraParcelada[] = [];
+
+    for (const grupo of agrupar_series_parcelamento(
+      movimentos.filter((movimento) => mapaCartoes.has(movimento.cartaoId ?? "")),
+    )) {
+      const primeira = grupo[0];
+      if (!primeira) continue;
+      const cartao = mapaCartoes.get(primeira.cartaoId ?? "");
+      compras.push(
+        montar_compra_de_itens({
+          descricao: primeira.descricao,
+          cartaoNome: cartao?.nome ?? "cartão desconhecido",
+          valorTotal:
+            total_compra_parcela({
+              valorParcela: paraNumero(primeira.valor),
+              parcelaTotal: primeira.parcelaTotal,
+              parcelaCompraValor: primeira.parcelaCompraValor,
+            }) ?? (grupo.length ? somar(...grupo.map((item) => item.valor)) : 0),
+          parcelasTotais: primeira.parcelaTotal ?? grupo.length,
+          itens: grupo.map((item) => ({
+            data: String(item.dataMovimento).slice(0, 10),
+            valor: item.valor,
+          })),
+          dataAtual,
+        }),
+      );
+    }
 
     const porMovimento = new Map<string, typeof parcelas>();
     for (const parcela of parcelas) {
-      if (!mapaCartoes.has(parcela.movimento.cartaoId ?? "")) continue; // cartão inativo ou fora do perfil filtrado
+      if (idsSerieOf.has(parcela.movimentoId)) continue;
+      if (!mapaCartoes.has(parcela.movimento.cartaoId ?? "")) continue;
       const grupo = porMovimento.get(parcela.movimentoId) ?? [];
       grupo.push(parcela);
       porMovimento.set(parcela.movimentoId, grupo);
     }
 
-    const compras: CompraParcelada[] = [];
     for (const grupoParcelas of porMovimento.values()) {
       const primeira = grupoParcelas[0];
-      if (!primeira || grupoParcelas.length < 2) continue; // compra à vista não é "parcelamento"
-
+      if (!primeira || grupoParcelas.length < 2) continue;
       const cartao = mapaCartoes.get(primeira.movimento.cartaoId ?? "");
-      const pagas = grupoParcelas.filter((parcela) => parcela.dataMovimento < dataAtual);
-      const restantes = grupoParcelas.filter((parcela) => parcela.dataMovimento >= dataAtual);
-      const proxima = restantes.sort((a, b) => a.dataMovimento.localeCompare(b.dataMovimento))[0];
-
-      compras.push({
-        descricao: primeira.movimento.descricao,
-        cartaoNome: cartao?.nome ?? "cartão desconhecido",
-        valorTotal: paraNumero(primeira.movimento.valor),
-        parcelasTotais: grupoParcelas.length,
-        parcelasPagas: pagas.length,
-        parcelasRestantes: restantes.length,
-        valorRestante: restantes.length ? somar(...restantes.map((parcela) => parcela.valor)) : 0,
-        proximaParcelaData: proxima?.dataMovimento ?? null,
-      });
+      compras.push(
+        montar_compra_de_itens({
+          descricao: primeira.movimento.descricao,
+          cartaoNome: cartao?.nome ?? "cartão desconhecido",
+          valorTotal: paraNumero(primeira.movimento.valor),
+          parcelasTotais: grupoParcelas.length,
+          itens: grupoParcelas.map((parcela) => ({
+            data: parcela.dataMovimento,
+            valor: parcela.valor,
+          })),
+          dataAtual,
+        }),
+      );
     }
 
     return { compras: compras.sort((a, b) => b.valorRestante - a.valorRestante) };
@@ -268,12 +300,18 @@ export class ModuloRelatorios {
       origem: "parcela",
     }));
 
-    const movimentosPrevistos = movimentos.filter((movimento) => movimento.status === "previsto" && !movimento.cartaoId);
+    const movimentosPrevistos = movimentos.filter((movimento) => {
+      if (movimento.status !== "previsto") return false;
+      if (!movimento.cartaoId) return true;
+      return eh_movimento_parcelado(movimento);
+    });
     const itensMovimento: ItemFuturo[] = movimentosPrevistos.map((movimento) => ({
-      descricao: movimento.descricao,
+      descricao: eh_movimento_parcelado(movimento)
+        ? `${movimento.descricao} (parcela ${movimento.parcelaNumero})`
+        : movimento.descricao,
       valor: paraNumero(movimento.valor),
-      data: movimento.dataMovimento,
-      origem: "movimento",
+      data: String(movimento.dataMovimento).slice(0, 10),
+      origem: eh_movimento_parcelado(movimento) ? "parcela" : "movimento",
     }));
 
     const itens = [...itensParcela, ...itensMovimento].sort((a, b) => a.data.localeCompare(b.data));
@@ -450,4 +488,36 @@ export class ModuloRelatorios {
       dias,
     };
   }
+}
+
+function montar_compra_de_itens(entrada: {
+  descricao: string;
+  cartaoNome: string;
+  valorTotal: number;
+  parcelasTotais: number;
+  itens: Array<{ data: string; valor: string | number }>;
+  dataAtual: string;
+}): CompraParcelada {
+  const pagas = entrada.itens.filter((item) => item.data < entrada.dataAtual);
+  const restantes = entrada.itens
+    .filter((item) => item.data >= entrada.dataAtual)
+    .sort((a, b) => a.data.localeCompare(b.data));
+  const porMes = new Map<string, number>();
+  for (const item of entrada.itens) {
+    const mes = item.data.slice(0, 7);
+    porMes.set(mes, somar(porMes.get(mes) ?? 0, item.valor));
+  }
+  return {
+    descricao: entrada.descricao,
+    cartaoNome: entrada.cartaoNome,
+    valorTotal: entrada.valorTotal,
+    parcelasTotais: entrada.parcelasTotais,
+    parcelasPagas: pagas.length,
+    parcelasRestantes: restantes.length,
+    valorRestante: restantes.length ? somar(...restantes.map((item) => item.valor)) : 0,
+    proximaParcelaData: restantes[0]?.data ?? null,
+    parcelasPorMes: [...porMes.entries()]
+      .map(([mes, valor]) => ({ mes, valor }))
+      .sort((a, b) => a.mes.localeCompare(b.mes)),
+  };
 }
