@@ -36,6 +36,13 @@ export interface TransacaoPluggy {
   description?: string | null;
   descriptionRaw?: string | null;
   amount: number;
+  /**
+   * Valor na moeda da conta (BRL no cartão brasileiro). Só vem em compra
+   * internacional — `amount` nesse caso é a moeda original (USD, EUR…).
+   */
+  amountInAccountCurrency?: number | null;
+  /** ISO da moeda de `amount` (BRL, USD…). */
+  currencyCode?: string | null;
   date: string;
   type?: "DEBIT" | "CREDIT" | string;
   status?: "POSTED" | "PENDING" | string;

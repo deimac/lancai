@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { somar_meses, traduzir_transacao } from "../traducao";
+import { somar_meses, traduzir_lote_transacoes, traduzir_transacao } from "../traducao";
 import type { TransacaoPluggy } from "../tipos";
 
 function tx(sobrepor: Partial<TransacaoPluggy> = {}): TransacaoPluggy {
@@ -95,6 +95,124 @@ describe("traduzir_transacao", () => {
       }),
     );
     expect(mov.ocorridoEm).toBe("2026-09-13");
+  });
+
+  it("compra internacional usa o valor em real da conta, não o amount em dólar", () => {
+    const mov = traduzir_transacao(
+      tx({
+        amount: -39.99,
+        currencyCode: "USD",
+        amountInAccountCurrency: -224.34,
+        descriptionRaw: "FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+    );
+    expect(mov.valor).toBe(224.34);
+  });
+
+  it("compra nacional continua usando amount quando não há conversão", () => {
+    const mov = traduzir_transacao(
+      tx({
+        amount: -65.83,
+        currencyCode: "BRL",
+        amountInAccountCurrency: null,
+        creditCardMetadata: null,
+      }),
+    );
+    expect(mov.valor).toBe(65.83);
+  });
+});
+
+describe("traduzir_lote_transacoes", () => {
+  it("compra internacional com conversão entra pelo valor em real", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "usd",
+        amount: -39.99,
+        currencyCode: "USD",
+        amountInAccountCurrency: -224.34,
+        descriptionRaw: "FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote).toHaveLength(1);
+    expect(lote[0]?.valor).toBe(224.34);
+  });
+
+  it("compra nacional sem amountInAccountCurrency continua usando amount", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "brl",
+        amount: -65.83,
+        currencyCode: "BRL",
+        amountInAccountCurrency: null,
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote).toHaveLength(1);
+    expect(lote[0]?.valor).toBe(65.83);
+  });
+
+  it("USD sem conversão não vira Fato — espera o amountInAccountCurrency", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "usd",
+        amount: -39.99,
+        currencyCode: "USD",
+        amountInAccountCurrency: null,
+        descriptionRaw: "FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "brl",
+        amount: -65.83,
+        currencyCode: "BRL",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.map((m) => m.idExterno)).toEqual(["brl"]);
+  });
+
+  it("IOF ~19% no mesmo dia omite a compra ainda em moeda original", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "compra",
+        amount: -39.99,
+        date: "2026-08-06T00:00:00.000Z",
+        descriptionRaw: "FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "iof",
+        amount: -7.57,
+        date: "2026-08-06T00:00:00.000Z",
+        descriptionRaw: "IOF INTERNACIONAL - FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.map((m) => m.idExterno)).toEqual(["iof"]);
+    expect(lote[0]?.valor).toBe(7.57);
+  });
+
+  it("IOF ~3,5% no mesmo dia mantém compra e IOF — valor já está em real", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "compra",
+        amount: -224.34,
+        date: "2026-08-06T00:00:00.000Z",
+        descriptionRaw: "FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "iof",
+        amount: -7.57,
+        date: "2026-08-06T00:00:00.000Z",
+        descriptionRaw: "IOF INTERNACIONAL - FLIGHTCONNECTIONSENSCHEDENL",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.map((m) => m.idExterno)).toEqual(["compra", "iof"]);
+    expect(lote[0]?.valor).toBe(224.34);
   });
 });
 

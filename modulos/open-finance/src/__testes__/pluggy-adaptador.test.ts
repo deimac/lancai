@@ -342,6 +342,66 @@ describe("AdaptadorPluggy", () => {
       expect(lote.proxima).toBeNull();
     });
 
+    it("não grava compra internacional sem valor na moeda da conta", async () => {
+      rede.responder("/v2/transactions", {
+        results: [
+          {
+            id: "usd",
+            descriptionRaw: "FLIGHTCONNECTIONSENSCHEDENL",
+            amount: -39.99,
+            currencyCode: "USD",
+            date: "2026-08-06T00:00:00.000Z",
+            accountId: CONTA,
+            type: "DEBIT",
+            status: "POSTED",
+          },
+          {
+            id: "brl",
+            descriptionRaw: "CLARO",
+            amount: -65.83,
+            date: "2026-08-06T00:00:00.000Z",
+            accountId: CONTA,
+            type: "DEBIT",
+            status: "POSTED",
+          },
+        ],
+      });
+
+      const { movimentacoes } = await adaptador.coletar_lote("/v2/transactions");
+
+      expect(movimentacoes.map((m) => m.idExterno)).toEqual(["brl"]);
+      expect(movimentacoes[0]?.valor).toBe(65.83);
+    });
+
+    it("omite compra cujo IOF do mesmo dia denuncia valor ainda estrangeiro", async () => {
+      rede.responder("/v2/transactions", {
+        results: [
+          {
+            id: "compra",
+            descriptionRaw: "AEROITALIA B2B IT",
+            amount: -613.62,
+            date: "2026-07-29T00:00:00.000Z",
+            accountId: CONTA,
+            type: "DEBIT",
+            status: "PENDING",
+          },
+          {
+            id: "iof",
+            descriptionRaw: "IOF INTERNACIONAL - AEROITALIA B2B IT",
+            amount: -116.62,
+            date: "2026-07-29T00:00:00.000Z",
+            accountId: CONTA,
+            type: "DEBIT",
+            status: "PENDING",
+          },
+        ],
+      });
+
+      const { movimentacoes } = await adaptador.coletar_lote("/v2/transactions");
+
+      expect(movimentacoes.map((m) => m.idExterno)).toEqual(["iof"]);
+    });
+
     it("entrega CREDIT como receita e PENDING como pendente", async () => {
       rede.responder("/v2/transactions", {
         results: [

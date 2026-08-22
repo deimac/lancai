@@ -20,8 +20,11 @@ import type {
   WebhookPluggy,
 } from "./tipos";
 import {
+  omitir_compras_incompativeis_com_iof,
+  transacao_tem_valor_na_moeda_da_conta,
   traduzir_conta,
   traduzir_data,
+  traduzir_lote_transacoes,
   traduzir_motivo,
   traduzir_status_item,
   traduzir_transacao,
@@ -129,7 +132,7 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
     const corpo = await this.cliente.obter<RespostaPaginada<TransacaoPluggy>>(referencia);
 
     return {
-      movimentacoes: (corpo.results ?? []).map(traduzir_transacao),
+      movimentacoes: traduzir_lote_transacoes(corpo.results ?? []),
       proxima: this.resolver_proxima(corpo.next),
     };
   }
@@ -165,6 +168,7 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
             await this.cliente.obter<RespostaPaginada<TransacaoPluggy>>(caminho);
 
           for (const transacao of corpo.results ?? []) {
+            if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
             encontradas.set(transacao.id, traduzir_transacao(transacao));
           }
           caminho = this.resolver_proxima(corpo.next);
@@ -172,7 +176,7 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
       }
     }
 
-    return [...encontradas.values()];
+    return omitir_compras_incompativeis_com_iof([...encontradas.values()]);
   }
 
   async obter_estado(conexaoExterna: string): Promise<EstadoConexao> {

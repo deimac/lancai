@@ -75,8 +75,8 @@ export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExte
     /** Competência = mês da fatura (`billForecastDate`), não a data da compra. */
     ocorridoEm,
     ocorridoEmInstante: instante_do_movimento(transacao.date, ocorridoEm),
-    /** `amount` vem com sinal; a direção mora em `tipo`. */
-    valor: Math.abs(transacao.amount),
+    /** Compra internacional: `amount` é USD/EUR; o fatura em real está em `amountInAccountCurrency`. */
+    valor: valor_na_moeda_da_conta(transacao),
     /** A Pluggy já normaliza a inversão do cartão: compra é sempre DEBIT. */
     tipo: transacao.type === "CREDIT" ? "receita" : "despesa",
     /**
@@ -112,6 +112,97 @@ function data_do_movimento(transacao: TransacaoPluggy, status: StatusFonte): str
   }
 
   return transacao.date.slice(0, 10);
+}
+
+/** Moeda da fatura no cartão brasileiro. `amount` só é BRL quando a Pluggy não diz outra coisa. */
+const MOEDA_DA_CONTA = "BRL";
+
+/**
+ * IOF internacional no cartão brasileiro é ~3,5% do valor em real. Se a linha
+ * `IOF INTERNACIONAL - X` do mesmo dia passa de ~8% da compra `X`, o valor da
+ * compra ainda está na moeda original — gravar isso como real é o bug do
+ * FlightConnections (USD 39,99 virando R$ 39,99). Não inventamos o real via
+ * IOF/0,035: a taxa muda e o arredondamento da instituição não bate.
+ */
+const LIMIAR_IOF_SOBRE_VALOR_ESTRANGEIRO = 0.08;
+
+/**
+ * Fatura e relatórios são em real. Em compra internacional a Pluggy deixa o
+ * valor original em `amount` (USD 39,99) e o convertido em
+ * `amountInAccountCurrency` (R$ 224,34). Sem o segundo e sem moeda estrangeira,
+ * `amount` já é BRL.
+ */
+export function valor_na_moeda_da_conta(transacao: TransacaoPluggy): number {
+  const naConta = transacao.amountInAccountCurrency;
+  if (typeof naConta === "number" && Number.isFinite(naConta)) {
+    return Math.abs(naConta);
+  }
+  return Math.abs(transacao.amount);
+}
+
+/**
+ * Compra em USD/EUR sem `amountInAccountCurrency` não pode virar Fato: o
+ * `amount` ainda é a moeda original. A Pluggy costuma mandar a conversão depois
+ * em `transactions/updated`.
+ */
+export function transacao_tem_valor_na_moeda_da_conta(transacao: TransacaoPluggy): boolean {
+  const naConta = transacao.amountInAccountCurrency;
+  if (typeof naConta === "number" && Number.isFinite(naConta)) return true;
+  const moeda = (transacao.currencyCode ?? MOEDA_DA_CONTA).trim().toUpperCase();
+  return moeda === "" || moeda === MOEDA_DA_CONTA;
+}
+
+/**
+ * Tradução de um lote: descarta internacional sem conversão e, no que restou,
+ * omite compra cujo IOF do mesmo dia denuncia valor ainda estrangeiro.
+ */
+export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): MovimentacaoExterna[] {
+  const traduzidas: MovimentacaoExterna[] = [];
+  for (const transacao of transacoes) {
+    if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
+    traduzidas.push(traduzir_transacao(transacao));
+  }
+  return omitir_compras_incompativeis_com_iof(traduzidas);
+}
+
+function comercio_do_iof(descricao: string): string | null {
+  const match = /^IOF INTERNACIONAL\s*-\s*(.+)$/i.exec(descricao.trim());
+  const resto = match?.[1]?.trim();
+  return resto ? resto : null;
+}
+
+function normalizar_descricao(descricao: string): string {
+  return descricao.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * Rede de segurança quando a Pluggy omite `currencyCode`. IOF fica; a compra
+ * incompatível espera a conversão. Proporção ~3,5% mantém os dois.
+ */
+export function omitir_compras_incompativeis_com_iof(
+  movimentacoes: MovimentacaoExterna[],
+): MovimentacaoExterna[] {
+  const rejeitar = new Set<string>();
+
+  for (const iof of movimentacoes) {
+    const comercio = comercio_do_iof(iof.descricaoFonte);
+    if (!comercio || iof.valor <= 0) continue;
+    const comercioN = normalizar_descricao(comercio);
+
+    for (const compra of movimentacoes) {
+      if (compra.idExterno === iof.idExterno) continue;
+      if (compra.contaExternaId !== iof.contaExternaId) continue;
+      if (compra.ocorridoEm !== iof.ocorridoEm) continue;
+      if (comercio_do_iof(compra.descricaoFonte)) continue;
+      if (normalizar_descricao(compra.descricaoFonte) !== comercioN) continue;
+      if (compra.valor <= 0) continue;
+      if (iof.valor / compra.valor > LIMIAR_IOF_SOBRE_VALOR_ESTRANGEIRO) {
+        rejeitar.add(compra.idExterno);
+      }
+    }
+  }
+
+  return movimentacoes.filter((movimentacao) => !rejeitar.has(movimentacao.idExterno));
 }
 
 /**
