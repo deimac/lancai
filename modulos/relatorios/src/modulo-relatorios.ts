@@ -302,6 +302,7 @@ export class ModuloRelatorios {
       valor: paraNumero(parcela.valor),
       data: parcela.dataMovimento,
       origem: "parcela",
+      cartaoId: parcela.movimento.cartaoId,
     }));
 
     const movimentosPrevistos = movimentos.filter((movimento) => {
@@ -316,6 +317,7 @@ export class ModuloRelatorios {
       valor: paraNumero(movimento.valor),
       data: String(movimento.dataMovimento).slice(0, 10),
       origem: eh_movimento_parcelado(movimento) ? "parcela" : "movimento",
+      cartaoId: movimento.cartaoId,
     }));
 
     const itens = [...itensParcela, ...itensMovimento].sort((a, b) => a.data.localeCompare(b.data));

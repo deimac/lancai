@@ -4,6 +4,7 @@ import {
   data_proxima_do_vencimento,
   descricao_parece_pagamento_fatura,
   intervalo_ciclo_fatura,
+  competencia_ciclo_da_data,
   linha_aceita_pagamento_fatura,
   sugerir_pagamento_fatura,
   valores_proximos,
@@ -67,6 +68,13 @@ describe("heurística de pagamento de fatura", () => {
       inicio: "2026-07-11",
       fim: "2026-08-10",
     });
+  });
+
+  it("acha a competência da fatura a partir da data da compra", () => {
+    expect(competencia_ciclo_da_data("2026-08-01", 10)).toBe("2026-08");
+    expect(competencia_ciclo_da_data("2026-08-10", 10)).toBe("2026-08");
+    expect(competencia_ciclo_da_data("2026-08-11", 10)).toBe("2026-09");
+    expect(competencia_ciclo_da_data("2026-07-11", 10)).toBe("2026-08");
   });
 
   it("sugere pela descrição na conta preferencial, sem aplicar sozinha", () => {

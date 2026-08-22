@@ -5,7 +5,14 @@ import {
   RepositorioRelatoriosDrizzle,
   inicioFimMesAtual,
 } from "@lancai/relatorios";
-import { adicionarMeses, deISOParaData, eh_movimento_parcelado, hojeISO, paraDataISO } from "@lancai/tipos";
+import {
+  adicionarMeses,
+  competencia_ciclo_da_data,
+  deISOParaData,
+  eh_movimento_parcelado,
+  hojeISO,
+  paraDataISO,
+} from "@lancai/tipos";
 import { mapear_origem_cartoes } from "./origem-conta-cartao";
 import { listar_status_orcamentos } from "./orcamento-servico";
 
@@ -519,7 +526,13 @@ function montar_fluxo_resultado(
 }
 
 export function montar_proximos_pagamentos(entrada: {
-  futuro: Array<{ descricao: string; valor: number; data: string; origem: "parcela" | "movimento" }>;
+  futuro: Array<{
+    descricao: string;
+    valor: number;
+    data: string;
+    origem: "parcela" | "movimento";
+    cartaoId?: string | null;
+  }>;
   cartoes: DashboardCartao[];
   movimentos: Array<{
     id: string;
@@ -551,8 +564,31 @@ export function montar_proximos_pagamentos(entrada: {
     if (!movimento.cartaoFaturaId || !movimento.competenciaFatura) continue;
     faturasQuitadas.add(`${movimento.cartaoFaturaId}|${movimento.competenciaFatura}`);
   }
+  const cartaoPorId = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
+
+  const coberto_pela_fatura = (cartaoId: string | null | undefined, data: string): boolean => {
+    if (!cartaoId) return false;
+    const cartao = cartaoPorId.get(cartaoId);
+    if (!cartao) return false;
+    const competencia = competencia_ciclo_da_data(data, cartao.fechamento);
+    if (faturasQuitadas.has(`${cartaoId}|${competencia}`)) return true;
+    return competencia === mesAgenda;
+  };
+
+  const vencida_do_cartao = (
+    cartaoId: string | null | undefined,
+    data: string,
+  ): boolean => {
+    if (!cartaoId) return data < entrada.hoje;
+    const cartao = cartaoPorId.get(cartaoId);
+    if (!cartao) return data < entrada.hoje;
+    const competencia = competencia_ciclo_da_data(data, cartao.fechamento);
+    const dia = String(cartao.vencimento).padStart(2, "0");
+    return `${competencia}-${dia}` < entrada.hoje;
+  };
 
   for (const item of entrada.futuro) {
+    if (coberto_pela_fatura(item.cartaoId, item.data)) continue;
     itens.push({
       id: `${item.origem}-${item.data}-${item.descricao}`,
       data: item.data,
@@ -560,7 +596,7 @@ export function montar_proximos_pagamentos(entrada: {
       valor: item.valor,
       origem: item.origem === "parcela" ? "parcela" : "previsto",
       contaNome: null,
-      vencida: item.data < entrada.hoje,
+      vencida: vencida_do_cartao(item.cartaoId, item.data),
       pago: false,
     });
   }
@@ -569,14 +605,16 @@ export function montar_proximos_pagamentos(entrada: {
     if (movimento.status !== "previsto") continue;
     if (movimento.tipo !== "despesa" && movimento.tipo !== "retirada") continue;
     if (eh_movimento_parcelado(movimento)) continue;
+    const data = String(movimento.dataMovimento).slice(0, 10);
+    if (coberto_pela_fatura(movimento.cartaoId, data)) continue;
     itens.push({
       id: movimento.id,
-      data: String(movimento.dataMovimento).slice(0, 10),
+      data,
       descricao: movimento.descricao,
       valor: Number(movimento.valor),
       origem: movimento.fonte === "recorrencia" ? "recorrente" : "previsto",
       contaNome: null,
-      vencida: String(movimento.dataMovimento).slice(0, 10) < entrada.hoje,
+      vencida: vencida_do_cartao(movimento.cartaoId, data),
       pago: false,
     });
   }

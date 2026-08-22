@@ -68,6 +68,100 @@ describe("montar_proximos_pagamentos", () => {
     expect(faturas.map((item) => item.pago)).toEqual([false, true]);
   });
 
+  it("não lista parcela nem previsto do cartão quando a fatura do ciclo está paga", () => {
+    const itens = montar_proximos_pagamentos({
+      futuro: [
+        {
+          descricao: "GOL LINHAS (parcela 5)",
+          valor: 104,
+          data: "2026-08-01",
+          origem: "parcela",
+          cartaoId: "cartao-mp",
+        },
+      ],
+      cartoes: [cartao],
+      movimentos: [
+        {
+          id: "ifood",
+          descricao: "IFD*BUFFET",
+          valor: 79.18,
+          status: "previsto",
+          dataMovimento: "2026-08-01",
+          fonte: "open_finance",
+          tipo: "despesa",
+          cartaoId: "cartao-mp",
+        },
+      ],
+      pagamentosFatura: [
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          cartaoFaturaId: "cartao-mp",
+          competenciaFatura: "2026-08",
+        },
+      ],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.some((item) => item.descricao.includes("GOL"))).toBe(false);
+    expect(itens.some((item) => item.descricao.includes("IFD"))).toBe(false);
+    expect(itens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ origem: "fatura", pago: true, vencida: false }),
+      ]),
+    );
+  });
+
+  it("não trata compra do cartão como vencida se a fatura do mês já cobre o ciclo", () => {
+    const itens = montar_proximos_pagamentos({
+      futuro: [
+        {
+          descricao: "HOTEL (parcela 4)",
+          valor: 311.4,
+          data: "2026-08-01",
+          origem: "parcela",
+          cartaoId: "cartao-mp",
+        },
+      ],
+      cartoes: [cartao],
+      movimentos: [],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.some((item) => item.descricao.includes("HOTEL"))).toBe(false);
+    expect(itens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ origem: "fatura", descricao: "Fatura Mercado Pago Visa" }),
+      ]),
+    );
+  });
+
+  it("mantém previsto de conta vencido — não é fatura de cartão", () => {
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [cartao],
+      movimentos: [
+        {
+          id: "aluguel",
+          descricao: "Aluguel",
+          valor: 1500,
+          status: "previsto",
+          dataMovimento: "2026-08-05",
+          fonte: "manual",
+          tipo: "despesa",
+          cartaoId: null,
+        },
+      ],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ descricao: "Aluguel", vencida: true, pago: false }),
+      ]),
+    );
+  });
+
   it("mantém a fatura se o pagamento for de outro mês de vencimento", () => {
     const itens = montar_proximos_pagamentos({
       futuro: [],

@@ -57,6 +57,7 @@ export interface ItemFuturo {
   valor: number;
   data: string;
   origem: "parcela" | "movimento";
+  cartaoId?: string | null;
 }
 
 export interface ResultadoFuturo {

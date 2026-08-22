@@ -130,6 +130,21 @@ export function intervalo_ciclo_fatura(
   return { inicio: iso_utc(inicio), fim: iso_utc(fim) };
 }
 
+/** Competência cuja fatura inclui a compra nesta data (inverso de `intervalo_ciclo_fatura`). */
+export function competencia_ciclo_da_data(dataISO: string, fechamento: number): string {
+  const [anoStr, mesStr, diaStr] = dataISO.slice(0, 10).split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  const dia = Number(diaStr);
+  if (!ano || !mes || !dia) return dataISO.slice(0, 7);
+  const diaFecha = Math.min(Math.max(1, fechamento), 28);
+  if (dia <= diaFecha) {
+    return `${anoStr}-${String(mes).padStart(2, "0")}`;
+  }
+  const proximo = new Date(Date.UTC(ano, mes, 1));
+  return `${proximo.getUTCFullYear()}-${String(proximo.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export function valores_proximos(a: number, b: number, tolerancia = TOLERANCIA_VALOR_REAIS): boolean {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
   return Math.abs(a - b) <= tolerancia;
