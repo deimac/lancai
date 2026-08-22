@@ -21,14 +21,16 @@ import {
   type TipoDestinoPdf,
   exigir_destino_manual,
   hash_bytes_arquivo,
+  lotes_texto_pdf,
   montar_eventos_pdf,
   montar_preview_pdf,
   provedor_pdf_do_texto,
   texto_pdf_insuficiente,
+  unir_linhas_extraidas,
 } from "./importar-pdf";
 import { enriquecer_apos_ingestao } from "./pos-ingestao-open-finance";
 
-const LIMITE_TEXTO_LLM = 40_000;
+const LIMITE_CARACTERES_LOTE = 8_000;
 const LIMITE_ARQUIVO_BYTES = 12 * 1024 * 1024;
 
 function para_data_iso(bruto: unknown): unknown {
@@ -75,20 +77,43 @@ const schemaObjetoLinhas = z.object({
 
 export async function extrair_texto_pdf(bytes: Uint8Array): Promise<{
   texto: string;
-  paginas: number;
+  paginas: string[];
+  totalPages: number;
 }> {
   const { extractText } = await import("unpdf");
-  const extraido = await extractText(bytes, { mergePages: true });
-  return { texto: extraido.text, paginas: extraido.totalPages };
+  const extraido = await extractText(bytes, { mergePages: false });
+  const paginas = extraido.text;
+  return {
+    texto: paginas.join("\n\n"),
+    paginas,
+    totalPages: extraido.totalPages,
+  };
 }
 
 export async function interpretar_linhas_pdf(
   texto: string,
+  paginas?: string[],
   orquestrador: OrquestradorIA = new OrquestradorIA(),
 ): Promise<LinhaExtraidaPdf[]> {
-  const recorte =
-    texto.length > LIMITE_TEXTO_LLM ? texto.slice(0, LIMITE_TEXTO_LLM) : texto;
+  const lotes = lotes_texto_pdf(
+    paginas && paginas.length > 0 ? paginas : [texto],
+    LIMITE_CARACTERES_LOTE,
+  );
+  if (lotes.length === 0) return [];
 
+  const extraidos: LinhaExtraidaPdf[][] = [];
+  for (let i = 0; i < lotes.length; i++) {
+    extraidos.push(await interpretar_lote_pdf(lotes[i]!, i + 1, lotes.length, orquestrador));
+  }
+  return unir_linhas_extraidas(extraidos);
+}
+
+async function interpretar_lote_pdf(
+  trecho: string,
+  indice: number,
+  total: number,
+  orquestrador: OrquestradorIA,
+): Promise<LinhaExtraidaPdf[]> {
   const objeto = await orquestrador.gerar_objeto_estruturado({
     schema: schemaObjetoLinhas,
     estagio: "extrair_fatura_pdf",
@@ -102,9 +127,10 @@ export async function interpretar_linhas_pdf(
       "ocorridoEm no formato YYYY-MM-DD.",
       "Se a descrição tiver parcela (ex.: 3/12), preencha parcelamento {numero, total}.",
       "Ignore totais, saldos, cabeçalhos e anúncios.",
+      "Extraia TODAS as movimentações deste trecho, inclusive as do final. Não resuma nem omita linhas.",
       "Responda só o JSON pedido.",
     ].join(" "),
-    prompt: `Texto do PDF:\n\n${recorte}\n\nDevolva {"linhas":[{"ocorridoEm":"YYYY-MM-DD","descricao":"...","valor":0.0,"tipo":"despesa","destinoSugerido":"conta"}]}`,
+    prompt: `Trecho ${indice}/${total} do PDF:\n\n${trecho}\n\nDevolva {"linhas":[{"ocorridoEm":"YYYY-MM-DD","descricao":"...","valor":0.0,"tipo":"despesa","destinoSugerido":"conta"}]}`,
   });
 
   return objeto.linhas;
@@ -208,8 +234,8 @@ export async function preview_importacao_pdf(entrada: {
   cartaoId?: string;
   arquivo: Uint8Array;
   nomeArquivo?: string;
-  extrairTexto?: (bytes: Uint8Array) => Promise<{ texto: string; paginas: number }>;
-  interpretarLinhas?: (texto: string) => Promise<LinhaExtraidaPdf[]>;
+  extrairTexto?: (bytes: Uint8Array) => Promise<{ texto: string; paginas?: string[]; totalPages?: number }>;
+  interpretarLinhas?: (texto: string, paginas?: string[]) => Promise<LinhaExtraidaPdf[]>;
 }): Promise<PreviewImportacaoPdf> {
   if (entrada.arquivo.byteLength === 0) {
     throw new ErroValidacaoFinanceira("O arquivo PDF está vazio.");
@@ -222,7 +248,7 @@ export async function preview_importacao_pdf(entrada: {
   const { contas, cartoes } = await listar_candidatos(entrada.usuarioId);
   const arquivoHash = hash_bytes_arquivo(entrada.arquivo);
   const extrair = entrada.extrairTexto ?? extrair_texto_pdf;
-  const { texto } = await extrair(entrada.arquivo);
+  const { texto, paginas } = await extrair(entrada.arquivo);
   const textoInsuficiente = texto_pdf_insuficiente(texto);
   const provedor = provedor_pdf_do_texto(texto);
 
@@ -241,8 +267,7 @@ export async function preview_importacao_pdf(entrada: {
   }
 
   const interpretar = entrada.interpretarLinhas ?? interpretar_linhas_pdf;
-  const linhas = await interpretar(texto);
-  const truncado = texto.length > LIMITE_TEXTO_LLM;
+  const linhas = await interpretar(texto, paginas);
 
   return montar_preview_pdf({
     linhas,
@@ -252,9 +277,6 @@ export async function preview_importacao_pdf(entrada: {
     arquivoHash,
     provedor,
     textoInsuficiente: false,
-    aviso: truncado
-      ? "O PDF é longo: extraímos o começo. Confira se faltou alguma linha no fim do arquivo."
-      : undefined,
   });
 }
 

@@ -5,12 +5,14 @@ import {
   aplicar_segundo_destino,
   exigir_destino_manual,
   id_externo_pdf,
+  lotes_texto_pdf,
   montar_eventos_pdf,
   montar_preview_pdf,
   provedor_pdf_do_texto,
   resolver_par_pdf,
   rotear_linhas_pdf,
   texto_pdf_insuficiente,
+  unir_linhas_extraidas,
   type CandidatoDestinoPdf,
   type LinhaExtraidaPdf,
 } from "../servicos/importar-pdf";
@@ -62,7 +64,7 @@ describe("importar PDF", () => {
       expect(linhas[1]?.aceita).toBe(true);
     });
 
-    it("só cartão, sem conta: linhas de cartão entram; linhas de conta ficam sem destino", () => {
+    it("só cartão, sem conta: linha de conta cai no cartão marcada, para desmarcar ou trocar destino", () => {
       const origem = { tipo: "cartao" as const, id: CARTAO.id, nome: CARTAO.nome };
       const cartaoSolto: CandidatoDestinoPdf = { ...CARTAO, contaId: null };
       const { par, candidatosPar } = resolver_par_pdf({
@@ -74,8 +76,8 @@ describe("importar PDF", () => {
       expect(candidatosPar).toHaveLength(0);
 
       const linhas = rotear_linhas_pdf([linhaConta, linhaCartao], { origem, par: null });
-      expect(linhas[0]?.destino).toBeNull();
-      expect(linhas[0]?.aceita).toBe(false);
+      expect(linhas[0]?.destino?.id).toBe(CARTAO.id);
+      expect(linhas[0]?.aceita).toBe(true);
       expect(linhas[1]?.destino?.id).toBe(CARTAO.id);
       expect(linhas[1]?.aceita).toBe(true);
     });
@@ -204,5 +206,15 @@ describe("importar PDF", () => {
     expect(texto_pdf_insuficiente("Revolut statement August 2026 with several transactions")).toBe(
       false,
     );
+  });
+
+  it("agrupa páginas sem cortar no meio e une linhas repetidas entre trechos", () => {
+    const lotes = lotes_texto_pdf(["aaaaaa", "bbbbbb", "cccccc"], 10);
+    expect(lotes.length).toBeGreaterThan(1);
+    expect(lotes[0]).toContain("aaaaaa");
+    expect(lotes[0]).not.toContain("cccccc");
+
+    const unidas = unir_linhas_extraidas([[linhaCartao], [linhaCartao, linhaConta]]);
+    expect(unidas).toHaveLength(2);
   });
 });

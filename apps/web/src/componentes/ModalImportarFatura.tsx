@@ -30,7 +30,6 @@ function chave_destino(destino: DestinoPdf): string {
 
 function aplicar_segundo(linhas: LinhaPreviewPdf[], segundo: DestinoPdf): LinhaPreviewPdf[] {
   return linhas.map((linha) => {
-    if (linha.destino) return linha;
     if (linha.destinoSugerido === segundo.tipo) {
       return { ...linha, destino: segundo, aceita: true };
     }
@@ -76,11 +75,22 @@ export function ModalImportarFatura({
   const destino = origem;
 
   const destinosManuais: DestinoPdf[] = [
+    destino,
     ...contas
-      .filter((conta) => !conta.sincronizada && conta.origem !== "open_finance")
+      .filter(
+        (conta) =>
+          !conta.sincronizada &&
+          conta.origem !== "open_finance" &&
+          !(destino.tipo === "conta" && conta.id === destino.id),
+      )
       .map((conta) => ({ tipo: "conta" as const, id: conta.id, nome: conta.nome })),
     ...cartoes
-      .filter((cartao) => !cartao.sincronizada && cartao.origem !== "open_finance")
+      .filter(
+        (cartao) =>
+          !cartao.sincronizada &&
+          cartao.origem !== "open_finance" &&
+          !(destino.tipo === "cartao" && cartao.id === destino.id),
+      )
       .map((cartao) => ({ tipo: "cartao" as const, id: cartao.id, nome: cartao.nome })),
   ];
 
@@ -258,8 +268,7 @@ export function ModalImportarFatura({
                         <input
                           type="checkbox"
                           className="mt-1"
-                          checked={linha.aceita && Boolean(linha.destino)}
-                          disabled={!linha.destino}
+                          checked={Boolean(linha.aceita && linha.destino)}
                           onChange={(e) =>
                             atualizar_linha(indice, { aceita: e.target.checked })
                           }

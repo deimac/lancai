@@ -152,7 +152,7 @@ export function rotear_linhas_pdf(
     if (contexto.par && linha.destinoSugerido === contexto.par.tipo) {
       return { ...linha, destino: contexto.par, aceita: true };
     }
-    return { ...linha, destino: null, aceita: false };
+    return { ...linha, destino: contexto.origem, aceita: true };
   });
 }
 
@@ -161,12 +161,53 @@ export function aplicar_segundo_destino(
   segundo: DestinoPdf,
 ): LinhaPreviewPdf[] {
   return linhas.map((linha) => {
-    if (linha.destino) return linha;
     if (linha.destinoSugerido === segundo.tipo) {
       return { ...linha, destino: segundo, aceita: true };
     }
     return linha;
   });
+}
+
+export function chave_linha_extraida(linha: LinhaExtraidaPdf): string {
+  const descricao = linha.descricao.trim().toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
+  return [linha.ocorridoEm, Number(linha.valor).toFixed(2), descricao, linha.tipo, linha.destinoSugerido].join(
+    "|",
+  );
+}
+
+export function unir_linhas_extraidas(lotes: LinhaExtraidaPdf[][]): LinhaExtraidaPdf[] {
+  const visto = new Set<string>();
+  const saida: LinhaExtraidaPdf[] = [];
+  for (const lote of lotes) {
+    for (const linha of lote) {
+      const chave = chave_linha_extraida(linha);
+      if (visto.has(chave)) continue;
+      visto.add(chave);
+      saida.push(linha);
+    }
+  }
+  return saida;
+}
+
+/** Agrupa páginas para caber num único chamado de LLM, sem cortar no meio da página. */
+export function lotes_texto_pdf(paginas: string[], maxCaracteres = 8_000): string[] {
+  const lotes: string[] = [];
+  let atual: string[] = [];
+  let tamanho = 0;
+  for (const pagina of paginas) {
+    const trecho = pagina.replace(/\s+/g, " ").trim();
+    if (!trecho) continue;
+    if (atual.length > 0 && tamanho + trecho.length > maxCaracteres) {
+      lotes.push(atual.join("\n\n"));
+      atual = [pagina.trim()];
+      tamanho = trecho.length;
+    } else {
+      atual.push(pagina.trim());
+      tamanho += trecho.length;
+    }
+  }
+  if (atual.length > 0) lotes.push(atual.join("\n\n"));
+  return lotes;
 }
 
 export function montar_preview_pdf(entrada: {
@@ -189,7 +230,7 @@ export function montar_preview_pdf(entrada: {
     !entrada.textoInsuficiente &&
     par == null &&
     candidatosPar.length > 0 &&
-    linhas.some((linha) => !linha.destino);
+    linhas.some((linha) => linha.destinoSugerido !== entrada.origem.tipo);
 
   return {
     arquivoHash: entrada.arquivoHash,
