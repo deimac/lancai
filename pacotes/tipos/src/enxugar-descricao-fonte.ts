@@ -18,6 +18,11 @@ const PREFIXOS = [
   "TED enviada",
   "Transferência recebida",
   "Transferência enviada",
+  "Card Payment to",
+  "Card Payment from",
+  "ATM Withdrawal",
+  "Transfer to",
+  "Transfer from",
   "TED",
 ] as const;
 

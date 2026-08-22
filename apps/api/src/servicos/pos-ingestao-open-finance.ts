@@ -60,6 +60,7 @@ export async function enriquecer_apos_ingestao(entrada: {
       if (!iaLigada) {
         const soRegra = await conhecimento.aplicar_regras(movimentoId);
         if (soRegra.aplicada) porRegra += 1;
+        else if (await conhecimento.aplicar_heuristica_estabelecimento(movimentoId)) porIa += 1;
         continue;
       }
 

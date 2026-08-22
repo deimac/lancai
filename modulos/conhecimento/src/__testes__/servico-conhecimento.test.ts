@@ -836,9 +836,10 @@ describe("aplicar_ia e classificar", () => {
     expect(repositorio.movimentos.get(movimento.id)?.categoriaId).toBe(categoriaRestaurante);
   });
 
-  it("classificar cai na IA quando nenhuma regra casa", async () => {
+  it("classificar cai na IA quando nenhuma regra nem estabelecimento conhecido casa", async () => {
     const movimento = criarMovimento({
-      descricaoFonte: "POSTO SHELL",
+      descricao: "LOJA XYZ 9921",
+      descricaoFonte: "LOJA XYZ 9921",
       categoriaId: categoriaNaoClassificado,
       classificadoPor: "regra",
     });
@@ -853,6 +854,31 @@ describe("aplicar_ia e classificar", () => {
     expect(resultado.etapa).toBe("ia");
     expect(resultado.resultado.aplicada).toBe(true);
     expect(repositorio.movimentos.get(movimento.id)?.classificadoPor).toBe("ia");
+  });
+
+  it("classificar usa estabelecimento conhecido e não chama IA", async () => {
+    const alimentacao = randomUUID();
+    repositorio.cadastrarCategoria(alimentacao, "Alimentação");
+    const movimento = criarMovimento({
+      descricao: "IFOOD",
+      descricaoFonte: "Card Payment to IFOOD",
+      categoriaId: categoriaNaoClassificado,
+      classificadoPor: "regra",
+    });
+    repositorio.movimentos.set(movimento.id, movimento);
+    let chamado = 0;
+
+    const resultado = await servico.classificar(movimento.id, {
+      async sugerir() {
+        chamado += 1;
+        return { categoriaId: categoriaCombustivel, confianca: 0.5 };
+      },
+    });
+
+    expect(resultado.etapa).toBe("ia");
+    expect(resultado.resultado.aplicada).toBe(true);
+    expect(chamado).toBe(0);
+    expect(repositorio.movimentos.get(movimento.id)?.categoriaId).toBe(alimentacao);
   });
 
   it("recusa categoria fora da lista elegível", async () => {

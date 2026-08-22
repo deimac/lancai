@@ -43,6 +43,14 @@ describe("enxugar_descricao_fonte", () => {
     expect(enxugar_descricao_fonte("TED")).toBe("TED");
     expect(enxugar_descricao_fonte("  Pagamento com QR Pix  ")).toBe("Pagamento com QR Pix");
     expect(enxugar_descricao_fonte("Pagamento de conta")).toBe("Pagamento de conta");
+    expect(enxugar_descricao_fonte("ATM Withdrawal")).toBe("ATM Withdrawal");
+  });
+
+  it("tira prefixo de fatura/extrato em inglês", () => {
+    expect(enxugar_descricao_fonte("Card Payment to UBER")).toBe("UBER");
+    expect(enxugar_descricao_fonte("Card Payment to IFOOD")).toBe("IFOOD");
+    expect(enxugar_descricao_fonte("Transfer from MARIA SILVA")).toBe("MARIA SILVA");
+    expect(enxugar_descricao_fonte("ATM Withdrawal Revolut")).toBe("Revolut");
   });
 });
 

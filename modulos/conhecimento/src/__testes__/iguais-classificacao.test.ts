@@ -31,6 +31,15 @@ describe("movimento_igual_para_classificar", () => {
     ).toBe(true);
   });
 
+  it("casa fatura em inglês com o mesmo estabelecimento", () => {
+    expect(
+      movimento_igual_para_classificar(
+        { descricao: "UBER", descricaoFonte: "Card Payment to UBER" },
+        { descricao: "UBER", descricaoFonte: "UBER" },
+      ),
+    ).toBe(true);
+  });
+
   it("não casa estabelecimento diferente", () => {
     expect(
       movimento_igual_para_classificar(

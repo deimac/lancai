@@ -8,11 +8,18 @@ const RUIDO = new Set([
   "ted",
   "doc",
   "transferencia",
+  "transfer",
   "debito",
   "credito",
   "prov",
   "provisorio",
   "cartao",
+  "card",
+  "payment",
+  "from",
+  "to",
+  "atm",
+  "withdrawal",
   "visa",
   "master",
   "elo",
@@ -30,7 +37,10 @@ const RUIDO = new Set([
 
 export function chave_classificacao_igual(texto: string): string {
   const limpo = enxugar_indice_parcela(texto).replace(/[^\p{L}\p{N}\s]+/gu, " ");
-  return normalizar_descricao_parcela(limpo);
+  return normalizar_descricao_parcela(limpo)
+    .split(/\s+/)
+    .filter((token) => token && !RUIDO.has(token) && !/^\d+$/.test(token))
+    .join(" ");
 }
 
 export function eh_chave_classificacao_generica(chave: string): boolean {

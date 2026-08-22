@@ -23,6 +23,7 @@ import type { RepositorioConhecimento } from "./repositorio";
 import type { SugeridorCategoria } from "./sugeridor-categoria";
 import { propor_trecho_regra } from "./trecho-regra";
 import { movimento_igual_para_classificar } from "./iguais-classificacao";
+import { sugerir_nome_categoria_estabelecimento } from "./heuristica-estabelecimento";
 
 export type ResultadoAplicarRegra =
   | { aplicada: true; regraId: string; movimento: Movimento }
@@ -385,6 +386,40 @@ export class ServicoConhecimento {
     return { aplicada: true, movimento: atualizado, confianca };
   }
 
+  /**
+   * Casa IFOOD/UBER/etc. com a categoria padrão do usuário, sem regra e sem IA.
+   * Só aplica se o lançamento ainda está em “Não classificado”.
+   */
+  async aplicar_heuristica_estabelecimento(movimentoId: string): Promise<boolean> {
+    const movimento = await this.repositorio.obterMovimento(movimentoId);
+    if (!movimento) throw new ErroMovimentoNaoEncontrado(movimentoId);
+    if (movimento.classificadoPor === "usuario") return false;
+    if (movimento.papel === "pagamento_fatura") return false;
+    if (!(await this.eh_nao_classificado(movimento.categoriaId))) return false;
+
+    const nome = sugerir_nome_categoria_estabelecimento(
+      movimento.descricao,
+      movimento.descricaoFonte,
+      movimento.favorecidoFonte,
+    );
+    if (!nome) return false;
+
+    const categoria = await this.repositorio.buscarCategoriaPorNome(movimento.usuarioId, nome);
+    if (!categoria) return false;
+
+    await this.atualizar({
+      movimentoId,
+      alteradoPor: movimento.usuarioId,
+      conhecimento: {
+        categoriaId: categoria.id,
+        classificadoPor: "ia",
+        regraId: null,
+        confiancaIa: 0.8,
+      },
+    });
+    return true;
+  }
+
   async classificar(
     movimentoId: string,
     sugeridor: SugeridorCategoria,
@@ -396,6 +431,14 @@ export class ServicoConhecimento {
       regras.motivo === "ja_aplicada"
     ) {
       return { etapa: "regra", resultado: regras };
+    }
+
+    if (await this.aplicar_heuristica_estabelecimento(movimentoId)) {
+      const movimento = await this.repositorio.obterMovimento(movimentoId);
+      return {
+        etapa: "ia",
+        resultado: { aplicada: true, movimento: movimento!, confianca: 0.8 },
+      };
     }
 
     const ia = await this.aplicar_ia(movimentoId, sugeridor);

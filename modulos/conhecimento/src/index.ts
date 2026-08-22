@@ -1,4 +1,5 @@
 export * from "./iguais-classificacao";
+export * from "./heuristica-estabelecimento";
 export * from "./avaliar-regra";
 export * from "./erros";
 export * from "./memoria";
