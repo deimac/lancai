@@ -774,6 +774,57 @@ describe("MotorFinanceiro", () => {
       ).rejects.toThrow(ErroFatoImutavel);
     });
 
+    it("recusa corrigir valor/data de Fato pdf e ainda permite excluir", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            fonte: "pdf",
+            provedor: "revolut-pdf",
+            idExterno: "pdf-1",
+            contaId: conta.id,
+          }),
+        ],
+        contexto(),
+      );
+      const id = criados[0]!.id;
+
+      await expect(
+        motor.corrigir_fato_manual({
+          movimentoId: id,
+          alteradoPor: usuarioId,
+          campos: { valor: 1 },
+        }),
+      ).rejects.toThrow(ErroFatoImutavel);
+
+      const cancelado = await motor.corrigir_fato_manual({
+        movimentoId: id,
+        alteradoPor: usuarioId,
+        campos: { status: "cancelado" },
+      });
+      expect(cancelado.status).toBe("cancelado");
+    });
+
+    it("não duplica o mesmo Fato pdf na reimportação", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      const pdf = evento({
+        fonte: "pdf",
+        provedor: "revolut-pdf",
+        idExterno: "hash-estavel",
+        contaId: conta.id,
+      });
+
+      const primeira = await motor.ingerir_eventos([pdf], contexto());
+      const segunda = await motor.ingerir_eventos([pdf], contexto());
+
+      expect(primeira.criados).toHaveLength(1);
+      expect(segunda.criados).toHaveLength(0);
+      expect(segunda.duplicados).toBe(1);
+    });
+
     it("mantém corrigível o Fato de uma movimentação manual", async () => {
       const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
       repositorio.contas.set(conta.id, conta);

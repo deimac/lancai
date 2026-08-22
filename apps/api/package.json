@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
+    "@fastify/multipart": "^10.1.1",
     "@lancai/banco": "workspace:*",
     "@lancai/conhecimento": "workspace:*",
     "@lancai/evolution": "workspace:*",
@@ -25,6 +26,7 @@
     "drizzle-orm": "^0.38.2",
     "fastify": "^5.2.0",
     "tsx": "^4.19.2",
+    "unpdf": "^1.8.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

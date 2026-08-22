@@ -45,6 +45,15 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
   }
 
   if (
+    erro &&
+    typeof erro === "object" &&
+    "statusCode" in erro &&
+    (erro as { statusCode?: number }).statusCode === 413
+  ) {
+    return resposta.status(413).send({ erro: "O arquivo é grande demais (máximo 12 MB)." });
+  }
+
+  if (
     erro instanceof ErroRecursoNaoEncontrado ||
     erro instanceof ErroConexaoNaoEncontrada ||
     erro instanceof ErroContaExternaNaoEncontrada ||

@@ -56,7 +56,8 @@ export const formaPagamentoEnum = pgEnum("forma_pagamento", [
 
 /**
  * Origem da movimentação (ADR-010). Toda fonte entrega o mesmo evento normalizado;
- * o Core não sabe de onde veio. `ofx`/`csv`/`pdf` estão reservados e sem implementação.
+ * o Core não sabe de onde veio. `ofx`/`csv` estão reservados. `pdf` é a importação
+ * de fatura/extrato em conta ou cartão manuais.
  */
 export const tipoFonteEnum = pgEnum("tipo_fonte", [
   "open_finance",

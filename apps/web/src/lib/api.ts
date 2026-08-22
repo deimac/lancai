@@ -76,6 +76,49 @@ export interface CartaoResumo {
   final4?: string | null;
 }
 
+export type TipoDestinoPdf = "conta" | "cartao";
+
+export type DestinoPdf = {
+  tipo: TipoDestinoPdf;
+  id: string;
+  nome: string;
+};
+
+export type ParcelamentoPdf = {
+  numero: number;
+  total: number;
+  valorTotal?: number;
+  compraEm?: string;
+};
+
+export type LinhaPreviewPdf = {
+  ocorridoEm: string;
+  descricao: string;
+  valor: number;
+  tipo: "receita" | "despesa";
+  destinoSugerido: TipoDestinoPdf;
+  destino: DestinoPdf | null;
+  aceita: boolean;
+  parcelamento?: ParcelamentoPdf;
+};
+
+export type PreviewImportacaoPdf = {
+  arquivoHash: string;
+  provedor: string;
+  origem: DestinoPdf;
+  par: DestinoPdf | null;
+  candidatosPar: DestinoPdf[];
+  precisaSegundoDestino: boolean;
+  textoInsuficiente: boolean;
+  aviso?: string;
+  linhas: LinhaPreviewPdf[];
+};
+
+export type ResultadoConfirmarPdf = {
+  criados: number;
+  duplicados: number;
+};
+
 export type TipoCategoria = "receita" | "despesa" | "ambos";
 
 export interface CategoriaResumo {
@@ -501,17 +544,7 @@ function mensagem_falha_rede(erro: unknown, acao: string): string {
   return texto || `Falha ao ${acao.toLowerCase()}.`;
 }
 
-async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
-  let resposta: Response;
-  try {
-    resposta = await fetch(`${URL_BASE}${caminho}`, {
-      ...opcoes,
-      headers: { "Content-Type": "application/json", ...opcoes.headers },
-    });
-  } catch (erro) {
-    throw new ErroApi(mensagem_falha_rede(erro, "Chamada à API"), 0);
-  }
-
+async function interpretar_json<T>(resposta: Response): Promise<T> {
   if (!resposta.ok) {
     const corpo = (await resposta.json().catch(() => ({}))) as {
       erro?: string;
@@ -529,6 +562,29 @@ async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise
 
   if (resposta.status === 204) return undefined as T;
   return resposta.json() as Promise<T>;
+}
+
+async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${URL_BASE}${caminho}`, {
+      ...opcoes,
+      headers: { "Content-Type": "application/json", ...opcoes.headers },
+    });
+  } catch (erro) {
+    throw new ErroApi(mensagem_falha_rede(erro, "Chamada à API"), 0);
+  }
+  return interpretar_json<T>(resposta);
+}
+
+async function requisitar_multipart<T>(caminho: string, corpo: FormData): Promise<T> {
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${URL_BASE}${caminho}`, { method: "POST", body: corpo });
+  } catch (erro) {
+    throw new ErroApi(mensagem_falha_rede(erro, "Chamada à API"), 0);
+  }
+  return interpretar_json<T>(resposta);
 }
 
 export const clienteApi = {
@@ -1184,6 +1240,34 @@ export const clienteApi = {
     return requisitar(`/open-finance/duble/conexoes/${conexaoId}/sincronizar`, {
       method: "POST",
       body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  preview_importacao_pdf(dados: {
+    usuarioId: string;
+    arquivo: File;
+    contaId?: string;
+    cartaoId?: string;
+  }): Promise<PreviewImportacaoPdf> {
+    const corpo = new FormData();
+    corpo.append("usuarioId", dados.usuarioId);
+    corpo.append("arquivo", dados.arquivo);
+    if (dados.contaId) corpo.append("contaId", dados.contaId);
+    if (dados.cartaoId) corpo.append("cartaoId", dados.cartaoId);
+    return requisitar_multipart<PreviewImportacaoPdf>("/importacoes/pdf", corpo);
+  },
+
+  confirmar_importacao_pdf(dados: {
+    usuarioId: string;
+    arquivoHash: string;
+    provedor: string;
+    linhas: Array<
+      Omit<LinhaPreviewPdf, "destino" | "aceita"> & { destino: DestinoPdf }
+    >;
+  }): Promise<ResultadoConfirmarPdf> {
+    return requisitar<ResultadoConfirmarPdf>("/importacoes/pdf/confirmar", {
+      method: "POST",
+      body: JSON.stringify(dados),
     });
   },
 };

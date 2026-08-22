@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 /**
- * Origem de uma movimentação. `ofx`, `csv` e `pdf` estão reservados e ainda
- * não têm implementação — existem aqui para que adicioná-los depois não
- * exija migração de enum.
+ * Origem de uma movimentação. `ofx` e `csv` estão reservados. `pdf` é a
+ * importação de fatura/extrato em conta ou cartão manuais.
  */
 export const tipoFonteSchema = z.enum([
   "open_finance",
@@ -112,6 +111,14 @@ export function fato_protegido(
   origem?: { sincronizada: boolean } | null,
 ): boolean {
   return movimento.fonte === "open_finance" || origem?.sincronizada === true;
+}
+
+/**
+ * Valor e data não se corrigem à mão: Open Finance e fatura PDF. Excluir PDF
+ * continua permitido — o OCR erra, e o Extrato já deixa apagar o que não é OF.
+ */
+export function fato_imune_correcao(movimento: { fonte: TipoFonte }): boolean {
+  return movimento.fonte === "open_finance" || movimento.fonte === "pdf";
 }
 
 /**

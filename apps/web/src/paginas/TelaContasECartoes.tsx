@@ -15,6 +15,7 @@ import {
   Unplug,
   Wallet,
   XCircle,
+  FileUp,
 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useConfirmacao } from "../contexto/ContextoConfirmacao";
@@ -38,6 +39,7 @@ import {
   type ProgressoImportacaoUi,
 } from "../componentes/BarraProgressoImportacao";
 import { ModalContaCartao, type TipoCadastro } from "../componentes/ModalContaCartao";
+import { ModalImportarFatura } from "../componentes/ModalImportarFatura";
 import { ModalReconectar } from "../componentes/ModalReconectar";
 import { PainelWorkspaces } from "../componentes/PainelWorkspaces";
 import { Botao } from "../componentes/ui/Botao";
@@ -109,6 +111,10 @@ function precisa_reconectar(item: {
   );
 }
 
+function eh_destino_manual(item: { origem?: string; sincronizada?: boolean }) {
+  return item.origem !== "open_finance" && !item.sincronizada;
+}
+
 function status_visual_conexao(status: string) {
   if (status === "ativa" || status === "sincronizando") {
     return {
@@ -164,6 +170,12 @@ export function TelaContasECartoes() {
   const [progressoImportacao, setProgressoImportacao] = useState<ProgressoImportacaoUi | null>(
     null,
   );
+  const [importarAberto, setImportarAberto] = useState(false);
+  const [importarOrigem, setImportarOrigem] = useState<{
+    tipo: "conta" | "cartao";
+    id: string;
+    nome: string;
+  } | null>(null);
 
   const deps = chave_dependencia(contexto?.versoes, "contas", "cartoes", "conexoes");
 
@@ -242,6 +254,11 @@ export function TelaContasECartoes() {
     setConexaoReconectar(entrada.conexaoId ?? null);
     setAlvoReconectar({ contaId: entrada.contaId, cartaoId: entrada.cartaoId });
     setModalReconectar(true);
+  }
+
+  function abrir_importar(origem: { tipo: "conta" | "cartao"; id: string; nome: string }) {
+    setImportarOrigem(origem);
+    setImportarAberto(true);
   }
 
   async function excluir_conta(conta: ContaResumo) {
@@ -456,6 +473,16 @@ export function TelaContasECartoes() {
               aoFecharMenu: () => setMenuId(null),
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_conta(conta) },
+                ...(eh_destino_manual(conta)
+                  ? [
+                      {
+                        rotulo: "Importar fatura",
+                        icone: FileUp,
+                        onClick: () =>
+                          abrir_importar({ tipo: "conta", id: conta.id, nome: conta.nome }),
+                      },
+                    ]
+                  : []),
                 ...(precisa_reconectar(conta)
                   ? [
                       {
@@ -513,6 +540,16 @@ export function TelaContasECartoes() {
               aoFecharMenu: () => setMenuId(null),
               acoes: [
                 { rotulo: "Editar", icone: Pencil, onClick: () => abrir_editar_cartao(cartao) },
+                ...(eh_destino_manual(cartao)
+                  ? [
+                      {
+                        rotulo: "Importar fatura",
+                        icone: FileUp,
+                        onClick: () =>
+                          abrir_importar({ tipo: "cartao", id: cartao.id, nome: cartao.nome }),
+                      },
+                    ]
+                  : []),
                 ...(precisa_reconectar(cartao)
                   ? [
                       {
@@ -698,6 +735,22 @@ export function TelaContasECartoes() {
           void carregar();
           contexto?.invalidar("tudo");
           mudar_aba("bancos");
+        }}
+      />
+
+      <ModalImportarFatura
+        aberto={importarAberto}
+        usuarioId={usuario.id}
+        origem={importarOrigem}
+        contas={contas}
+        cartoes={cartoes}
+        aoFechar={() => {
+          setImportarAberto(false);
+          setImportarOrigem(null);
+        }}
+        aoConcluir={() => {
+          void carregar();
+          contexto?.invalidar("extrato", "dashboard", "contas", "cartoes");
         }}
       />
     </div>

@@ -4,6 +4,7 @@ import {
   deISOParaData,
   descricao_ainda_automatica,
   enxugar_descricao_fonte,
+  fato_imune_correcao,
   paraColuna,
   paraNumero,
   schemaCorrigirFatoManual,
@@ -1278,8 +1279,16 @@ export class MotorFinanceiro {
     if (!movimentoAtual) {
       throw new ErroRecursoNaoEncontrado("movimento", entrada.movimentoId);
     }
-    if (movimentoAtual.fonte === "open_finance") {
-      throw new ErroFatoImutavel(movimentoAtual.descricao);
+    if (fato_imune_correcao(movimentoAtual)) {
+      const soCancelarPdf =
+        movimentoAtual.fonte === "pdf" &&
+        entrada.campos.status === "cancelado" &&
+        Object.entries(entrada.campos).every(
+          ([chave, valor]) => valor === undefined || chave === "status",
+        );
+      if (!soCancelarPdf) {
+        throw new ErroFatoImutavel(movimentoAtual.descricao);
+      }
     }
     if (movimentoAtual.status === "cancelado") {
       throw new ErroValidacaoFinanceira("Esse lançamento já está cancelado e não pode ser alterado.");

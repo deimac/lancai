@@ -59,6 +59,7 @@ describe("natureza_do_movimento", () => {
   it("não deixa excluir Open Finance", () => {
     expect(pode_excluir_movimento("open_finance")).toBe(false);
     expect(pode_excluir_movimento("manual")).toBe(true);
+    expect(pode_excluir_movimento("pdf")).toBe(true);
   });
 
   it("marca previsto vencido", () => {

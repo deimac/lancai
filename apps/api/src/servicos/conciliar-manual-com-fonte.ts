@@ -169,7 +169,7 @@ export async function conciliar_manuais_com_fatos_criados(entrada: {
     .where(
       and(
         inArray(movimento.id, entrada.movimentoIdsCriados),
-        eq(movimento.fonte, "open_finance"),
+        inArray(movimento.fonte, ["open_finance", "pdf"]),
         ne(movimento.status, "cancelado"),
       ),
     );
