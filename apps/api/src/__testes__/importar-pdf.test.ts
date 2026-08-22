@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ErroValidacaoFinanceira } from "@lancai/financeiro";
 import {
-  aplicar_segundo_destino,
   exigir_destino_manual,
   id_externo_pdf,
   lotes_texto_pdf,
@@ -13,6 +12,8 @@ import {
   rotear_linhas_pdf,
   texto_pdf_insuficiente,
   unir_linhas_extraidas,
+  extrair_lancamentos_do_texto,
+  linhas_visuais_pdf,
   type CandidatoDestinoPdf,
   type LinhaExtraidaPdf,
 } from "../servicos/importar-pdf";
@@ -48,41 +49,20 @@ const linhaCartao: LinhaExtraidaPdf = {
 
 describe("importar PDF", () => {
   describe("roteamento", () => {
-    it("do menu da conta, manda linha de cartão para o cartão ligado por conta_id", () => {
-      const { par, candidatosPar } = resolver_par_pdf({
-        origem: CONTA,
-        contas: [CONTA],
-        cartoes: [CARTAO],
+    it("todas as linhas entram no destino do menu, sem escolher conta/cartão uma a uma", () => {
+      const doCartao = rotear_linhas_pdf([linhaConta, linhaCartao], {
+        origem: { tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome },
       });
-      expect(par).toEqual({ tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome });
-      expect(candidatosPar).toHaveLength(1);
+      expect(doCartao.every((linha) => linha.destino?.id === CARTAO.id)).toBe(true);
+      expect(doCartao.every((linha) => linha.destinoSugerido === "cartao")).toBe(true);
+      expect(doCartao.every((linha) => linha.aceita)).toBe(true);
 
-      const linhas = rotear_linhas_pdf([linhaConta, linhaCartao], { origem: CONTA, par });
-      expect(linhas[0]?.destino?.id).toBe(CONTA.id);
-      expect(linhas[0]?.aceita).toBe(true);
-      expect(linhas[1]?.destino?.id).toBe(CARTAO.id);
-      expect(linhas[1]?.aceita).toBe(true);
+      const daConta = rotear_linhas_pdf([linhaConta, linhaCartao], { origem: CONTA });
+      expect(daConta.every((linha) => linha.destino?.id === CONTA.id)).toBe(true);
+      expect(daConta.every((linha) => linha.destinoSugerido === "conta")).toBe(true);
     });
 
-    it("só cartão, sem conta: linha de conta cai no cartão marcada, para desmarcar ou trocar destino", () => {
-      const origem = { tipo: "cartao" as const, id: CARTAO.id, nome: CARTAO.nome };
-      const cartaoSolto: CandidatoDestinoPdf = { ...CARTAO, contaId: null };
-      const { par, candidatosPar } = resolver_par_pdf({
-        origem,
-        contas: [],
-        cartoes: [cartaoSolto],
-      });
-      expect(par).toBeNull();
-      expect(candidatosPar).toHaveLength(0);
-
-      const linhas = rotear_linhas_pdf([linhaConta, linhaCartao], { origem, par: null });
-      expect(linhas[0]?.destino?.id).toBe(CARTAO.id);
-      expect(linhas[0]?.aceita).toBe(true);
-      expect(linhas[1]?.destino?.id).toBe(CARTAO.id);
-      expect(linhas[1]?.aceita).toBe(true);
-    });
-
-    it("vários cartões ligados pedem o segundo destino no preview", () => {
+    it("não pede segundo destino mesmo com cartão ligado à conta", () => {
       const outro: CandidatoDestinoPdf = {
         tipo: "cartao",
         id: randomUUID(),
@@ -92,21 +72,15 @@ describe("importar PDF", () => {
       };
       const preview = montar_preview_pdf({
         linhas: [linhaConta, linhaCartao],
-        origem: CONTA,
+        origem: CARTAO,
         contas: [CONTA],
         cartoes: [CARTAO, outro],
         arquivoHash: "a".repeat(64),
         provedor: "revolut-pdf",
         textoInsuficiente: false,
       });
-      expect(preview.par).toBeNull();
-      expect(preview.precisaSegundoDestino).toBe(true);
-      expect(preview.candidatosPar).toHaveLength(2);
-
-      const escolhido = { tipo: "cartao" as const, id: outro.id, nome: outro.nome };
-      const comPar = aplicar_segundo_destino(preview.linhas, escolhido);
-      expect(comPar[1]?.destino?.id).toBe(outro.id);
-      expect(comPar[1]?.aceita).toBe(true);
+      expect(preview.precisaSegundoDestino).toBe(false);
+      expect(preview.linhas.every((linha) => linha.destino?.id === CARTAO.id)).toBe(true);
     });
 
     it("casa pelo mesmo nome quando não há conta_id", () => {
@@ -216,5 +190,118 @@ describe("importar PDF", () => {
 
     const unidas = unir_linhas_extraidas([[linhaCartao], [linhaCartao, linhaConta]]);
     expect(unidas).toHaveLength(2);
+  });
+
+  it("extrai todos os lançamentos do texto, não só os primeiros 5", () => {
+    const nomes = [
+      "UBER *TRIP",
+      "IFOOD",
+      "SPOTIFY",
+      "NETFLIX",
+      "AMAZON",
+      "RAPPI",
+      "PADARIA",
+      "FARMACIA",
+      "POSTO SHELL",
+      "CLARO",
+      "GOOGLE",
+      "APPLE.COM",
+    ];
+    const texto = [
+      "Revolut statement",
+      "1 August 2026",
+      ...nomes.flatMap((nome, i) => [`Card Payment to ${nome}`, `- R$${(10 + i).toFixed(2)}`]),
+      "From MARIA SILVA",
+      "R$50.00",
+      "2 August 2026",
+      "ATM Withdrawal",
+      "- R$100.00",
+    ].join("\n");
+
+    const linhas = extrair_lancamentos_do_texto(texto);
+    expect(linhas.length).toBe(nomes.length + 2);
+    expect(linhas.filter((l) => l.destinoSugerido === "cartao").length).toBe(nomes.length);
+    expect(linhas.some((l) => l.descricao.includes("MARIA") && l.tipo === "receita")).toBe(true);
+    const textoCorrido = nomes.map((nome, i) => `Card Payment to ${nome} - R$${(10 + i).toFixed(2)}`).join(" ");
+    const doCorrido = extrair_lancamentos_do_texto(`1 August 2026 ${textoCorrido}`);
+    expect(doCorrido.length).toBeGreaterThanOrEqual(nomes.length);
+  });
+
+  it("lê data e valor na mesma linha (extrato BR)", () => {
+    const texto = Array.from({ length: 8 }, (_, i) => {
+      const dia = String(i + 1).padStart(2, "0");
+      return `${dia}/08/2026 PIX Enviado Fulano ${i + 1} 12,3${i}`;
+    }).join("\n");
+    const linhas = extrair_lancamentos_do_texto(texto);
+    expect(linhas.length).toBe(8);
+    expect(linhas[0]?.ocorridoEm).toBe("2026-08-01");
+    expect(linhas[7]?.ocorridoEm).toBe("2026-08-08");
+  });
+
+  it("reconstrói linhas visuais pela posição Y do PDF", () => {
+    const linhas = linhas_visuais_pdf([
+      { str: "IFOOD", x: 10, y: 200 },
+      { str: "45.90", x: 300, y: 200 },
+      { str: "UBER", x: 10, y: 160 },
+      { str: "12.00", x: 300, y: 161 },
+    ]);
+    expect(linhas).toEqual(["IFOOD 45.90", "UBER 12.00"]);
+  });
+
+  it("junta um token por linha e várias compras no mesmo dia", () => {
+    const texto = [
+      "9",
+      "Jun",
+      "2026",
+      "Card",
+      "Payment",
+      "to",
+      "UBER",
+      "-23.40",
+      "Card",
+      "Payment",
+      "to",
+      "IFOOD",
+      "-45.90",
+      "10",
+      "Jun",
+      "2026",
+      "ATM",
+      "Withdrawal",
+      "-100.00",
+    ].join("\n");
+    const linhas = extrair_lancamentos_do_texto(texto);
+    expect(linhas).toHaveLength(3);
+    expect(linhas[0]).toMatchObject({
+      ocorridoEm: "2026-06-09",
+      valor: 23.4,
+      tipo: "despesa",
+      destinoSugerido: "cartao",
+    });
+    expect(linhas[0]?.descricao).toMatch(/UBER/i);
+    expect(linhas[1]).toMatchObject({
+      ocorridoEm: "2026-06-09",
+      valor: 45.9,
+      destinoSugerido: "cartao",
+    });
+    expect(linhas[1]?.descricao).toMatch(/IFOOD/i);
+    expect(linhas[2]).toMatchObject({
+      ocorridoEm: "2026-06-10",
+      valor: 100,
+      destinoSugerido: "conta",
+    });
+  });
+
+  it("não transforma período e saldo do cabeçalho em lançamento", () => {
+    const texto = [
+      "Statement period 1 Jun 2026 - 30 Jun 2026",
+      "Opening balance 1,234.56",
+      "IBAN GB00 REVO 0000 0000",
+      "9 Jun 2026 Card Payment to UBER -23.40",
+    ].join("\n");
+    const linhas = extrair_lancamentos_do_texto(texto);
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]?.descricao).toMatch(/UBER/i);
+    expect(linhas[0]?.valor).toBe(23.4);
   });
 });

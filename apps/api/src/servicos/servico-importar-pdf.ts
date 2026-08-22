@@ -9,7 +9,7 @@ import {
   obter_banco,
 } from "@lancai/banco";
 import { ErroRecursoNaoEncontrado, ErroValidacaoFinanceira, MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
-import { OrquestradorIA, modelo_classificar_do_ambiente } from "@lancai/ia";
+import { OrquestradorIA } from "@lancai/ia";
 import type { ResumoIngestao } from "@lancai/open-finance";
 import { parcelamentoFonteSchema } from "@lancai/tipos";
 import {
@@ -27,10 +27,12 @@ import {
   provedor_pdf_do_texto,
   texto_pdf_insuficiente,
   unir_linhas_extraidas,
+  extrair_lancamentos_do_texto,
+  linhas_visuais_pdf,
 } from "./importar-pdf";
 import { enriquecer_apos_ingestao } from "./pos-ingestao-open-finance";
 
-const LIMITE_CARACTERES_LOTE = 8_000;
+const LIMITE_CARACTERES_LOTE = 2_500;
 const LIMITE_ARQUIVO_BYTES = 12 * 1024 * 1024;
 
 function para_data_iso(bruto: unknown): unknown {
@@ -80,11 +82,25 @@ export async function extrair_texto_pdf(bytes: Uint8Array): Promise<{
   paginas: string[];
   totalPages: number;
 }> {
-  const { extractText } = await import("unpdf");
+  const { extractText, extractTextItems } = await import("unpdf");
   const extraido = await extractText(bytes, { mergePages: false });
-  const paginas = extraido.text;
+  let paginas = extraido.text;
+
+  try {
+    const estruturado = await extractTextItems(bytes);
+    if (estruturado.items.length > 0) {
+      paginas = estruturado.items.map((itens, indice) => {
+        const visuais = linhas_visuais_pdf(itens);
+        if (visuais.length > 0) return visuais.join("\n");
+        return extraido.text[indice] ?? "";
+      });
+    }
+  } catch {
+    // PDF.js às vezes falha nos itens; o texto corrido ainda serve ao parser.
+  }
+
   return {
-    texto: paginas.join("\n\n"),
+    texto: paginas.join("\n"),
     paginas,
     totalPages: extraido.totalPages,
   };
@@ -95,17 +111,26 @@ export async function interpretar_linhas_pdf(
   paginas?: string[],
   orquestrador: OrquestradorIA = new OrquestradorIA(),
 ): Promise<LinhaExtraidaPdf[]> {
+  const corpus = paginas && paginas.length > 0 ? paginas.join("\n") : texto;
+  const peloTexto = extrair_lancamentos_do_texto(corpus);
+  if (peloTexto.length > 0) return peloTexto;
+
   const lotes = lotes_texto_pdf(
     paginas && paginas.length > 0 ? paginas : [texto],
     LIMITE_CARACTERES_LOTE,
   );
   if (lotes.length === 0) return [];
 
-  const extraidos: LinhaExtraidaPdf[][] = [];
-  for (let i = 0; i < lotes.length; i++) {
-    extraidos.push(await interpretar_lote_pdf(lotes[i]!, i + 1, lotes.length, orquestrador));
+  try {
+    const extraidos: LinhaExtraidaPdf[][] = [];
+    for (let i = 0; i < lotes.length; i++) {
+      extraidos.push(await interpretar_lote_pdf(lotes[i]!, i + 1, lotes.length, orquestrador));
+    }
+    return unir_linhas_extraidas(extraidos);
+  } catch {
+    // Preview não pode cair com 503: parser vazio + IA fora → lista vazia e aviso no modal.
+    return [];
   }
-  return unir_linhas_extraidas(extraidos);
 }
 
 async function interpretar_lote_pdf(
@@ -117,7 +142,6 @@ async function interpretar_lote_pdf(
   const objeto = await orquestrador.gerar_objeto_estruturado({
     schema: schemaObjetoLinhas,
     estagio: "extrair_fatura_pdf",
-    modeloOverride: modelo_classificar_do_ambiente(),
     system: [
       "Você extrai lançamentos de fatura ou extrato em PDF.",
       "Cada linha é uma movimentação: data, descrição, valor positivo, tipo (receita ou despesa) e destinoSugerido.",
@@ -267,7 +291,13 @@ export async function preview_importacao_pdf(entrada: {
   }
 
   const interpretar = entrada.interpretarLinhas ?? interpretar_linhas_pdf;
-  const linhas = await interpretar(texto, paginas);
+  const corpus = paginas && paginas.length > 0 ? paginas.join("\n") : texto;
+  let linhas: LinhaExtraidaPdf[] = [];
+  try {
+    linhas = await interpretar(texto, paginas);
+  } catch {
+    linhas = extrair_lancamentos_do_texto(corpus);
+  }
 
   return montar_preview_pdf({
     linhas,
@@ -277,6 +307,10 @@ export async function preview_importacao_pdf(entrada: {
     arquivoHash,
     provedor,
     textoInsuficiente: false,
+    aviso:
+      linhas.length === 0
+        ? "Não encontramos lançamentos neste PDF. Confira se datas e valores estão como texto selecionável."
+        : undefined,
   });
 }
 

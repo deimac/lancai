@@ -9,7 +9,6 @@ import {
   type DestinoPdf,
   type LinhaPreviewPdf,
   type PreviewImportacaoPdf,
-  type TipoDestinoPdf,
 } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { Botao } from "./ui/Botao";
@@ -24,25 +23,10 @@ type Props = {
   aoConcluir: () => void;
 };
 
-function chave_destino(destino: DestinoPdf): string {
-  return `${destino.tipo}:${destino.id}`;
-}
-
-function aplicar_segundo(linhas: LinhaPreviewPdf[], segundo: DestinoPdf): LinhaPreviewPdf[] {
-  return linhas.map((linha) => {
-    if (linha.destinoSugerido === segundo.tipo) {
-      return { ...linha, destino: segundo, aceita: true };
-    }
-    return linha;
-  });
-}
-
 export function ModalImportarFatura({
   aberto,
   usuarioId,
   origem,
-  contas,
-  cartoes,
   aoFechar,
   aoConcluir,
 }: Props) {
@@ -52,7 +36,6 @@ export function ModalImportarFatura({
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewImportacaoPdf | null>(null);
   const [linhas, setLinhas] = useState<LinhaPreviewPdf[]>([]);
-  const [segundoId, setSegundoId] = useState("");
   const [lendo, setLendo] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -63,7 +46,6 @@ export function ModalImportarFatura({
       setArquivo(null);
       setPreview(null);
       setLinhas([]);
-      setSegundoId("");
       setLendo(false);
       setGravando(false);
       setErro(null);
@@ -74,33 +56,12 @@ export function ModalImportarFatura({
   if (!aberto || !origem) return null;
   const destino = origem;
 
-  const destinosManuais: DestinoPdf[] = [
-    destino,
-    ...contas
-      .filter(
-        (conta) =>
-          !conta.sincronizada &&
-          conta.origem !== "open_finance" &&
-          !(destino.tipo === "conta" && conta.id === destino.id),
-      )
-      .map((conta) => ({ tipo: "conta" as const, id: conta.id, nome: conta.nome })),
-    ...cartoes
-      .filter(
-        (cartao) =>
-          !cartao.sincronizada &&
-          cartao.origem !== "open_finance" &&
-          !(destino.tipo === "cartao" && cartao.id === destino.id),
-      )
-      .map((cartao) => ({ tipo: "cartao" as const, id: cartao.id, nome: cartao.nome })),
-  ];
-
   async function ler_pdf(file: File) {
     setErro(null);
     setLendo(true);
     setArquivo(file);
     setPreview(null);
     setLinhas([]);
-    setSegundoId("");
     setEtapa("arquivo");
     try {
       const resultado = await clienteApi.preview_importacao_pdf({
@@ -112,7 +73,7 @@ export function ModalImportarFatura({
       setPreview(resultado);
       setLinhas(resultado.linhas);
       if (resultado.textoInsuficiente) return;
-      if (!resultado.precisaSegundoDestino) setEtapa("conferir");
+      setEtapa("conferir");
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível ler o PDF.");
     } finally {
@@ -120,28 +81,8 @@ export function ModalImportarFatura({
     }
   }
 
-  function continuar_com_par() {
-    if (!preview) return;
-    const escolhido = preview.candidatosPar.find((item) => chave_destino(item) === segundoId);
-    if (!escolhido) {
-      setErro("Escolha o segundo destino para as linhas do outro tipo.");
-      return;
-    }
-    setErro(null);
-    setLinhas(aplicar_segundo(linhas, escolhido));
-    setEtapa("conferir");
-  }
-
   function atualizar_linha(indice: number, patch: Partial<LinhaPreviewPdf>) {
     setLinhas((atual) => atual.map((linha, i) => (i === indice ? { ...linha, ...patch } : linha)));
-  }
-
-  function escolher_destino(indice: number, chave: string) {
-    const destino = destinosManuais.find((item) => chave_destino(item) === chave) ?? null;
-    atualizar_linha(indice, {
-      destino,
-      aceita: destino != null,
-    });
   }
 
   const aceitas = linhas.filter((linha) => linha.aceita && linha.destino);
@@ -160,8 +101,8 @@ export function ModalImportarFatura({
           descricao: linha.descricao,
           valor: linha.valor,
           tipo: linha.tipo,
-          destinoSugerido: linha.destinoSugerido,
-          destino: linha.destino!,
+          destinoSugerido: destino.tipo,
+          destino,
           parcelamento: linha.parcelamento,
         })),
       });
@@ -196,7 +137,7 @@ export function ModalImportarFatura({
 
         <div className="flex flex-col gap-4 overflow-y-auto p-4">
           <p className="text-sm text-texto-suave">
-            Destino: <span className="font-medium text-texto">{destino.nome}</span>
+            Tudo entra em <span className="font-medium text-texto">{destino.nome}</span>
             {destino.tipo === "cartao" ? " (cartão)" : " (conta)"}. PDF digital, com texto — não
             escaneado.
           </p>
@@ -225,31 +166,12 @@ export function ModalImportarFatura({
                   {preview.aviso}
                 </p>
               )}
-              {preview?.precisaSegundoDestino && (
-                <label className="flex flex-col gap-1 text-xs text-texto-suave">
-                  O PDF tem linhas de {destino.tipo === "conta" ? "cartão" : "conta"}. Qual destino?
-                  <select
-                    value={segundoId}
-                    onChange={(e) => setSegundoId(e.target.value)}
-                    className="rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto"
-                  >
-                    <option value="">Escolher…</option>
-                    {preview.candidatosPar.map((item) => (
-                      <option key={chave_destino(item)} value={chave_destino(item)}>
-                        {item.tipo === "cartao" ? "Cartão" : "Conta"} · {item.nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
             </>
           )}
 
           {etapa === "conferir" && (
             <>
-              <p className="text-sm text-texto-suave">
-                Desmarque o que não entra. Corrija o destino se a linha for do outro tipo.
-              </p>
+              <p className="text-sm text-texto-suave">Desmarque o que não entra.</p>
               {preview?.aviso && (
                 <p className="rounded-lg border border-aviso/40 bg-aviso/10 px-3 py-2 text-sm text-aviso">
                   {preview.aviso}
@@ -284,29 +206,15 @@ export function ModalImportarFatura({
                           </span>
                         </span>
                       </label>
-                      <div className="flex shrink-0 items-center gap-2 sm:justify-end">
-                        <span
-                          className={
-                            linha.tipo === "despesa"
-                              ? "text-sm font-medium tabular-nums text-despesa"
-                              : "text-sm font-medium tabular-nums text-receita"
-                          }
-                        >
-                          {formatar_moeda(linha.valor)}
-                        </span>
-                        <select
-                          value={linha.destino ? chave_destino(linha.destino) : ""}
-                          onChange={(e) => escolher_destino(indice, e.target.value)}
-                          className="max-w-[11rem] rounded-lg border border-borda bg-superficie px-2 py-1 text-xs text-texto"
-                        >
-                          <option value="">Pular</option>
-                          {destinosManuais.map((item) => (
-                            <option key={chave_destino(item)} value={chave_destino(item)}>
-                              {rotulo_tipo(item.tipo)} · {item.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <span
+                        className={
+                          linha.tipo === "despesa"
+                            ? "text-sm font-medium tabular-nums text-despesa"
+                            : "text-sm font-medium tabular-nums text-receita"
+                        }
+                      >
+                        {formatar_moeda(linha.valor)}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -321,11 +229,6 @@ export function ModalImportarFatura({
           <Botao type="button" variante="fantasma" onClick={aoFechar}>
             Cancelar
           </Botao>
-          {etapa === "arquivo" && preview?.precisaSegundoDestino && (
-            <Botao type="button" onClick={continuar_com_par} disabled={lendo || !segundoId}>
-              Ver linhas
-            </Botao>
-          )}
           {etapa === "conferir" && (
             <Botao
               type="button"
@@ -339,8 +242,4 @@ export function ModalImportarFatura({
       </div>
     </div>
   );
-}
-
-function rotulo_tipo(tipo: TipoDestinoPdf): string {
-  return tipo === "cartao" ? "Cartão" : "Conta";
 }
