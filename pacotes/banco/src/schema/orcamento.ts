@@ -1,5 +1,5 @@
 import { boolean, date, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { tipoMovimentoEnum } from "./enums";
+import { origemRecorrenciaEnum, tipoMovimentoEnum } from "./enums";
 import { categoria } from "./categoria";
 import { conta } from "./conta";
 import { cartao } from "./cartao";
@@ -54,6 +54,11 @@ export const recorrencia = pgTable("recorrencia", {
   cartaoId: uuid("cartao_id").references(() => cartao.id),
   diaDoMes: integer("dia_do_mes").notNull(),
   ativa: boolean("ativa").notNull().default(true),
+  /**
+   * `detectada` veio do padrão do extrato. Desativar (`ativa = false`) é o
+   * opt-out: o cron não rematerializa nem gera o mês.
+   */
+  origem: origemRecorrenciaEnum("origem").notNull().default("cadastro"),
   /** Último mês gerado (YYYY-MM) — idempotência. */
   ultimaGeracao: text("ultima_geracao"),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),

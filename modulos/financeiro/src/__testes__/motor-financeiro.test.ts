@@ -1424,6 +1424,36 @@ describe("MotorFinanceiro", () => {
       ).rejects.toThrow(ErroContaSincronizada);
     });
 
+    it("projeta recorrência prevista em cartão sincronizado, sem parcela nem saldo", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, {
+        usuarioId,
+        nome: "Azul Itaú",
+        sincronizada: true,
+        modalidade: "credito",
+      });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await motor.projetar_recorrencia({
+        workspaceId: WORKSPACE,
+        ...despesa({
+          cartaoId: cartao.id,
+          descricao: "CLARO *11992138303SOROCABABR",
+          valor: 65.83,
+          dataMovimento: "2026-08-11",
+        }),
+        fonte: "recorrencia",
+      });
+
+      expect(resultado.movimentos).toHaveLength(1);
+      expect(resultado.movimentos[0]?.fonte).toBe("recorrencia");
+      expect(resultado.movimentos[0]?.status).toBe("previsto");
+      expect(resultado.movimentos[0]?.cartaoId).toBe(cartao.id);
+      expect(resultado.parcelas).toHaveLength(0);
+      expect(repositorio.cartoes.get(cartao.id)?.saldo).toBe(cartao.saldo);
+    });
+
     it("recusa débito quando a conta vinculada é sincronizada, mesmo com o cartão livre", async () => {
       const conta = criarConta({ usuarioId, nome: "C6", sincronizada: true });
       const cartao = criarCartao(conta.id, { usuarioId, modalidade: "multiplo", sincronizada: false });

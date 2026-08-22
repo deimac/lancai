@@ -786,6 +786,122 @@ export class MotorFinanceiro {
     return this.criar_movimento_em_conta(entrada, classificadoPor);
   }
 
+  /**
+   * Previsto gerado pelo cron de recorrência. Vale em cartão/conta Open Finance:
+   * não é Fato da instituição — some na conciliação quando o OF chega (fatura
+   * fechada). Por isso não passa por `garantir_nao_sincronizada` nem mexe em
+   * saldo/limite.
+   */
+  async projetar_recorrencia(entradaBruta: EntradaCriarMovimento): Promise<ResultadoCriarMovimento> {
+    const entrada = schemaCriarMovimento.parse({
+      ...entradaBruta,
+      fonte: "recorrencia",
+      status: "previsto",
+    });
+
+    if (!tipo_movimento_implementado(entrada.tipo)) {
+      throw new ErroTipoMovimentoNaoImplementado(entrada.tipo);
+    }
+
+    const categoria = await this.repositorio.obterCategoria(entrada.categoriaId);
+    if (!categoria) {
+      throw new ErroRecursoNaoEncontrado("categoria", entrada.categoriaId);
+    }
+
+    const movimentoId = randomUUID();
+    const classificadoPor = categoria_pendente(categoria.nome) ? "regra" : "usuario";
+
+    if (entrada.cartaoId) {
+      const cartao = await this.repositorio.obterCartao(entrada.cartaoId);
+      if (!cartao) {
+        throw new ErroRecursoNaoEncontrado("cartao", entrada.cartaoId);
+      }
+      if (!cartao.ativo) {
+        throw new ErroValidacaoFinanceira(`Cartão "${cartao.nome}" está inativo.`);
+      }
+
+      const novoMovimento: NovoMovimento = {
+        id: movimentoId,
+        descricao: entrada.descricao,
+        valor: paraColuna(entrada.valor),
+        tipo: entrada.tipo,
+        status: "previsto",
+        tipoGasto: entrada.tipoGasto,
+        formaPagamento: entrada.formaPagamento === "debito" ? "debito" : "credito",
+        dataMovimento: entrada.dataMovimento,
+        cartaoId: cartao.id,
+        categoriaId: entrada.categoriaId,
+        classificadoPor,
+        usuarioId: entrada.usuarioId,
+        criadoPor: entrada.criadoPor,
+        ...this.campos_de_fato(entrada, entrada.descricao),
+      };
+
+      return this.repositorio.persistirOperacao({
+        movimentos: [novoMovimento],
+        parcelas: [],
+        atualizacoesSaldoConta: [],
+        auditorias: [
+          {
+            tabela: "movimento",
+            registroId: movimentoId,
+            acao: "INSERCAO",
+            estadoAnterior: null,
+            estadoAtual: {
+              ...novoMovimento,
+              fluxoCruzado: eh_fluxo_cruzado(entrada.tipoGasto, cartao.perfil),
+            },
+            alteradoPor: entrada.criadoPor,
+          },
+        ],
+      });
+    }
+
+    const conta = await this.repositorio.obterConta(entrada.contaId as string);
+    if (!conta) {
+      throw new ErroRecursoNaoEncontrado("conta", entrada.contaId as string);
+    }
+    if (!conta.ativo) {
+      throw new ErroValidacaoFinanceira(`Conta "${conta.nome}" está inativa.`);
+    }
+
+    const novoMovimento: NovoMovimento = {
+      id: movimentoId,
+      descricao: entrada.descricao,
+      valor: paraColuna(entrada.valor),
+      tipo: entrada.tipo,
+      status: "previsto",
+      tipoGasto: entrada.tipoGasto,
+      formaPagamento: entrada.formaPagamento ?? "pix",
+      dataMovimento: entrada.dataMovimento,
+      contaId: conta.id,
+      categoriaId: entrada.categoriaId,
+      classificadoPor,
+      usuarioId: entrada.usuarioId,
+      criadoPor: entrada.criadoPor,
+      ...this.campos_de_fato(entrada, entrada.descricao),
+    };
+
+    return this.repositorio.persistirOperacao({
+      movimentos: [novoMovimento],
+      parcelas: [],
+      atualizacoesSaldoConta: [],
+      auditorias: [
+        {
+          tabela: "movimento",
+          registroId: movimentoId,
+          acao: "INSERCAO",
+          estadoAnterior: null,
+          estadoAtual: {
+            ...novoMovimento,
+            fluxoCruzado: eh_fluxo_cruzado(entrada.tipoGasto, conta.perfil),
+          },
+          alteradoPor: entrada.criadoPor,
+        },
+      ],
+    });
+  }
+
   private async criar_movimento_em_conta(
     entrada: EntradaCriarMovimento,
     classificadoPor: Movimento["classificadoPor"],

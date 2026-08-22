@@ -86,6 +86,12 @@ export const classificadoPorEnum = pgEnum("classificado_por", ["regra", "ia", "u
 export const origemRegraEnum = pgEnum("origem_regra", ["manual", "aprendizado_conversa"]);
 
 /**
+ * Como a recorrência entrou: a pessoa cadastrou, ou o cron materializou um
+ * padrão estável do extrato (Open Finance que só chega na fatura fechada).
+ */
+export const origemRecorrenciaEnum = pgEnum("origem_recorrencia", ["cadastro", "detectada"]);
+
+/**
  * Legado v1. O builder novo usa `condicoes` JSONB; este enum só permanece
  * para colunas antigas ainda presentes após o backfill.
  */

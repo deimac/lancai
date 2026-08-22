@@ -23,6 +23,16 @@ export type PadraoRecorrente = {
   diaDoMes: number | null;
 };
 
+/** A tela mostra 2 meses; só materializa/gera a partir de 3 — evita Uber/iFood. */
+export const MIN_MESES_PARA_GERAR = 3;
+
+export function padrao_estavel_para_gerar(padrao: PadraoRecorrente): boolean {
+  if (padrao.mesesObservados.length < MIN_MESES_PARA_GERAR) return false;
+  if (padrao.diaDoMes == null || padrao.diaDoMes < 1) return false;
+  if (!padrao.cartaoId && !padrao.contaId) return false;
+  return true;
+}
+
 function chave_padrao(descricao: string, valor: number): string {
   return `${normalizar_descricao_parcela(descricao)}|${Math.round(valor)}`;
 }

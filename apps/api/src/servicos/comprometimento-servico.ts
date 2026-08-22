@@ -11,7 +11,7 @@ import {
   normalizar_descricao_parcela,
   paraDataISO,
 } from "@lancai/tipos";
-import { listar_recorrencias } from "./recorrencia-servico";
+import { listar_recorrencias, padrao_ja_conhecido } from "./recorrencia-servico";
 
 const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
 const repositorio = new RepositorioRelatoriosDrizzle();
@@ -46,23 +46,21 @@ export async function montar_comprometimento(
     throw new Error("Resposta inesperada do relatório de parcelamentos.");
   }
 
-  const [movimentos, categorias, contas, cartoes, cadastradas] = await Promise.all([
+  const [movimentos, categorias, contas, cartoes, todasRecorrencias] = await Promise.all([
     repositorio.listarMovimentos(usuarioId, { tipos: ["despesa"] }),
     repositorio.listarCategorias(usuarioId),
     repositorio.listarContas(usuarioId),
     repositorio.listarCartoes(usuarioId),
-    listar_recorrencias(usuarioId),
+    listar_recorrencias(usuarioId, { incluirInativas: true }),
   ]);
 
   const mapaCat = new Map(categorias.map((item) => [item.id, item]));
   const mapaConta = new Map(contas.map((item) => [item.id, item.nome]));
   const mapaCartao = new Map(cartoes.map((item) => [item.id, item.nome]));
 
-  const nomesCadastro = new Set(
-    cadastradas.map((item) => normalizar_descricao_parcela(item.descricao)),
-  );
+  const cadastradas = todasRecorrencias.filter((item) => item.ativa);
   const detectados = detectar_padroes_recorrentes(movimentos, dataAtual).filter(
-    (item) => !nomesCadastro.has(normalizar_descricao_parcela(item.descricao)),
+    (item) => !padrao_ja_conhecido(item, todasRecorrencias),
   );
 
   const recorrentes: RecorrenteComprometimento[] = [
@@ -72,7 +70,7 @@ export async function montar_comprometimento(
         id: item.id,
         descricao: item.descricao,
         valor: Number(item.valor),
-        origem: "cadastro" as const,
+        origem: item.origem === "detectada" ? ("detectado" as const) : ("cadastro" as const),
         diaDoMes: item.diaDoMes,
         categoriaNome: cat?.nome ?? null,
         icone: cat?.icone ?? "geral",

@@ -218,6 +218,13 @@
       "when": 1786202300000,
       "tag": "0030_ocorrido_em_instante",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786202400000,
+      "tag": "0031_recorrencia_origem",
+      "breakpoints": true
     }
   ]
 }

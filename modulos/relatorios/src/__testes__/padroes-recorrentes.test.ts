@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectar_padroes_recorrentes } from "../padroes-recorrentes";
+import { detectar_padroes_recorrentes, padrao_estavel_para_gerar } from "../padroes-recorrentes";
 
 const DATA = "2026-08-15";
 
@@ -78,5 +78,56 @@ describe("detectar_padroes_recorrentes", () => {
         DATA,
       ),
     ).toEqual([]);
+  });
+
+  it("Claro mensal sem o mês corrente continua vigente e estável para gerar", () => {
+    const padroes = detectar_padroes_recorrentes(
+      [
+        despesa({
+          descricao: "CLARO *11992138303SOROCABABR",
+          valor: "65.83",
+          dataMovimento: "2026-05-11",
+          cartaoId: "itau",
+        }),
+        despesa({
+          descricao: "CLARO *11992138303SOROCABABR",
+          valor: "65.83",
+          dataMovimento: "2026-06-11",
+          cartaoId: "itau",
+        }),
+        despesa({
+          descricao: "CLARO *11992138303SOROCABABR",
+          valor: "65.83",
+          dataMovimento: "2026-07-11",
+          cartaoId: "itau",
+        }),
+      ],
+      "2026-08-22",
+    );
+    expect(padroes).toHaveLength(1);
+    expect(padroes[0]?.diaDoMes).toBe(11);
+    expect(padrao_estavel_para_gerar(padroes[0]!)).toBe(true);
+  });
+
+  it("dois iFoods iguais no mesmo dia do mês não passam do piso para gerar", () => {
+    const padroes = detectar_padroes_recorrentes(
+      [
+        despesa({
+          descricao: "IFD*IFOOD CLUB",
+          valor: "7.95",
+          dataMovimento: "2026-07-18",
+          cartaoId: "itau",
+        }),
+        despesa({
+          descricao: "IFD*IFOOD CLUB",
+          valor: "7.95",
+          dataMovimento: "2026-08-18",
+          cartaoId: "itau",
+        }),
+      ],
+      DATA,
+    );
+    expect(padroes).toHaveLength(1);
+    expect(padrao_estavel_para_gerar(padroes[0]!)).toBe(false);
   });
 });
