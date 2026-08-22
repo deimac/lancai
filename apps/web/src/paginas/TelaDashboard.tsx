@@ -684,7 +684,10 @@ export function TelaDashboard() {
               {dados.recentes.map((item) => {
                 const entrada = eh_entrada(item.tipo);
                 return (
-                  <li key={item.id} className="flex items-center gap-2 py-1.5 text-sm">
+                  <li
+                    key={item.id}
+                    className="grid grid-cols-[1.5rem_minmax(0,1fr)_8.5rem_6.75rem] items-center gap-2 py-1.5 text-sm"
+                  >
                     <span
                       className={unir_classes(
                         "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
@@ -693,24 +696,24 @@ export function TelaDashboard() {
                     >
                       {entrada ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
                     </span>
-                    <div className="min-w-0 max-w-[14rem] flex-1">
-                      <p className="truncate text-[13px] font-medium leading-tight text-texto">
+                    <div className="min-w-0">
+                      <p className="truncate text-left text-[13px] font-medium leading-tight text-texto">
                         {item.descricao}
                       </p>
-                      <p className="truncate text-[10px] leading-tight text-texto-suave">
+                      <p className="truncate text-left text-[10px] leading-tight text-texto-suave">
                         {formatar_data_curta(item.data)}
                         {item.origemNome ? ` · ${item.origemNome}` : ""}
                       </p>
                     </div>
-                    <span className="flex w-[8.5rem] shrink-0 items-center justify-end gap-1.5">
+                    <span className="flex min-w-0 items-center gap-1.5">
                       <IconeCategoria icone={item.icone} cor={item.cor} tamanho={12} />
-                      <span className="truncate text-right text-[11px] text-texto-suave">
+                      <span className="truncate text-left text-[11px] text-texto-suave">
                         {item.categoriaNome ?? "Não classificado"}
                       </span>
                     </span>
                     <span
                       className={unir_classes(
-                        "shrink-0 text-[13px] font-medium tabular-nums",
+                        "text-right text-[13px] font-medium tabular-nums",
                         entrada ? "text-receita" : "text-despesa",
                       )}
                     >
