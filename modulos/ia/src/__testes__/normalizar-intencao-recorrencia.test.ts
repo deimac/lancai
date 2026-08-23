@@ -98,6 +98,7 @@ describe("normalizar_intencao_recorrencia", () => {
     ["dia 09", 9],
     ["dia 9", 9],
     ["10", 10],
+    ["15/08/2026", 15],
   ])("aceita %s como dia do mês na resposta ao slot", (resposta, dia) => {
     const r = normalizar_intencao_recorrencia(
       {

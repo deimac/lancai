@@ -1,4 +1,5 @@
 import type { IntencaoCriarRecorrencia, IntencaoDetectada, IntencaoSolicitarInformacao } from "@lancai/tipos";
+import { parsear_data_br } from "./datas-relativas";
 import { personalizar_pergunta, perguntar_campo } from "./personalizar-pergunta";
 import type { ContextoInterpretacao, IntencaoPendenteSlot } from "./prompt";
 
@@ -97,6 +98,12 @@ export function extrair_dia_do_mes_mensagem(
   const comRotulo = /\bdia\s+(\d{1,2})\b/.exec(texto);
   if (comRotulo) {
     const n = Number(comRotulo[1]);
+    return n >= 1 && n <= 31 ? n : null;
+  }
+
+  const dataCompleta = parsear_data_br(mensagem, dataAtual ?? "");
+  if (dataCompleta) {
+    const n = Number(dataCompleta.slice(8, 10));
     return n >= 1 && n <= 31 ? n : null;
   }
 

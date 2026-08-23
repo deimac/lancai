@@ -154,4 +154,18 @@ describe("interpretar_recorrencia_rapida", () => {
       conta_nome: null,
     });
   });
+
+  it("não cria recorrência ao alterar data de um lançamento com 'mensal' no nome", () => {
+    expect(
+      interpretar_recorrencia_rapida(
+        "alterar data de lancamento do cartao revolut visa Tarifa ad. mensal do cartão de crédito para 15/08/20026",
+      ),
+    ).toBeNull();
+  });
+
+  it("não trata 'tarifa mensal' sozinha como criar recorrência", () => {
+    expect(
+      interpretar_recorrencia_rapida("Tarifa ad. mensal do cartão de crédito 12,90"),
+    ).toBeNull();
+  });
 });

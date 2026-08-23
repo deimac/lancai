@@ -1,6 +1,9 @@
 import type { IntencaoDetectada } from "@lancai/tipos";
 import { extrair_codigo_da_mensagem } from "./codigo-movimento";
-import { somar_dias_iso_local } from "./datas-relativas";
+import {
+  parsear_data_apos_para,
+  parsear_data_relativa_ou_br,
+} from "./datas-relativas";
 import { extrair_termo_referencia_mensagem } from "./extrair-termo-referencia";
 import { enxugar_descricao_lancamento, limpar_termo_descricao } from "./normalizar-descricao";
 
@@ -13,18 +16,17 @@ const VERBO_CORRIGIR =
 const FORA_DO_CANCELAR =
   /\b(corrige|corrigir|altera|muda|cadastr|mostra|quanto|saldo|limite|menu|ajuda)\b/i;
 
-function extrair_data_referencia(texto: string, dataAtual: string): string | null {
-  const lower = texto.toLocaleLowerCase("pt-BR");
-  if (/\banteontem\b/.test(lower)) return somar_dias_iso_local(dataAtual, -2);
-  if (/\bontem\b/.test(lower)) return somar_dias_iso_local(dataAtual, -1);
-  if (/\bhoje\b/.test(lower)) return dataAtual;
+const DATA_ALVO =
+  "(\\d{1,2}[\\/-]\\d{1,2}(?:[\\/-]\\d{2,5})?|\\d{4}-\\d{2}-\\d{2}|hoje|ontem|anteontem|amanh[aã])";
 
-  const dataBr = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/.exec(texto);
-  if (!dataBr) return null;
-  const dia = dataBr[1]!.padStart(2, "0");
-  const mes = dataBr[2]!.padStart(2, "0");
-  const ano = dataBr[3] ?? dataAtual.slice(0, 4);
-  return `${ano}-${mes}-${dia}`;
+function extrair_data_no_trecho(texto: string, dataAtual: string): string | null {
+  return parsear_data_relativa_ou_br(texto, dataAtual);
+}
+
+function extrair_data_referencia(texto: string, dataAtual: string): string | null {
+  // A data depois de "para" é o valor novo, não o filtro para achar o lançamento.
+  const antesPara = texto.replace(/\bpara\s+.+$/i, " ");
+  return extrair_data_no_trecho(antesPara, dataAtual);
 }
 
 function parse_valor(bruto: string): number | null {
@@ -38,12 +40,64 @@ function limpar_referencia_correcao(bruto: string): string | null {
   let termo = bruto
     .replace(/\b(?:valor|descri[cç][aã]o|nome)\b/gi, " ")
     .replace(/\b(?:lan[cç]amentos?|despesas?|compras?|gastos?)\b/gi, " ")
-    .replace(/\b(?:de|do|da|dos|das)\s+(?:hoje|ontem|anteontem|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/gi, " ")
+    .replace(/\b(?:de|do|da|dos|das)\s+(?:hoje|ontem|anteontem|\d{1,2}\/\d{1,2}(?:\/\d{2,5})?)\b/gi, " ")
     .replace(/\b(?:hoje|ontem|anteontem)\b/gi, " ")
-    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ");
+    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,5})?\b/g, " ");
   termo = limpar_termo_descricao(termo);
   if (termo.length < 2) return null;
   return enxugar_descricao_lancamento(termo);
+}
+
+function limpar_referencia_alteracao_data(bruto: string): string | null {
+  let termo = bruto
+    .replace(/^\s*(?:a|o|as|os)\s+/i, "")
+    .replace(/^\s*(?:d[eoa]s?|no|na|pelo|pela)\s+/i, "")
+    .replace(/^\s*cart[aã]o\s+/i, "")
+    .replace(/\bdata(?:\s+de\s+lan[cç]amento)?\b/gi, " ");
+  return limpar_referencia_correcao(termo);
+}
+
+/**
+ * "alterar data de lançamento do cartão X Tarifa mensal para 15/08/2026"
+ * — muda o Fato, não cria recorrência.
+ */
+function interpretar_alteracao_data(
+  mensagem: string,
+  dataAtual: string,
+): IntencaoDetectada | null {
+  const texto = mensagem.trim();
+  if (!VERBO_CORRIGIR.test(texto) || !/\bdata\b/i.test(texto)) return null;
+
+  const padrao = new RegExp(
+    `\\b(?:corrige|corrija|corrigir|altera|alterar|muda|mudar|atualiza|atualizar)\\b(?:\\s+(?:a|o))?\\s+data(?:\\s+de\\s+lan[cç]amento)?(?:\\s+(?:d[eoa]s?))?\\s+(.+?)\\s+para\\s+(?:o\\s+dia\\s+|dia\\s+)?${DATA_ALVO}\\s*[.!?]?\\s*$`,
+    "i",
+  );
+  const match = padrao.exec(texto);
+  const novaData = match
+    ? parsear_data_relativa_ou_br(match[2]!, dataAtual)
+    : parsear_data_apos_para(texto, dataAtual);
+  if (!novaData) return null;
+
+  const descricao = match?.[1]
+    ? limpar_referencia_alteracao_data(match[1])
+    : extrair_termo_referencia_mensagem(texto) ??
+      limpar_referencia_alteracao_data(
+        texto
+          .replace(VERBO_CORRIGIR, " ")
+          .replace(/\bdata(?:\s+de\s+lan[cç]amento)?\b/gi, " ")
+          .replace(/\bpara\s+.+$/i, " "),
+      );
+  if (!descricao) return null;
+
+  return {
+    intencao: "CORRIGIR_MOVIMENTO",
+    referencia: {
+      descricao,
+      data_movimento: extrair_data_referencia(texto, dataAtual),
+      codigo: extrair_codigo_da_mensagem(texto),
+    },
+    campos_alterados: { data_movimento: novaData },
+  };
 }
 
 /**
@@ -55,6 +109,9 @@ function interpretar_alteracao_campos(
 ): IntencaoDetectada | null {
   const texto = mensagem.trim();
   if (!VERBO_CORRIGIR.test(texto) || VERBO_CANCELAR.test(texto)) return null;
+
+  const porData = interpretar_alteracao_data(texto, dataAtual);
+  if (porData) return porData;
 
   // Valor: "... para 20" / "para R$ 20,00" / "para 20 reais"
   const comValor =
@@ -176,6 +233,7 @@ function interpretar_exclusao_conta_ou_cartao(texto: string): IntencaoDetectada 
  * - excluir conta/cartão: "excluir conta Nubank" / "apagar cartão Azul"
  * - cancelar lançamento: "cancela o #a1b2c3d4" / "apague o lançamento de farmacia de hoje"
  * - corrigir: "corrige o almoço para 20" / "muda a descrição do uber para Uber Trip"
+ * - data: "alterar data de lançamento do cartão X Tarifa mensal para 15/08/2026"
  */
 export function interpretar_correcao_rapida(
   mensagem: string,

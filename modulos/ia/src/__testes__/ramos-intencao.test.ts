@@ -33,6 +33,11 @@ describe("ramos-intencao", () => {
     expect(ramo_heuristico_mensagem("quanto gastei de uber?")).toBeNull();
     expect(ramo_heuristico_mensagem("oi")).toBeNull();
     expect(ramo_heuristico_mensagem("cadastra meu cartão")).toBeNull();
+    expect(
+      ramo_heuristico_mensagem(
+        "alterar data de lancamento do cartao revolut visa Tarifa ad. mensal para 15/08/2026",
+      ),
+    ).toBe("corrigir");
   });
 
   it("schema por ramo só inclui intenções do ramo", () => {

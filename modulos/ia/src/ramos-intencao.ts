@@ -132,6 +132,14 @@ export function ramo_heuristico_mensagem(mensagem: string): RamoIntencao | null 
   const texto = mensagem.trim();
   if (!texto) return null;
 
+  // "alterar data de lançamento … para 15/08" é correção, mesmo com "mensal" na descrição.
+  if (
+    /\b(altera|alterar|muda|mudar|corrige|corrigir|atualiza|atualizar)\b/i.test(texto) &&
+    /\bdata\b/i.test(texto)
+  ) {
+    return "corrigir";
+  }
+
   // Consulta, correção, cadastro, saudação — deixa o classificador decidir.
   if (
     /\b(quanto|quais|mostra|mostre|liste|listar|extrato|saldo|resumo|comprometido|parcelamentos?|evolu[cç][aã]o|fluxo\s+cruzado|corrige|corrigir|apague|apaga|cancela|cancelar|cadastr|or[cç]amento|todo\s+m[eê]s|recorrente|menu|ajuda|oi+|ol[aá]|bom\s+dia|boa\s+tarde|boa\s+noite)\b/i.test(

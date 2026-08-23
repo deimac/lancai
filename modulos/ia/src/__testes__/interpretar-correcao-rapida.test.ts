@@ -64,6 +64,40 @@ describe("interpretar_correcao_rapida", () => {
     });
   });
 
+  it("altera a data do lançamento sem IA, mesmo com 'mensal' na descrição", () => {
+    const r = interpretar_correcao_rapida(
+      "alterar data de lancamento do cartao revolut visa Tarifa ad. mensal do cartão de crédito para 15/08/20026",
+      "2026-08-23",
+    );
+    expect(r).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      campos_alterados: { data_movimento: "2026-08-15" },
+    });
+    if (r?.intencao !== "CORRIGIR_MOVIMENTO") return;
+    expect(r.referencia.data_movimento).toBeNull();
+    expect(r.referencia.descricao?.toLowerCase()).toMatch(/tarifa/);
+  });
+
+  it("altera data curta do estabelecimento", () => {
+    expect(interpretar_correcao_rapida("muda a data do uber para 10/08", "2026-08-23")).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Uber" },
+      campos_alterados: { data_movimento: "2026-08-10" },
+    });
+  });
+
+  it("não usa a data nova como filtro da busca", () => {
+    const r = interpretar_correcao_rapida(
+      "corrige a data do ifood de ontem para 15/08/2026",
+      "2026-08-23",
+    );
+    expect(r).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Ifood", data_movimento: "2026-08-22" },
+      campos_alterados: { data_movimento: "2026-08-15" },
+    });
+  });
+
   it("exclui conta sem tratar como lançamento", () => {
     expect(interpretar_correcao_rapida("excluir conta nubank", "2026-08-03")).toEqual({
       intencao: "CORRIGIR_CONTA",

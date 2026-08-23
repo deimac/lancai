@@ -51,6 +51,13 @@ export function interpretar_orcamento_rapido(mensagem: string): IntencaoDetectad
   return null;
 }
 
+const CORRECAO_LANCAMENTO =
+  /\b(corrige|corrigir|altera|alterar|muda|mudar|atualiza|atualizar)\b/i;
+
+/** Sinal de criar recorrência — "mensal" sozinho é adjetivo (tarifa mensal), não ação. */
+const SINAL_CRIAR_RECORRENCIA =
+  /\b(?:todo\s+m[eê]s|mensalmente|recorrente)\b/i;
+
 export function interpretar_recorrencia_rapida(
   mensagem: string,
   contexto?: ContextoInterpretacao | null,
@@ -58,6 +65,11 @@ export function interpretar_recorrencia_rapida(
   const texto = mensagem.trim();
   if (!texto) return null;
   const lower = texto.toLocaleLowerCase("pt-BR");
+
+  // "alterar data … tarifa mensal para 15/08" é correção de lançamento, não recorrência.
+  if (CORRECAO_LANCAMENTO.test(texto) && !/\brecorr[eê]n\b/i.test(lower)) {
+    return null;
+  }
 
   if (/\b(listar|mostra|mostre|quais|minhas?)\b/.test(lower) && /\brecorr[eê]n/.test(lower)) {
     return { intencao: "LISTAR_RECORRENCIAS" };
@@ -115,7 +127,7 @@ export function interpretar_recorrencia_rapida(
 
   // Completa: "todo mês dia 10 Netflix 55" (dia explícito antes da descrição).
   const comDiaAntes = lower.match(
-    /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+dia\s+(\d{1,2})\s+(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)\b/i,
+    /(?:todo\s+m[eê]s|mensalmente|recorrente)\s+dia\s+(\d{1,2})\s+(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)\b/i,
   );
   if (comDiaAntes) {
     const criada = montar_recorrencia_completa(
@@ -130,7 +142,7 @@ export function interpretar_recorrencia_rapida(
 
   // Completa: "recorrente Netflix 55 dia 10"
   const comDiaDepois = lower.match(
-    /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente)\s+(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)\s+dia\s+(\d{1,2})\b/i,
+    /(?:todo\s+m[eê]s|mensalmente|recorrente)\s+(.+?)\s+(?:r\$\s*)?(\d+[.,]?\d*)\s+dia\s+(\d{1,2})\b/i,
   );
   if (comDiaDepois) {
     const criada = montar_recorrencia_completa(
@@ -144,9 +156,13 @@ export function interpretar_recorrencia_rapida(
   }
 
   // Incompleta: "recorrente Netflix no valor de 28" / "todo mês Netflix no Nubank".
-  if (/\b(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente|assinatura)\b/.test(lower)) {
+  // "mensal" no nome (tarifa mensal) não entra — exige todo mês / mensalmente / recorrente / assinatura.
+  if (
+    SINAL_CRIAR_RECORRENCIA.test(lower) ||
+    /\bassinatura\b/.test(lower)
+  ) {
     const m = lower.match(
-      /(?:todo\s+m[eê]s|mensal(?:mente)?|recorrente|assinatura(?:\s+recorrente)?)\s+(?:dia\s+(\d{1,2})\s+)?(.+)/i,
+      /(?:todo\s+m[eê]s|mensalmente|recorrente|assinatura(?:\s+recorrente)?)\s+(?:dia\s+(\d{1,2})\s+)?(.+)/i,
     );
     if (m?.[2]) {
       const diaBruto = m[1] ? Number(m[1]) : null;

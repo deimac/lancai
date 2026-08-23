@@ -70,7 +70,7 @@ Intenções do ramo pedido:
    - omitir tipos: lançamentos/extrato/movimentações sem lado, ou "gastei e recebi".
    Nunca misture receitas numa pergunta de gasto, nem despesas numa pergunta de quanto entrou.
 3) CORRIGIR_* — ALTERAR dados OU excluir. São ações distintas:
-   - corrige/altera/muda/troca descrição/valor/categoria → campos_alterados com o novo valor; NUNCA status cancelado.
+   - corrige/altera/muda/troca descrição/valor/categoria/data → campos_alterados; NUNCA status cancelado. "alterar data … para 15/08/2026" = CORRIGIR_MOVIMENTO (data_movimento), NÃO recorrência — "mensal" no nome da tarifa não cria assinatura.
    - "não considera nos relatórios"/"esconde dos totais" → ignorado_em_relatorio=true (não cancela).
    - "tag X no Y"/"marca Y como X" → tags=["X"] na referência Y.
    - apaga/exclui/cancela/deleta lançamento → status cancelado, confirmado false até o usuário confirmar.
@@ -88,10 +88,10 @@ export function montar_prompt_sistema_classificar(): string {
   return `Classifique a mensagem financeira em UM ramo. Responda só o JSON do schema.
 - registrar: gasto, receita, pagamento, compra ("gastei", "recebi", "paguei"). Inclui vago sem valor: "fiz mercado", "gastei no uber", "foi no ifood", "paguei a farmácia". NUNCA use outro nesses casos.
 - consultar: perguntas de saldo, extrato, quanto gastei, resumo, limite do cartão, dados do cartão
-- corrigir: corrigir, cancelar, apagar, excluir, esconder dos relatórios, tag, mudar valor/categoria de lançamento/conta/cartão
+- corrigir: corrigir, cancelar, apagar, excluir, esconder dos relatórios, tag, mudar data/valor/categoria de lançamento/conta/cartão. "alterar data de lançamento … para 15/08/2026" é corrigir, mesmo se a descrição tiver "mensal".
 - cadastro: criar/cadastrar conta ou cartão novo
 - orcamento: definir ou consultar orçamento/limite de gasto mensal por categoria
-- recorrencia: criar/listar/cancelar despesa recorrente (assinatura Netflix etc.)
+- recorrencia: criar/listar/cancelar despesa que se repete (todo mês, recorrente, assinatura). Adjetivo "mensal" no nome do lançamento NÃO é criar recorrência.
 - outro: só saudação ou assunto claramente fora de finanças`;
 }
 
