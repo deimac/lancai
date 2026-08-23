@@ -3,6 +3,7 @@ import {
   agrupar_series_parcelamento,
   eh_id_parcela_projetada,
   id_externo_parcela_projetada,
+  planejar_complemento_parcelas_cartao,
   planejar_parcelas_faltantes,
   projetar_data_parcela,
 } from "../projetar-parcelas";
@@ -153,5 +154,35 @@ describe("projetar-parcelas", () => {
     });
     expect(a).toBe(b);
     expect(a).toMatch(/^lancai:proj:[0-9a-f]{16}:4$/);
+  });
+
+  it("preserva o dia da parcela conhecida na fatura PDF (1/4 em 13/07 → 13/08)", () => {
+    const eventos = planejar_complemento_parcelas_cartao({
+      workspaceId: "11111111-1111-1111-1111-111111111111",
+      cartaoId: "22222222-2222-2222-2222-222222222222",
+      fonte: "pdf",
+      provedor: "revolut-pdf",
+      preservarDia: true,
+      movimentos: [
+        {
+          parcelaNumero: 1,
+          parcelaTotal: 4,
+          parcelaCompraEm: "2026-07-13",
+          parcelaCompraValor: "1900.00",
+          valor: "475.00",
+          dataMovimento: "2026-07-13",
+          descricao: "Moacyr Sanches Mascar",
+          idExterno: "pdf-1",
+          status: "realizado",
+          statusFonte: "confirmado",
+        },
+      ],
+    });
+
+    expect(eventos.map((e) => e.parcelamento?.numero)).toEqual([2, 3, 4]);
+    expect(eventos.map((e) => e.ocorridoEm)).toEqual(["2026-08-13", "2026-09-13", "2026-10-13"]);
+    expect(eventos.every((e) => e.statusFonte === "pendente")).toBe(true);
+    expect(eventos.every((e) => e.fonte === "pdf")).toBe(true);
+    expect(eventos[0]?.valor).toBe(475);
   });
 });

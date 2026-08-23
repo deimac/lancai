@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { EventoFinanceiroNormalizado, TipoFonte } from "@lancai/tipos";
 import { somar_meses } from "./pluggy/traducao";
 
 /** Prefixo de `id_externo` das parcelas que o LançAI completa quando o OF omite. */
@@ -221,11 +222,13 @@ export function agrupar_series_parcelamento(parcelas: ParcelaSerieEntrada[]): Se
 /**
  * Extrapolação mensal a partir da parcela conhecida mais próxima.
  * Ex.: temos 1→2026-06 e 2→2026-07; falta 4 → 2026-09-01.
+ * Com `preservarDia`, mantém o dia da âncora (13/07 → 13/08), típico de fatura PDF.
  */
 export function projetar_data_parcela(
   datasPorNumero: Map<number, string>,
   numero: number,
   compraEm: string,
+  opcoes: { preservarDia?: boolean } = {},
 ): string {
   let ancoraNumero: number | null = null;
   let menorDist = Number.POSITIVE_INFINITY;
@@ -239,17 +242,30 @@ export function projetar_data_parcela(
 
   if (ancoraNumero != null) {
     const ancoraData = datasPorNumero.get(ancoraNumero)!;
+    if (opcoes.preservarDia) {
+      return somar_meses(ancoraData, numero - ancoraNumero);
+    }
     const mesAncora = `${ancoraData.slice(0, 7)}-01`;
     return somar_meses(mesAncora, numero - ancoraNumero);
   }
 
-  return somar_meses(`${compraEm.slice(0, 7)}-01`, numero);
+  return somar_meses(
+    opcoes.preservarDia ? compraEm : `${compraEm.slice(0, 7)}-01`,
+    numero,
+  );
+}
+
+/** Data da compra quando o PDF só traz a parcela N (1/4 em 13/07 → compra em 13/07). */
+export function estimar_compra_em_parcela(ocorridoEm: string, numero: number): string {
+  if (numero <= 1) return ocorridoEm;
+  return somar_meses(ocorridoEm, 1 - numero);
 }
 
 export function planejar_parcelas_faltantes(entrada: {
   workspaceId: string;
   cartaoId: string;
   series: SerieParcelamento[];
+  preservarDia?: boolean;
 }): ParcelaProjetada[] {
   const projetadas: ParcelaProjetada[] = [];
 
@@ -262,7 +278,9 @@ export function planejar_parcelas_faltantes(entrada: {
         compraEm: serie.compraEm,
         valorCompra: Number.parseFloat(serie.valorCompra),
         valor: serie.valorParcela,
-        ocorridoEm: projetar_data_parcela(serie.datasPorNumero, n, serie.compraEm),
+        ocorridoEm: projetar_data_parcela(serie.datasPorNumero, n, serie.compraEm, {
+          preservarDia: entrada.preservarDia,
+        }),
         descricaoFonte: serie.descricao,
         idExterno: id_externo_parcela_projetada({
           workspaceId: entrada.workspaceId,
@@ -277,4 +295,61 @@ export function planejar_parcelas_faltantes(entrada: {
   }
 
   return projetadas;
+}
+
+export function eventos_de_parcelas_projetadas(
+  entrada: {
+    workspaceId: string;
+    cartaoId: string;
+    fonte: TipoFonte;
+    provedor?: string;
+  },
+  projetadas: ParcelaProjetada[],
+): EventoFinanceiroNormalizado[] {
+  return projetadas.map((parcela) => ({
+    workspaceId: entrada.workspaceId,
+    fonte: entrada.fonte,
+    provedor: entrada.provedor,
+    idExterno: parcela.idExterno,
+    ocorridoEm: parcela.ocorridoEm,
+    valor: parcela.valor,
+    tipo: "despesa" as const,
+    descricaoFonte: parcela.descricaoFonte,
+    cartaoId: entrada.cartaoId,
+    statusFonte: "pendente" as const,
+    parcelamento: {
+      numero: parcela.numero,
+      total: parcela.total,
+      valorTotal: parcela.valorCompra > 0 ? parcela.valorCompra : undefined,
+      compraEm: parcela.compraEm,
+    },
+    fatoImutavel: true,
+  }));
+}
+
+/** Monta os Fatos que faltam na série (2/4, 3/4…) a partir das parcelas já gravadas. */
+export function planejar_complemento_parcelas_cartao(entrada: {
+  workspaceId: string;
+  cartaoId: string;
+  fonte: TipoFonte;
+  provedor?: string;
+  movimentos: ParcelaSerieEntrada[];
+  preservarDia?: boolean;
+}): EventoFinanceiroNormalizado[] {
+  const series = agrupar_series_parcelamento(entrada.movimentos);
+  const projetadas = planejar_parcelas_faltantes({
+    workspaceId: entrada.workspaceId,
+    cartaoId: entrada.cartaoId,
+    series,
+    preservarDia: entrada.preservarDia,
+  });
+  return eventos_de_parcelas_projetadas(
+    {
+      workspaceId: entrada.workspaceId,
+      cartaoId: entrada.cartaoId,
+      fonte: entrada.fonte,
+      provedor: entrada.provedor,
+    },
+    projetadas,
+  );
 }

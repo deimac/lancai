@@ -381,4 +381,22 @@ describe("importar PDF", () => {
     expect(conferidas[0]?.tipo).toBe("despesa");
     expect(conferidas[1]?.tipo).toBe("receita");
   });
+
+  it("lê 1/4 na descrição e preenche compra e total para projetar o restante", () => {
+    const linhas = extrair_lancamentos_do_texto(
+      "13 de jul. de 2026 Moacyr Sanches Mascar 1/4 R$475,00",
+    );
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]).toMatchObject({
+      ocorridoEm: "2026-07-13",
+      valor: 475,
+      parcelamento: {
+        numero: 1,
+        total: 4,
+        compraEm: "2026-07-13",
+        valorTotal: 1900,
+      },
+    });
+    expect(linhas[0]?.descricao.toLowerCase()).toMatch(/moacyr/);
+  });
 });

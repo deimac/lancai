@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { ErroValidacaoFinanceira } from "@lancai/financeiro";
+import { estimar_compra_em_parcela } from "@lancai/open-finance";
 import type { EventoFinanceiroNormalizado, ParcelamentoFonte } from "@lancai/tipos";
 
 export const MIN_CARACTERES_TEXTO_PDF = 40;
@@ -305,13 +306,22 @@ function sugerir_destino_pdf(desc: string): TipoDestinoPdf {
   return "conta";
 }
 
-function parcelamento_da_desc(desc: string): ParcelamentoPdf | undefined {
+function parcelamento_da_desc(
+  desc: string,
+  ocorridoEm: string,
+  valor: number,
+): ParcelamentoPdf | undefined {
   const match = desc.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/);
   if (!match) return undefined;
   const numero = Number(match[1]);
   const total = Number(match[2]);
   if (total < 2 || numero < 1 || numero > total) return undefined;
-  return { numero, total };
+  return {
+    numero,
+    total,
+    compraEm: estimar_compra_em_parcela(ocorridoEm, numero),
+    valorTotal: Number((valor * total).toFixed(2)),
+  };
 }
 
 /**
@@ -387,7 +397,7 @@ function emitir_se_valido(
   if (!descricao || descricao.length < 2) return;
   if (linha_e_lixo(descricao) || desc_e_cabecalho(descricao) || desc_parece_prosa(descricao)) return;
   if (/^(fee|taxa|iof|fx fee|international fee)$/i.test(descricao)) return;
-  const parcela = parcelamento_da_desc(descricao);
+  const parcela = parcelamento_da_desc(descricao, dataIso, valor.valor);
   saida.push({
     ocorridoEm: dataIso,
     descricao,

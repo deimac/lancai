@@ -11,7 +11,8 @@ import {
 import { ErroRecursoNaoEncontrado, ErroValidacaoFinanceira, MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import { OrquestradorIA } from "@lancai/ia";
 import type { ResumoIngestao } from "@lancai/open-finance";
-import { parcelamentoFonteSchema } from "@lancai/tipos";
+import { estimar_compra_em_parcela, planejar_complemento_parcelas_cartao } from "@lancai/open-finance";
+import { parcelamentoFonteSchema, type EventoFinanceiroNormalizado } from "@lancai/tipos";
 import {
   type CandidatoDestinoPdf,
   type DestinoPdf,
@@ -418,6 +419,72 @@ async function carregar_destinos_confirmacao(
   return resultado;
 }
 
+async function completar_parcelas_futuras_pdf(entrada: {
+  motor: MotorFinanceiro;
+  eventos: EventoFinanceiroNormalizado[];
+  usuarioId: string;
+  categoriaIdNaoClassificado: string;
+  provedor: string;
+}): Promise<{ criados: number; duplicados: number; ids: string[] }> {
+  const cartoes = [
+    ...new Map(
+      entrada.eventos
+        .filter((evento) => evento.cartaoId && evento.parcelamento && evento.parcelamento.total >= 2)
+        .map((evento) => [evento.cartaoId!, evento]),
+    ).values(),
+  ];
+  if (cartoes.length === 0) {
+    return { criados: 0, duplicados: 0, ids: [] };
+  }
+
+  const projetados: EventoFinanceiroNormalizado[] = [];
+  for (const evento of cartoes) {
+    const cartaoId = evento.cartaoId!;
+    const movimentos = await entrada.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+    projetados.push(
+      ...planejar_complemento_parcelas_cartao({
+        workspaceId: evento.workspaceId,
+        cartaoId,
+        fonte: "pdf",
+        provedor: entrada.provedor,
+        preservarDia: true,
+        movimentos: movimentos
+          .filter((movimento) => movimento.parcelaNumero != null && movimento.parcelaTotal != null)
+          .map((movimento) => ({
+            parcelaNumero: movimento.parcelaNumero!,
+            parcelaTotal: movimento.parcelaTotal!,
+            parcelaCompraEm:
+              movimento.parcelaCompraEm ??
+              estimar_compra_em_parcela(movimento.dataMovimento, movimento.parcelaNumero!),
+            parcelaCompraValor: movimento.parcelaCompraValor,
+            valor: movimento.valor,
+            dataMovimento: movimento.dataMovimento,
+            descricao: movimento.descricao,
+            idExterno: movimento.idExterno,
+            status: movimento.status,
+            statusFonte: movimento.statusFonte,
+          })),
+      }),
+    );
+  }
+
+  if (projetados.length === 0) {
+    return { criados: 0, duplicados: 0, ids: [] };
+  }
+
+  const resultado = await entrada.motor.ingerir_eventos(projetados, {
+    usuarioId: entrada.usuarioId,
+    criadoPor: entrada.usuarioId,
+    categoriaIdNaoClassificado: entrada.categoriaIdNaoClassificado,
+    perfilPadrao: "pf",
+  });
+  return {
+    criados: resultado.criados.length,
+    duplicados: resultado.duplicados,
+    ids: resultado.criados.map((movimento) => movimento.id),
+  };
+}
+
 export async function confirmar_importacao_pdf(
   entradaBruta: EntradaConfirmarImportacaoPdf,
   deps: {
@@ -447,15 +514,26 @@ export async function confirmar_importacao_pdf(
     perfilPadrao: "pf",
   });
 
+  const projetados = await completar_parcelas_futuras_pdf({
+    motor,
+    eventos,
+    usuarioId: entrada.usuarioId,
+    categoriaIdNaoClassificado,
+    provedor: entrada.provedor,
+  });
+
   const resumo: ResumoIngestao = {
-    criados: resultado.criados.length,
-    duplicados: resultado.duplicados,
+    criados: resultado.criados.length + projetados.criados,
+    duplicados: resultado.duplicados + projetados.duplicados,
     atualizados: 0,
     removidos: 0,
     semDestino: 0,
     puladosSemanticos: 0,
     paginas: 0,
-    movimentoIdsCriados: resultado.criados.map((movimento) => movimento.id),
+    movimentoIdsCriados: [
+      ...resultado.criados.map((movimento) => movimento.id),
+      ...projetados.ids,
+    ],
   };
 
   const enriquecer = deps.enriquecer ?? enriquecer_apos_ingestao;

@@ -14,6 +14,7 @@ import type {
 import {
   agrupar_series_parcelamento,
   eh_id_parcela_projetada,
+  eventos_de_parcelas_projetadas,
   planejar_parcelas_faltantes,
 } from "./projetar-parcelas";
 import type {
@@ -704,27 +705,17 @@ export class ServicoIngestaoOpenFinance {
         series,
       });
 
-      for (const parcela of faltantes) {
-        eventos.push({
-          workspaceId: conexao.workspaceId,
-          fonte: "open_finance",
-          provedor: this.provedor.id,
-          idExterno: parcela.idExterno,
-          ocorridoEm: parcela.ocorridoEm,
-          valor: parcela.valor,
-          tipo: "despesa",
-          descricaoFonte: parcela.descricaoFonte,
-          cartaoId,
-          statusFonte: "pendente",
-          parcelamento: {
-            numero: parcela.numero,
-            total: parcela.total,
-            valorTotal: parcela.valorCompra > 0 ? parcela.valorCompra : undefined,
-            compraEm: parcela.compraEm,
+      eventos.push(
+        ...eventos_de_parcelas_projetadas(
+          {
+            workspaceId: conexao.workspaceId,
+            cartaoId,
+            fonte: "open_finance",
+            provedor: this.provedor.id,
           },
-          fatoImutavel: true,
-        });
-      }
+          faltantes,
+        ),
+      );
     }
 
     if (eventos.length === 0) return;
