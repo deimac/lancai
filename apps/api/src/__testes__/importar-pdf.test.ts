@@ -14,6 +14,7 @@ import {
   unir_linhas_extraidas,
   extrair_lancamentos_do_texto,
   linhas_visuais_pdf,
+  parse_data_lancamento,
   type CandidatoDestinoPdf,
   type LinhaExtraidaPdf,
 } from "../servicos/importar-pdf";
@@ -226,6 +227,33 @@ describe("importar PDF", () => {
     const textoCorrido = nomes.map((nome, i) => `Card Payment to ${nome} - R$${(10 + i).toFixed(2)}`).join(" ");
     const doCorrido = extrair_lancamentos_do_texto(`1 August 2026 ${textoCorrido}`);
     expect(doCorrido.length).toBeGreaterThanOrEqual(nomes.length);
+  });
+
+  it("lê tabela Data Descrição Valor em português, sem herdar a data do cabeçalho", () => {
+    const texto = [
+      "Fatura do cartão",
+      "Período 01/05/2026 a 31/05/2026",
+      "Vencimento 10 de jun. de 2026",
+      "Data Descrição Valor",
+      "15 de mai. de 2026 Norte Sul Grill R$36,99",
+      "16 de mai. de 2026 IFOOD R$45,90",
+      "2 de jun. de 2026 UBER R$23,40",
+      "Sobre as taxas: conversão de 6,12 e IOF de 1,10%.",
+    ].join("\n");
+    expect(parse_data_lancamento("15 de mai. de 2026")).toBe("2026-05-15");
+    const linhas = extrair_lancamentos_do_texto(texto);
+    expect(linhas).toHaveLength(3);
+    expect(linhas[0]).toMatchObject({
+      ocorridoEm: "2026-05-15",
+      descricao: "Norte Sul Grill",
+      valor: 36.99,
+      tipo: "despesa",
+    });
+    expect(linhas[1]).toMatchObject({ ocorridoEm: "2026-05-16", valor: 45.9 });
+    expect(linhas[1]?.descricao).toMatch(/IFOOD/i);
+    expect(linhas[2]?.ocorridoEm).toBe("2026-06-02");
+    expect(linhas.every((linha) => linha.ocorridoEm !== "2026-05-01")).toBe(true);
+    expect(linhas.every((linha) => !/mai\.|2026|período|taxa/i.test(linha.descricao))).toBe(true);
   });
 
   it("lê data e valor na mesma linha (extrato BR)", () => {

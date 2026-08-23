@@ -87,7 +87,7 @@ const MESES: Record<string, number> = {
   feb: 2, february: 2, fev: 2, fevereiro: 2,
   mar: 3, march: 3, marco: 3,
   apr: 4, april: 4, abr: 4, abril: 4,
-  may: 5, maio: 5,
+  may: 5, mai: 5, maio: 5,
   jun: 6, june: 6, junho: 6,
   jul: 7, july: 7, julho: 7,
   aug: 8, august: 8, ago: 8, agosto: 8,
@@ -98,7 +98,7 @@ const MESES: Record<string, number> = {
 };
 
 const LIXO_LINHA =
-  /^(statement|account statement|account|iban|balance|saldo|total|page\b|revolut ltd|date$|description$|amount$|fee$|completed$|pending$|opening|closing|fatura|extrato|per[ií]odo|transactions?$|money (in|out)|paid$)/i;
+  /^(statement|account statement|account|iban|balance|saldo|total|page\b|revolut ltd|date$|data$|description$|descri[cç][aã]o$|amount$|valor$|fee$|completed$|pending$|opening|closing|fatura|extrato|per[ií]odo|transactions?$|money (in|out)|paid$)/i;
 
 const PROSA_LIXO =
   /\b(may include|applies? when|exchange rate|currency conversion|converted from|this (fee|statement|account)|interest rate|variable fee|international fee|fair usage|revolut ltd|registered in|sort code|account number|opening balance|closing balance|statement period|you (were|will|can|may)|about (this|the) fee|taxa (de|sobre)|cobran[cç]a de iof)\b/i;
@@ -135,9 +135,9 @@ function regex_datas(): RegExp {
   return new RegExp(
     [
       String.raw`\d{4}-\d{2}-\d{2}`,
+      String.raw`\d{1,2}\s+de\s+(?:${FONTE_MES})\.?\s+de\s+\d{4}`,
       String.raw`\d{1,2}\s+(?:${FONTE_MES})\.?\s+\d{4}`,
       String.raw`(?:${FONTE_MES})\.?\s+\d{1,2},?\s+\d{4}`,
-      String.raw`\d{1,2}\s+de\s+[a-zçãéô]+\s+de\s+\d{4}`,
       String.raw`\d{1,2}/\d{1,2}/\d{2,4}`,
     ].join("|"),
     "gi",
@@ -164,7 +164,9 @@ export function parse_data_lancamento(texto: string): string | null {
     if (mes) return iso_de_partes(Number(enRev[3]), mes, Number(enRev[2]));
   }
 
-  const pt = texto.match(/\b(\d{1,2})\s+de\s+([a-zçãéô]+)\s+de\s+(\d{4})\b/i);
+  const pt = texto.match(
+    new RegExp(String.raw`\b(\d{1,2})\s+de\s+(${FONTE_MES})\.?\s+de\s+(\d{4})\b`, "i"),
+  );
   if (pt) {
     const mes = normalizar_mes(pt[2]!);
     if (mes) return iso_de_partes(Number(pt[3]), mes, Number(pt[1]));
@@ -264,8 +266,7 @@ function desc_parece_prosa(descricao: string): boolean {
 function limpar_descricao(texto: string): string {
   return texto
     .replace(new RegExp(REGEX_VALOR.source, "gi"), " ")
-    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
-    .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, " ")
+    .replace(regex_datas(), " ")
     .replace(/\bcompleted\b|\bpending\b|\bposted\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -347,6 +348,19 @@ function datas_com_indice(plano: string): Array<{ iso: string; inicio: number; f
   return datas;
 }
 
+function data_e_periodo(plano: string, data: { inicio: number; fim: number }): boolean {
+  const antes = plano.slice(Math.max(0, data.inicio - 48), data.inicio);
+  const depois = plano.slice(data.fim, Math.min(plano.length, data.fim + 28));
+  if (
+    /\b(vencimento|due date|per[ií]odo|fechamento|abertura|emiss[aã]o|statement period|v[aá]lido)\b/i.test(
+      antes,
+    )
+  ) {
+    return true;
+  }
+  return /^\s*(?:[aá]|até|-|–|—)\s*\d/i.test(depois);
+}
+
 function data_antes(datas: Array<{ iso: string; inicio: number; fim: number }>, posicao: number): string | null {
   let encontrada: string | null = null;
   for (const data of datas) {
@@ -379,9 +393,35 @@ function emitir_se_valido(
 }
 
 /**
- * Corta o texto nas marcas que se repetem (Card Payment, PIX, ATM…).
- * Cada bloco vira um lançamento; fee, saldo e prosa de taxa ficam de fora.
+ * Tabela padronizada: Data | Descrição | Valor.
+ * Cada data da linha vale só para aquele lançamento — não herda a do cabeçalho.
  */
+function extrair_por_tabela(
+  plano: string,
+  datas: Array<{ iso: string; inicio: number; fim: number }>,
+): LinhaExtraidaPdf[] {
+  const linhasData = datas.filter((data) => !data_e_periodo(plano, data));
+  if (linhasData.length < 2) return [];
+
+  const datasPt = (
+    plano.match(new RegExp(String.raw`\d{1,2}\s+de\s+(?:${FONTE_MES})\.?`, "gi")) ?? []
+  ).length;
+
+  const saida: LinhaExtraidaPdf[] = [];
+  let chunksComVariosValores = 0;
+  for (let i = 0; i < linhasData.length; i++) {
+    const data = linhasData[i]!;
+    const chunk = plano.slice(data.fim, linhasData[i + 1]?.inicio ?? plano.length);
+    const valores = parse_valores_com_indice(chunk);
+    if (valores.length > 1) chunksComVariosValores += 1;
+    const principal = valores[0];
+    if (!principal) continue;
+    const descricao = limpar_descricao(chunk.slice(0, principal.inicio));
+    emitir_se_valido(saida, data.iso, descricao, principal);
+  }
+  if (datasPt < 2 && chunksComVariosValores > 0) return [];
+  return saida.length >= 2 ? saida : [];
+}
 function extrair_por_marcas_recorrentes(
   plano: string,
   datas: Array<{ iso: string; inicio: number; fim: number }>,
@@ -425,14 +465,17 @@ function extrair_por_data_valor(
 }
 
 /**
- * Extrai lançamentos pelo texto corrido. Prefere o padrão que se repete
- * (Card Payment, PIX…) e ignora taxa, câmbio e saldo.
+ * Extrai lançamentos pelo texto corrido. Prefere tabela Data/Descrição/Valor,
+ * depois o padrão que se repete (Card Payment, PIX…) e ignora taxa/câmbio/saldo.
  */
 export function extrair_lancamentos_do_texto(texto: string): LinhaExtraidaPdf[] {
   const plano = texto.replace(/\s+/g, " ").trim();
   if (!plano) return [];
   const datas = datas_com_indice(plano);
   if (datas.length === 0) return [];
+
+  const porTabela = extrair_por_tabela(plano, datas);
+  if (porTabela.length >= 2) return porTabela;
 
   const porMarca = extrair_por_marcas_recorrentes(plano, datas);
   if (porMarca.length >= 2) return porMarca;
