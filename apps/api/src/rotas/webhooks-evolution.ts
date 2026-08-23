@@ -197,6 +197,7 @@ export async function registrar_rotas_webhooks_evolution(app: FastifyInstance) {
         texto,
         fromMe: resumo.fromMe,
         intencaoPrevia,
+        messageId: resumo.messageId,
       });
 
       if (!resultado.processado && resultado.motivo === "nao_autorizado") {

@@ -11,6 +11,7 @@ export * from "./parcela";
 export * from "./memoria";
 export * from "./auditoria";
 export * from "./sessao";
+export * from "./assistente";
 export * from "./chat";
 export * from "./evolution-evento";
 export * from "./orcamento";

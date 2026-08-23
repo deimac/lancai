@@ -3,6 +3,9 @@ import type { IntencaoDetectada } from "@lancai/tipos";
 import { buscar_usuario_por_whatsapp } from "./identificar-usuario-whatsapp";
 import { processar_turno_conversa } from "./processar-turno-conversa";
 import { eh_jid_grupo, extrair_telefone_whatsapp } from "./telefone-whatsapp";
+import { obterAssistenteCore } from "./assistente-v2";
+import { gravar_turno_chat } from "./gravar-turno-chat";
+import { isFlagEnabled } from "../config/feature-flags";
 
 let evolutionSingleton: EvolutionService | null = null;
 
@@ -23,6 +26,8 @@ export type EntradaMensagemWhatsApp = {
   fromMe?: boolean;
   /** Visão já extraiu a intenção (foto/PDF). */
   intencaoPrevia?: IntencaoDetectada;
+  /** Id estável da mensagem Evolution (deduplicação v2). */
+  messageId?: string;
 };
 
 export type ResultadoMensagemWhatsApp = {
@@ -65,12 +70,57 @@ export async function processar_mensagem_whatsapp(
     return { processado: false, motivo: "nao_autorizado" };
   }
 
+  if (isFlagEnabled("ASSISTENTE_V2_ASSISTANT")) {
+    const v2 = await obterAssistenteCore().processar({
+      usuarioId: usuario.id,
+      mensagem: texto || "(mídia)",
+      canal: "whatsapp",
+      messageId: entrada.messageId,
+      intencaoPrevia: entrada.intencaoPrevia as never,
+    });
+    if (!v2.duplicata) {
+      await gravar_turno_chat({
+        sessaoId: v2.sessaoId,
+        mensagemUsuario: texto || "(mídia)",
+        resposta: v2.resposta,
+      });
+    }
+    return {
+      processado: true,
+      usuarioId: usuario.id,
+      sessaoId: v2.sessaoId,
+      resposta: v2.resposta,
+    };
+  }
+
   const turno = await processar_turno_conversa({
     usuarioId: usuario.id,
     mensagem: texto || "(mídia)",
     reutilizarSessaoAtiva: true,
     intencaoPrevia: entrada.intencaoPrevia,
   });
+
+  if (isFlagEnabled("ASSISTENTE_V2_SHADOW")) {
+    void obterAssistenteCore()
+      .processar({
+        usuarioId: usuario.id,
+        mensagem: texto || "(mídia)",
+        canal: "whatsapp",
+        messageId: entrada.messageId,
+        intencaoPrevia: entrada.intencaoPrevia as never,
+      })
+      .then((v2) => {
+        console.info("[assistant-v2] Shadow comparison", {
+          traceId: v2.traceId,
+          shadow: true,
+          legacy: turno.resposta,
+          v2: v2.resposta,
+        });
+      })
+      .catch((erro) => {
+        console.warn("[assistant-v2] Shadow falhou", erro);
+      });
+  }
 
   return {
     processado: true,

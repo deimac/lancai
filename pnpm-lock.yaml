@@ -47,6 +47,9 @@ importers:
       '@fastify/multipart':
         specifier: ^10.1.1
         version: 10.1.1
+      '@lancai/assistente':
+        specifier: workspace:*
+        version: link:../../modulos/assistente
       '@lancai/banco':
         specifier: workspace:*
         version: link:../../pacotes/banco
@@ -175,6 +178,40 @@ importers:
       vite:
         specifier: ^8.2.0
         version: 8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(lightningcss@1.33.0)
+
+  modulos/assistente:
+    dependencies:
+      '@lancai/banco':
+        specifier: workspace:*
+        version: link:../../pacotes/banco
+      '@lancai/conhecimento':
+        specifier: workspace:*
+        version: link:../conhecimento
+      '@lancai/financeiro':
+        specifier: workspace:*
+        version: link:../financeiro
+      '@lancai/ia':
+        specifier: workspace:*
+        version: link:../ia
+      '@lancai/relatorios':
+        specifier: workspace:*
+        version: link:../relatorios
+      '@lancai/tipos':
+        specifier: workspace:*
+        version: link:../../pacotes/tipos
+      drizzle-orm:
+        specifier: ^0.38.2
+        version: 0.38.4(@types/react@19.2.18)(postgres@3.4.9)(react@19.2.8)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.33.0)

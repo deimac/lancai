@@ -1,4 +1,4 @@
-import { pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { statusSessaoEnum } from "./enums";
 import { usuario } from "./usuario";
 
@@ -10,6 +10,8 @@ export const sessao = pgTable("sessao", {
   status: statusSessaoEnum("status").notNull().default("ativa"),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),
+  /** ConversationState v1 do Assistente 2.0 (versionamento otimista). */
+  contexto: jsonb("contexto").$type<Record<string, unknown>>(),
 });
 
 export type Sessao = typeof sessao.$inferSelect;
