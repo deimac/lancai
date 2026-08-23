@@ -2,6 +2,8 @@ import { appendFileSync } from "node:fs";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import {
+  ErroContaSincronizada,
+  ErroFatoImutavel,
   ErroLimiteCartaoExcedido,
   ErroRecursoNaoEncontrado,
   ErroTipoMovimentoNaoImplementado,
@@ -44,13 +46,21 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
     return resposta.status(400).send({ erro: "Dados inválidos.", detalhes: erro.issues });
   }
 
-  if (
-    erro &&
-    typeof erro === "object" &&
-    "statusCode" in erro &&
-    (erro as { statusCode?: number }).statusCode === 413
-  ) {
-    return resposta.status(413).send({ erro: "O arquivo é grande demais (máximo 12 MB)." });
+  if (erro && typeof erro === "object" && "statusCode" in erro) {
+    const status = (erro as { statusCode?: number }).statusCode;
+    if (status === 413) {
+      return resposta.status(413).send({ erro: "O arquivo é grande demais (máximo 12 MB)." });
+    }
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      const codigo = "code" in erro ? String((erro as { code?: string }).code ?? "") : "";
+      const mensagem =
+        codigo.startsWith("FST_ERR_")
+          ? "Requisição inválida."
+          : erro instanceof Error && erro.message
+            ? erro.message
+            : "Requisição inválida.";
+      return resposta.status(status).send({ erro: mensagem });
+    }
   }
 
   if (
@@ -68,6 +78,8 @@ export function tratar_erro(erro: unknown, requisicao: FastifyRequest, resposta:
 
   if (
     erro instanceof ErroValidacaoFinanceira ||
+    erro instanceof ErroFatoImutavel ||
+    erro instanceof ErroContaSincronizada ||
     erro instanceof ErroLimiteCartaoExcedido ||
     erro instanceof ErroTipoMovimentoNaoImplementado ||
     erro instanceof ErroReferenciaNaoEncontrada ||

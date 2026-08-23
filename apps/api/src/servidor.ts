@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { resumir_config_provedores_ia } from "@lancai/ia";
 import { origem_cors_permitida } from "./cors";
@@ -21,8 +21,30 @@ import { registrar_rotas_recorrencia } from "./rotas/recorrencias";
 import { registrar_rotas_importacao } from "./rotas/importacoes";
 import { tratar_erro } from "./tratar-erro";
 
+/**
+ * Fastify 5 recusa `application/json` com corpo vazio. O cliente web manda esse
+ * header em todo `fetch`, inclusive DELETE do Extrato — e o usuário via "Erro interno".
+ */
+export function aceitar_json_sem_corpo(app: FastifyInstance) {
+  const parserPadrao = app.getDefaultJsonParser("error", "error");
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (requisicao, corpo, feito) => {
+      const texto = typeof corpo === "string" ? corpo : "";
+      if (texto.trim() === "") {
+        feito(null, null);
+        return;
+      }
+      parserPadrao(requisicao, texto, feito);
+    },
+  );
+}
+
 export function criar_servidor() {
   const app = Fastify({ logger: true });
+  aceitar_json_sem_corpo(app);
 
   app.register(cors, { origin: origem_cors_permitida });
 

@@ -566,10 +566,14 @@ async function interpretar_json<T>(resposta: Response): Promise<T> {
 
 async function requisitar<T>(caminho: string, opcoes: RequestInit = {}): Promise<T> {
   let resposta: Response;
+  const headers = new Headers(opcoes.headers);
+  if (opcoes.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   try {
     resposta = await fetch(`${URL_BASE}${caminho}`, {
       ...opcoes,
-      headers: { "Content-Type": "application/json", ...opcoes.headers },
+      headers,
     });
   } catch (erro) {
     throw new ErroApi(mensagem_falha_rede(erro, "Chamada à API"), 0);
