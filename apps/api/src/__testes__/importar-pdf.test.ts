@@ -363,4 +363,22 @@ describe("importar PDF", () => {
     expect(conferidas.every((linha) => linha.tipo === "despesa")).toBe(true);
     expect(conferidas.every((linha) => linha.destino?.id === CARTAO.id)).toBe(true);
   });
+
+  it("pagamento recebido na fatura entra como crédito no cartão", () => {
+    const texto = [
+      "15 de mai. de 2026 Norte Sul Grill R$36,99",
+      "20 de mai. de 2026 Pagamento recebido R$200,00",
+    ].join("\n");
+    const extraidas = extrair_lancamentos_do_texto(texto);
+    expect(extraidas).toHaveLength(2);
+    expect(extraidas[0]?.tipo).toBe("despesa");
+    expect(extraidas[1]?.tipo).toBe("receita");
+    expect(extraidas[1]?.descricao).toMatch(/pagamento recebido/i);
+
+    const conferidas = rotear_linhas_pdf(extraidas, {
+      origem: { tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome },
+    });
+    expect(conferidas[0]?.tipo).toBe("despesa");
+    expect(conferidas[1]?.tipo).toBe("receita");
+  });
 });

@@ -274,7 +274,13 @@ function limpar_descricao(texto: string): string {
 
 function tipo_e_credito_explicito(desc: string, mais: boolean): boolean {
   if (mais) return true;
-  if (/refund|estorno|cashback|salary|sal[aá]rio|dep[oó]sito|pix recebido/i.test(desc)) return true;
+  if (
+    /refund|estorno|cashback|salary|sal[aá]rio|dep[oó]sito|pix recebido|pagamento recebido|pagto recebido|pgto recebido/i.test(
+      desc,
+    )
+  ) {
+    return true;
+  }
   return /^\s*from\b/i.test(desc);
 }
 

@@ -172,7 +172,7 @@ export function ModalImportarFatura({
           {etapa === "conferir" && (
             <>
               <p className="text-sm text-texto-suave">
-                Desmarque o que não entra. Corrija a descrição ou a data se precisar.
+                Desmarque o que não entra. Corrija descrição, data ou se é saída/entrada.
               </p>
               {preview?.aviso && (
                 <p className="rounded-lg border border-aviso/40 bg-aviso/10 px-3 py-2 text-sm text-aviso">
@@ -219,12 +219,24 @@ export function ModalImportarFatura({
                               className="rounded-md border border-borda bg-superficie px-1.5 py-0.5 text-xs text-texto"
                               aria-label="Data"
                             />
-                            <span>
-                              {linha.tipo === "despesa" ? "Saída" : "Entrada"}
-                              {linha.parcelamento
-                                ? ` · ${linha.parcelamento.numero}/${linha.parcelamento.total}`
-                                : ""}
-                            </span>
+                            <select
+                              value={linha.tipo}
+                              onChange={(e) =>
+                                atualizar_linha(indice, {
+                                  tipo: e.target.value === "receita" ? "receita" : "despesa",
+                                })
+                              }
+                              className="rounded-md border border-borda bg-superficie px-1.5 py-0.5 text-xs text-texto"
+                              aria-label="Tipo"
+                            >
+                              <option value="despesa">Saída</option>
+                              <option value="receita">Entrada</option>
+                            </select>
+                            {linha.parcelamento ? (
+                              <span>
+                                {linha.parcelamento.numero}/{linha.parcelamento.total}
+                              </span>
+                            ) : null}
                           </span>
                         </span>
                       </div>
