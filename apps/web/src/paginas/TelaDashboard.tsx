@@ -752,7 +752,7 @@ export function TelaDashboard() {
                     {conta.perfil === "pj" ? "Jurídica" : "Física"}
                   </p>
                 </div>
-                <span className="font-medium">{formatar_oculto(formatar_moeda(conta.saldoAtual), ocultarValores)}</span>
+                <span className="font-medium text-texto">{formatar_oculto(formatar_moeda(conta.saldoAtual), ocultarValores)}</span>
               </li>
             ))}
             {dados.cartoes.map((cartao) => (
@@ -768,7 +768,7 @@ export function TelaDashboard() {
                     Usado {formatar_oculto(formatar_moeda(cartao.comprometido), ocultarValores)}
                   </p>
                 </div>
-                <span className="text-texto-suave">
+                <span className="font-medium text-texto">
                   {formatar_oculto(formatar_moeda(cartao.limite), ocultarValores)}
                 </span>
               </li>
