@@ -56,6 +56,7 @@ describe("importar PDF", () => {
       expect(doCartao.every((linha) => linha.destino?.id === CARTAO.id)).toBe(true);
       expect(doCartao.every((linha) => linha.destinoSugerido === "cartao")).toBe(true);
       expect(doCartao.every((linha) => linha.aceita)).toBe(true);
+      expect(doCartao.find((linha) => linha.descricao === "IFOOD")?.tipo).toBe("despesa");
 
       const daConta = rotear_linhas_pdf([linhaConta, linhaCartao], { origem: CONTA });
       expect(daConta.every((linha) => linha.destino?.id === CONTA.id)).toBe(true);
@@ -303,5 +304,35 @@ describe("importar PDF", () => {
     expect(linhas).toHaveLength(1);
     expect(linhas[0]?.descricao).toMatch(/UBER/i);
     expect(linhas[0]?.valor).toBe(23.4);
+  });
+
+  it("ignora prosa de taxa/câmbio e fica no padrão que se repete", () => {
+    const texto = [
+      "A Card Payment to a merchant may include a variable fee of 0.40% converted from EUR at exchange rate 6.12",
+      "This fee applies when you spend abroad. Fair usage 1,000.00.",
+      "9 Jun 2026",
+      "Card Payment to UBER -23.40 Fee 0.00 1,500.00",
+      "Card Payment to IFOOD 45.90 Fee 0.40 1,454.10",
+      "Card Payment to SPOTIFY 21.90",
+      "10 Jun 2026 Card Payment to NETFLIX 32.90",
+    ].join("\n");
+    const linhas = extrair_lancamentos_do_texto(texto);
+    expect(linhas).toHaveLength(4);
+    expect(linhas.every((linha) => linha.tipo === "despesa")).toBe(true);
+    expect(linhas.map((linha) => linha.valor)).toEqual([23.4, 45.9, 21.9, 32.9]);
+    expect(linhas.some((linha) => /fee|exchange|fair usage/i.test(linha.descricao))).toBe(false);
+  });
+
+  it("no cartão, valor sem sinal é despesa que consome limite", () => {
+    const extraidas = extrair_lancamentos_do_texto(
+      "9 Jun 2026 Card Payment to UBER 23.40 Card Payment to IFOOD 45.90",
+    );
+    expect(extraidas.every((linha) => linha.tipo === "despesa")).toBe(true);
+
+    const conferidas = rotear_linhas_pdf(extraidas, {
+      origem: { tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome },
+    });
+    expect(conferidas.every((linha) => linha.tipo === "despesa")).toBe(true);
+    expect(conferidas.every((linha) => linha.destino?.id === CARTAO.id)).toBe(true);
   });
 });

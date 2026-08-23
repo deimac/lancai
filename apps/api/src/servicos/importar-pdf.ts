@@ -98,7 +98,21 @@ const MESES: Record<string, number> = {
 };
 
 const LIXO_LINHA =
-  /^(statement|account statement|account|iban|balance|saldo|total|page\b|revolut ltd|date$|description$|amount$|fee$|completed$|pending$|opening|closing|fatura|extrato|per[ií]odo|transactions?$)/i;
+  /^(statement|account statement|account|iban|balance|saldo|total|page\b|revolut ltd|date$|description$|amount$|fee$|completed$|pending$|opening|closing|fatura|extrato|per[ií]odo|transactions?$|money (in|out)|paid$)/i;
+
+const PROSA_LIXO =
+  /\b(may include|applies? when|exchange rate|currency conversion|converted from|this (fee|statement|account)|interest rate|variable fee|international fee|fair usage|revolut ltd|registered in|sort code|account number|opening balance|closing balance|statement period|you (were|will|can|may)|about (this|the) fee|taxa (de|sobre)|cobran[cç]a de iof)\b/i;
+
+/** Início de lançamento que se repete no extrato (Revolut e afins). */
+const FONTE_MARCA =
+  "Card Payment to|Card Payment from|ATM Withdrawal|Transfer to|Transfer from|Apple Pay|Google Pay|Cash at|PIX Enviado|PIX Recebido|Pix enviado|Pix recebido";
+
+function regex_marcas_lancamento(): RegExp {
+  return new RegExp(
+    String.raw`\b(?:${FONTE_MARCA}|From(?=\s+[A-ZÁÉÍÓÚ][A-ZÁÉÍÓÚa-záéíóú]{2,}\s+[A-ZÁÉÍÓÚ]))\b`,
+    "g",
+  );
+}
 
 function normalizar_mes(bruto: string): number | null {
   const chave = bruto
@@ -188,19 +202,34 @@ const REGEX_VALOR =
 function parse_valores_com_indice(texto: string): Array<{
   valor: number;
   negativo: boolean;
+  mais: boolean;
   inicio: number;
   fim: number;
 }> {
-  const encontrados: Array<{ valor: number; negativo: boolean; inicio: number; fim: number }> = [];
+  const encontrados: Array<{
+    valor: number;
+    negativo: boolean;
+    mais: boolean;
+    inicio: number;
+    fim: number;
+  }> = [];
   const regex = new RegExp(REGEX_VALOR.source, "gi");
   for (const match of texto.matchAll(regex)) {
     if (match.index == null) continue;
     const n = parse_numero_moeda(match[3]!);
     if (n == null || n < 0.01) continue;
-    const negativo = Boolean(match[1] || match[2]) || /\(\s*[\d.,]+\s*\)/.test(match[0]);
+    const depois = texto[match.index + match[0].length] ?? "";
+    if (depois === "%") continue;
+    const antes = texto.slice(Math.max(0, match.index - 1), match.index);
+    const negativo =
+      Boolean(match[1] || match[2]) ||
+      antes === "(" ||
+      /\(\s*[\d.,]+\s*\)/.test(match[0]);
+    const mais = antes === "+" || match[0].trim().startsWith("+");
     encontrados.push({
       valor: n,
       negativo,
+      mais,
       inicio: match.index,
       fim: match.index + match[0].length,
     });
@@ -213,10 +242,23 @@ function linha_e_lixo(texto: string): boolean {
 }
 
 function desc_e_cabecalho(descricao: string): boolean {
-  if (/card payment|pix|transfer|atm|from\b|^to\b|compra|parcela/i.test(descricao)) return false;
-  return /iban|bic\b|account number|sort code|statement period|opening balance|closing balance/i.test(
-    descricao,
+  if (/card payment|pix|transfer|atm|from\b|^to\b|compra|parcela/i.test(descricao) && !PROSA_LIXO.test(descricao)) {
+    return /iban|bic\b|account number|sort code|statement period|opening balance|closing balance/i.test(
+      descricao,
+    );
+  }
+  return (
+    /iban|bic\b|account number|sort code|statement period|opening balance|closing balance/i.test(descricao) ||
+    PROSA_LIXO.test(descricao)
   );
+}
+
+function desc_parece_prosa(descricao: string): boolean {
+  const palavras = descricao.split(/\s+/).filter(Boolean);
+  if (descricao.length > 90 || palavras.length > 12) return true;
+  if (PROSA_LIXO.test(descricao)) return true;
+  if (/=/.test(descricao) && /\b(eur|usd|gbp|brl)\b/i.test(descricao)) return true;
+  return false;
 }
 
 function limpar_descricao(texto: string): string {
@@ -229,12 +271,20 @@ function limpar_descricao(texto: string): string {
     .trim();
 }
 
-function sugerir_tipo_pdf(desc: string, negativo: boolean): "receita" | "despesa" {
-  if (/receb|from\b|salary|sal[aá]rio|cashback|refund|estorno|dep[oó]sito|pix recebido/i.test(desc)) {
-    return "receita";
+function tipo_e_credito_explicito(desc: string, mais: boolean): boolean {
+  if (mais) return true;
+  if (/refund|estorno|cashback|salary|sal[aá]rio|dep[oó]sito|pix recebido/i.test(desc)) return true;
+  return /^\s*from\b/i.test(desc);
+}
+
+function sugerir_tipo_pdf(desc: string, negativo: boolean, mais = false): "receita" | "despesa" {
+  if (tipo_e_credito_explicito(desc, mais)) return "receita";
+  if (negativo) return "despesa";
+  if (/card payment|compra|pix enviado|atm|saque|anuidade|transfer to|^to\b/i.test(desc)) {
+    return "despesa";
   }
-  if (/card payment|compra|pix enviado|atm|saque|anuidade|to\b/i.test(desc)) return "despesa";
-  return negativo ? "despesa" : "receita";
+  // Extrato/fatura: valor sem sinal é saída, não entrada.
+  return "despesa";
 }
 
 function sugerir_destino_pdf(desc: string): TipoDestinoPdf {
@@ -286,15 +336,7 @@ export function linhas_visuais_pdf(
     .filter(Boolean);
 }
 
-/**
- * Extrai lançamentos pelo texto corrido: acha cada data e, nela, cada valor.
- * Quebra de linha do PDF não importa — um token por linha ou tudo numa linha
- * geram o mesmo resultado. A IA não entra neste caminho.
- */
-export function extrair_lancamentos_do_texto(texto: string): LinhaExtraidaPdf[] {
-  const plano = texto.replace(/\s+/g, " ").trim();
-  if (!plano) return [];
-
+function datas_com_indice(plano: string): Array<{ iso: string; inicio: number; fim: number }> {
   const datas: Array<{ iso: string; inicio: number; fim: number }> = [];
   for (const match of plano.matchAll(regex_datas())) {
     if (match.index == null) continue;
@@ -302,8 +344,71 @@ export function extrair_lancamentos_do_texto(texto: string): LinhaExtraidaPdf[] 
     if (!iso) continue;
     datas.push({ iso, inicio: match.index, fim: match.index + match[0].length });
   }
-  if (datas.length === 0) return [];
+  return datas;
+}
 
+function data_antes(datas: Array<{ iso: string; inicio: number; fim: number }>, posicao: number): string | null {
+  let encontrada: string | null = null;
+  for (const data of datas) {
+    if (data.fim <= posicao) encontrada = data.iso;
+    else break;
+  }
+  return encontrada;
+}
+
+function emitir_se_valido(
+  saida: LinhaExtraidaPdf[],
+  dataIso: string | null,
+  descricaoBruta: string,
+  valor: { valor: number; negativo: boolean; mais: boolean },
+): void {
+  if (!dataIso) return;
+  const descricao = limpar_descricao(descricaoBruta).slice(0, 180);
+  if (!descricao || descricao.length < 2) return;
+  if (linha_e_lixo(descricao) || desc_e_cabecalho(descricao) || desc_parece_prosa(descricao)) return;
+  if (/^(fee|taxa|iof|fx fee|international fee)$/i.test(descricao)) return;
+  const parcela = parcelamento_da_desc(descricao);
+  saida.push({
+    ocorridoEm: dataIso,
+    descricao,
+    valor: valor.valor,
+    tipo: sugerir_tipo_pdf(descricao, valor.negativo, valor.mais),
+    destinoSugerido: sugerir_destino_pdf(descricao),
+    ...(parcela ? { parcelamento: parcela } : {}),
+  });
+}
+
+/**
+ * Corta o texto nas marcas que se repetem (Card Payment, PIX, ATM…).
+ * Cada bloco vira um lançamento; fee, saldo e prosa de taxa ficam de fora.
+ */
+function extrair_por_marcas_recorrentes(
+  plano: string,
+  datas: Array<{ iso: string; inicio: number; fim: number }>,
+): LinhaExtraidaPdf[] {
+  const marcas = [...plano.matchAll(regex_marcas_lancamento())];
+  if (marcas.length < 2) return [];
+
+  const saida: LinhaExtraidaPdf[] = [];
+  for (let i = 0; i < marcas.length; i++) {
+    const marca = marcas[i]!;
+    if (marca.index == null) continue;
+    const fim = marcas[i + 1]?.index ?? plano.length;
+    const bloco = plano.slice(marca.index, fim);
+    if (desc_parece_prosa(limpar_descricao(bloco))) continue;
+    const valores = parse_valores_com_indice(bloco);
+    const principal = valores.find((item) => item.valor >= 0.01);
+    if (!principal) continue;
+    const data = data_antes(datas, marca.index) ?? parse_data_lancamento(bloco);
+    emitir_se_valido(saida, data, bloco.slice(0, principal.inicio) || bloco, principal);
+  }
+  return saida;
+}
+
+function extrair_por_data_valor(
+  plano: string,
+  datas: Array<{ iso: string; inicio: number; fim: number }>,
+): LinhaExtraidaPdf[] {
   const saida: LinhaExtraidaPdf[] = [];
   for (let i = 0; i < datas.length; i++) {
     const data = datas[i]!;
@@ -312,26 +417,26 @@ export function extrair_lancamentos_do_texto(texto: string): LinhaExtraidaPdf[] 
     for (let v = 0; v < valores.length; v++) {
       const atual = valores[v]!;
       const descInicio = v === 0 ? 0 : valores[v - 1]!.fim;
-      const ateProximo = valores[v + 1]?.inicio ?? chunk.length;
-      let descricao = limpar_descricao(chunk.slice(descInicio, atual.inicio));
-      if (!descricao || descricao.length < 2) {
-        descricao = limpar_descricao(chunk.slice(atual.fim, ateProximo));
-      }
-      if (!descricao || descricao.length < 2) continue;
-      if (linha_e_lixo(descricao) || desc_e_cabecalho(descricao)) continue;
-      if (/^(fee|taxa|iof)$/i.test(descricao)) continue;
-      const parcela = parcelamento_da_desc(descricao);
-      saida.push({
-        ocorridoEm: data.iso,
-        descricao: descricao.slice(0, 180),
-        valor: atual.valor,
-        tipo: sugerir_tipo_pdf(descricao, atual.negativo),
-        destinoSugerido: sugerir_destino_pdf(descricao),
-        ...(parcela ? { parcelamento: parcela } : {}),
-      });
+      const descricao = limpar_descricao(chunk.slice(descInicio, atual.inicio));
+      emitir_se_valido(saida, data.iso, descricao, atual);
     }
   }
   return saida;
+}
+
+/**
+ * Extrai lançamentos pelo texto corrido. Prefere o padrão que se repete
+ * (Card Payment, PIX…) e ignora taxa, câmbio e saldo.
+ */
+export function extrair_lancamentos_do_texto(texto: string): LinhaExtraidaPdf[] {
+  const plano = texto.replace(/\s+/g, " ").trim();
+  if (!plano) return [];
+  const datas = datas_com_indice(plano);
+  if (datas.length === 0) return [];
+
+  const porMarca = extrair_por_marcas_recorrentes(plano, datas);
+  if (porMarca.length >= 2) return porMarca;
+  return extrair_por_data_valor(plano, datas);
 }
 
 export function exigir_destino_manual(destino: {
@@ -393,9 +498,16 @@ export function resolver_par_pdf(entrada: {
   };
 }
 
+function tipo_no_destino(linha: LinhaExtraidaPdf, origem: DestinoPdf): "receita" | "despesa" {
+  if (origem.tipo !== "cartao") return linha.tipo;
+  if (tipo_e_credito_explicito(linha.descricao, false) && linha.tipo === "receita") return "receita";
+  return "despesa";
+}
+
 /**
  * Fatura entra no destino do menu (conta ou cartão). Não espalha linha a linha:
  * escolher conta/cartão em cada lançamento não é uso real.
+ * No cartão, compra é despesa (consome limite), salvo crédito explícito.
  */
 export function rotear_linhas_pdf(
   linhas: LinhaExtraidaPdf[],
@@ -403,6 +515,7 @@ export function rotear_linhas_pdf(
 ): LinhaPreviewPdf[] {
   return linhas.map((linha) => ({
     ...linha,
+    tipo: tipo_no_destino(linha, contexto.origem),
     destinoSugerido: contexto.origem.tipo,
     destino: contexto.origem,
     aceita: true,
