@@ -80,6 +80,7 @@ Antes de adicionar módulo, camada ou serviço, a pergunta é: isso resolve um p
 | Qual o formato de uma intenção ou interface | [08-CONTRATOS.md](08-CONTRATOS.md) |
 | Como o saldo é calculado, como corrigir difere de excluir | [09-REGRAS_DE_NEGOCIO.md](09-REGRAS_DE_NEGOCIO.md) |
 | Como uma frase se torna uma intenção | [10-IA.md](10-IA.md) |
+| Como o assistente funciona (web + WhatsApp, ponta a ponta) | [16-ASSISTENTE.md](16-ASSISTENTE.md) |
 | Como será o cockpit | [11-WEB.md](11-WEB.md) |
 | Como o assistente se comporta no WhatsApp | [12-WHATSAPP.md](12-WHATSAPP.md) |
 | Como a sincronização bancária funciona | [13-OPEN_FINANCE.md](13-OPEN_FINANCE.md) |
@@ -92,7 +93,7 @@ Antes de adicionar módulo, camada ou serviço, a pergunta é: isso resolve um p
 
 - **Primeiro dia no projeto:** 00, 04, 01, 02.
 - **Vai implementar a fase F1:** 07, 08, 09.
-- **Vai mexer na conversa:** 10, 09, 08.
+- **Vai mexer na conversa:** 16, 10, 09, 08.
 - **Vai implementar Open Finance:** 13, 08, 07.
 - **Vai construir o Web:** 11, 09, 08.
 - **Vai colocar no ar:** 15, 14.

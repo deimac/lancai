@@ -2,7 +2,7 @@
 
 O WhatsApp é o **assistente financeiro** do LançAI, não um formulário disfarçado nem um digitador de extrato.
 
-**Este documento não cobre:** o pipeline de interpretação da mensagem — ver [10-IA.md](10-IA.md). As regras de negócio da conversa — ver [09-REGRAS_DE_NEGOCIO.md](09-REGRAS_DE_NEGOCIO.md).
+**Este documento não cobre:** o mapa ponta a ponta do assistente — ver [16-ASSISTENTE.md](16-ASSISTENTE.md). O pipeline de interpretação e os provedores — ver [10-IA.md](10-IA.md). As regras de negócio da conversa — ver [09-REGRAS_DE_NEGOCIO.md](09-REGRAS_DE_NEGOCIO.md).
 
 ---
 
