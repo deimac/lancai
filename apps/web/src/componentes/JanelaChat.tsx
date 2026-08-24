@@ -126,9 +126,9 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
         { id: crypto.randomUUID(), papel: "sistema", conteudo: resposta.resposta },
       ]);
 
-      if (resposta.intencao.intencao === "MENU") {
+      if (resposta.intencao?.intencao === "MENU") {
         setMostrarChips(true);
-      } else if (intencao_afeta_saldos(resposta.intencao)) {
+      } else if (resposta.intencao && intencao_afeta_saldos(resposta.intencao)) {
         aoRegistrarOuCorrigirMovimento?.();
       }
     } catch (erro) {

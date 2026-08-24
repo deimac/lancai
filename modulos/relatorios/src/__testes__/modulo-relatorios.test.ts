@@ -773,6 +773,37 @@ describe("ModuloRelatorios", () => {
       ]);
     });
 
+    it("acha Pix pelo Fato (descricaoFonte) quando a descrição enxuta já não tem Pix", async () => {
+      const conta = criarConta(usuarioId, { nome: "Mercado Pago" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "SOCIETE AIR FRANCE",
+          descricaoFonte: "Pagamento com QR Pix SOCIETE AIR FRANCE",
+          valor: "1584.29",
+          dataMovimento: "2026-08-23",
+          contaId: conta.id,
+          fonte: "open_finance",
+          formaPagamento: null,
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, {
+          descricao: "pix",
+          contaId: conta.id,
+          periodo: { de: "2026-08-23", ate: "2026-08-23" },
+        }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+      expect(dados.totalItens).toBe(1);
+      expect(dados.totalDespesas).toBe(1584.29);
+      expect(dados.dias[0]?.itens[0]?.descricao).toBe("SOCIETE AIR FRANCE");
+    });
+
     it("usa o mês atual quando o período não é informado e corta em 40 itens", async () => {
       const conta = criarConta(usuarioId, { nome: "C6 Bank" });
       repositorio.contas.set(conta.id, conta);

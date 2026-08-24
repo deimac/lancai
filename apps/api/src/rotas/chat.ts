@@ -6,6 +6,7 @@ import { processar_turno_conversa } from "../servicos/processar-turno-conversa";
 import { obterAssistenteCore } from "../servicos/assistente-v2";
 import { obterAssistenteCoreV3 } from "../servicos/assistente-v3";
 import { gravar_turno_chat } from "../servicos/gravar-turno-chat";
+import { intencaoParaRespostaChat } from "../servicos/intencao-resposta-assistente";
 import { isFlagEnabled } from "../config/feature-flags";
 
 const schemaRequisicaoChat = z.object({
@@ -41,6 +42,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
         sessaoId: resultado.sessaoId,
         resposta: resultado.resposta,
         traceId: resultado.traceId,
+        intencao: intencaoParaRespostaChat(resultado.diagnostico),
       });
     }
 
@@ -86,6 +88,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
         sessaoId: resultado.sessaoId,
         resposta: resultado.resposta,
         traceId: resultado.traceId,
+        intencao: intencaoParaRespostaChat(resultado.diagnostico),
       });
     }
 

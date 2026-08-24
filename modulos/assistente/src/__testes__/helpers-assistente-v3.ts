@@ -172,6 +172,7 @@ export function criarAssistenteCoreV3Teste(opcoes: {
         const n = nome.toLocaleLowerCase("pt-BR");
         if (n.includes("nubank")) return { id: IDS_V3.conta, nome: "Nubank" };
         if (n.includes("ita")) return { id: IDS_V3.itau, nome: "Itaú" };
+        if (n.includes("mercado")) return { id: IDS_V3.conta, nome: "Mercado Pago" };
         return null;
       },
       buscarCartaoPorNome: async (_usuarioId, nome) => {

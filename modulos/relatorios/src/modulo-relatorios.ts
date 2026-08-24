@@ -53,6 +53,15 @@ function descricao_corresponde(cadastrada: string, termo: string): boolean {
   return alvo === busca || alvo.includes(busca) || busca.includes(alvo);
 }
 
+/** Conhecimento (`descricao`) ou Fato (`descricaoFonte`) — Pix some da descrição enxuta. */
+function movimento_corresponde_descricao(
+  movimento: { descricao: string; descricaoFonte?: string | null },
+  termo: string,
+): boolean {
+  if (descricao_corresponde(movimento.descricao, termo)) return true;
+  return Boolean(movimento.descricaoFonte && descricao_corresponde(movimento.descricaoFonte, termo));
+}
+
 /**
  * Responde `CONSULTAR_VISAO` — a Fase 5 do roadmap. Recebe filtros já
  * resolvidos (nomes -> IDs, feito pelo `ResolvedorIntencao`) e devolve dados
@@ -424,7 +433,7 @@ export class ModuloRelatorios {
     ]);
 
     const movimentos = filtros.descricao
-      ? movimentosBrutos.filter((movimento) => descricao_corresponde(movimento.descricao, filtros.descricao!))
+      ? movimentosBrutos.filter((movimento) => movimento_corresponde_descricao(movimento, filtros.descricao!))
       : movimentosBrutos;
 
     const mapaContas = new Map(contas.map((conta) => [conta.id, conta.nome]));

@@ -988,4 +988,39 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
     }),
     need: null,
   },
+  {
+    id: "consulta-pix-ontem-mercado-pago",
+    mensagem: "quanto eu enviei de pix ontem da minha conta mercado pago?",
+    context: vazio(),
+    dataAtual: DATA_ATUAL,
+    understanding: und({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: {
+          merchant: "pix",
+          account: "Mercado Pago",
+          metric: "sum",
+          period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+        },
+        implicit_filters: { tipo: "despesa" },
+      },
+      confidence: 0.92,
+      required_sources: ["transactions"],
+    }),
+    need: need({
+      data_sources: ["transactions"],
+      source_priority: ["transactions"],
+      filters: {
+        transactions: {
+          merchant: "pix",
+          contaNome: "Mercado Pago",
+          tipos: ["despesa"],
+          periodo: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+        },
+      },
+      aggregation: { type: "sum", field: "valor" },
+      expected_output: "single_value",
+    }),
+  },
 ];

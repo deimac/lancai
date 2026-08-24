@@ -30,6 +30,7 @@ describe("prompt understanding", () => {
     expect(system).toMatch(/NUNCA use contaId/i);
     expect(system).toContain('NÃO use continuation.type "temporal"');
     expect(system).toContain("mes_atual");
+    expect(system).toMatch(/Pix, TED, boleto/i);
   });
 
   it("serializa mensagem, contexto compacto e no máximo 8 turnos", () => {
@@ -148,5 +149,39 @@ describe("understandingToNeed", () => {
   it("create não gera Need de agregação", () => {
     const create = CASOS_UNDERSTANDING.find((c) => c.id === "create-uber-nubank")!;
     expect(understandingToNeed(create.understanding)).toBeNull();
+  });
+
+  it("Pix + tipo transferencia vira despesa (Open Finance não usa transferencia)", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { merchant: "pix", account: "Mercado Pago", metric: "sum" },
+          implicit_filters: { tipo: "transferencia" },
+        },
+        confidence: 0.9,
+        required_sources: ["transactions"],
+      }),
+    );
+    expect(need?.filters?.transactions?.tipos).toEqual(["despesa"]);
+    expect(need?.filters?.transactions?.merchant).toBe("pix");
+  });
+
+  it("não usa o nome da conta como merchant", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { merchant: "Mercado Pago", account: "Mercado Pago", metric: "sum" },
+          implicit_filters: { tipo: "despesa" },
+        },
+        confidence: 0.9,
+        required_sources: ["transactions"],
+      }),
+    );
+    expect(need?.filters?.transactions?.merchant).toBeUndefined();
+    expect(need?.filters?.transactions?.contaNome).toBe("Mercado Pago");
   });
 });

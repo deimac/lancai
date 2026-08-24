@@ -47,15 +47,58 @@ function fontesDe(understanding: ConversationUnderstanding, base?: InformationNe
   return [...FONTES_PADRAO];
 }
 
-function filtrosDeEntidades(entities: UnderstandingEntities | undefined): TransactionFilters {
+function chaveNome(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function ehFormaPagamento(texto: string): boolean {
+  return /^(pix|ted|doc|boleto|dinheiro|especie|qr\s*pix)$/.test(chaveNome(texto));
+}
+
+function sanitizarFiltrosConsulta(filtros: TransactionFilters): TransactionFilters {
+  const out: TransactionFilters = { ...filtros };
+  if (out.merchant && out.contaNome && chaveNome(out.merchant) === chaveNome(out.contaNome)) {
+    delete out.merchant;
+  }
+  const termoPix = out.merchant ?? out.descricao;
+  if (out.tipos?.includes("transferencia") && termoPix && ehFormaPagamento(termoPix)) {
+    out.tipos = ["despesa"];
+  }
+  return out;
+}
+
+function filtrosDeEntidades(
+  entities: UnderstandingEntities | undefined,
+  understanding?: ConversationUnderstanding,
+  dataAtual?: string,
+): TransactionFilters {
   const filtros: TransactionFilters = {};
-  if (!entities) return filtros;
-  if (entities.merchant) filtros.merchant = entities.merchant;
-  if (entities.account) filtros.contaNome = entities.account;
-  if (entities.card) filtros.cartaoNome = entities.card;
-  if (entities.category) filtros.categoriaNome = entities.category;
-  if (entities.period) filtros.periodo = entities.period;
-  return filtros;
+  if (entities?.merchant) filtros.merchant = entities.merchant;
+  if (entities?.account) filtros.contaNome = entities.account;
+  if (entities?.card) filtros.cartaoNome = entities.card;
+  if (entities?.category) filtros.categoriaNome = entities.category;
+  if (entities?.period) filtros.periodo = entities.period;
+
+  if (!filtros.periodo && understanding) {
+    const refs = [
+      understanding.continuation?.reference,
+      ...(understanding.explicit_references ?? []),
+    ].filter((r): r is NonNullable<typeof r> => Boolean(r));
+    for (const ref of refs) {
+      const periodo = periodoDaReferencia(ref, dataAtual);
+      if (periodo) {
+        filtros.periodo = periodo;
+        break;
+      }
+    }
+  }
+
+  return sanitizarFiltrosConsulta(filtros);
 }
 
 function mesclarFiltros(
@@ -211,7 +254,7 @@ function aplicarContinuacao(
   }
 
   if (cont.type === "filter_add" || cont.type === "filter_modify") {
-    const extra = filtrosDeEntidades(understanding.question?.entities);
+    const extra = filtrosDeEntidades(understanding.question?.entities, understanding, dataAtual);
     if (
       cont.reference.type === "merchant" &&
       !extra.merchant &&
@@ -278,16 +321,17 @@ export function understandingToNeed(
   const intent = understanding.question?.intent;
   const entities = understanding.question?.entities;
   const fontes = fontesDe(understanding, base);
-  const filtrosEntidade = filtrosDeEntidades(entities);
+  const filtrosEntidade = filtrosDeEntidades(entities, understanding, opcoes.dataAtual);
   const tipo = understanding.question?.implicit_filters?.tipo;
   if (tipo) filtrosEntidade.tipos = [tipo];
+  const filtrosLimpos = sanitizarFiltrosConsulta(filtrosEntidade);
 
   const aggregation = tipoAgregacao(intent, entities?.metric) ?? base?.aggregation;
   const computation = computacaoDe(intent, entities) ?? base?.computation;
   const groupBy =
     intent === "breakdown" ? ["category"] : aggregation?.group_by ?? base?.aggregation?.group_by;
 
-  const transacoes = mesclarFiltros(base?.filters?.transactions, filtrosEntidade);
+  const transacoes = mesclarFiltros(base?.filters?.transactions, filtrosLimpos);
   const filters = filtrosContaCartao(entities, fontes, {
     ...base?.filters,
     transactions: transacoes,

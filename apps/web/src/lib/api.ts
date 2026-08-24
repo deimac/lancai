@@ -226,7 +226,7 @@ export interface MensagemChat {
 
 export interface RespostaChat {
   sessaoId: string;
-  intencao: IntencaoDetectada;
+  intencao?: IntencaoDetectada;
   resposta: string;
 }
 
