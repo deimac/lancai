@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { IntencaoDetectada } from "@lancai/tipos";
 import { Send } from "lucide-react";
@@ -94,6 +94,13 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
   const [mostrarChips, setMostrarChips] = useState(!temContas);
   const [sessaoId, setSessaoId] = useState<string | undefined>(undefined);
   const campoRef = useRef<HTMLInputElement>(null);
+  const listaRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const lista = listaRef.current;
+    if (!lista) return;
+    lista.scrollTop = lista.scrollHeight;
+  }, [mensagens, enviando, mostrarChips]);
 
   const ultimaMensagem = mensagens[mensagens.length - 1];
   const aguardandoSenhaCartao =
@@ -161,7 +168,7 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={listaRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
         {mensagens.map((mensagem) => (
           <BolhaMensagem key={mensagem.id} mensagem={mensagem} />
         ))}
