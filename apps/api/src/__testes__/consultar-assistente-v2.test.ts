@@ -78,4 +78,40 @@ describe("consultar_assistente_v2", () => {
     expect(result.formattedText).not.toMatch(/despesas/i);
     expect(result.formattedText).not.toMatch(/saldo/i);
   });
+
+  it("visão fluxo descreve gasto pessoal com dinheiro da empresa", async () => {
+    const relatorios = {
+      consultar_visao: vi.fn(async () => ({
+        tipo: "fluxo" as const,
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          totalPessoalComEmpresa: 320,
+          totalEmpresaComPessoal: 0,
+          itens: [
+            {
+              descricao: "Almoço",
+              valor: 320,
+              data: "2026-08-10",
+              direcao: "pessoal_com_empresa" as const,
+            },
+          ],
+        },
+      })),
+    };
+
+    const result = await consultar_assistente_v2(
+      relatorios as unknown as ModuloRelatorios,
+      { visionType: "fluxo", aggregation: "sum" },
+      USER,
+    );
+
+    expect(relatorios.consultar_visao).toHaveBeenCalledWith(
+      "fluxo",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(result.formattedText).toMatch(/pessoal usando dinheiro da empresa/i);
+    expect(result.formattedText).not.toMatch(/70\.670/);
+  });
 });

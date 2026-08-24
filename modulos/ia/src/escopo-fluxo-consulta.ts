@@ -49,7 +49,7 @@ export function escopo_dos_tipos(tipos?: TipoMovimento[] | null): EscopoFluxoCon
 }
 
 /**
- * Aplica o escopo (gastei vs recebi) na intenção de histórico.
+ * Aplica o escopo (gastei vs recebi) na intenção de histórico ou fluxo cruzado.
  * Mensagem com sinal claro força o filtro; follow-up ("detalhado"/"mais")
  * sem sinal preserva `tipos` já gravados na consulta anterior.
  */
@@ -57,7 +57,7 @@ export function aplicar_escopo_fluxo_na_consulta(
   intencao: IntencaoConsultarVisao,
   mensagem: string,
 ): IntencaoConsultarVisao {
-  if (intencao.tipo_visao !== "historico") return intencao;
+  if (intencao.tipo_visao !== "historico" && intencao.tipo_visao !== "fluxo") return intencao;
 
   const escopo = inferir_escopo_fluxo_consulta(mensagem);
   if (escopo === "ambos") return intencao;

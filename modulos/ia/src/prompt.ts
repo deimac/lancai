@@ -64,7 +64,8 @@ Intenções do ramo pedido:
 2) CONSULTAR_VISAO — saldos|cartoes|parcelamentos|categoria|futuro|fluxo|evolucao|historico.
    Fato/estabelecimento → historico+descricao (não categoria, salvo nome da lista). "esse mês" → periodo vazio. Um dia → de=ate. "todos" → amplo.
    historico: "quanto gastei/total/resumo" → detalhado=false; "extrato/liste/quais/detalhado/mostra lançamentos" → detalhado=true.
-   Escopo do fluxo em filtros.tipos (obrigatório entender o lado da pergunta):
+   fluxo: pessoal em conta PJ ≠ extrato da empresa.
+   tipos (lado da pergunta):
    - despesa → tipos=["despesa"]: gastei, gastou, gasto(s), despesa(s), paguei, comprei, saídas.
    - receita → tipos=["receita"]: ganhei, recebi, receita(s), entrou, entradas, renda, faturamento.
    - omitir tipos: lançamentos/extrato/movimentações sem lado, ou "gastei e recebi".

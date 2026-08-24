@@ -1,4 +1,5 @@
 import {
+  eh_pedido_fluxo_cruzado,
   inferir_escopo_fluxo_consulta,
   somar_dias_iso_local,
   tipos_do_escopo_fluxo,
@@ -66,11 +67,17 @@ function ehFormaPagamento(texto: string): boolean {
   return /^(pix|ted|doc|boleto|dinheiro|especie|qr\s*pix)$/.test(chaveNome(texto));
 }
 
+function ehRotuloPerfilConta(nome: string): boolean {
+  return /^(empresa|pessoal|pj|pf|conta da empresa|conta pessoal|conta pj|conta pf)$/.test(chaveNome(nome));
+}
+
 function sanitizarFiltrosConsulta(filtros: TransactionFilters): TransactionFilters {
   const out: TransactionFilters = { ...filtros };
   if (out.merchant && out.contaNome && chaveNome(out.merchant) === chaveNome(out.contaNome)) {
     delete out.merchant;
   }
+  if (out.contaNome && ehRotuloPerfilConta(out.contaNome)) delete out.contaNome;
+  if (out.cartaoNome && ehRotuloPerfilConta(out.cartaoNome)) delete out.cartaoNome;
   const termoPix = out.merchant ?? out.descricao;
   if (out.tipos?.includes("transferencia") && termoPix && ehFormaPagamento(termoPix)) {
     out.tipos = ["despesa"];
@@ -115,6 +122,14 @@ function aplicarEscopoDaMensagem(
   const escopo = inferir_escopo_fluxo_consulta(mensagem);
   if (escopo === "ambos") return filtros;
   return { ...filtros, tipos: tipos_do_escopo_fluxo(escopo) };
+}
+
+function aplicarCruzadoDaMensagem(
+  filtros: TransactionFilters | undefined,
+  mensagem: string | undefined,
+): TransactionFilters | undefined {
+  if (!mensagem || !eh_pedido_fluxo_cruzado(mensagem)) return filtros;
+  return { ...filtros, cruzado: true };
 }
 
 function mesclarFiltros(
@@ -347,8 +362,11 @@ export function understandingToNeed(
   const groupBy =
     intent === "breakdown" ? ["category"] : aggregation?.group_by ?? base?.aggregation?.group_by;
 
-  const transacoes = aplicarEscopoDaMensagem(
-    mesclarFiltros(base?.filters?.transactions, filtrosLimpos),
+  const transacoes = aplicarCruzadoDaMensagem(
+    aplicarEscopoDaMensagem(
+      mesclarFiltros(base?.filters?.transactions, filtrosLimpos),
+      opcoes.mensagem,
+    ),
     opcoes.mensagem,
   );
   const filters = filtrosContaCartao(entities, fontes, {

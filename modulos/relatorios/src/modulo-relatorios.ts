@@ -345,7 +345,11 @@ export class ModuloRelatorios {
     const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
 
     const [movimentos, contas, cartoes] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, { perfil: filtros.perfil, periodo }),
+      this.repositorio.listarMovimentos(filtros.usuarioId, {
+        perfil: filtros.perfil,
+        periodo,
+        tipos: filtros.tipos,
+      }),
       this.repositorio.listarContas(filtros.usuarioId),
       this.repositorio.listarCartoes(filtros.usuarioId),
     ]);

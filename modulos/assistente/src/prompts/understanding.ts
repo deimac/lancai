@@ -103,6 +103,7 @@ Regras:
 - "ontem" → period personalizado com de e ate iguais ao dia anterior a dataAtual (YYYY-MM-DD). "hoje" → dataAtual.
 - "quanto gastei" → intent total, metric sum, implicit_filters.tipo despesa.
 - "quanto recebi/entrou/entradas/ganhei" → intent total, metric sum, implicit_filters.tipo receita. Nunca misture despesa num pedido de entradas.
+- "gastos pessoais na conta da empresa" / pessoal com dinheiro da empresa → NÃO é extrato da conta PJ. É fluxo cruzado (tipoGasto pessoal ≠ perfil da conta). Sem merchant. Sem entities.account = "empresa".
 - "liste/mostra/extrato/detalhado" → intent list ou detail.
 - "estou gastando mais que mês passado" → intent compare, computation diff.
 
@@ -131,6 +132,10 @@ U: "quanto eu enviei de pix ontem da minha conta mercado pago?" (dataAtual 2026-
 Few-shot 5 — entradas numa conta:
 U: "quanto tive de entradas este mês na minha conta Mercado Pago?"
 → {"goal":"answer","question":{"intent":"total","entities":{"account":"Mercado Pago","metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"receita"}},"confidence":0.93,"required_sources":["transactions"]}
+
+Few-shot 6 — gasto pessoal na conta da empresa:
+U: "quanto tive de gastos pessoais na conta da empresa esse mês?"
+→ {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa"}},"confidence":0.92,"required_sources":["transactions"]}
 
 Responda só o JSON do schema. confidence entre 0 e 1.`;
 }

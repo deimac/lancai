@@ -32,6 +32,7 @@ describe("prompt understanding", () => {
     expect(system).toContain("mes_atual");
     expect(system).toMatch(/Pix, TED, boleto/i);
     expect(system).toMatch(/entradas/i);
+    expect(system).toMatch(/fluxo cruzado/i);
   });
 
   it("serializa mensagem, contexto compacto e no máximo 8 turnos", () => {
@@ -203,5 +204,25 @@ describe("understandingToNeed", () => {
     );
     expect(need?.filters?.transactions?.tipos).toEqual(["receita"]);
     expect(need?.filters?.transactions?.contaNome).toBe("Mercado Pago");
+  });
+
+  it("gastos pessoais na conta da empresa vira fluxo cruzado, não conta chamada empresa", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { account: "empresa", metric: "sum", period: { tipo: "mes_atual" } },
+          implicit_filters: { tipo: "despesa" },
+        },
+        confidence: 0.8,
+        required_sources: ["transactions"],
+      }),
+      undefined,
+      { mensagem: "quanto tive de gastos pessoais na conta da empresa esse mes?" },
+    );
+    expect(need?.filters?.transactions?.cruzado).toBe(true);
+    expect(need?.filters?.transactions?.contaNome).toBeUndefined();
+    expect(need?.filters?.transactions?.tipos).toEqual(["despesa"]);
   });
 });

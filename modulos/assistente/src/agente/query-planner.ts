@@ -84,7 +84,10 @@ export function planQuery(need: InformationNeed, context?: ConversationContext):
     if (herdado) spec.period = herdado;
   }
 
-  if (primaria === "accounts") {
+  if (tx?.cruzado) {
+    spec.visionType = "fluxo";
+    spec.entityType = "transaction";
+  } else if (primaria === "accounts") {
     spec.visionType = "saldos";
     spec.entityType = "account";
     if (need.filters?.accounts?.nome) spec.contaNome = spec.contaNome ?? need.filters.accounts.nome;

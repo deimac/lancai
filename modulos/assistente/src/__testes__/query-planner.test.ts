@@ -49,6 +49,22 @@ describe("planQuery", () => {
     expect(plano.spec.contaNome).toBe("Nubank");
   });
 
+  it("cruzado vira visão fluxo, não extrato da conta", () => {
+    const plano = planQuery(
+      need({
+        data_sources: ["transactions"],
+        source_priority: ["transactions"],
+        filters: {
+          transactions: { cruzado: true, tipos: ["despesa"], periodo: { tipo: "mes_atual" } },
+        },
+        aggregation: { type: "sum", field: "valor" },
+        expected_output: "single_value",
+      }),
+    );
+    expect(plano.spec.visionType).toBe("fluxo");
+    expect(plano.spec.aggregation).toBe("sum");
+  });
+
   it("filtro cartaoNome", () => {
     const plano = planQuery(
       need({

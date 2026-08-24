@@ -62,6 +62,8 @@ export const TransactionFiltersSchema = z.object({
   categoriaId: z.string().uuid().optional(),
   categoriaNome: z.string().min(1).optional(),
   perfil: z.enum(["pf", "pj"]).optional(),
+  /** Gasto pessoal em conta/cartão da empresa (ou o inverso). */
+  cruzado: z.boolean().optional(),
   pessoaId: z.string().uuid().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -349,6 +351,7 @@ function filtrosDeQuerySpec(spec: QuerySpec): TransactionFilters | undefined {
   if (spec.categoriaId) filtros.categoriaId = spec.categoriaId;
   if (spec.categoriaNome) filtros.categoriaNome = spec.categoriaNome;
   if (spec.perfil) filtros.perfil = spec.perfil;
+  if (spec.visionType === "fluxo") filtros.cruzado = true;
   if (spec.pessoaId) filtros.pessoaId = spec.pessoaId;
   if (spec.tags?.length) filtros.tags = spec.tags;
   return Object.keys(filtros).length > 0 ? filtros : undefined;

@@ -168,6 +168,32 @@ describe("interpretar_consulta_rapida", () => {
     });
   });
 
+  it("gastos pessoais na conta da empresa é fluxo, não extrato PJ", () => {
+    expect(
+      interpretar_consulta_rapida(
+        "quanto tive de gastos pessoais na conta da empresa esse mes?",
+        contexto(),
+      ),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "fluxo",
+      filtros: {
+        perfil: null,
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        tipos: ["despesa"],
+      },
+    });
+  });
+
+  it("extrato da conta da empresa sem cruzar perfil não é fluxo", () => {
+    expect(
+      interpretar_consulta_rapida("quanto gastei na conta da empresa esse mes?", contexto()),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+    });
+  });
+
   it("consulta futuro / comprometido sem IA", () => {
     expect(
       interpretar_consulta_rapida("quanto tenho comprometido até dezembro?", contexto()),

@@ -22,10 +22,10 @@ export function inferir_perfil_da_mensagem(mensagem: string): Perfil | null {
   const texto = mensagem.toLocaleLowerCase("pt-BR");
   const pf =
     /\b(?:para\s+)?uso\s+pessoal\b/.test(texto) ||
-    /\bgasto\s+pessoal\b/.test(texto) ||
+    /\bgastos?\s+(?:pessoais|pessoal)\b/.test(texto) ||
     /\bganho\s+pessoal\b/.test(texto) ||
     /\bpf\b/.test(texto) ||
-    /\bpessoal(?:mente)?\b/.test(texto);
+    /\b(?:pessoalmente|pessoais|pessoal)\b/.test(texto);
   const pj =
     /\b(?:para\s+)?(?:a\s+)?empresa\b/.test(texto) ||
     /\buso\s+(?:da\s+)?empresa\b/.test(texto) ||
@@ -37,7 +37,7 @@ export function inferir_perfil_da_mensagem(mensagem: string): Perfil | null {
   if (pf && !pj) return "pf";
   if (pj && !pf) return "pj";
   if (pf && pj) {
-    if (/\b(?:para\s+)?uso\s+pessoal\b|\bgasto\s+pessoal\b/.test(texto)) return "pf";
+    if (/\b(?:para\s+)?uso\s+pessoal\b|\bgastos?\s+(?:pessoais|pessoal)\b/.test(texto)) return "pf";
     if (/\b(?:para\s+)?(?:a\s+)?empresa\b|\bpj\b/.test(texto)) return "pj";
   }
   return null;

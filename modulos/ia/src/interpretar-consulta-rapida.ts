@@ -2,6 +2,7 @@ import { LIMITE_ITENS_HISTORICO } from "@lancai/tipos";
 import type { IntencaoConsultarVisao, IntencaoDetectada, Perfil, TipoVisao } from "@lancai/tipos";
 import { consulta_historico_detalhada } from "./consulta-historico-detalhada";
 import { aplicar_escopo_fluxo_na_consulta } from "./escopo-fluxo-consulta";
+import { eh_pedido_fluxo_cruzado } from "./pedido-fluxo-cruzado";
 import { inicio_fim_mes_iso, periodo_historico_completo, somar_dias_iso_local } from "./datas-relativas";
 import {
   categoria_do_contexto,
@@ -23,9 +24,6 @@ const PEDIDO_PARCELAMENTOS =
 
 const PEDIDO_FUTURO =
   /\b(comprometido|compromissos?|lan[cç]amentos?\s+futuros?|vencimentos?\s+futuros?|a\s+pagar\s+at[eé]|quanto\s+(?:tenho\s+)?compromet|previsto\s+at[eé])\b/i;
-
-const PEDIDO_FLUXO =
-  /\b(fluxo\s+cruzado)\b|\b(pessoal)\b[\s\S]{0,40}\b(empresa)\b|\b(empresa)\b[\s\S]{0,40}\b(pessoal)\b|\bcom\s+dinheiro\s+da\s+empresa\b|\bcom\s+dinheiro\s+pessoal\b/i;
 
 const PEDIDO_EVOLUCAO =
   /\b(evolu[cç][aã]o|últimos?\s+\d*\s*meses|ultimos?\s+\d*\s*meses|ao\s+longo\s+dos?\s+meses|como\s+est[aã]o\s+(?:as\s+)?(?:minhas\s+)?finan)/i;
@@ -140,14 +138,19 @@ function interpretar_visao_nomeada(
     !PEDIDO_PARCELAMENTOS.test(texto) &&
     !PEDIDO_FUTURO.test(texto) &&
     !PEDIDO_EVOLUCAO.test(texto) &&
-    !PEDIDO_FLUXO.test(texto)
+    !eh_pedido_fluxo_cruzado(texto)
   ) {
     return null;
   }
 
-  // Fluxo cruzado antes de histórico: "gastei de pessoal com dinheiro da empresa".
-  if (PEDIDO_FLUXO.test(texto)) {
-    return montar_consulta("fluxo", texto, contexto, { forcarPerfilNulo: true });
+  // Fluxo cruzado antes de histórico: "gastos pessoais na conta da empresa".
+  if (eh_pedido_fluxo_cruzado(texto)) {
+    const consulta = montar_consulta("fluxo", texto, contexto, { forcarPerfilNulo: true });
+    const periodo = resolver_periodo_consulta(texto.toLocaleLowerCase("pt-BR"), contexto.dataAtual);
+    if (periodo) {
+      consulta.filtros = { ...consulta.filtros, periodo };
+    }
+    return aplicar_escopo_fluxo_na_consulta(consulta, texto);
   }
 
   if (PEDIDO_EVOLUCAO.test(texto)) {
