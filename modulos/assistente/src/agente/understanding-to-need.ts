@@ -1,4 +1,8 @@
-import { somar_dias_iso_local } from "@lancai/ia";
+import {
+  inferir_escopo_fluxo_consulta,
+  somar_dias_iso_local,
+  tipos_do_escopo_fluxo,
+} from "@lancai/ia";
 import {
   InformationNeedSchema,
   type ConversationContext,
@@ -19,6 +23,8 @@ const METRICAS_AGREGACAO = new Set(["sum", "count", "avg", "max", "min"]);
 
 export type OpcoesUnderstandingToNeed = {
   dataAtual?: string;
+  /** Mensagem original: força tipos receita/despesa quando o pedido tem lado claro. */
+  mensagem?: string;
 };
 
 function clonar<T>(valor: T): T {
@@ -99,6 +105,16 @@ function filtrosDeEntidades(
   }
 
   return sanitizarFiltrosConsulta(filtros);
+}
+
+function aplicarEscopoDaMensagem(
+  filtros: TransactionFilters | undefined,
+  mensagem: string | undefined,
+): TransactionFilters | undefined {
+  if (!mensagem) return filtros;
+  const escopo = inferir_escopo_fluxo_consulta(mensagem);
+  if (escopo === "ambos") return filtros;
+  return { ...filtros, tipos: tipos_do_escopo_fluxo(escopo) };
 }
 
 function mesclarFiltros(
@@ -331,7 +347,10 @@ export function understandingToNeed(
   const groupBy =
     intent === "breakdown" ? ["category"] : aggregation?.group_by ?? base?.aggregation?.group_by;
 
-  const transacoes = mesclarFiltros(base?.filters?.transactions, filtrosLimpos);
+  const transacoes = aplicarEscopoDaMensagem(
+    mesclarFiltros(base?.filters?.transactions, filtrosLimpos),
+    opcoes.mensagem,
+  );
   const filters = filtrosContaCartao(entities, fontes, {
     ...base?.filters,
     transactions: transacoes,

@@ -1,3 +1,4 @@
+import { escopo_dos_tipos } from "@lancai/ia";
 import { ModuloRelatorios, type ResultadoVisao } from "@lancai/relatorios";
 import type { QuerySpec, TipoVisao } from "@lancai/tipos";
 import { hojeISO, tipoVisaoSchema } from "@lancai/tipos";
@@ -43,7 +44,11 @@ export async function consultar_assistente_v2(
   );
   return {
     ids: idsDaVisao(resultado),
-    formattedText: montar_resposta_visao(resultado, { detalhado: spec.aggregation !== "sum" }),
+    formattedText: montar_resposta_visao(resultado, {
+      detalhado: spec.aggregation !== "sum",
+      // Sem isto, "quanto entrou" filtra só receita e o texto ainda cita despesas R$ 0.
+      escopoFluxo: escopo_dos_tipos(spec.tipos),
+    }),
     data: resultado,
   };
 }

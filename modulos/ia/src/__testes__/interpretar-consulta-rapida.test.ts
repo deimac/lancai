@@ -77,6 +77,30 @@ describe("interpretar_consulta_rapida", () => {
     });
   });
 
+  it("entradas este mês numa conta filtra só receita", () => {
+    const ctx = contexto({
+      contas: [
+        { nome: "C6 Bank", perfil: "pf" },
+        { nome: "Mercado Pago", perfil: "pf" },
+      ],
+    });
+    expect(
+      interpretar_consulta_rapida(
+        "quanto tive de entradas este mes na minha conta mercado pago?",
+        ctx,
+      ),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      detalhado: false,
+      filtros: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        conta_nome: "Mercado Pago",
+        tipos: ["receita"],
+      },
+    });
+  });
+
   it("resumo do mês sem IA", () => {
     expect(interpretar_consulta_rapida("resumo do mês", contexto())).toMatchObject({
       intencao: "CONSULTAR_VISAO",

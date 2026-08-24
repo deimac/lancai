@@ -52,7 +52,7 @@ const PEDIDO_SALDO =
   /\b(saldo|quanto\s+tenho|quanto\s+tem|quanto\s+resta|dinheiro\s+na\s+conta)\b/i;
 
 const PEDIDO_MES =
-  /\b(esse\s+m[eê]s|neste\s+m[eê]s|m[eê]s\s+atual|do\s+m[eê]s|no\s+m[eê]s)\b/i;
+  /\b((?:n?este|esse)\s+m[eê]s|m[eê]s\s+atual|do\s+m[eê]s|no\s+m[eê]s)\b/i;
 
 const PEDIDO_TODOS = /\btod[oa]s?\b/i;
 

@@ -31,6 +31,7 @@ describe("prompt understanding", () => {
     expect(system).toContain('NÃO use continuation.type "temporal"');
     expect(system).toContain("mes_atual");
     expect(system).toMatch(/Pix, TED, boleto/i);
+    expect(system).toMatch(/entradas/i);
   });
 
   it("serializa mensagem, contexto compacto e no máximo 8 turnos", () => {
@@ -141,6 +142,7 @@ describe("understandingToNeed", () => {
     (_id, caso) => {
       const obtido = understandingToNeed(caso.understanding, caso.context, {
         dataAtual: caso.dataAtual ?? DATA_ATUAL,
+        mensagem: caso.mensagem,
       });
       expect(obtido).toEqual(caso.need);
     },
@@ -182,6 +184,24 @@ describe("understandingToNeed", () => {
       }),
     );
     expect(need?.filters?.transactions?.merchant).toBeUndefined();
+    expect(need?.filters?.transactions?.contaNome).toBe("Mercado Pago");
+  });
+
+  it("entradas na mensagem força receita mesmo se o extractor omitir o tipo", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { account: "Mercado Pago", metric: "sum", period: { tipo: "mes_atual" } },
+        },
+        confidence: 0.8,
+        required_sources: ["transactions"],
+      }),
+      undefined,
+      { mensagem: "quanto tive de entradas este mes na minha conta mercado pago?" },
+    );
+    expect(need?.filters?.transactions?.tipos).toEqual(["receita"]);
     expect(need?.filters?.transactions?.contaNome).toBe("Mercado Pago");
   });
 });

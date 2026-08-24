@@ -16,6 +16,9 @@ describe("inferir_escopo_fluxo_consulta", () => {
     expect(inferir_escopo_fluxo_consulta("Quanto recebi hoje?")).toBe("receita");
     expect(inferir_escopo_fluxo_consulta("quanto entrou esse mês")).toBe("receita");
     expect(inferir_escopo_fluxo_consulta("quanto ganhei")).toBe("receita");
+    expect(
+      inferir_escopo_fluxo_consulta("quanto tive de entradas este mes na minha conta mercado pago?"),
+    ).toBe("receita");
   });
 
   it("mantém extrato sem lado como ambos", () => {

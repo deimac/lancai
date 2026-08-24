@@ -209,7 +209,10 @@ export class AssistenteCoreV3 {
         return { resposta: "Não tenho nada para confirmar agora.", sessaoId: session.id, traceId };
       }
 
-      const need = understandingToNeed(understanding, ctx, { dataAtual: this.dataAtual() });
+      const need = understandingToNeed(understanding, ctx, {
+        dataAtual: this.dataAtual(),
+        mensagem: input.mensagem,
+      });
       if (need) {
         ctx = updateAfterNeed(ctx, need, { agora: this.agoraMs() });
         const plan = planQuery(need, ctx);

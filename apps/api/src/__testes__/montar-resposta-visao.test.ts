@@ -315,6 +315,29 @@ describe("montar_resposta_visao", () => {
     expect(texto).not.toContain("receitas");
   });
 
+  it("escopo receita não menciona despesas no resumo", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          totalReceitas: 78511.16,
+          totalDespesas: 0,
+          saldoPeriodo: 78511.16,
+          totalItens: 16,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [],
+        },
+      },
+      { detalhado: false, escopoFluxo: "receita" },
+    );
+
+    expect(texto).toContain(`Você recebeu ${formatarMoeda(78511.16)}`);
+    expect(texto).not.toContain("despesas");
+    expect(texto).not.toContain("saldo");
+  });
+
   it("informa quando o histórico do período está vazio", () => {
     const texto = montar_resposta_visao({
       tipo: "historico",

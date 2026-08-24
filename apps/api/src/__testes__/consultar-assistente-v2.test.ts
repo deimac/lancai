@@ -50,4 +50,32 @@ describe("consultar_assistente_v2", () => {
     expect(result.formattedText.toLowerCase()).toMatch(/uber/);
     expect(relatorios.consultar_visao).toHaveBeenCalled();
   });
+
+  it("pedido de entradas não cita despesa zerada no resumo", async () => {
+    const relatorios = {
+      consultar_visao: vi.fn(async () => ({
+        tipo: "historico" as const,
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          totalReceitas: 78511.16,
+          totalDespesas: 0,
+          saldoPeriodo: 78511.16,
+          totalItens: 16,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [],
+        },
+      })),
+    };
+
+    const result = await consultar_assistente_v2(
+      relatorios as unknown as ModuloRelatorios,
+      { tipos: ["receita"], aggregation: "sum" },
+      USER,
+    );
+
+    expect(result.formattedText).toMatch(/você recebeu/i);
+    expect(result.formattedText).not.toMatch(/despesas/i);
+    expect(result.formattedText).not.toMatch(/saldo/i);
+  });
 });
