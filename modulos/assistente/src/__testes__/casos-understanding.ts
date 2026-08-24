@@ -50,6 +50,39 @@ export function needUberMesAtual(): InformationNeed {
   });
 }
 
+export function understandingFluxoPessoalEmpresa(
+  confidence = 0.92,
+): ConversationUnderstanding {
+  return und({
+    goal: "answer",
+    question: {
+      intent: "total",
+      entities: { metric: "sum", period: { tipo: "mes_atual" } },
+      implicit_filters: { tipo: "despesa", tipoGasto: "pf", origemPerfil: "pj" },
+    },
+    confidence,
+    required_sources: ["transactions"],
+  });
+}
+
+export function needFluxoPessoalEmpresa(): InformationNeed {
+  return need({
+    data_sources: ["transactions"],
+    source_priority: ["transactions"],
+    filters: {
+      transactions: {
+        tipos: ["despesa"],
+        periodo: { tipo: "mes_atual" },
+        cruzado: true,
+        origemPerfil: "pj",
+        direcao: "pessoal_com_empresa",
+      },
+    },
+    aggregation: { type: "sum", field: "valor" },
+    expected_output: "single_value",
+  });
+}
+
 export function contextoAposConsultaUber(): ConversationContext {
   return ConversationContextSchema.parse({
     ...estadoInicialConversacaoV3(AGORA),
@@ -1017,6 +1050,84 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
           contaNome: "Mercado Pago",
           tipos: ["despesa"],
           periodo: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+        },
+      },
+      aggregation: { type: "sum", field: "valor" },
+      expected_output: "single_value",
+    }),
+  },
+  {
+    id: "consulta-fluxo-pessoal-empresa",
+    mensagem: "quanto tive de gastos pessoais na conta da empresa esse mes?",
+    context: vazio(),
+    understanding: understandingFluxoPessoalEmpresa(),
+    need: needFluxoPessoalEmpresa(),
+  },
+  {
+    id: "consulta-fluxo-usei-pj-coisa-minha",
+    mensagem: "o que eu usei da PJ pra coisa minha esse mes?",
+    context: vazio(),
+    understanding: understandingFluxoPessoalEmpresa(0.9),
+    need: needFluxoPessoalEmpresa(),
+  },
+  {
+    id: "consulta-fluxo-empresa-pagou-minhas-coisas",
+    mensagem: "quanto a empresa pagou das minhas coisas?",
+    context: vazio(),
+    understanding: understandingFluxoPessoalEmpresa(0.89),
+    need: needFluxoPessoalEmpresa(),
+  },
+  {
+    id: "consulta-extrato-conta-empresa",
+    mensagem: "quanto gastei na conta da empresa esse mes?",
+    context: vazio(),
+    understanding: und({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: { metric: "sum", period: { tipo: "mes_atual" } },
+        implicit_filters: { tipo: "despesa", origemPerfil: "pj" },
+      },
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    }),
+    need: need({
+      data_sources: ["transactions"],
+      source_priority: ["transactions"],
+      filters: {
+        transactions: {
+          tipos: ["despesa"],
+          periodo: { tipo: "mes_atual" },
+          origemPerfil: "pj",
+        },
+      },
+      aggregation: { type: "sum", field: "valor" },
+      expected_output: "single_value",
+    }),
+  },
+  {
+    id: "consulta-pf-mercado-pago",
+    mensagem: "despesas PF no Mercado Pago",
+    context: vazio(),
+    understanding: und({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: { account: "Mercado Pago", metric: "sum", period: { tipo: "mes_atual" } },
+        implicit_filters: { tipo: "despesa", tipoGasto: "pf" },
+      },
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    }),
+    need: need({
+      data_sources: ["transactions"],
+      source_priority: ["transactions"],
+      filters: {
+        transactions: {
+          contaNome: "Mercado Pago",
+          tipos: ["despesa"],
+          periodo: { tipo: "mes_atual" },
+          perfil: "pf",
         },
       },
       aggregation: { type: "sum", field: "valor" },

@@ -5,6 +5,9 @@ import { tipoMovimentoSchema } from "./movimento";
 /** Máximo de lançamentos por página no extrato conversacional (`historico`). */
 export const LIMITE_ITENS_HISTORICO = 40;
 
+export const direcaoFluxoSchema = z.enum(["pessoal_com_empresa", "empresa_com_pessoal"]);
+export type DirecaoFluxo = z.infer<typeof direcaoFluxoSchema>;
+
 const dataISOSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");
@@ -28,5 +31,7 @@ export const schemaFiltrosVisaoResolvidos = z.object({
   periodo: z.object({ de: dataISOSchema, ate: dataISOSchema }).optional(),
   /** Quando informado, restringe o histórico a esses tipos (ex.: só despesa). */
   tipos: z.array(tipoMovimentoSchema).min(1).optional(),
+  /** Visão fluxo: só um lado do cruzamento. */
+  direcao: direcaoFluxoSchema.optional(),
 });
 export type FiltrosVisaoResolvidos = z.infer<typeof schemaFiltrosVisaoResolvidos>;

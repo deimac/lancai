@@ -38,6 +38,7 @@ export async function consultar_assistente_v2(
       pessoaId: spec.pessoaId,
       periodo,
       tipos: spec.tipos,
+      direcao: spec.direcao,
     },
     hojeISO(),
     { deslocamento: spec.offset },

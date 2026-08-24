@@ -78,6 +78,8 @@ NUNCA use contaId, cartaoId, categoriaId nem qualquer UUID. IDs são do Resolver
 
 implicit_filters.tipo: receita | despesa | transferencia
 implicit_filters.fonte: transacoes | recorrencias
+implicit_filters.tipoGasto: pf | pj — natureza do lançamento (pessoal vs empresa), NÃO o nome da conta
+implicit_filters.origemPerfil: pf | pj — perfil da conta/cartão que pagou. "conta da empresa"/PJ como origem = pj.
 
 Referências (continuation.reference e explicit_references):
 - positional { type:"positional", index } — "o segundo" → index 2
@@ -103,7 +105,11 @@ Regras:
 - "ontem" → period personalizado com de e ate iguais ao dia anterior a dataAtual (YYYY-MM-DD). "hoje" → dataAtual.
 - "quanto gastei" → intent total, metric sum, implicit_filters.tipo despesa.
 - "quanto recebi/entrou/entradas/ganhei" → intent total, metric sum, implicit_filters.tipo receita. Nunca misture despesa num pedido de entradas.
-- "gastos pessoais na conta da empresa" / pessoal com dinheiro da empresa → NÃO é extrato da conta PJ. É fluxo cruzado (tipoGasto pessoal ≠ perfil da conta). Sem merchant. Sem entities.account = "empresa".
+- Natureza do gasto (pessoal/PF/coisa minha) e origem do dinheiro (conta/cartão da empresa/PJ) são dimensões independentes. Redação livre: traduza para tipoGasto + origemPerfil.
+- As duas diferentes → fluxo cruzado: tipoGasto e origemPerfil (ex. pf+pj). Sem merchant. Sem entities.account = "empresa"/"pessoal"/"pj"/"pf".
+- Só origem (extrato da conta da empresa) → origemPerfil=pj, sem tipoGasto. Não é cruzado.
+- Só natureza (gastos pessoais em qualquer conta) → tipoGasto=pf, sem origemPerfil.
+- Conta cadastrada pelo nome ("Mercado Pago") → entities.account. Rótulo de perfil não é conta.
 - "liste/mostra/extrato/detalhado" → intent list ou detail.
 - "estou gastando mais que mês passado" → intent compare, computation diff.
 
@@ -133,9 +139,21 @@ Few-shot 5 — entradas numa conta:
 U: "quanto tive de entradas este mês na minha conta Mercado Pago?"
 → {"goal":"answer","question":{"intent":"total","entities":{"account":"Mercado Pago","metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"receita"}},"confidence":0.93,"required_sources":["transactions"]}
 
-Few-shot 6 — gasto pessoal na conta da empresa:
+Few-shot 6 — pessoal pago com dinheiro da empresa (mesmos slots, redações diferentes):
 U: "quanto tive de gastos pessoais na conta da empresa esse mês?"
-→ {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa"}},"confidence":0.92,"required_sources":["transactions"]}
+→ {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","tipoGasto":"pf","origemPerfil":"pj"}},"confidence":0.92,"required_sources":["transactions"]}
+U: "o que eu usei da PJ pra coisa minha esse mês?"
+→ {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","tipoGasto":"pf","origemPerfil":"pj"}},"confidence":0.9,"required_sources":["transactions"]}
+U: "quanto a empresa pagou das minhas coisas?"
+→ {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","tipoGasto":"pf","origemPerfil":"pj"}},"confidence":0.89,"required_sources":["transactions"]}
+
+Few-shot 7 — extrato da empresa, não cruzado:
+U: "quanto gastei na conta da empresa esse mês?"
+→ {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","origemPerfil":"pj"}},"confidence":0.9,"required_sources":["transactions"]}
+
+Few-shot 8 — tipoGasto numa conta cadastrada:
+U: "despesas PF no Mercado Pago"
+→ {"goal":"answer","question":{"intent":"total","entities":{"account":"Mercado Pago","metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","tipoGasto":"pf"}},"confidence":0.9,"required_sources":["transactions"]}
 
 Responda só o JSON do schema. confidence entre 0 e 1.`;
 }

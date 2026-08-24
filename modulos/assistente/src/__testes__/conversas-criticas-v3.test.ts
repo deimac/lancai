@@ -56,6 +56,7 @@ const SUITE: Array<{ categoria: string; id: string; esperado: Esperado }> = [
   { categoria: "continuidade", id: "continue-detail-request", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "mudanca-assunto-ifood", esperado: { op: "query", executed: true } },
   { categoria: "consulta", id: "consulta-pix-ontem-mercado-pago", esperado: { op: "query", executed: true } },
+  { categoria: "consulta", id: "consulta-fluxo-pessoal-empresa", esperado: { op: "query", executed: true } },
 ];
 
 describe("35 conversas críticas (Core V3, extractor mockado)", () => {

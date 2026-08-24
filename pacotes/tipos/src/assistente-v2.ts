@@ -100,6 +100,7 @@ export const QuerySpecSchema = z.object({
   orderDir: z.enum(["asc", "desc"]).optional(),
   visionType: z.enum(["saldos", "cartoes", "parcelamentos", "categoria", "futuro", "fluxo", "evolucao", "historico"]).optional(),
   entityType: z.enum(["transaction", "account", "card", "recurrence", "rule", "category"]).optional(),
+  direcao: z.enum(["pessoal_com_empresa", "empresa_com_pessoal"]).optional(),
 });
 
 export type QuerySpec = z.infer<typeof QuerySpecSchema>;

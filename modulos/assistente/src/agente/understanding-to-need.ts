@@ -132,6 +132,35 @@ function aplicarCruzadoDaMensagem(
   return { ...filtros, cruzado: true };
 }
 
+function aplicarDimensoesGasto(
+  filtros: TransactionFilters | undefined,
+  implicit:
+    | { tipoGasto?: "pf" | "pj"; origemPerfil?: "pf" | "pj" }
+    | undefined,
+  mensagem: string | undefined,
+): TransactionFilters | undefined {
+  const tipoGasto = implicit?.tipoGasto;
+  const origemPerfil = implicit?.origemPerfil;
+  const out: TransactionFilters = { ...filtros };
+
+  if (tipoGasto && origemPerfil && tipoGasto !== origemPerfil) {
+    out.cruzado = true;
+    out.origemPerfil = origemPerfil;
+    out.direcao = tipoGasto === "pf" ? "pessoal_com_empresa" : "empresa_com_pessoal";
+  } else if (tipoGasto && origemPerfil) {
+    out.perfil = tipoGasto;
+    out.origemPerfil = origemPerfil;
+  } else if (tipoGasto) {
+    out.perfil = tipoGasto;
+  } else if (origemPerfil) {
+    out.origemPerfil = origemPerfil;
+  } else {
+    return aplicarCruzadoDaMensagem(filtros, mensagem);
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function mesclarFiltros(
   base: TransactionFilters | undefined,
   extra: TransactionFilters,
@@ -362,11 +391,12 @@ export function understandingToNeed(
   const groupBy =
     intent === "breakdown" ? ["category"] : aggregation?.group_by ?? base?.aggregation?.group_by;
 
-  const transacoes = aplicarCruzadoDaMensagem(
+  const transacoes = aplicarDimensoesGasto(
     aplicarEscopoDaMensagem(
       mesclarFiltros(base?.filters?.transactions, filtrosLimpos),
       opcoes.mensagem,
     ),
+    understanding.question?.implicit_filters,
     opcoes.mensagem,
   );
   const filters = filtrosContaCartao(entities, fontes, {

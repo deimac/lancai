@@ -165,6 +165,30 @@ describe("Pipeline Understanding → Need → Plan → Resolver → ContextUpdat
     expect(plano.spec.contaNome).toBe("Nubank");
   });
 
+  it("paráfrases de pessoal na empresa montam a mesma visão fluxo", () => {
+    for (const id of [
+      "consulta-fluxo-pessoal-empresa",
+      "consulta-fluxo-usei-pj-coisa-minha",
+      "consulta-fluxo-empresa-pagou-minhas-coisas",
+    ]) {
+      const c = caso(id);
+      const need = understandingToNeed(c.understanding, c.context, { mensagem: c.mensagem });
+      expect(need).not.toBeNull();
+      const plano = planQuery(need!, c.context);
+      expect(plano.spec.visionType).toBe("fluxo");
+      expect(plano.spec.direcao).toBe("pessoal_com_empresa");
+      expect(plano.spec.aggregation).toBe("sum");
+    }
+  });
+
+  it("extrato da conta da empresa continua historico", () => {
+    const c = caso("consulta-extrato-conta-empresa");
+    const need = understandingToNeed(c.understanding, c.context, { mensagem: c.mensagem });
+    const plano = planQuery(need!, c.context);
+    expect(plano.spec.visionType).toBe("historico");
+    expect(plano.spec.direcao).toBeUndefined();
+  });
+
   it("greet: Need null e CommandPlan null", () => {
     const c = caso("greet");
     expect(understandingToNeed(c.understanding, c.context)).toBeNull();

@@ -77,6 +77,7 @@ export function planQuery(need: InformationNeed, context?: ConversationContext):
   if (tx?.cartaoId) spec.cartaoId = tx.cartaoId;
   if (tx?.categoriaId) spec.categoriaId = tx.categoriaId;
   if (tx?.pessoaId) spec.pessoaId = tx.pessoaId;
+  if (tx?.direcao) spec.direcao = tx.direcao;
 
   if (tx?.periodo) spec.period = tx.periodo;
   else {

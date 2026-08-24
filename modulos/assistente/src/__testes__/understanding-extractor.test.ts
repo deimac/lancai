@@ -33,6 +33,8 @@ describe("prompt understanding", () => {
     expect(system).toMatch(/Pix, TED, boleto/i);
     expect(system).toMatch(/entradas/i);
     expect(system).toMatch(/fluxo cruzado/i);
+    expect(system).toContain("tipoGasto");
+    expect(system).toContain("origemPerfil");
   });
 
   it("serializa mensagem, contexto compacto e no máximo 8 turnos", () => {
@@ -213,6 +215,47 @@ describe("understandingToNeed", () => {
         question: {
           intent: "total",
           entities: { account: "empresa", metric: "sum", period: { tipo: "mes_atual" } },
+          implicit_filters: { tipo: "despesa", tipoGasto: "pf", origemPerfil: "pj" },
+        },
+        confidence: 0.8,
+        required_sources: ["transactions"],
+      }),
+      undefined,
+      { mensagem: "quanto tive de gastos pessoais na conta da empresa esse mes?" },
+    );
+    expect(need?.filters?.transactions?.cruzado).toBe(true);
+    expect(need?.filters?.transactions?.direcao).toBe("pessoal_com_empresa");
+    expect(need?.filters?.transactions?.contaNome).toBeUndefined();
+    expect(need?.filters?.transactions?.tipos).toEqual(["despesa"]);
+  });
+
+  it("paráfrase sem as palavras pessoais/empresa ainda deriva cruzado pelos slots", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { metric: "sum", period: { tipo: "mes_atual" } },
+          implicit_filters: { tipo: "despesa", tipoGasto: "pf", origemPerfil: "pj" },
+        },
+        confidence: 0.9,
+        required_sources: ["transactions"],
+      }),
+      undefined,
+      { mensagem: "o que eu usei da PJ pra coisa minha esse mes?" },
+    );
+    expect(need?.filters?.transactions?.cruzado).toBe(true);
+    expect(need?.filters?.transactions?.direcao).toBe("pessoal_com_empresa");
+    expect(need?.filters?.transactions?.perfil).toBeUndefined();
+  });
+
+  it("regex só entra se o Understanding omitir os dois slots", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { metric: "sum", period: { tipo: "mes_atual" } },
           implicit_filters: { tipo: "despesa" },
         },
         confidence: 0.8,
@@ -222,7 +265,42 @@ describe("understandingToNeed", () => {
       { mensagem: "quanto tive de gastos pessoais na conta da empresa esse mes?" },
     );
     expect(need?.filters?.transactions?.cruzado).toBe(true);
+  });
+
+  it("extrato da conta da empresa não é cruzado", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { account: "empresa", metric: "sum", period: { tipo: "mes_atual" } },
+          implicit_filters: { tipo: "despesa", origemPerfil: "pj" },
+        },
+        confidence: 0.9,
+        required_sources: ["transactions"],
+      }),
+      undefined,
+      { mensagem: "quanto gastei na conta da empresa esse mes?" },
+    );
+    expect(need?.filters?.transactions?.cruzado).toBeUndefined();
+    expect(need?.filters?.transactions?.origemPerfil).toBe("pj");
     expect(need?.filters?.transactions?.contaNome).toBeUndefined();
-    expect(need?.filters?.transactions?.tipos).toEqual(["despesa"]);
+  });
+
+  it("só tipoGasto vira perfil no histórico, não fluxo", () => {
+    const need = understandingToNeed(
+      ConversationUnderstandingSchema.parse({
+        goal: "answer",
+        question: {
+          intent: "total",
+          entities: { metric: "sum", period: { tipo: "mes_atual" } },
+          implicit_filters: { tipo: "despesa", tipoGasto: "pf" },
+        },
+        confidence: 0.9,
+        required_sources: ["transactions"],
+      }),
+    );
+    expect(need?.filters?.transactions?.perfil).toBe("pf");
+    expect(need?.filters?.transactions?.cruzado).toBeUndefined();
   });
 });

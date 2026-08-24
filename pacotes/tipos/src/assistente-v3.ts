@@ -22,7 +22,9 @@ import {
   type ConversationState,
   type QuerySpec,
 } from "./assistente-v2";
+import { perfilSchema } from "./cadastro";
 import { tipoMovimentoSchema } from "./movimento";
+import { direcaoFluxoSchema } from "./relatorio";
 
 const nuloOu = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((valor) => (valor === undefined ? null : valor), schema.nullable());
@@ -61,9 +63,13 @@ export const TransactionFiltersSchema = z.object({
   cartaoNome: z.string().min(1).optional(),
   categoriaId: z.string().uuid().optional(),
   categoriaNome: z.string().min(1).optional(),
-  perfil: z.enum(["pf", "pj"]).optional(),
+  perfil: perfilSchema.optional(),
+  /** Perfil da conta/cartão que pagou (origem do dinheiro). */
+  origemPerfil: perfilSchema.optional(),
   /** Gasto pessoal em conta/cartão da empresa (ou o inverso). */
   cruzado: z.boolean().optional(),
+  /** Lado do cruzado quando só um foi pedido. */
+  direcao: direcaoFluxoSchema.optional(),
   pessoaId: z.string().uuid().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -142,6 +148,10 @@ export const ConversationUnderstandingSchema = z.object({
         .object({
           tipo: z.enum(["receita", "despesa", "transferencia"]).optional(),
           fonte: z.enum(["transacoes", "recorrencias"]).optional(),
+          /** Natureza do lançamento (pessoal vs empresa), independente da conta. */
+          tipoGasto: perfilSchema.optional(),
+          /** Perfil da conta/cartão que pagou. "conta da empresa" → pj, não entities.account. */
+          origemPerfil: perfilSchema.optional(),
         })
         .optional(),
       ambiguity: z.array(AmbiguitySchema).optional(),
@@ -352,6 +362,7 @@ function filtrosDeQuerySpec(spec: QuerySpec): TransactionFilters | undefined {
   if (spec.categoriaNome) filtros.categoriaNome = spec.categoriaNome;
   if (spec.perfil) filtros.perfil = spec.perfil;
   if (spec.visionType === "fluxo") filtros.cruzado = true;
+  if (spec.direcao) filtros.direcao = spec.direcao;
   if (spec.pessoaId) filtros.pessoaId = spec.pessoaId;
   if (spec.tags?.length) filtros.tags = spec.tags;
   return Object.keys(filtros).length > 0 ? filtros : undefined;

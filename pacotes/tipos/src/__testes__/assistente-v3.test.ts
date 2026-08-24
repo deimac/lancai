@@ -32,6 +32,23 @@ describe("ConversationUnderstandingSchema", () => {
     expect(lido.question?.entities?.merchant).toBe("Uber");
   });
 
+  it("aceita tipoGasto e origemPerfil no implicit_filters", () => {
+    const lido = ConversationUnderstandingSchema.parse({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: { metric: "sum" },
+        implicit_filters: { tipo: "despesa", tipoGasto: "pf", origemPerfil: "pj" },
+      },
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    });
+    expect(lido.question?.implicit_filters).toMatchObject({
+      tipoGasto: "pf",
+      origemPerfil: "pj",
+    });
+  });
+
   it("aceita create com nomes, não IDs", () => {
     const lido = ConversationUnderstandingSchema.parse({
       goal: "execute",

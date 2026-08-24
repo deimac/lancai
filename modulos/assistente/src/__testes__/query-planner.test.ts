@@ -65,6 +65,43 @@ describe("planQuery", () => {
     expect(plano.spec.aggregation).toBe("sum");
   });
 
+  it("cruzado com direção vai no spec da visão fluxo", () => {
+    const plano = planQuery(
+      need({
+        data_sources: ["transactions"],
+        source_priority: ["transactions"],
+        filters: {
+          transactions: {
+            cruzado: true,
+            direcao: "pessoal_com_empresa",
+            tipos: ["despesa"],
+            periodo: { tipo: "mes_atual" },
+          },
+        },
+        aggregation: { type: "sum", field: "valor" },
+        expected_output: "single_value",
+      }),
+    );
+    expect(plano.spec.visionType).toBe("fluxo");
+    expect(plano.spec.direcao).toBe("pessoal_com_empresa");
+  });
+
+  it("só perfil não vira fluxo", () => {
+    const plano = planQuery(
+      need({
+        data_sources: ["transactions"],
+        source_priority: ["transactions"],
+        filters: {
+          transactions: { perfil: "pf", tipos: ["despesa"], periodo: { tipo: "mes_atual" } },
+        },
+        aggregation: { type: "sum", field: "valor" },
+        expected_output: "single_value",
+      }),
+    );
+    expect(plano.spec.visionType).toBe("historico");
+    expect(plano.spec.perfil).toBe("pf");
+  });
+
   it("filtro cartaoNome", () => {
     const plano = planQuery(
       need({

@@ -349,6 +349,8 @@ export class ModuloRelatorios {
         perfil: filtros.perfil,
         periodo,
         tipos: filtros.tipos,
+        contaId: filtros.contaId,
+        cartaoId: filtros.cartaoId,
       }),
       this.repositorio.listarContas(filtros.usuarioId),
       this.repositorio.listarCartoes(filtros.usuarioId),
@@ -365,11 +367,14 @@ export class ModuloRelatorios {
           : undefined;
       if (!perfilOrigem || !eh_fluxo_cruzado(movimento.tipoGasto, perfilOrigem)) continue;
 
+      const direcao = movimento.tipoGasto === "pf" ? "pessoal_com_empresa" : "empresa_com_pessoal";
+      if (filtros.direcao && direcao !== filtros.direcao) continue;
+
       itens.push({
         descricao: movimento.descricao,
         valor: paraNumero(movimento.valor),
         data: movimento.dataMovimento,
-        direcao: movimento.tipoGasto === "pf" ? "pessoal_com_empresa" : "empresa_com_pessoal",
+        direcao,
       });
     }
 

@@ -532,6 +532,46 @@ describe("ModuloRelatorios", () => {
       expect(dados.itens[0]?.direcao).toBe("pessoal_com_empresa");
     });
 
+    it("filtra só o lado pedido quando direcao vem nos filtros", async () => {
+      const contaEmpresa = criarConta(usuarioId, { perfil: "pj" });
+      const contaPf = criarConta(usuarioId, { perfil: "pf" });
+      const cartaoPf = criarCartao(usuarioId, contaPf.id, { perfil: "pf" });
+      repositorio.contas.set(contaEmpresa.id, contaEmpresa);
+      repositorio.contas.set(contaPf.id, contaPf);
+      repositorio.cartoes.set(cartaoPf.id, cartaoPf);
+
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Churrasco",
+          tipoGasto: "pf",
+          contaId: contaEmpresa.id,
+          valor: "100.00",
+          dataMovimento: "2026-08-10",
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Passagem",
+          tipoGasto: "pj",
+          cartaoId: cartaoPf.id,
+          valor: "2300.00",
+          dataMovimento: "2026-08-10",
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "fluxo",
+        filtrosBase(usuarioId, { direcao: "pessoal_com_empresa" }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoFluxo;
+      expect(dados.itens).toHaveLength(1);
+      expect(dados.totalPessoalComEmpresa).toBe(100);
+      expect(dados.totalEmpresaComPessoal).toBe(0);
+    });
+
     it("identifica gasto da empresa pago com cartão pessoal e ignora movimentos sem cruzamento", async () => {
       const contaPf = criarConta(usuarioId, { perfil: "pf" });
       const cartaoPf = criarCartao(usuarioId, contaPf.id, { perfil: "pf" });
