@@ -10,7 +10,7 @@ export const sessao = pgTable("sessao", {
   status: statusSessaoEnum("status").notNull().default("ativa"),
   dataCriacao: timestamp("data_criacao", { withTimezone: true }).notNull().defaultNow(),
   dataAtualizacao: timestamp("data_atualizacao", { withTimezone: true }).notNull().defaultNow(),
-  /** ConversationState v1 do Assistente 2.0 (versionamento otimista). */
+  /** ConversationState v1 + campos ConversationContext (JSONB aditivo; schemaVersion 1 no banco). */
   contexto: jsonb("contexto").$type<Record<string, unknown>>(),
 });
 

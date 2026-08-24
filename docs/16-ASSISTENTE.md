@@ -2,7 +2,7 @@
 
 Mapa operacional de ponta a ponta: como a mensagem entra, como vira intenção, o que a IA pode e não pode gravar, e como consultas, lançamentos e correções são executados.
 
-**Este documento não cobre:** schema de tabelas — [07-MODELO_DE_DADOS.md](07-MODELO_DE_DADOS.md). Contratos Zod campo a campo — [08-CONTRATOS.md](08-CONTRATOS.md). Cálculo de saldo, parcelas e auditoria — [09-REGRAS_DE_NEGOCIO.md](09-REGRAS_DE_NEGOCIO.md). Provedores LLM, circuit breaker e custo de token — [10-IA.md](10-IA.md). Grupos, Evolution e alertas proativos — [12-WHATSAPP.md](12-WHATSAPP.md). Ingestão bancária — [13-OPEN_FINANCE.md](13-OPEN_FINANCE.md).
+**Este documento não cobre:** schema de tabelas — [07-MODELO_DE_DADOS.md](07-MODELO_DE_DADOS.md). Contratos Zod campo a campo — [08-CONTRATOS.md](08-CONTRATOS.md). Cálculo de saldo, parcelas e auditoria — [09-REGRAS_DE_NEGOCIO.md](09-REGRAS_DE_NEGOCIO.md). Provedores LLM, circuit breaker e custo de token — [10-IA.md](10-IA.md). Grupos, Evolution e alertas proativos — [12-WHATSAPP.md](12-WHATSAPP.md). Ingestão bancária — [13-OPEN_FINANCE.md](13-OPEN_FINANCE.md). Semana 1 da arquitetura definitiva (tipos `ConversationContext` + migration 0033) — [ASSISTENTE_2.0_SEMANA_1.md](ASSISTENTE_2.0_SEMANA_1.md).
 
 ---
 
@@ -17,7 +17,7 @@ Dois canais, **um único pipeline**:
 | Web | `POST /chat` `{ usuarioId, mensagem, sessaoId? }` | usuário autenticado | nova sessão se não vier `sessaoId` |
 | WhatsApp | webhook Evolution `POST /api/webhooks/evolution` | `usuario.whatsapp_numero` (só dígitos) | reusa a sessão `ativa` |
 
-Não existe Twilio nem Cloud API da Meta no produto. Transporte: `modulos/evolution`. Número não cadastrado: **silêncio**. Grupo: **nunca responde** (entrada e caminho de erro).
+Não existe Twilio nem Cloud API da Meta no produto. Transporte: `modulos/evolution`. Número não cadastrado: **silêncio**. Grupo: **nunca responde** (entrada e caminho de erro). O Core V3 só atende o chat/WhatsApp com `ASSISTENTE_V3_ASSISTANT=true` (default off).
 
 A IA **não escreve no banco**. Produz JSON de `IntencaoDetectada`. Quem grava é o `MotorFinanceiro` (Fato) e o `ServicoConhecimento` (enriquecimento). Trocar Groq por Gemini não muda regra financeira.
 

@@ -7,5 +7,9 @@ describe("feature flags Assistente 2.0", () => {
     expect(FEATURE_FLAGS.ASSISTENTE_V2_SHADOW).toBe(false);
     expect(isFlagEnabled("ASSISTENTE_V2_ASSISTANT")).toBe(false);
     expect(isFlagEnabled("ASSISTENTE_V2_SESSION")).toBe(false);
+    expect(FEATURE_FLAGS.ASSISTENTE_V3_ASSISTANT).toBe(false);
+    expect(FEATURE_FLAGS.ASSISTENTE_V3_SHADOW).toBe(false);
+    expect(isFlagEnabled("ASSISTENTE_V3_ASSISTANT")).toBe(false);
+    expect(isFlagEnabled("ASSISTENTE_V3_SESSION")).toBe(false);
   });
 });

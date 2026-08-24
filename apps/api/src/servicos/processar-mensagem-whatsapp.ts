@@ -4,6 +4,7 @@ import { buscar_usuario_por_whatsapp } from "./identificar-usuario-whatsapp";
 import { processar_turno_conversa } from "./processar-turno-conversa";
 import { eh_jid_grupo, extrair_telefone_whatsapp } from "./telefone-whatsapp";
 import { obterAssistenteCore } from "./assistente-v2";
+import { obterAssistenteCoreV3 } from "./assistente-v3";
 import { gravar_turno_chat } from "./gravar-turno-chat";
 import { isFlagEnabled } from "../config/feature-flags";
 
@@ -70,6 +71,28 @@ export async function processar_mensagem_whatsapp(
     return { processado: false, motivo: "nao_autorizado" };
   }
 
+  if (isFlagEnabled("ASSISTENTE_V3_ASSISTANT")) {
+    const v3 = await obterAssistenteCoreV3().processar({
+      usuarioId: usuario.id,
+      mensagem: texto || "(mídia)",
+      canal: "whatsapp",
+      messageId: entrada.messageId,
+    });
+    if (!v3.duplicata) {
+      await gravar_turno_chat({
+        sessaoId: v3.sessaoId,
+        mensagemUsuario: texto || "(mídia)",
+        resposta: v3.resposta,
+      });
+    }
+    return {
+      processado: true,
+      usuarioId: usuario.id,
+      sessaoId: v3.sessaoId,
+      resposta: v3.resposta,
+    };
+  }
+
   if (isFlagEnabled("ASSISTENTE_V2_ASSISTANT")) {
     const v2 = await obterAssistenteCore().processar({
       usuarioId: usuario.id,
@@ -85,6 +108,27 @@ export async function processar_mensagem_whatsapp(
         resposta: v2.resposta,
       });
     }
+    if (isFlagEnabled("ASSISTENTE_V3_SHADOW")) {
+      void obterAssistenteCoreV3()
+        .processar({
+          usuarioId: usuario.id,
+          mensagem: texto || "(mídia)",
+          canal: "whatsapp",
+          messageId: entrada.messageId,
+          somenteLeitura: true,
+        })
+        .then((v3) => {
+          console.info("[assistant-v3] Shadow comparison", {
+            traceId: v3.traceId,
+            shadow: true,
+            v2: v2.resposta,
+            v3: v3.resposta,
+          });
+        })
+        .catch((erro) => {
+          console.warn("[assistant-v3] Shadow falhou", erro);
+        });
+    }
     return {
       processado: true,
       usuarioId: usuario.id,
@@ -99,6 +143,29 @@ export async function processar_mensagem_whatsapp(
     reutilizarSessaoAtiva: true,
     intencaoPrevia: entrada.intencaoPrevia,
   });
+
+  if (isFlagEnabled("ASSISTENTE_V3_SHADOW")) {
+    void obterAssistenteCoreV3()
+      .processar({
+        usuarioId: usuario.id,
+        mensagem: texto || "(mídia)",
+        sessaoId: turno.sessaoId,
+        canal: "whatsapp",
+        messageId: entrada.messageId,
+        somenteLeitura: true,
+      })
+      .then((v3) => {
+        console.info("[assistant-v3] Shadow comparison", {
+          traceId: v3.traceId,
+          shadow: true,
+          legacy: turno.resposta,
+          v3: v3.resposta,
+        });
+      })
+      .catch((erro) => {
+        console.warn("[assistant-v3] Shadow falhou", erro);
+      });
+  }
 
   if (isFlagEnabled("ASSISTENTE_V2_SHADOW")) {
     void obterAssistenteCore()

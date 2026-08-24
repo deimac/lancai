@@ -1,0 +1,21 @@
+-- RASCUNHO — NÃO REGISTRAR EM drizzle/meta/_journal.json. NÃO RODAR db:migrate.
+--
+-- Promoção futura de sessao.contexto para ConversationContext schemaVersion 2.
+-- Semana 4 NÃO aplica esta migration: ConversationStateSchema é z.literal(1);
+-- gravar schemaVersion 2 quebraria o Core v2. O Core V3 persiste documento misto
+-- (schemaVersion 1 + chaves v3) até esta promoção.
+
+-- ALTER TABLE sessao ALTER COLUMN contexto SET DEFAULT '{
+--   "schemaVersion": 2,
+--   "version": 0,
+--   "active_topic": null,
+--   "active_goal": null,
+--   "focused_entity": null,
+--   "pending_action": null,
+--   "topic_history": [],
+--   "updated_at": 1
+-- }'::jsonb;
+
+-- UPDATE sessao
+-- SET contexto = jsonb_set(coalesce(contexto, '{}'::jsonb), '{schemaVersion}', '2'::jsonb, true)
+-- WHERE coalesce((contexto->>'schemaVersion')::int, 1) = 1;

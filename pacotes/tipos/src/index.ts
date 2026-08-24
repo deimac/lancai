@@ -11,3 +11,4 @@ export * from "./pagamento-fatura";
 export * from "./enxugar-descricao-fonte";
 export * from "./serie-parcelamento";
 export * from "./assistente-v2";
+export * from "./assistente-v3";

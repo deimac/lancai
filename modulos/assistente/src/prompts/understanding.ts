@@ -1,0 +1,142 @@
+import type { ConversationContext } from "@lancai/tipos";
+
+export const HISTORICO_MAX_TURNOS = 8;
+export const HISTORICO_MAX_CHARS = 300;
+
+export type TurnoUnderstanding = {
+  papel: "usuario" | "sistema";
+  conteudo: string;
+};
+
+export type EntradaPromptUnderstanding = {
+  mensagem: string;
+  context: ConversationContext;
+  historico?: TurnoUnderstanding[];
+  dataAtual: string;
+};
+
+function truncar(texto: string, max = HISTORICO_MAX_CHARS): string {
+  const t = texto.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max)}…`;
+}
+
+function ultimosTurnos(historico: TurnoUnderstanding[] | undefined): TurnoUnderstanding[] {
+  const lista = historico ?? [];
+  return lista.slice(-HISTORICO_MAX_TURNOS).map((turno) => ({
+    papel: turno.papel,
+    conteudo: truncar(turno.conteudo),
+  }));
+}
+
+/** Contexto enxuto: o LLM não precisa de UUIDs nem do payload de confirmação. */
+export function compactarConversationContext(context: ConversationContext): Record<string, unknown> {
+  return {
+    active_topic: context.active_topic,
+    active_goal: context.active_goal,
+    focused_entity: context.focused_entity
+      ? { type: context.focused_entity.type, label: context.focused_entity.label }
+      : null,
+    pending_action: context.pending_action ? { type: context.pending_action.type } : null,
+    last_query: context.last_query
+      ? {
+          filters: context.last_query.information_need.filters ?? null,
+          aggregation: context.last_query.information_need.aggregation ?? null,
+          expected_output: context.last_query.information_need.expected_output,
+          query_spec: context.last_query.query_spec,
+          result_summary: context.last_query.result_summary,
+          result_count: context.last_query.result_ids.length,
+        }
+      : null,
+    topic_history: context.topic_history.slice(-3).map((item) => ({
+      domain: item.topic.domain,
+      goal: item.goal,
+      labels: item.topic.entities.map((e) => e.label),
+    })),
+  };
+}
+
+/**
+ * Única chamada LLM do pipeline definitivo: mensagem + contexto + 8 turnos
+ * → ConversationUnderstanding. Sem catálogo de contas (Resolver é depois).
+ */
+export function montarPromptSistemaUnderstanding(): string {
+  return `Você é o UnderstandingExtractor do LançAI. Extraia UM objeto ConversationUnderstanding da mensagem. Não execute ação, não invente IDs, não escreva no banco.
+
+goal: answer | execute | clarify | confirm | greet | continue
+intent (em question, se houver): total | list | detail | compare | explain | trend | top | breakdown | projection | create | update | delete
+continuation.type: period_shift | filter_add | filter_remove | entity_ref | correction | detail_request | filter_modify
+required_sources: transactions | accounts | cards | recurrences | categories (array; cumprimentos pode ser [])
+
+Entidades em question.entities por NOME, nunca UUID:
+- merchant, category, account, card (strings)
+- amount (número; create/update)
+- period: PeriodSpec { tipo: mes_atual | mes_passado | ultimos_n_meses | ano_atual | personalizado, de?, ate?, nMeses? }
+- metric: sum | count | avg | max | min | balance | available
+- computation: diff | pct_change | trend | top_n | breakdown | explanation
+NUNCA use contaId, cartaoId, categoriaId nem qualquer UUID. IDs são do Resolver.
+
+implicit_filters.tipo: receita | despesa | transferencia
+implicit_filters.fonte: transacoes | recorrencias
+
+Referências (continuation.reference e explicit_references):
+- positional { type:"positional", index } — "o segundo" → index 2
+- temporal { type:"temporal", relative } — today | yesterday | last_week | this_month | last_month
+- merchant { type:"merchant", name }
+- anaphoric { type:"anaphoric", pronoun: that | last | previous }
+- value { type:"value", amount }
+- composite { type:"composite", parts }
+
+Regras:
+- Pergunta nova de gasto/receita/saldo/lista → goal answer + question.
+- Lançar/criar/transferir/parcelar → goal execute, intent create. NÃO peça agregação.
+- Corrigir/apagar/classificar → goal execute, intent update ou delete.
+- "e mês passado?" / "e no cartão?" com consulta anterior → goal continue, inherits_from_previous true.
+- "foi ontem" / "na verdade foi dia X" com entidade em foco → goal continue, continuation.type correction, reference temporal. NÃO use continuation.type "temporal".
+- "sim"/"não"/"confirmo" com pending_action confirmation → goal confirm.
+- Olá/obrigado sem pedido → goal greet.
+- Falta dado obrigatório (valor, conta) → goal clarify + ambiguity.
+- "o Uber" com vários no last_query → ambiguity em field merchant.
+- Estabelecimento/fato (Uber, iFood, tarifa) → merchant, fonte transactions. Não trate como category salvo o usuário pedir categoria.
+- "quanto gastei" → intent total, metric sum, implicit_filters.tipo despesa.
+- "liste/mostra/extrato/detalhado" → intent list ou detail.
+- "estou gastando mais que mês passado" → intent compare, computation diff.
+
+Few-shot 1 — create:
+U: "Gastei 50 no Uber no Nubank"
+→ {"goal":"execute","question":{"intent":"create","entities":{"merchant":"Uber","amount":50,"account":"Nubank"},"implicit_filters":{"tipo":"despesa"}},"confidence":0.93,"required_sources":["transactions","accounts"]}
+
+Few-shot 2 — consulta + continuação:
+U: "Quanto gastei com Uber?"
+→ {"goal":"answer","question":{"intent":"total","entities":{"merchant":"Uber","metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa"}},"confidence":0.94,"required_sources":["transactions"]}
+U: "E mês passado?"
+→ {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"last_month"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
+U: "E no cartão?"
+→ {"goal":"continue","question":{"intent":"total","entities":{"card":"cartão"}},"continuation":{"type":"filter_add","reference":{"type":"merchant","name":"cartão"},"inherits_from_previous":true},"confidence":0.86,"required_sources":["transactions","cards"]}
+
+Few-shot 3 — correção temporal e comparação:
+U: "Foi ontem" (focused_entity = Uber)
+→ {"goal":"continue","continuation":{"type":"correction","reference":{"type":"temporal","relative":"yesterday"},"inherits_from_previous":true},"confidence":0.91,"required_sources":["transactions"]}
+U: "Estou gastando mais que mês passado?"
+→ {"goal":"answer","question":{"intent":"compare","entities":{"metric":"sum","period":{"tipo":"mes_atual"},"computation":"diff"},"implicit_filters":{"tipo":"despesa"}},"confidence":0.88,"required_sources":["transactions"]}
+
+Responda só o JSON do schema. confidence entre 0 e 1.`;
+}
+
+export function montarPromptUsuarioUnderstanding(entrada: EntradaPromptUnderstanding): string {
+  const historico = ultimosTurnos(entrada.historico);
+  const linhasHistorico =
+    historico.length === 0
+      ? "(vazio)"
+      : historico.map((t) => `${t.papel}: ${t.conteudo}`).join("\n");
+
+  return [
+    `dataAtual: ${entrada.dataAtual}`,
+    "ConversationContext:",
+    JSON.stringify(compactarConversationContext(entrada.context)),
+    "Histórico (mais antigo primeiro, máx. 8):",
+    linhasHistorico,
+    "Mensagem:",
+    entrada.mensagem,
+  ].join("\n");
+}

@@ -22,6 +22,8 @@ export interface AssistenteInput {
   canal: "web" | "whatsapp";
   messageId?: string;
   intencaoPrevia?: Partial<UserRequest>;
+  /** Shadow V3: não executa comando, não CAS, não marca messageId. */
+  somenteLeitura?: boolean;
 }
 
 export interface AssistenteOutput {

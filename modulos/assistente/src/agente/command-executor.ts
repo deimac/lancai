@@ -1,4 +1,10 @@
-import type { CommandContext, CommandResult, SimpleCommand, UserRequest } from "@lancai/tipos";
+import type {
+  CommandContext,
+  CommandResult,
+  ExecutionPlan,
+  SimpleCommand,
+  UserRequest,
+} from "@lancai/tipos";
 import { err, type Result } from "../resultado";
 import {
   montarCancelTransaction,
@@ -52,5 +58,33 @@ export class CommandExecutor {
     const comando = this.montarComando({ ...request, params }, movementId);
     if (!comando.ok) return { success: false, error: comando.error };
     return this.application.executeCommand(comando.value, context);
+  }
+
+  /**
+   * Executa QueryPlan (vira query_transactions) ou os steps de um CommandPlan em ordem.
+   * Não substitui `execute(UserRequest)`.
+   */
+  async executePlan(plan: ExecutionPlan, context: CommandContext): Promise<CommandResult> {
+    if (plan.type === "query") {
+      return this.application.executeCommand({ type: "query_transactions", spec: plan.spec }, context);
+    }
+
+    if (plan.steps.length === 0) {
+      return { success: false, error: "Plano vazio" };
+    }
+
+    const porId = new Map<string, CommandResult>();
+    let ultimo: CommandResult = { success: false, error: "Plano vazio" };
+
+    for (const step of plan.steps) {
+      if (step.dependsOn?.some((id) => !porId.get(id)?.success)) {
+        return { success: false, error: `Dependência falhou: ${step.dependsOn.join(", ")}` };
+      }
+      ultimo = await this.application.executeCommand(step.command, context);
+      porId.set(step.stepId, ultimo);
+      if (!ultimo.success) break;
+    }
+
+    return ultimo;
   }
 }

@@ -129,4 +129,25 @@ describe("PolicyEngine", () => {
     const result = engine.evaluate(rr({ op: "update", resolved: {} }), state);
     expect(result).toMatchObject({ allowed: false, risk: "blocked", reason: "ambiguity" });
   });
+
+  it("evaluateCommand: query sem confirmação", () => {
+    const result = engine.evaluateCommand({ type: "query_transactions", spec: { merchant: "Uber" } });
+    expect(result).toMatchObject({ allowed: true, confirm: false, reason: "auto" });
+  });
+
+  it("evaluateCommand: create confirma", () => {
+    const result = engine.evaluateCommand({
+      type: "create_transaction",
+      input: { valor: 50, descricao: "Uber", contaId: CONTA },
+    });
+    expect(result).toMatchObject({ allowed: true, confirm: true, reason: "risk" });
+  });
+
+  it("evaluateCommand: delete OF blocked", () => {
+    const result = engine.evaluateCommand(
+      { type: "cancel_transaction", input: { movementId: MOV } },
+      { id: MOV, type: "transaction", label: "Uber", metadata: { fatoImutavel: true } },
+    );
+    expect(result).toMatchObject({ allowed: false, risk: "blocked", reason: "of_cannot_delete" });
+  });
 });
