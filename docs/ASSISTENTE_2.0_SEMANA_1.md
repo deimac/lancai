@@ -16,9 +16,11 @@ O que a Semana 1 fez foi deixar os **contratos** e o **JSONB da sessão** pronto
 
 ```text
 Semana 1 (feito)     tipos + migration 0033
-Semana 2 (próxima)   UnderstandingExtractor (LLM puro)
-Semana 3             UnderstandingToNeed → QueryPlanner / CommandPlanner
-Semana 4             Resolver + ContextUpdater + AssistenteCore + flag
+Semana 2 (feito)     UnderstandingExtractor (LLM puro)
+Semana 3 (feito)     UnderstandingToNeed → QueryPlanner / CommandPlanner
+Semana 4 (feito)     AssistenteCore V3 + flags (default off)
+Suíte 35 (feito)     conversas críticas E2E no Core V3 (extractor mockado)
+Próximo              shadow local: ASSISTENTE_V3_SHADOW=true, ASSISTENTE_V3_ASSISTANT=false
 ```
 
 ---

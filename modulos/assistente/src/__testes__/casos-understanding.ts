@@ -10,6 +10,10 @@ import {
 
 export const AGORA = 1_777_000_000_000;
 export const MOVIMENTO_UBER = "11111111-1111-4111-8111-111111111111";
+export const MOVIMENTO_UBER_B = "00000000-0000-4000-8000-000000000102";
+export const MOVIMENTO_UBER_C = "00000000-0000-4000-8000-000000000103";
+export const MOVIMENTO_IFOOD = "00000000-0000-4000-8000-000000000104";
+export const CATEGORIA_LAZER = "00000000-0000-4000-8000-000000000201";
 export const DATA_ATUAL = "2026-08-23";
 
 export type CasoUnderstanding = {
@@ -59,6 +63,30 @@ export function contextoAposConsultaUber(): ConversationContext {
       expires_at: AGORA + 60_000,
     },
     focused_entity: { id: MOVIMENTO_UBER, type: "transaction", label: "Uber" },
+  });
+}
+
+export function contextoListaTresUbers(): ConversationContext {
+  const base = contextoAposConsultaUber();
+  return ConversationContextSchema.parse({
+    ...base,
+    last_query: {
+      ...base.last_query!,
+      result_ids: [MOVIMENTO_UBER, MOVIMENTO_UBER_B, MOVIMENTO_UBER_C],
+      result_summary: { count: 3, total: 140, period: { tipo: "mes_atual" } },
+    },
+  });
+}
+
+export function contextoOfUber(): ConversationContext {
+  return ConversationContextSchema.parse({
+    ...contextoAposConsultaUber(),
+    focused_entity: {
+      id: MOVIMENTO_UBER,
+      type: "transaction",
+      label: "Uber",
+      metadata: { fatoImutavel: true, fonte: "open_finance", merchant: "Uber" },
+    },
   });
 }
 
@@ -369,7 +397,7 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
   {
     id: "ref-posicional-segundo",
     mensagem: "O segundo foi pessoal",
-    context: contextoAposConsultaUber(),
+    context: contextoListaTresUbers(),
     understanding: und({
       goal: "execute",
       question: { intent: "update", entities: { value: { perfil: "pf" } } },
@@ -486,7 +514,7 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
   {
     id: "of-delete",
     mensagem: "Apaga aquele lançamento do banco",
-    context: contextoAposConsultaUber(),
+    context: contextoOfUber(),
     understanding: und({
       goal: "execute",
       question: { intent: "delete" },
@@ -833,5 +861,131 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
       aggregation: { type: "sum", field: "valor" },
       expected_output: "single_value",
     }),
+  },
+  {
+    id: "ref-posicional-primeiro",
+    mensagem: "O primeiro foi pessoal",
+    context: contextoListaTresUbers(),
+    understanding: und({
+      goal: "execute",
+      question: { intent: "update", entities: { value: { perfil: "pf" } } },
+      continuation: {
+        type: "entity_ref",
+        reference: { type: "positional", index: 1 },
+        inherits_from_previous: true,
+      },
+      explicit_references: [{ type: "positional", index: 1 }],
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    }),
+    need: null,
+  },
+  {
+    id: "ref-posicional-terceiro",
+    mensagem: "O terceiro foi da empresa",
+    context: contextoListaTresUbers(),
+    understanding: und({
+      goal: "execute",
+      question: { intent: "update", entities: { value: { perfil: "pj" } } },
+      continuation: {
+        type: "entity_ref",
+        reference: { type: "positional", index: 3 },
+        inherits_from_previous: true,
+      },
+      explicit_references: [{ type: "positional", index: 3 }],
+      confidence: 0.88,
+      required_sources: ["transactions"],
+    }),
+    need: null,
+  },
+  {
+    id: "ref-merchant-ifood",
+    mensagem: "Corrige o iFood para 45",
+    context: contextoAposConsultaUber(),
+    understanding: und({
+      goal: "execute",
+      question: {
+        intent: "update",
+        entities: { merchant: "iFood", amount: 45 },
+      },
+      continuation: {
+        type: "entity_ref",
+        reference: { type: "merchant", name: "iFood" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.86,
+      required_sources: ["transactions"],
+    }),
+    need: null,
+  },
+  {
+    id: "ref-anaforica-anterior",
+    mensagem: "O anterior foi pessoal",
+    context: ConversationContextSchema.parse({
+      ...contextoListaTresUbers(),
+      focused_entity: null,
+    }),
+    understanding: und({
+      goal: "execute",
+      question: { intent: "update", entities: { value: { perfil: "pf" } } },
+      continuation: {
+        type: "entity_ref",
+        reference: { type: "anaphoric", pronoun: "previous" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.8,
+      required_sources: ["transactions"],
+    }),
+    need: null,
+  },
+  {
+    id: "ambiguidade-dois-ifoods",
+    mensagem: "Corrige o iFood",
+    context: contextoAposConsultaUber(),
+    understanding: und({
+      goal: "execute",
+      question: { intent: "update", entities: { merchant: "iFood" } },
+      ambiguity: [{ field: "merchant", reason: "2 iFoods no último resultado" }],
+      confidence: 0.68,
+      required_sources: ["transactions"],
+    }),
+    need: null,
+  },
+  {
+    id: "of-update-fato",
+    mensagem: "Muda o valor do lançamento do banco para 80",
+    context: contextoOfUber(),
+    understanding: und({
+      goal: "execute",
+      question: { intent: "update", entities: { amount: 80 } },
+      continuation: {
+        type: "entity_ref",
+        reference: { type: "anaphoric", pronoun: "that" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.84,
+      required_sources: ["transactions"],
+    }),
+    need: null,
+  },
+  {
+    id: "of-conhecimento-permitido",
+    mensagem: "Classifica o lançamento do banco como lazer",
+    context: contextoOfUber(),
+    understanding: und({
+      goal: "execute",
+      question: {
+        intent: "update",
+        entities: { category: "Lazer", value: { categoriaId: CATEGORIA_LAZER } },
+      },
+      continuation: {
+        type: "entity_ref",
+        reference: { type: "anaphoric", pronoun: "that" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.83,
+      required_sources: ["transactions", "categories"],
+    }),
+    need: null,
   },
 ];
