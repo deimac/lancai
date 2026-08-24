@@ -50,6 +50,45 @@ export function needUberMesAtual(): InformationNeed {
   });
 }
 
+export function needSaidasMercadoPagoDia(de: string): InformationNeed {
+  return need({
+    data_sources: ["transactions"],
+    source_priority: ["transactions"],
+    filters: {
+      transactions: {
+        contaNome: "Mercado Pago",
+        tipos: ["despesa"],
+        periodo: { tipo: "personalizado", de, ate: de },
+      },
+    },
+    aggregation: { type: "sum", field: "valor" },
+    expected_output: "single_value",
+  });
+}
+
+export function contextoAposSaidasMercadoPago(de: string): ConversationContext {
+  const information_need = needSaidasMercadoPagoDia(de);
+  return ConversationContextSchema.parse({
+    ...estadoInicialConversacaoV3(AGORA),
+    active_topic: { domain: "spending", period: { tipo: "personalizado", de, ate: de } },
+    active_goal: "analyze",
+    last_query: {
+      information_need,
+      query_spec: {
+        visionType: "historico",
+        entityType: "transaction",
+        contaNome: "Mercado Pago",
+        tipos: ["despesa"],
+        period: { tipo: "personalizado", de, ate: de },
+        aggregation: "sum",
+      },
+      result_ids: [],
+      result_summary: { count: 1, total: 1584.29, period: { tipo: "personalizado", de, ate: de } },
+      expires_at: AGORA + 60_000,
+    },
+  });
+}
+
 export function understandingFluxoPessoalEmpresa(
   confidence = 0.92,
 ): ConversationUnderstanding {
@@ -312,6 +351,29 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
       aggregation: { type: "sum", field: "valor" },
       expected_output: "single_value",
     }),
+  },
+  {
+    id: "continue-period-shift-domingo",
+    mensagem: "e domingo?",
+    context: contextoAposSaidasMercadoPago("2026-08-22"),
+    historico: [
+      {
+        papel: "usuario",
+        conteudo: "quanto eu tive de saidas ontem da minha conta mercado pago?",
+      },
+      { papel: "sistema", conteudo: "Você gastou R$ 1.584,29 em 22/08/2026 (1 lançamento)." },
+    ],
+    understanding: und({
+      goal: "continue",
+      continuation: {
+        type: "period_shift",
+        reference: { type: "temporal", relative: "sunday" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    }),
+    need: needSaidasMercadoPagoDia("2026-08-23"),
   },
   {
     id: "continue-filter-add-cartao",

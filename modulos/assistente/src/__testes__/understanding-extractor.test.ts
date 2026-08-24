@@ -37,6 +37,8 @@ describe("prompt understanding", () => {
     expect(system).toContain("origemPerfil");
     expect(system).toContain("detail_request");
     expect(system).toMatch(/me detalhe os gastos/i);
+    expect(system).toMatch(/e domingo/i);
+    expect(system).toContain("sunday");
   });
 
   it("serializa mensagem, contexto compacto e no máximo 8 turnos", () => {

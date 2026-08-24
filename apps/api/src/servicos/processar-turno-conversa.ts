@@ -28,6 +28,7 @@ import {
   interpretar_lancamento_rapido,
   interpretar_pedido_detalhe_historico,
   interpretar_pedido_mais_historico,
+  interpretar_pedido_periodo_followup,
   normalizar_intencao_cadastro,
   normalizar_intencao_consulta,
   normalizar_intencao_movimento,
@@ -399,6 +400,7 @@ export async function processar_turno_conversa(
     intencaoConfirmacao ??
     interpretar_pedido_detalhe_historico(entrada.mensagem, ultimaIntencaoIa) ??
     interpretar_pedido_mais_historico(entrada.mensagem, ultimaIntencaoIa) ??
+    interpretar_pedido_periodo_followup(entrada.mensagem, ultimaIntencaoIa, contexto.dataAtual) ??
     interpretar_orcamento_rapido(entrada.mensagem) ??
     interpretar_recorrencia_rapida(entrada.mensagem, contexto) ??
     interpretar_enriquecimento_rapido(entrada.mensagem, contexto.dataAtual) ??

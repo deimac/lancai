@@ -92,6 +92,18 @@ describe("Pipeline Understanding → Need → Plan → Resolver → ContextUpdat
     expect(plano.spec.aggregation).toBe("sum");
   });
 
+  it("e domingo herda a conta e troca o dia", () => {
+    const c = caso("continue-period-shift-domingo");
+    const need = understandingToNeed(c.understanding, c.context, {
+      dataAtual: DATA_ATUAL,
+      mensagem: c.mensagem,
+    });
+    const plano = planQuery(need!, c.context);
+    expect(plano.spec.contaNome).toBe("Mercado Pago");
+    expect(plano.spec.period).toEqual({ tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" });
+    expect(plano.spec.aggregation).toBe("sum");
+  });
+
   it("filter_add cartão no Need e no QueryPlan", () => {
     const c = caso("continue-filter-add-cartao");
     const need = understandingToNeed(c.understanding, c.context);

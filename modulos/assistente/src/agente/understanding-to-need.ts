@@ -1,6 +1,8 @@
 import {
   eh_pedido_fluxo_cruzado,
+  extrair_dia_da_semana,
   inferir_escopo_fluxo_consulta,
+  periodo_relativo_da_mensagem,
   somar_dias_iso_local,
   tipos_do_escopo_fluxo,
 } from "@lancai/ia";
@@ -190,8 +192,32 @@ function removerFiltroPorReferencia(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function aplicarPeriodoDaMensagem(
+  filtros: TransactionFilters | undefined,
+  mensagem: string | undefined,
+  dataAtual?: string,
+): TransactionFilters | undefined {
+  if (!mensagem || !dataAtual) return filtros;
+  const extraido = periodo_relativo_da_mensagem(mensagem, dataAtual);
+  if (
+    !extraido ||
+    (extraido.origem !== "dia_semana" &&
+      extraido.origem !== "ontem" &&
+      extraido.origem !== "hoje" &&
+      extraido.origem !== "anteontem")
+  ) {
+    return filtros;
+  }
+  return {
+    ...filtros,
+    periodo: { tipo: "personalizado", de: extraido.de, ate: extraido.ate },
+  };
+}
+
 function periodoDeRelative(relative: string, dataAtual?: string): PeriodSpec | undefined {
   const r = relative.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/\p{M}/gu, "");
+  const iso = /^(\d{4}-\d{2}-\d{2})$/.exec(r.trim());
+  if (iso) return { tipo: "personalizado", de: iso[1], ate: iso[1] };
   if (r === "last_month" || r.includes("mes passado") || r.includes("mes_passado")) {
     return { tipo: "mes_passado" };
   }
@@ -210,6 +236,10 @@ function periodoDeRelative(relative: string, dataAtual?: string): PeriodSpec | u
   if (r === "last_week" || r.includes("semana passada") || r.includes("last week")) {
     if (!dataAtual) return undefined;
     return { tipo: "personalizado", de: somar_dias_iso_local(dataAtual, -7), ate: dataAtual };
+  }
+  if (dataAtual) {
+    const dia = extrair_dia_da_semana(relative, dataAtual);
+    if (dia) return { tipo: "personalizado", de: dia.iso, ate: dia.iso };
   }
   return undefined;
 }
@@ -391,13 +421,17 @@ export function understandingToNeed(
   const groupBy =
     intent === "breakdown" ? ["category"] : aggregation?.group_by ?? base?.aggregation?.group_by;
 
-  const transacoes = aplicarDimensoesGasto(
-    aplicarEscopoDaMensagem(
-      mesclarFiltros(base?.filters?.transactions, filtrosLimpos),
+  const transacoes = aplicarPeriodoDaMensagem(
+    aplicarDimensoesGasto(
+      aplicarEscopoDaMensagem(
+        mesclarFiltros(base?.filters?.transactions, filtrosLimpos),
+        opcoes.mensagem,
+      ),
+      understanding.question?.implicit_filters,
       opcoes.mensagem,
     ),
-    understanding.question?.implicit_filters,
     opcoes.mensagem,
+    opcoes.dataAtual,
   );
   const filters = filtrosContaCartao(entities, fontes, {
     ...base?.filters,

@@ -51,6 +51,7 @@ const SUITE: Array<{ categoria: string; id: string; esperado: Esperado }> = [
   { categoria: "computacao", id: "breakdown-categoria", esperado: { op: "query", executed: true } },
   { categoria: "computacao", id: "trend", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-period-shift", esperado: { op: "query", executed: true } },
+  { categoria: "continuidade", id: "continue-period-shift-domingo", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-filter-add-cartao", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-filter-remove-merchant", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-detail-request", esperado: { op: "query", executed: true } },

@@ -3,7 +3,11 @@ import type { IntencaoConsultarVisao, IntencaoDetectada, Perfil, TipoVisao } fro
 import { consulta_historico_detalhada } from "./consulta-historico-detalhada";
 import { aplicar_escopo_fluxo_na_consulta } from "./escopo-fluxo-consulta";
 import { eh_pedido_fluxo_cruzado } from "./pedido-fluxo-cruzado";
-import { inicio_fim_mes_iso, periodo_historico_completo, somar_dias_iso_local } from "./datas-relativas";
+import {
+  inicio_fim_mes_iso,
+  periodo_historico_completo,
+  periodo_relativo_da_mensagem,
+} from "./datas-relativas";
 import {
   categoria_do_contexto,
   extrair_descricao_consulta_historico,
@@ -44,7 +48,7 @@ const PEDIDO_MAIS_HISTORICO =
   /^(?:(?:mostra|mostre|ver|veja|liste|listar|quero)\s+)?(?:mais|continuar|continua|pr[oó]ximos?)\??\.?$/i;
 
 const PEDIDO_HISTORICO =
-  /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|gastos?|despesas?|gastei|paguei|recebi|ganhei|receitas?|entrou|entradas?|resumo)\b/i;
+  /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|gastos?|despesas?|gastei|paguei|recebi|ganhei|receitas?|entrou|entradas?|sa[ií]das?|resumo)\b/i;
 
 const PEDIDO_SALDO =
   /\b(saldo|quanto\s+tenho|quanto\s+tem|quanto\s+resta|dinheiro\s+na\s+conta)\b/i;
@@ -73,7 +77,7 @@ export function interpretar_pedido_detalhe_historico(
   const followup =
     !soDetalhe &&
     PEDIDO_DETALHE_FOLLOWUP.test(texto) &&
-    !/\b(hoje|ontem|anteontem|esse\s+m[eê]s|neste\s+m[eê]s|\d{1,2}\/\d{1,2})\b/i.test(texto) &&
+    !/\b(hoje|ontem|anteontem|domingo|s[aá]bado|segunda(?:-feira)?|ter[cç]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|esse\s+m[eê]s|neste\s+m[eê]s|\d{1,2}\/\d{1,2})\b/i.test(texto) &&
     !/\bquanto\s+(gastei|paguei)\b/i.test(texto) &&
     !extrair_estabelecimento_conhecido(texto);
 
@@ -82,6 +86,42 @@ export function interpretar_pedido_detalhe_historico(
   return {
     ...ultimaIntencaoIa,
     detalhado: true,
+    deslocamento: 0,
+  };
+}
+
+function parece_followup_periodo(texto: string): boolean {
+  const t = texto.trim();
+  if (/^e\b/i.test(t)) return true;
+  const compacto = t.replace(/[?.!]/g, "").trim();
+  return /^(?:(?:n[oa]|em|de)\s+)?(?:ontem|hoje|anteontem|amanh[aã]|domingo|s[aá]bado|segunda(?:-feira)?|ter[cç]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|(?:este|esse|n?este)\s+m[eê]s|m[eê]s\s+passado)$/i.test(
+    compacto,
+  );
+}
+
+/**
+ * "e domingo?", "e ontem?", "e mês passado?" — mesma consulta, outro período.
+ */
+export function interpretar_pedido_periodo_followup(
+  mensagem: string,
+  ultimaIntencaoIa: IntencaoDetectada | null | undefined,
+  dataAtual: string,
+): IntencaoDetectada | null {
+  const texto = mensagem.trim();
+  if (!texto || ACAO_ESCRITA.test(texto)) return null;
+  if (!ultimaIntencaoIa || ultimaIntencaoIa.intencao !== "CONSULTAR_VISAO") return null;
+  if (ultimaIntencaoIa.tipo_visao !== "historico" && ultimaIntencaoIa.tipo_visao !== "fluxo") {
+    return null;
+  }
+  if (!parece_followup_periodo(texto)) return null;
+  if (extrair_estabelecimento_conhecido(texto)) return null;
+
+  const periodo = resolver_periodo_consulta(texto.toLocaleLowerCase("pt-BR"), dataAtual);
+  if (!periodo) return null;
+
+  return {
+    ...ultimaIntencaoIa,
+    filtros: { ...ultimaIntencaoIa.filtros, periodo },
     deslocamento: 0,
   };
 }
@@ -242,30 +282,11 @@ function resolver_periodo_consulta(
   texto: string,
   dataAtual: string,
 ): { de: string; ate: string } | null {
+  const relativo = periodo_relativo_da_mensagem(texto, dataAtual);
+  if (relativo) return { de: relativo.de, ate: relativo.ate };
+
   if (PEDIDO_MES.test(texto) || /\bresumo\b/.test(texto)) {
-    // Periodo vazio no schema = mês atual; aqui devolvemos explícito para atalho claro.
     return inicio_fim_mes_iso(dataAtual);
-  }
-
-  if (/\banteontem\b/.test(texto)) {
-    const d = somar_dias_iso_local(dataAtual, -2);
-    return { de: d, ate: d };
-  }
-  if (/\bontem\b/.test(texto)) {
-    const d = somar_dias_iso_local(dataAtual, -1);
-    return { de: d, ate: d };
-  }
-  if (/\bhoje\b/.test(texto)) {
-    return { de: dataAtual, ate: dataAtual };
-  }
-
-  const dataBr = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/.exec(texto);
-  if (dataBr) {
-    const dia = dataBr[1]!.padStart(2, "0");
-    const mes = dataBr[2]!.padStart(2, "0");
-    const ano = dataBr[3] ?? dataAtual.slice(0, 4);
-    const d = `${ano}-${mes}-${dia}`;
-    return { de: d, ate: d };
   }
 
   if (PEDIDO_TODOS.test(texto) && PEDIDO_HISTORICO.test(texto)) {

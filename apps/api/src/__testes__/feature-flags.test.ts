@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FEATURE_FLAGS, isFlagEnabled } from "../config/feature-flags";
+import { FEATURE_FLAGS, isFlagEnabled, pipelineAssistenteAtivo } from "../config/feature-flags";
 
 describe("feature flags Assistente 2.0", () => {
   it("permanecem desligadas por padrão", () => {
@@ -11,5 +11,6 @@ describe("feature flags Assistente 2.0", () => {
     expect(FEATURE_FLAGS.ASSISTENTE_V3_SHADOW).toBe(false);
     expect(isFlagEnabled("ASSISTENTE_V3_ASSISTANT")).toBe(false);
     expect(isFlagEnabled("ASSISTENTE_V3_SESSION")).toBe(false);
+    expect(pipelineAssistenteAtivo()).toBe("legado");
   });
 });

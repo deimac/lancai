@@ -7,7 +7,7 @@ import { obterAssistenteCore } from "../servicos/assistente-v2";
 import { obterAssistenteCoreV3 } from "../servicos/assistente-v3";
 import { gravar_turno_chat } from "../servicos/gravar-turno-chat";
 import { intencaoParaRespostaChat } from "../servicos/intencao-resposta-assistente";
-import { isFlagEnabled } from "../config/feature-flags";
+import { isFlagEnabled, pipelineAssistenteAtivo } from "../config/feature-flags";
 
 const schemaRequisicaoChat = z.object({
   usuarioId: z.string().uuid(),
@@ -21,8 +21,13 @@ const schemaRequisicaoChat = z.object({
  * Senão: V2 se ASSISTENTE_V2_ASSISTANT, senão legado. Shadow V3 não grava sessão.
  */
 export async function registrar_rotas_chat(app: FastifyInstance) {
+  app.get("/pipeline", async () => ({
+    pipeline: pipelineAssistenteAtivo(),
+  }));
+
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaRequisicaoChat.parse(requisicao.body);
+    const pipeline = pipelineAssistenteAtivo();
 
     if (isFlagEnabled("ASSISTENTE_V3_ASSISTANT")) {
       const resultado = await obterAssistenteCoreV3().processar({
@@ -43,6 +48,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
         resposta: resultado.resposta,
         traceId: resultado.traceId,
         intencao: intencaoParaRespostaChat(resultado.diagnostico),
+        pipeline,
       });
     }
 
@@ -89,6 +95,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
         resposta: resultado.resposta,
         traceId: resultado.traceId,
         intencao: intencaoParaRespostaChat(resultado.diagnostico),
+        pipeline,
       });
     }
 
@@ -147,7 +154,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
         });
     }
 
-    return resposta.send(legado);
+    return resposta.send({ ...legado, pipeline });
   });
 
   app.get("/:sessaoId/mensagens", async (requisicao) => {

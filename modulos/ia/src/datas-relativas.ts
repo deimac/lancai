@@ -59,15 +59,166 @@ export function parsear_data_apos_para(texto: string, dataAtual: string): string
   return parsear_data_relativa_ou_br(trecho, dataAtual);
 }
 
-export function parsear_data_relativa_ou_br(texto: string, dataAtual: string): string | null {
-  const lower = texto
+function normalizar_sem_acento(texto: string): string {
+  return texto
     .toLocaleLowerCase("pt-BR")
     .normalize("NFD")
     .replace(/\p{M}/gu, "");
+}
+
+const DIAS_SEMANA: Array<{ weekday: number; re: RegExp; rotulo: string; chave: string }> = [
+  { weekday: 0, re: /\bdomingos?\b/, rotulo: "Domingo", chave: "domingo" },
+  { weekday: 6, re: /\bsabados?\b/, rotulo: "Sábado", chave: "sabado" },
+  { weekday: 1, re: /\bsegundas?-feiras?\b/, rotulo: "Segunda", chave: "segunda" },
+  { weekday: 2, re: /\btercas?(?:-feiras?)?\b/, rotulo: "Terça", chave: "terca" },
+  { weekday: 3, re: /\bquartas?(?:-feiras?)?\b/, rotulo: "Quarta", chave: "quarta" },
+  { weekday: 4, re: /\bquintas?(?:-feiras?)?\b/, rotulo: "Quinta", chave: "quinta" },
+  { weekday: 5, re: /\bsextas?(?:-feiras?)?\b/, rotulo: "Sexta", chave: "sexta" },
+];
+
+const INDICE_DIA_EN: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
+/** Última ocorrência do weekday (0=domingo) em ou antes de `dataAtual`. */
+export function data_do_ultimo_dia_da_semana(dataAtual: string, weekday: number): string {
+  const atual = new Date(`${dataAtual}T12:00:00.000Z`).getUTCDay();
+  const delta = (atual - weekday + 7) % 7;
+  return somar_dias_iso_local(dataAtual, -delta);
+}
+
+export type DiaSemanaExtraido = { iso: string; rotulo: string; chave: string };
+
+/**
+ * "e domingo?", "no sábado", "terça-feira".
+ * "segunda" solta só conta com prefixo (e/na/de) — evita "segunda parcela".
+ */
+export function extrair_dia_da_semana(texto: string, dataAtual: string): DiaSemanaExtraido | null {
+  const lower = normalizar_sem_acento(texto);
+  const en = INDICE_DIA_EN[lower.trim()];
+  if (en !== undefined) {
+    const dia = DIAS_SEMANA.find((item) => item.weekday === en);
+    return {
+      iso: data_do_ultimo_dia_da_semana(dataAtual, en),
+      rotulo: dia?.rotulo ?? "Dia",
+      chave: dia?.chave ?? lower.trim(),
+    };
+  }
+  for (const dia of DIAS_SEMANA) {
+    if (dia.re.test(lower)) {
+      return {
+        iso: data_do_ultimo_dia_da_semana(dataAtual, dia.weekday),
+        rotulo: dia.rotulo,
+        chave: dia.chave,
+      };
+    }
+  }
+  if (!/\bsegundas?\b/.test(lower)) return null;
+  if (/\bsegunda\s+parcela/.test(lower) || /\bem\s+segundo\b/.test(lower)) return null;
+  const followup = /^(?:e\s+)?(?:n[oa]\s+)?segundas?(?:-feira)?\??\.?$/.test(lower.trim());
+  const comPrefixo = /\b(?:e|n[oa]|de|do|da|em)\s+segundas?\b/.test(lower);
+  if (!followup && !comPrefixo) return null;
+  return {
+    iso: data_do_ultimo_dia_da_semana(dataAtual, 1),
+    rotulo: "Segunda",
+    chave: "segunda",
+  };
+}
+
+export type OrigemPeriodoRelativo =
+  | "ontem"
+  | "hoje"
+  | "anteontem"
+  | "amanha"
+  | "dia_semana"
+  | "mes_atual"
+  | "mes_passado"
+  | "data";
+
+export type PeriodoRelativo = {
+  de: string;
+  ate: string;
+  origem: OrigemPeriodoRelativo;
+  nomeDia?: string;
+};
+
+/** Intervalo ISO a partir de ontem/hoje/domingo/mês passado na mensagem. */
+export function periodo_relativo_da_mensagem(texto: string, dataAtual: string): PeriodoRelativo | null {
+  const lower = normalizar_sem_acento(texto);
+  if (/\banteontem\b/.test(lower)) {
+    const iso = somar_dias_iso_local(dataAtual, -2);
+    return { de: iso, ate: iso, origem: "anteontem" };
+  }
+  if (/\bontem\b/.test(lower)) {
+    const iso = somar_dias_iso_local(dataAtual, -1);
+    return { de: iso, ate: iso, origem: "ontem" };
+  }
+  if (/\bhoje\b/.test(lower)) {
+    return { de: dataAtual, ate: dataAtual, origem: "hoje" };
+  }
+  if (/\bamanha\b/.test(lower)) {
+    const iso = somar_dias_iso_local(dataAtual, 1);
+    return { de: iso, ate: iso, origem: "amanha" };
+  }
+  const dia = extrair_dia_da_semana(texto, dataAtual);
+  if (dia) {
+    return { de: dia.iso, ate: dia.iso, origem: "dia_semana", nomeDia: dia.rotulo };
+  }
+  if (/\bmes\s+passado\b/.test(lower)) {
+    const p = resolver_periodo_spec({ tipo: "mes_passado" }, dataAtual);
+    return p ? { de: p.de, ate: p.ate, origem: "mes_passado" } : null;
+  }
+  if (/\b(?:(?:n?este|esse)\s+mes|mes\s+atual)\b/.test(lower)) {
+    const p = resolver_periodo_spec({ tipo: "mes_atual" }, dataAtual);
+    return p ? { de: p.de, ate: p.ate, origem: "mes_atual" } : null;
+  }
+  const br = parsear_data_br(texto, dataAtual);
+  if (br) return { de: br, ate: br, origem: "data" };
+  return null;
+}
+
+export function formatar_data_iso_br(dataISO: string): string {
+  const [ano, mes, dia] = dataISO.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+/** Quando o usuário diz "domingo" e aquele dia foi ontem (ou é hoje). */
+export function nota_dia_semana_coincide_hoje_ontem(
+  mensagem: string,
+  dataAtual: string,
+): string | null {
+  const dia = extrair_dia_da_semana(mensagem, dataAtual);
+  if (!dia) return null;
+  const ontem = somar_dias_iso_local(dataAtual, -1);
+  if (dia.iso === ontem) return `${dia.rotulo} foi ontem (${formatar_data_iso_br(dia.iso)}).`;
+  if (dia.iso === dataAtual) return `${dia.rotulo} é hoje (${formatar_data_iso_br(dia.iso)}).`;
+  return null;
+}
+
+export function prefixar_nota_dia_semana(
+  resposta: string,
+  mensagem: string,
+  dataAtual: string,
+): string {
+  const nota = nota_dia_semana_coincide_hoje_ontem(mensagem, dataAtual);
+  if (!nota || resposta.startsWith(nota)) return resposta;
+  return `${nota} ${resposta}`;
+}
+
+export function parsear_data_relativa_ou_br(texto: string, dataAtual: string): string | null {
+  const lower = normalizar_sem_acento(texto);
   if (/\banteontem\b/.test(lower)) return somar_dias_iso_local(dataAtual, -2);
   if (/\bontem\b/.test(lower)) return somar_dias_iso_local(dataAtual, -1);
   if (/\bhoje\b/.test(lower)) return dataAtual;
   if (/\bamanha\b/.test(lower)) return somar_dias_iso_local(dataAtual, 1);
+  const dia = extrair_dia_da_semana(texto, dataAtual);
+  if (dia) return dia.iso;
   return parsear_data_br(texto, dataAtual);
 }
 

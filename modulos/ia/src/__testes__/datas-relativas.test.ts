@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  data_do_ultimo_dia_da_semana,
+  extrair_dia_da_semana,
   parsear_data_apos_para,
   parsear_data_br,
   parsear_data_relativa_ou_br,
+  periodo_relativo_da_mensagem,
+  prefixar_nota_dia_semana,
   resolver_periodo_spec,
 } from "../datas-relativas";
 
@@ -66,5 +70,36 @@ describe("resolver_periodo_spec", () => {
         "2026-08-24",
       ),
     ).toEqual({ de: "2026-08-01", ate: "2026-08-10" });
+  });
+});
+
+describe("dia da semana relativo", () => {
+  it("na segunda, domingo é ontem e sábado é anteontem", () => {
+    expect(data_do_ultimo_dia_da_semana("2026-08-24", 0)).toBe("2026-08-23");
+    expect(data_do_ultimo_dia_da_semana("2026-08-24", 6)).toBe("2026-08-22");
+    expect(extrair_dia_da_semana("e domingo?", "2026-08-24")).toMatchObject({
+      iso: "2026-08-23",
+      chave: "domingo",
+    });
+    expect(extrair_dia_da_semana("e sábado?", "2026-08-24")?.iso).toBe("2026-08-22");
+  });
+
+  it("no próprio domingo, domingo é hoje", () => {
+    expect(extrair_dia_da_semana("e domingo?", "2026-08-23")?.iso).toBe("2026-08-23");
+  });
+
+  it("não trata segunda parcela como dia da semana", () => {
+    expect(extrair_dia_da_semana("segunda parcela do cartão", "2026-08-24")).toBeNull();
+  });
+
+  it("explica quando domingo foi ontem", () => {
+    expect(prefixar_nota_dia_semana("Você gastou R$ 10.", "e domingo?", "2026-08-24")).toBe(
+      "Domingo foi ontem (23/08/2026). Você gastou R$ 10.",
+    );
+    expect(periodo_relativo_da_mensagem("e mês passado?", "2026-08-24")).toMatchObject({
+      origem: "mes_passado",
+      de: "2026-07-01",
+      ate: "2026-07-31",
+    });
   });
 });

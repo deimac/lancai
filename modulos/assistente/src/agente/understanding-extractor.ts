@@ -41,6 +41,9 @@ export class UnderstandingExtractor {
       }),
     });
     const lido = ConversationUnderstandingSchema.parse(bruto);
-    return coerirUnderstandingComContexto(lido, input.context);
+    return coerirUnderstandingComContexto(lido, input.context, {
+      mensagem: input.mensagem,
+      dataAtual: input.dataAtual ?? hojeISO(),
+    });
   }
 }

@@ -14,6 +14,7 @@ import {
 import { JanelaChat } from "../componentes/JanelaChat";
 import type { JanelaChatHandle } from "../componentes/JanelaChat";
 import { Botao } from "../componentes/ui/Botao";
+import { clienteApi, type PipelineAssistente } from "../lib/api";
 import {
   ALTURA_PAINEL_MIN,
   LARGURA_PAINEL_MIN,
@@ -53,6 +54,14 @@ export function PainelAssistente({
   const asideRef = useRef<HTMLElement>(null);
   const estavaExpandido = useRef(expandido);
   const tamanho = useTamanhoPainel(posicao, expandido, asideRef);
+  const [pipeline, setPipeline] = useState<PipelineAssistente | null>(null);
+
+  useEffect(() => {
+    void clienteApi
+      .consultar_pipeline_chat()
+      .then((r) => setPipeline(r.pipeline))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (expandido && !estavaExpandido.current) {
@@ -83,6 +92,11 @@ export function PainelAssistente({
       <div className="flex items-center gap-2 text-sm font-medium text-texto">
         <Sparkles size={16} className="text-primaria" aria-hidden />
         Assistente
+        {pipeline ? (
+          <span className="text-[11px] font-normal uppercase tracking-wide text-texto-suave">
+            {pipeline === "legado" ? "legado" : pipeline.toUpperCase()}
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center gap-1">
         <Botao
@@ -186,6 +200,7 @@ export function PainelAssistente({
             usuarioId={usuarioId}
             temContas={temContas}
             aoRegistrarOuCorrigirMovimento={aoMudarDados}
+            aoDetectarPipeline={setPipeline}
           />
         </div>
       </motion.aside>

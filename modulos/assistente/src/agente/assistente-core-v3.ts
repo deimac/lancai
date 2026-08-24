@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { prefixar_nota_dia_semana } from "@lancai/ia";
 import {
   ConfirmationRequestSchema,
   EntityRefSchema,
@@ -221,10 +222,17 @@ export class AssistenteCoreV3 {
         if (nomes.kind === "slot") {
           return this.responderSlot(session.id, ctx, nomes, traceId, somenteLeitura);
         }
-        return this.seguirPlano(nomes.plan, session.id, ctx, input.usuarioId, traceId, somenteLeitura, undefined, {
-          confirmRequired: false,
-          confirmed: false,
-        });
+        return this.seguirPlano(
+          nomes.plan,
+          session.id,
+          ctx,
+          input.usuarioId,
+          traceId,
+          somenteLeitura,
+          undefined,
+          { confirmRequired: false, confirmed: false },
+          input.mensagem,
+        );
       }
 
       const resolved = await this.resolverAlvo(understanding, ctx, input.usuarioId);
@@ -277,10 +285,17 @@ export class AssistenteCoreV3 {
         return this.responderSlot(session.id, ctx, nomes, traceId, somenteLeitura);
       }
 
-      return this.seguirPlano(nomes.plan, session.id, ctx, input.usuarioId, traceId, somenteLeitura, alvo, {
-        confirmRequired: false,
-        confirmed: false,
-      });
+      return this.seguirPlano(
+        nomes.plan,
+        session.id,
+        ctx,
+        input.usuarioId,
+        traceId,
+        somenteLeitura,
+        alvo,
+        { confirmRequired: false, confirmed: false },
+        input.mensagem,
+      );
     } catch (erro) {
       const message = erro instanceof Error ? erro.message : String(erro);
       return {
@@ -345,6 +360,7 @@ export class AssistenteCoreV3 {
     somenteLeitura: boolean,
     alvo: EntityRef | undefined,
     confirmacao: { confirmRequired: boolean; confirmed: boolean },
+    mensagem: string,
   ): Promise<AssistenteOutput> {
     const policy = this.avaliarPlano(plan, alvo);
     if (!policy.allowed) {
@@ -387,7 +403,7 @@ export class AssistenteCoreV3 {
     return this.executar(plan, sessionId, ctx, usuarioId, traceId, somenteLeitura, alvo, {
       confirmRequired: confirmacao.confirmRequired || policy.confirm,
       confirmed: confirmacao.confirmed,
-    });
+    }, mensagem);
   }
 
   private async executar(
@@ -399,9 +415,14 @@ export class AssistenteCoreV3 {
     somenteLeitura: boolean,
     alvo: EntityRef | undefined,
     confirmacao: { confirmRequired: boolean; confirmed: boolean },
+    mensagem: string,
   ): Promise<AssistenteOutput> {
     if (somenteLeitura) {
-      const resposta = this.responseGenerator.generateFromPlan({ success: true, data: {} }, plan);
+      const resposta = prefixar_nota_dia_semana(
+        this.responseGenerator.generateFromPlan({ success: true, data: {} }, plan),
+        mensagem,
+        this.dataAtual(),
+      );
       return {
         resposta,
         sessaoId: sessionId,
@@ -427,7 +448,11 @@ export class AssistenteCoreV3 {
     });
     await this.persistir(sessionId, novoCtx, false);
 
-    const resposta = this.responseGenerator.generateFromPlan(result, plan);
+    const resposta = prefixar_nota_dia_semana(
+      this.responseGenerator.generateFromPlan(result, plan),
+      mensagem,
+      this.dataAtual(),
+    );
     const war = detectWrongAction({
       op: opDePlan(plan),
       executed: result.success,
@@ -490,10 +515,17 @@ export class AssistenteCoreV3 {
     }
 
     const semPendente: ConversationContext = { ...ctx, pending_action: null };
-    return this.executar(execucao.plan, sessionId, semPendente, input.usuarioId, traceId, somenteLeitura, execucao.alvo, {
-      confirmRequired: true,
-      confirmed: true,
-    });
+    return this.executar(
+      execucao.plan,
+      sessionId,
+      semPendente,
+      input.usuarioId,
+      traceId,
+      somenteLeitura,
+      execucao.alvo,
+      { confirmRequired: true, confirmed: true },
+      input.mensagem,
+    );
   }
 
   private async responderSlot(

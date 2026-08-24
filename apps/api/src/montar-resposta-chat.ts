@@ -16,6 +16,7 @@ import {
   ErroEntidadeJaExiste,
   ErroReferenciaNaoEncontrada,
   consulta_historico_detalhada,
+  prefixar_nota_dia_semana,
   escopo_dos_tipos,
   extrair_codigo_da_mensagem,
   mascara_final4_do_payload,
@@ -350,7 +351,11 @@ export async function montar_resposta_chat(
         intencao.tipo_visao === "historico"
           ? escopo_dos_tipos(intencao.filtros.tipos)
           : "ambos";
-      return montar_resposta_visao(resultado, { detalhado, escopoFluxo });
+      return prefixar_nota_dia_semana(
+        montar_resposta_visao(resultado, { detalhado, escopoFluxo }),
+        contexto.mensagem ?? "",
+        contexto.dataAtual,
+      );
     }
 
     case "DEFINIR_ORCAMENTO": {

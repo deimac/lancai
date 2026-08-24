@@ -228,7 +228,10 @@ export interface RespostaChat {
   sessaoId: string;
   intencao?: IntencaoDetectada;
   resposta: string;
+  pipeline?: PipelineAssistente;
 }
+
+export type PipelineAssistente = "v3" | "v2" | "legado";
 
 /**
  * O que a tela sabe sobre a Fonte. `id` é rótulo opaco: serve só para escolher
@@ -1009,6 +1012,10 @@ export const clienteApi = {
 
   enviar_mensagem_chat(dados: { usuarioId: string; mensagem: string; sessaoId?: string }): Promise<RespostaChat> {
     return requisitar<RespostaChat>("/chat", { method: "POST", body: JSON.stringify(dados) });
+  },
+
+  consultar_pipeline_chat(): Promise<{ pipeline: PipelineAssistente }> {
+    return requisitar<{ pipeline: PipelineAssistente }>("/chat/pipeline");
   },
 
   buscar_historico_chat(sessaoId: string): Promise<MensagemChat[]> {

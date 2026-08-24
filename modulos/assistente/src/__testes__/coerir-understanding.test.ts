@@ -7,6 +7,7 @@ import {
   AGORA,
   contextoAposConsultaFluxo,
   contextoAposConsultaUber,
+  contextoAposSaidasMercadoPago,
   needFluxoPessoalEmpresa,
 } from "./casos-understanding";
 
@@ -43,7 +44,7 @@ describe("coerirUnderstandingComContexto", () => {
       mensagem: "me detalhe os gastos",
     });
     expect(need?.expected_output).toBe("list");
-    expect(need?.filters?.transactions).toMatchObject(needFluxoPessoalEmpresa().filters!.transactions);
+    expect(need?.filters?.transactions).toMatchObject(needFluxoPessoalEmpresa().filters!.transactions!);
     const plano = planQuery(need!, contextoAposConsultaFluxo());
     expect(plano.spec.visionType).toBe("fluxo");
     expect(plano.spec.aggregation).toBeUndefined();
@@ -107,5 +108,61 @@ describe("coerirUnderstandingComContexto", () => {
       required_sources: ["transactions"],
     });
     expect(coerirUnderstandingComContexto(u, contextoAposConsultaUber())).toEqual(u);
+  });
+
+  it("e domingo? após um total vira period_shift, não detalhe", () => {
+    const u = ConversationUnderstandingSchema.parse({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: { metric: "sum" },
+        implicit_filters: { tipo: "despesa" },
+      },
+      confidence: 0.8,
+      required_sources: ["transactions"],
+    });
+    const contexto = contextoAposSaidasMercadoPago("2026-08-22");
+    const coerido = coerirUnderstandingComContexto(u, contexto, {
+      mensagem: "e domingo?",
+      dataAtual: "2026-08-23",
+    });
+    expect(coerido.continuation).toMatchObject({
+      type: "period_shift",
+      inherits_from_previous: true,
+    });
+    const need = understandingToNeed(coerido, contexto, {
+      mensagem: "e domingo?",
+      dataAtual: "2026-08-23",
+    });
+    expect(need?.aggregation?.type).toBe("sum");
+    expect(need?.filters?.transactions?.contaNome).toBe("Mercado Pago");
+    expect(need?.filters?.transactions?.periodo).toEqual({
+      tipo: "personalizado",
+      de: "2026-08-23",
+      ate: "2026-08-23",
+    });
+  });
+
+  it("e domingo? no mesmo dia de ontem ainda é period_shift", () => {
+    const u = ConversationUnderstandingSchema.parse({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: {
+          metric: "sum",
+          period: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" },
+        },
+        implicit_filters: { tipo: "despesa" },
+      },
+      confidence: 0.8,
+      required_sources: ["transactions"],
+    });
+    const contexto = contextoAposSaidasMercadoPago("2026-08-23");
+    const coerido = coerirUnderstandingComContexto(u, contexto, {
+      mensagem: "e domingo?",
+      dataAtual: "2026-08-24",
+    });
+    expect(coerido.continuation?.type).toBe("period_shift");
+    expect(coerido.continuation?.type).not.toBe("detail_request");
   });
 });

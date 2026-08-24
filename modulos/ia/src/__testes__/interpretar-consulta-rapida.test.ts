@@ -3,6 +3,7 @@ import {
   interpretar_consulta_rapida,
   interpretar_pedido_detalhe_historico,
   interpretar_pedido_mais_historico,
+  interpretar_pedido_periodo_followup,
 } from "../interpretar-consulta-rapida";
 import type { ContextoInterpretacao } from "../prompt";
 
@@ -11,6 +12,7 @@ function contexto(parcial: Partial<ContextoInterpretacao> = {}): ContextoInterpr
     dataAtual: "2026-08-03",
     contas: [
       { nome: "C6 Bank", perfil: "pf" },
+      { nome: "Mercado Pago", perfil: "pj" },
       { nome: "Nubank", perfil: "pf" },
     ],
     cartoes: [{ nome: "Azul Itaú", perfil: "pf", modalidade: "credito", temConta: false }],
@@ -97,6 +99,24 @@ describe("interpretar_consulta_rapida", () => {
         periodo: { de: "2026-08-01", ate: "2026-08-31" },
         conta_nome: "Mercado Pago",
         tipos: ["receita"],
+      },
+    });
+  });
+
+  it("saídas ontem numa conta filtra só despesa", () => {
+    expect(
+      interpretar_consulta_rapida(
+        "quanto eu tive de saidas ontem da minha conta mercado pago?",
+        contexto({ dataAtual: "2026-08-24" }),
+      ),
+    ).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      detalhado: false,
+      filtros: {
+        periodo: { de: "2026-08-23", ate: "2026-08-23" },
+        conta_nome: "Mercado Pago",
+        tipos: ["despesa"],
       },
     });
   });
@@ -369,5 +389,45 @@ describe("interpretar_pedido_mais_historico", () => {
       }),
     ).toBeNull();
     expect(interpretar_pedido_mais_historico("mais lançamentos de uber", ultimaConsulta)).toBeNull();
+  });
+});
+
+describe("interpretar_pedido_periodo_followup", () => {
+  const ultimaConsulta = {
+    intencao: "CONSULTAR_VISAO" as const,
+    tipo_visao: "historico" as const,
+    detalhado: false,
+    filtros: {
+      periodo: { de: "2026-08-22", ate: "2026-08-22" },
+      conta_nome: "Mercado Pago",
+      tipos: ["despesa" as const],
+    },
+  };
+
+  it("e domingo? herda a conta e troca o dia", () => {
+    expect(interpretar_pedido_periodo_followup("e domingo?", ultimaConsulta, "2026-08-23")).toEqual({
+      ...ultimaConsulta,
+      filtros: {
+        ...ultimaConsulta.filtros,
+        periodo: { de: "2026-08-23", ate: "2026-08-23" },
+      },
+      deslocamento: 0,
+    });
+  });
+
+  it("e sábado? na segunda vai para o sábado anterior", () => {
+    expect(interpretar_pedido_periodo_followup("e sábado?", ultimaConsulta, "2026-08-24")).toMatchObject({
+      filtros: { periodo: { de: "2026-08-22", ate: "2026-08-22" }, conta_nome: "Mercado Pago" },
+    });
+  });
+
+  it("e mês passado? troca só o período", () => {
+    expect(interpretar_pedido_periodo_followup("e mês passado?", ultimaConsulta, "2026-08-24")).toMatchObject({
+      filtros: { periodo: { de: "2026-07-01", ate: "2026-07-31" }, conta_nome: "Mercado Pago" },
+    });
+  });
+
+  it("ignora se não houver consulta anterior", () => {
+    expect(interpretar_pedido_periodo_followup("e domingo?", null, "2026-08-24")).toBeNull();
   });
 });

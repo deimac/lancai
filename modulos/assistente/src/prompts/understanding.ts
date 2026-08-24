@@ -83,7 +83,7 @@ implicit_filters.origemPerfil: pf | pj — perfil da conta/cartão que pagou. "c
 
 Referências (continuation.reference e explicit_references):
 - positional { type:"positional", index } — "o segundo" → index 2
-- temporal { type:"temporal", relative } — today | yesterday | last_week | this_month | last_month
+- temporal { type:"temporal", relative } — today | yesterday | last_week | this_month | last_month | sunday | monday | tuesday | wednesday | thursday | friday | saturday
 - merchant { type:"merchant", name }
 - anaphoric { type:"anaphoric", pronoun: that | last | previous }
 - value { type:"value", amount }
@@ -93,7 +93,8 @@ Regras:
 - Pergunta nova de gasto/receita/saldo/lista → goal answer + question.
 - Lançar/criar/transferir/parcelar → goal execute, intent create. NÃO peça agregação.
 - Corrigir/apagar/classificar → goal execute, intent update ou delete.
-- "e mês passado?" / "e no cartão?" com consulta anterior → goal continue, inherits_from_previous true.
+- "e mês passado?" / "e ontem?" / "e domingo?" / "e sábado?" com consulta anterior → goal continue, continuation.type period_shift, inherits_from_previous true. Dia da semana é período, mesmo se coincidir com ontem. NÃO use detail_request.
+- "e no cartão?" com consulta anterior → goal continue, continuation.type filter_add, inherits_from_previous true.
 - Depois de um total no last_query, se a mensagem NÃO traz merchant/conta/período novo → goal continue, continuation.type detail_request, inherits_from_previous true. Inclui "me detalhe os gastos", "detalhado", "mostra os lançamentos" e paráfrases. Não refaça a pergunta como total novo.
 - "foi ontem" / "na verdade foi dia X" com entidade em foco → goal continue, continuation.type correction, reference temporal. NÃO use continuation.type "temporal".
 - "sim"/"não"/"confirmo" com pending_action confirmation → goal confirm.
@@ -103,7 +104,7 @@ Regras:
 - Estabelecimento/fato (Uber, iFood, tarifa) → merchant, fonte transactions. Não trate como category salvo o usuário pedir categoria.
 - Pix, TED, boleto, dinheiro são forma de pagamento, NÃO merchant e NÃO conta. "quanto enviei de pix" → merchant "pix" (busca no texto da fonte), implicit_filters.tipo despesa. "recebi pix" → tipo receita. NÃO use tipo transferencia (isso é entre contas próprias).
 - "da minha conta X" / "no Mercado Pago" → entities.account. Não copie o nome da conta para merchant.
-- "ontem" → period personalizado com de e ate iguais ao dia anterior a dataAtual (YYYY-MM-DD). "hoje" → dataAtual.
+- "ontem" → period personalizado com de e ate iguais ao dia anterior a dataAtual (YYYY-MM-DD). "hoje" → dataAtual. "domingo"/"sábado"/outros dias da semana → última ocorrência em ou antes de dataAtual (personalizado de=ate).
 - "quanto gastei" → intent total, metric sum, implicit_filters.tipo despesa.
 - "quanto recebi/entrou/entradas/ganhei" → intent total, metric sum, implicit_filters.tipo receita. Nunca misture despesa num pedido de entradas.
 - Natureza do gasto (pessoal/PF/coisa minha) e origem do dinheiro (conta/cartão da empresa/PJ) são dimensões independentes. Redação livre: traduza para tipoGasto + origemPerfil.
@@ -123,6 +124,8 @@ U: "Quanto gastei com Uber?"
 → {"goal":"answer","question":{"intent":"total","entities":{"merchant":"Uber","metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa"}},"confidence":0.94,"required_sources":["transactions"]}
 U: "E mês passado?"
 → {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"last_month"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
+U: "e domingo?"
+→ {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"sunday"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
 U: "E no cartão?"
 → {"goal":"continue","question":{"intent":"total","entities":{"card":"cartão"}},"continuation":{"type":"filter_add","reference":{"type":"merchant","name":"cartão"},"inherits_from_previous":true},"confidence":0.86,"required_sources":["transactions","cards"]}
 U: "me detalhe os gastos"

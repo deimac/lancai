@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } fr
 import type { FormEvent } from "react";
 import type { IntencaoDetectada } from "@lancai/tipos";
 import { Send } from "lucide-react";
-import { clienteApi, ErroApi } from "../lib/api";
+import { clienteApi, ErroApi, type PipelineAssistente } from "../lib/api";
 import { Botao } from "./ui/Botao";
 import { Campo } from "./ui/Campo";
 import { BolhaMensagem } from "./BolhaMensagem";
@@ -21,6 +21,7 @@ interface PropsJanelaChat {
   /** Se o usuário ainda não tem nenhuma conta cadastrada, o chat abre em modo onboarding. */
   temContas: boolean;
   aoRegistrarOuCorrigirMovimento?: () => void;
+  aoDetectarPipeline?: (pipeline: PipelineAssistente) => void;
 }
 
 /** Intenções que alteram saldos/limites/lista e invalidam o cockpit. */
@@ -85,7 +86,7 @@ function montar_mensagem_boas_vindas(temContas: boolean): MensagemLocal {
  * chat aqui é gerenciado localmente, sem streaming.
  */
 export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function JanelaChat(
-  { usuarioId, temContas, aoRegistrarOuCorrigirMovimento },
+  { usuarioId, temContas, aoRegistrarOuCorrigirMovimento, aoDetectarPipeline },
   ref,
 ) {
   const [mensagens, setMensagens] = useState<MensagemLocal[]>(() => [montar_mensagem_boas_vindas(temContas)]);
@@ -127,6 +128,7 @@ export const JanelaChat = forwardRef<JanelaChatHandle, PropsJanelaChat>(function
         sessaoId,
       });
       setSessaoId(resposta.sessaoId);
+      if (resposta.pipeline) aoDetectarPipeline?.(resposta.pipeline);
 
       setMensagens((atual) => [
         ...atual,

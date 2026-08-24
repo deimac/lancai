@@ -25,3 +25,11 @@ export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 export function isFlagEnabled(key: FeatureFlagKey): boolean {
   return process.env[key] === "true";
 }
+
+export type PipelineAssistente = "v3" | "v2" | "legado";
+
+export function pipelineAssistenteAtivo(): PipelineAssistente {
+  if (isFlagEnabled("ASSISTENTE_V3_ASSISTANT")) return "v3";
+  if (isFlagEnabled("ASSISTENTE_V2_ASSISTANT")) return "v2";
+  return "legado";
+}

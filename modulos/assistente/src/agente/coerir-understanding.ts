@@ -6,6 +6,7 @@ import {
   type UnderstandingEntities,
   type UnderstandingIntent,
 } from "@lancai/tipos";
+import { periodo_relativo_da_mensagem } from "@lancai/ia";
 
 const GOALS_SEM_CONSULTA = new Set(["execute", "greet", "confirm", "clarify"]);
 
@@ -85,13 +86,37 @@ function continuar(
   });
 }
 
+function specDePeriodoRelativo(mensagem: string | undefined, dataAtual: string | undefined): PeriodSpec | undefined {
+  if (!mensagem || !dataAtual) return undefined;
+  const extraido = periodo_relativo_da_mensagem(mensagem, dataAtual);
+  if (!extraido) return undefined;
+  if (extraido.origem === "mes_passado") return { tipo: "mes_passado" };
+  if (extraido.origem === "mes_atual") return { tipo: "mes_atual" };
+  if (
+    extraido.origem === "dia_semana" ||
+    extraido.origem === "ontem" ||
+    extraido.origem === "hoje" ||
+    extraido.origem === "anteontem" ||
+    extraido.origem === "amanha"
+  ) {
+    return { tipo: "personalizado", de: extraido.de, ate: extraido.ate };
+  }
+  return undefined;
+}
+
+export type OpcoesCoerirUnderstanding = {
+  mensagem?: string;
+  dataAtual?: string;
+};
+
 /**
  * Completa o Understanding com o tópico da sessão quando o LLM omitiu `continue`.
- * Não lê a redação da mensagem: só last_query + slots já extraídos.
+ * Lê a mensagem só para âncora temporal (ontem, domingo, mês passado).
  */
 export function coerirUnderstandingComContexto(
   understanding: ConversationUnderstanding,
   context: ConversationContext,
+  opcoes: OpcoesCoerirUnderstanding = {},
 ): ConversationUnderstanding {
   if (!context.last_query) return understanding;
   if (GOALS_SEM_CONSULTA.has(understanding.goal)) return understanding;
@@ -101,11 +126,14 @@ export function coerirUnderstandingComContexto(
   if (intent && INTENTS_NOVA_ANALISE.has(intent)) return understanding;
 
   const entities = understanding.question?.entities;
-  const periodoNovo = entities?.period;
+  const periodoMensagem = specDePeriodoRelativo(opcoes.mensagem, opcoes.dataAtual);
+  const periodoNovo = entities?.period ?? periodoMensagem;
   const periodoAnterior = context.last_query.information_need.filters?.transactions?.periodo;
   const mudouPeriodo = Boolean(periodoNovo) && !periodosIguais(periodoNovo, periodoAnterior);
+  const pediuPeriodoNaMensagem = Boolean(periodoMensagem);
+  const pedeLista = intent === "list" || intent === "detail";
 
-  if (soComplementoOrigem(entities) && !mudouPeriodo) {
+  if (soComplementoOrigem(entities) && !mudouPeriodo && !pediuPeriodoNaMensagem) {
     const nome = (ehRotuloPerfil(entities?.card) ? undefined : entities?.card)
       ?? (ehRotuloPerfil(entities?.account) ? undefined : entities?.account)
       ?? "filtro";
@@ -116,18 +144,18 @@ export function coerirUnderstandingComContexto(
     });
   }
 
-  if (mudouPeriodo && !temAlvoNovo(entities)) {
+  if ((mudouPeriodo || pediuPeriodoNaMensagem) && !temAlvoNovo(entities) && !pedeLista) {
+    const periodo = periodoNovo ?? periodoMensagem;
     return continuar(understanding, {
       type: "period_shift",
-      reference: { type: "temporal", relative: relativeDePeriodo(periodoNovo!) },
+      reference: { type: "temporal", relative: relativeDePeriodo(periodo!) },
       inherits_from_previous: true,
     });
   }
 
-  const mesmoAssunto = !temAlvoNovo(entities) && !mudouPeriodo;
+  const mesmoAssunto = !temAlvoNovo(entities) && !mudouPeriodo && !pediuPeriodoNaMensagem;
   if (!mesmoAssunto) return understanding;
 
-  const pedeLista = intent === "list" || intent === "detail";
   if (pedeLista || lastFoiTotal(context)) {
     return continuar(understanding, {
       type: "detail_request",
