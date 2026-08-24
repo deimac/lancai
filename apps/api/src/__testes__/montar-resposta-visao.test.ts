@@ -127,16 +127,56 @@ describe("montar_resposta_visao", () => {
   });
 
   it("formata fluxo cruzado pessoal pago com empresa", () => {
-    const texto = montar_resposta_visao({
-      tipo: "fluxo",
-      dados: {
-        periodo: { de: "2026-08-01", ate: "2026-08-31" },
-        totalPessoalComEmpresa: 100,
-        totalEmpresaComPessoal: 0,
-        itens: [{ descricao: "Churrasco do Marcio", valor: 100, data: "2026-08-10", direcao: "pessoal_com_empresa" }],
-      },
-    });
+    const dados = {
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+      totalPessoalComEmpresa: 100,
+      totalEmpresaComPessoal: 0,
+      itens: [{ descricao: "Churrasco do Marcio", valor: 100, data: "2026-08-10", direcao: "pessoal_com_empresa" as const }],
+    };
+    const texto = montar_resposta_visao({ tipo: "fluxo", dados });
     expect(texto).toContain(`${formatarMoeda(100)} de pessoal usando dinheiro da empresa`);
+    expect(texto).toContain("detalhado");
+    expect(texto).not.toContain("Churrasco");
+  });
+
+  it("lista os lançamentos do fluxo quando detalhado", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "fluxo",
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          totalPessoalComEmpresa: 100,
+          totalEmpresaComPessoal: 0,
+          itens: [{ descricao: "Churrasco do Marcio", valor: 100, data: "2026-08-10", direcao: "pessoal_com_empresa" }],
+        },
+      },
+      { detalhado: true },
+    );
+    expect(texto).toContain("1 lançamento");
+    expect(texto).toContain("10/08/2026 · Churrasco do Marcio ·");
+    expect(texto).toContain(formatarMoeda(100));
+  });
+
+  it("separa os dois lados do fluxo no detalhe", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "fluxo",
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          totalPessoalComEmpresa: 80,
+          totalEmpresaComPessoal: 20,
+          itens: [
+            { descricao: "Churrasco", valor: 80, data: "2026-08-10", direcao: "pessoal_com_empresa" },
+            { descricao: "Papelaria", valor: 20, data: "2026-08-12", direcao: "empresa_com_pessoal" },
+          ],
+        },
+      },
+      { detalhado: true },
+    );
+    expect(texto).toContain("Pessoal com dinheiro da empresa:");
+    expect(texto).toContain("Churrasco");
+    expect(texto).toContain("Empresa com dinheiro pessoal:");
+    expect(texto).toContain("Papelaria");
   });
 
   it("formata evolução mensal de receitas e despesas", () => {

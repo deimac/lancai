@@ -21,6 +21,16 @@ function numero_bot_lancai(): string {
   return (process.env.WHATSAPP_NUMERO_LANCAI ?? "").replace(/\D/g, "");
 }
 
+function mensagem_para_v3(texto: string, previa?: IntencaoDetectada): string {
+  if (texto.trim()) return texto;
+  if (!previa || previa.intencao !== "REGISTRAR_MOVIMENTO") return "(mídia)";
+  const partes = [`Gastei ${previa.valor ?? ""} em ${previa.descricao}`];
+  if (previa.conta_nome) partes.push(`na conta ${previa.conta_nome}`);
+  if (previa.cartao_nome) partes.push(`no cartão ${previa.cartao_nome}`);
+  if (previa.data_movimento) partes.push(`em ${previa.data_movimento}`);
+  return partes.filter((p) => !p.includes("undefined")).join(" ").replace(/\s+/g, " ").trim();
+}
+
 export type EntradaMensagemWhatsApp = {
   remoteJid: string;
   texto: string;
@@ -74,14 +84,14 @@ export async function processar_mensagem_whatsapp(
   if (isFlagEnabled("ASSISTENTE_V3_ASSISTANT")) {
     const v3 = await obterAssistenteCoreV3().processar({
       usuarioId: usuario.id,
-      mensagem: texto || "(mídia)",
+      mensagem: mensagem_para_v3(texto, entrada.intencaoPrevia),
       canal: "whatsapp",
       messageId: entrada.messageId,
     });
     if (!v3.duplicata) {
       await gravar_turno_chat({
         sessaoId: v3.sessaoId,
-        mensagemUsuario: texto || "(mídia)",
+        mensagemUsuario: mensagem_para_v3(texto, entrada.intencaoPrevia),
         resposta: v3.resposta,
       });
     }

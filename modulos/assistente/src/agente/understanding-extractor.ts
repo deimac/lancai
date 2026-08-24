@@ -5,6 +5,7 @@ import {
   type ConversationContext,
   type ConversationUnderstanding,
 } from "@lancai/tipos";
+import { coerirUnderstandingComContexto } from "./coerir-understanding";
 import {
   HISTORICO_MAX_TURNOS,
   montarPromptSistemaUnderstanding,
@@ -39,6 +40,7 @@ export class UnderstandingExtractor {
         dataAtual: input.dataAtual ?? hojeISO(),
       }),
     });
-    return ConversationUnderstandingSchema.parse(bruto);
+    const lido = ConversationUnderstandingSchema.parse(bruto);
+    return coerirUnderstandingComContexto(lido, input.context);
   }
 }

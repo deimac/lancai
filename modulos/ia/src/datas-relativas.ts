@@ -84,3 +84,56 @@ export function inicio_fim_mes_iso(dataISO: string): { de: string; ate: string }
   const fim = `${ano}-${String(mes).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
   return { de: inicio, ate: fim };
 }
+
+export type PeriodoConsulta = { de: string; ate: string };
+
+type PeriodSpecConsulta = {
+  tipo: "mes_atual" | "mes_passado" | "ultimos_n_meses" | "ano_atual" | "personalizado";
+  de?: string;
+  ate?: string;
+  nMeses?: number;
+};
+
+function mes_anterior_iso(dataISO: string): string {
+  const [ano, mes] = dataISO.split("-").map(Number) as [number, number];
+  if (mes === 1) return `${ano - 1}-12-01`;
+  return `${ano}-${String(mes - 1).padStart(2, "0")}-01`;
+}
+
+function inicio_n_meses_atras(dataISO: string, nMeses: number): string {
+  const [ano, mes] = dataISO.split("-").map(Number) as [number, number];
+  let y = ano;
+  let m = mes - (nMeses - 1);
+  while (m <= 0) {
+    m += 12;
+    y -= 1;
+  }
+  return `${y}-${String(m).padStart(2, "0")}-01`;
+}
+
+/**
+ * PeriodSpec do assistente (mes_atual, mes_passado…) → intervalo ISO para o relatório.
+ * Sem isto, `mes_passado` cai no default do mês atual e o número fica errado.
+ */
+export function resolver_periodo_spec(
+  period: PeriodSpecConsulta | undefined,
+  dataAtual: string,
+): PeriodoConsulta | undefined {
+  if (!period) return undefined;
+  if (period.de && period.ate) return { de: period.de, ate: period.ate };
+
+  if (period.tipo === "mes_atual") return inicio_fim_mes_iso(dataAtual);
+  if (period.tipo === "mes_passado") return inicio_fim_mes_iso(mes_anterior_iso(dataAtual));
+  if (period.tipo === "ano_atual") {
+    const ano = dataAtual.slice(0, 4);
+    return { de: `${ano}-01-01`, ate: `${ano}-12-31` };
+  }
+  if (period.tipo === "ultimos_n_meses") {
+    const n = period.nMeses && period.nMeses > 0 ? period.nMeses : 6;
+    return { de: inicio_n_meses_atras(dataAtual, n), ate: dataAtual };
+  }
+  if (period.tipo === "personalizado" && period.de) {
+    return { de: period.de, ate: period.ate ?? period.de };
+  }
+  return undefined;
+}

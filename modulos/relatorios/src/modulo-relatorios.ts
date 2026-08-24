@@ -371,6 +371,7 @@ export class ModuloRelatorios {
       if (filtros.direcao && direcao !== filtros.direcao) continue;
 
       itens.push({
+        id: movimento.id,
         descricao: movimento.descricao,
         valor: paraNumero(movimento.valor),
         data: movimento.dataMovimento,

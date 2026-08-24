@@ -94,6 +94,7 @@ Regras:
 - Lançar/criar/transferir/parcelar → goal execute, intent create. NÃO peça agregação.
 - Corrigir/apagar/classificar → goal execute, intent update ou delete.
 - "e mês passado?" / "e no cartão?" com consulta anterior → goal continue, inherits_from_previous true.
+- Depois de um total no last_query, se a mensagem NÃO traz merchant/conta/período novo → goal continue, continuation.type detail_request, inherits_from_previous true. Inclui "me detalhe os gastos", "detalhado", "mostra os lançamentos" e paráfrases. Não refaça a pergunta como total novo.
 - "foi ontem" / "na verdade foi dia X" com entidade em foco → goal continue, continuation.type correction, reference temporal. NÃO use continuation.type "temporal".
 - "sim"/"não"/"confirmo" com pending_action confirmation → goal confirm.
 - Olá/obrigado sem pedido → goal greet.
@@ -124,6 +125,8 @@ U: "E mês passado?"
 → {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"last_month"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
 U: "E no cartão?"
 → {"goal":"continue","question":{"intent":"total","entities":{"card":"cartão"}},"continuation":{"type":"filter_add","reference":{"type":"merchant","name":"cartão"},"inherits_from_previous":true},"confidence":0.86,"required_sources":["transactions","cards"]}
+U: "me detalhe os gastos"
+→ {"goal":"continue","continuation":{"type":"detail_request","reference":{"type":"anaphoric","pronoun":"that"},"inherits_from_previous":true},"confidence":0.91,"required_sources":["transactions"]}
 
 Few-shot 3 — correção temporal e comparação:
 U: "Foi ontem" (focused_entity = Uber)
@@ -146,6 +149,8 @@ U: "o que eu usei da PJ pra coisa minha esse mês?"
 → {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","tipoGasto":"pf","origemPerfil":"pj"}},"confidence":0.9,"required_sources":["transactions"]}
 U: "quanto a empresa pagou das minhas coisas?"
 → {"goal":"answer","question":{"intent":"total","entities":{"metric":"sum","period":{"tipo":"mes_atual"}},"implicit_filters":{"tipo":"despesa","tipoGasto":"pf","origemPerfil":"pj"}},"confidence":0.89,"required_sources":["transactions"]}
+U: "me detalhe os gastos"
+→ {"goal":"continue","continuation":{"type":"detail_request","reference":{"type":"anaphoric","pronoun":"that"},"inherits_from_previous":true},"confidence":0.91,"required_sources":["transactions"]}
 
 Few-shot 7 — extrato da empresa, não cruzado:
 U: "quanto gastei na conta da empresa esse mês?"

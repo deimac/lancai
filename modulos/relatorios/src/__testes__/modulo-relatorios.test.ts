@@ -530,6 +530,7 @@ describe("ModuloRelatorios", () => {
       expect(dados.totalPessoalComEmpresa).toBe(100);
       expect(dados.totalEmpresaComPessoal).toBe(0);
       expect(dados.itens[0]?.direcao).toBe("pessoal_com_empresa");
+      expect(dados.itens[0]?.id).toBeTruthy();
     });
 
     it("filtra só o lado pedido quando direcao vem nos filtros", async () => {

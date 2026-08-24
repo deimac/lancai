@@ -20,7 +20,7 @@ function sinal_valor_historico(tipo: string): "+" | "-" {
 }
 
 export type OpcoesRespostaVisao = {
-  /** Histórico: false = só totais; true/omit = lista lançamentos. */
+  /** Histórico: false = só totais; true/omit = lista. Fluxo: true = lista; omit/false = só totais. */
   detalhado?: boolean;
   /** Lado da pergunta (gastei vs recebi); omitido = extrato completo. */
   escopoFluxo?: EscopoFluxoConsulta;
@@ -100,7 +100,25 @@ export function montar_resposta_visao(
       if (totalEmpresaComPessoal > 0) {
         partes.push(`A empresa gastou ${formatarMoeda(totalEmpresaComPessoal)} usando seu dinheiro pessoal — a empresa te deve esse valor.`);
       }
-      return partes.join(" ");
+      const resumo = partes.join(" ");
+      if (opcoes.detalhado !== true) {
+        return `${resumo}\nPara ver cada lançamento, diga "detalhado".`;
+      }
+
+      const listar = (direcao: (typeof itens)[number]["direcao"]) =>
+        itens
+          .filter((item) => item.direcao === direcao)
+          .sort((a, b) => a.data.localeCompare(b.data))
+          .map((item) => `- ${formatarData(item.data)} · ${item.descricao} · ${formatarMoeda(item.valor)}`);
+
+      const pessoal = listar("pessoal_com_empresa");
+      const empresa = listar("empresa_com_pessoal");
+      const plural = itens.length === 1 ? "" : "s";
+      const cabecalho = `${resumo} (${itens.length} lançamento${plural}):`;
+      if (pessoal.length > 0 && empresa.length > 0) {
+        return `${cabecalho}\nPessoal com dinheiro da empresa:\n${pessoal.join("\n")}\nEmpresa com dinheiro pessoal:\n${empresa.join("\n")}`;
+      }
+      return `${cabecalho}\n${[...pessoal, ...empresa].join("\n")}`;
     }
 
     case "evolucao": {

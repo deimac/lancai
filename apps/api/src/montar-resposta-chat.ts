@@ -343,7 +343,7 @@ export async function montar_resposta_chat(
         { deslocamento },
       );
       const detalhado =
-        intencao.tipo_visao === "historico"
+        intencao.tipo_visao === "historico" || intencao.tipo_visao === "fluxo"
           ? (intencao.detalhado ?? consulta_historico_detalhada(contexto.mensagem ?? ""))
           : true;
       const escopoFluxo =

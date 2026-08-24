@@ -9,6 +9,7 @@ export {
 } from "./agente/assistente-core-v3";
 export { SemanticParserV2, type LlmParser, type SemanticParserDeps } from "./agente/semantic-parser-v2";
 export { UnderstandingExtractor, type EntradaUnderstandingExtractor } from "./agente/understanding-extractor";
+export { coerirUnderstandingComContexto } from "./agente/coerir-understanding";
 export { understandingToNeed, type OpcoesUnderstandingToNeed } from "./agente/understanding-to-need";
 export { planQuery, QueryPlanner } from "./agente/query-planner";
 export { planCommand, CommandPlanner, type CommandPlanResult, type OpcoesCommandPlanner } from "./agente/command-planner";

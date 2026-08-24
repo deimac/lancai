@@ -7,7 +7,7 @@ export function consulta_historico_detalhada(mensagem: string): boolean {
   const texto = mensagem.toLocaleLowerCase("pt-BR").trim();
   if (!texto) return true;
 
-  if (/\b(detalhad[oa]s?|um\s+a\s+um|item\s+a\s+item)\b/.test(texto)) return true;
+  if (/\b(detalhad[oa]s?|detalhamento|detalhe|detalha|um\s+a\s+um|item\s+a\s+item)\b/.test(texto)) return true;
 
   const pedeSoma =
     /\bquanto\b/.test(texto) ||

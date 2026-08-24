@@ -83,6 +83,28 @@ export function needFluxoPessoalEmpresa(): InformationNeed {
   });
 }
 
+export function contextoAposConsultaFluxo(): ConversationContext {
+  return ConversationContextSchema.parse({
+    ...estadoInicialConversacaoV3(AGORA),
+    active_topic: { domain: "spending", period: { tipo: "mes_atual" } },
+    active_goal: "analyze",
+    last_query: {
+      information_need: needFluxoPessoalEmpresa(),
+      query_spec: {
+        visionType: "fluxo",
+        entityType: "transaction",
+        tipos: ["despesa"],
+        period: { tipo: "mes_atual" },
+        aggregation: "sum",
+        direcao: "pessoal_com_empresa",
+      },
+      result_ids: [],
+      result_summary: { count: 4, total: 3482.44, period: { tipo: "mes_atual" } },
+      expires_at: AGORA + 60_000,
+    },
+  });
+}
+
 export function contextoAposConsultaUber(): ConversationContext {
   return ConversationContextSchema.parse({
     ...estadoInicialConversacaoV3(AGORA),
@@ -372,6 +394,36 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
           merchant: "Uber",
           tipos: ["despesa"],
           periodo: { tipo: "mes_atual" },
+        },
+      },
+      aggregation: { type: "none", field: "valor" },
+      expected_output: "list",
+    }),
+  },
+  {
+    id: "continue-detail-fluxo",
+    mensagem: "me detalhe os gastos",
+    context: contextoAposConsultaFluxo(),
+    understanding: und({
+      goal: "continue",
+      continuation: {
+        type: "detail_request",
+        reference: { type: "anaphoric", pronoun: "that" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.91,
+      required_sources: ["transactions"],
+    }),
+    need: need({
+      data_sources: ["transactions"],
+      source_priority: ["transactions"],
+      filters: {
+        transactions: {
+          tipos: ["despesa"],
+          periodo: { tipo: "mes_atual" },
+          cruzado: true,
+          origemPerfil: "pj",
+          direcao: "pessoal_com_empresa",
         },
       },
       aggregation: { type: "none", field: "valor" },

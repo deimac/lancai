@@ -67,6 +67,7 @@ export interface ResultadoFuturo {
 }
 
 export interface ItemFluxo {
+  id?: string;
   descricao: string;
   valor: number;
   data: string;

@@ -308,6 +308,28 @@ describe("interpretar_pedido_detalhe_historico", () => {
     ).toBeNull();
     expect(interpretar_pedido_detalhe_historico("quanto gastei esse mês?", ultimaConsulta)).toBeNull();
   });
+
+  it("reaproveita a última consulta de fluxo ao pedir o detalhe dos gastos", () => {
+    const ultimaFluxo = {
+      intencao: "CONSULTAR_VISAO" as const,
+      tipo_visao: "fluxo" as const,
+      detalhado: false,
+      filtros: {
+        periodo: { de: "2026-08-01", ate: "2026-08-31" },
+        tipos: ["despesa" as const],
+      },
+    };
+    expect(interpretar_pedido_detalhe_historico("me detalhe os gastos", ultimaFluxo)).toEqual({
+      ...ultimaFluxo,
+      detalhado: true,
+      deslocamento: 0,
+    });
+    expect(interpretar_pedido_detalhe_historico("detalhe", ultimaFluxo)).toMatchObject({
+      tipo_visao: "fluxo",
+      detalhado: true,
+      filtros: { periodo: { de: "2026-08-01", ate: "2026-08-31" } },
+    });
+  });
 });
 
 describe("interpretar_pedido_mais_historico", () => {

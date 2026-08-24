@@ -35,6 +35,8 @@ describe("prompt understanding", () => {
     expect(system).toMatch(/fluxo cruzado/i);
     expect(system).toContain("tipoGasto");
     expect(system).toContain("origemPerfil");
+    expect(system).toContain("detail_request");
+    expect(system).toMatch(/me detalhe os gastos/i);
   });
 
   it("serializa mensagem, contexto compacto e no máximo 8 turnos", () => {

@@ -165,6 +165,17 @@ describe("Pipeline Understanding → Need → Plan → Resolver → ContextUpdat
     expect(plano.spec.contaNome).toBe("Nubank");
   });
 
+  it("detalhe após fluxo lista os lançamentos cruzados, não soma de novo", () => {
+    const c = caso("continue-detail-fluxo");
+    const need = understandingToNeed(c.understanding, c.context, { mensagem: c.mensagem });
+    expect(need?.expected_output).toBe("list");
+    expect(need?.aggregation?.type).toBe("none");
+    const plano = planQuery(need!, c.context);
+    expect(plano.spec.visionType).toBe("fluxo");
+    expect(plano.spec.aggregation).toBeUndefined();
+    expect(plano.spec.direcao).toBe("pessoal_com_empresa");
+  });
+
   it("paráfrases de pessoal na empresa montam a mesma visão fluxo", () => {
     for (const id of [
       "consulta-fluxo-pessoal-empresa",

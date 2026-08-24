@@ -33,11 +33,11 @@ const PEDIDO_EVOLUCAO =
  * "faça o detalhamento dos lançamentos", etc.
  */
 const PEDIDO_SO_DETALHE =
-  /^(?:(?:mostra|mostre|ver|veja|liste|listar|quero|fa[cç]a|faz|me\s+(?:d[aá]|mostra|mostre)|manda)\s+)?(?:o\s+)?(?:detalhad[oa]s?|detalhamento|um\s+a\s+um|item\s+a\s+item)(?:\s+(?:dos?\s+|das?\s+|de\s+)?(?:lan[cç]amentos?|gastos?|despesas?|itens?|extrato))?\??\.?$/i;
+  /^(?:me\s+)?(?:(?:mostra|mostre|ver|veja|liste|listar|quero|fa[cç]a|faz|manda|d[aá])\s+)?(?:o\s+)?(?:detalhad[oa]s?|detalhamento|detalhe|detalha|um\s+a\s+um|item\s+a\s+item)(?:\s+(?:dos?\s+|das?\s+|de\s+|os\s+|as\s+)?(?:lan[cç]amentos?|gastos?|despesas?|itens?|extrato))?\??\.?$/i;
 
 /** Pedido de detalhe embutido sem redefinir período ("faz o detalhamento…"). */
 const PEDIDO_DETALHE_FOLLOWUP =
-  /\b(detalhad[oa]s?|detalhamento|um\s+a\s+um|item\s+a\s+item)\b/i;
+  /\b(detalhad[oa]s?|detalhamento|detalhe|detalha|um\s+a\s+um|item\s+a\s+item)\b/i;
 
 /** Follow-up de paginação do extrato: "mais", "continuar", "próximos". */
 const PEDIDO_MAIS_HISTORICO =
@@ -55,8 +55,8 @@ const PEDIDO_MES =
 const PEDIDO_TODOS = /\btod[oa]s?\b/i;
 
 /**
- * Reaproveita a última consulta de histórico quando o usuário pede o detalhe
- * sem mudar o período (ex.: após "quanto gastei hoje?" → "detalhamento").
+ * Reaproveita a última consulta (histórico ou fluxo cruzado) quando o usuário
+ * pede o detalhe sem mudar o período (ex.: após "quanto gastei hoje?" → "detalhamento").
  */
 export function interpretar_pedido_detalhe_historico(
   mensagem: string,
@@ -65,7 +65,9 @@ export function interpretar_pedido_detalhe_historico(
   const texto = mensagem.trim();
   if (!texto) return null;
   if (!ultimaIntencaoIa || ultimaIntencaoIa.intencao !== "CONSULTAR_VISAO") return null;
-  if (ultimaIntencaoIa.tipo_visao !== "historico") return null;
+  if (ultimaIntencaoIa.tipo_visao !== "historico" && ultimaIntencaoIa.tipo_visao !== "fluxo") {
+    return null;
+  }
 
   const soDetalhe = PEDIDO_SO_DETALHE.test(texto);
   const followup =

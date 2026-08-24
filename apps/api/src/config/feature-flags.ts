@@ -23,5 +23,5 @@ export const FEATURE_FLAGS = {
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;
 
 export function isFlagEnabled(key: FeatureFlagKey): boolean {
-  return FEATURE_FLAGS[key];
+  return process.env[key] === "true";
 }

@@ -1,4 +1,4 @@
-import { escopo_dos_tipos } from "@lancai/ia";
+import { escopo_dos_tipos, resolver_periodo_spec } from "@lancai/ia";
 import { ModuloRelatorios, type ResultadoVisao } from "@lancai/relatorios";
 import type { QuerySpec, TipoVisao } from "@lancai/tipos";
 import { hojeISO, tipoVisaoSchema } from "@lancai/tipos";
@@ -12,8 +12,13 @@ function tipoVisaoDe(spec: QuerySpec): TipoVisao {
 }
 
 function idsDaVisao(resultado: ResultadoVisao): string[] {
-  if (resultado.tipo !== "historico") return [];
-  return resultado.dados.dias.flatMap((dia) => dia.itens.map((item) => item.id));
+  if (resultado.tipo === "historico") {
+    return resultado.dados.dias.flatMap((dia) => dia.itens.map((item) => item.id));
+  }
+  if (resultado.tipo === "fluxo") {
+    return resultado.dados.itens.map((item) => item.id).filter((id): id is string => Boolean(id));
+  }
+  return [];
 }
 
 /**
@@ -24,8 +29,7 @@ export async function consultar_assistente_v2(
   spec: QuerySpec,
   usuarioId: string,
 ): Promise<{ ids: string[]; formattedText: string; data?: unknown }> {
-  const periodo =
-    spec.period?.de && spec.period?.ate ? { de: spec.period.de, ate: spec.period.ate } : undefined;
+  const periodo = resolver_periodo_spec(spec.period, hojeISO());
   const resultado = await relatorios.consultar_visao(
     tipoVisaoDe(spec),
     {
