@@ -23,8 +23,18 @@ function extrair_data_no_trecho(texto: string, dataAtual: string): string | null
   return parsear_data_relativa_ou_br(texto, dataAtual);
 }
 
+const VALOR_BR = String.raw`(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+(?:[.,]\d{1,2})?)`;
+
 function extrair_data_referencia(texto: string, dataAtual: string): string | null {
-  // A data depois de "para" é o valor novo, não o filtro para achar o lançamento.
+  // "para 19,99 do dia 10/07": a data depois do valor novo é o filtro.
+  const depoisDoValor = texto.match(
+    new RegExp(String.raw`\bpara\s+(?:r\$\s*)?${VALOR_BR}\s*(?:reais?)?\s+(.+)$`, "i"),
+  );
+  if (depoisDoValor?.[1]) {
+    const dataDepois = extrair_data_no_trecho(depoisDoValor[1], dataAtual);
+    if (dataDepois) return dataDepois;
+  }
+  // A data depois de "para 15/08" (troca de data) não é filtro.
   const antesPara = texto.replace(/\bpara\s+.+$/i, " ");
   return extrair_data_no_trecho(antesPara, dataAtual);
 }
@@ -113,11 +123,11 @@ function interpretar_alteracao_campos(
   const porData = interpretar_alteracao_data(texto, dataAtual);
   if (porData) return porData;
 
-  // Valor: "... para 20" / "para R$ 20,00" / "para 20 reais"
-  const comValor =
-    /\bpara\s+(?:r\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2}|\d+(?:[.,]\d{1,2})?)\s*(?:reais?)?\s*[.!]?\s*$/i.exec(
-      texto,
-    );
+  // Valor: "... para 20" / "para R$ 20,00" / "para 20 reais" / "para 19,99 do dia 10/07"
+  const comValor = new RegExp(
+    String.raw`\bpara\s+(?:r\$\s*)?(${VALOR_BR})\s*(?:reais?)?(?:\s+(?:(?:do|de|em|no|na)\s+)?(?:dia\s+)?${DATA_ALVO})?\s*[.!]?\s*$`,
+    "i",
+  ).exec(texto);
 
   if (comValor?.[1]) {
     const valor = parse_valor(comValor[1]);

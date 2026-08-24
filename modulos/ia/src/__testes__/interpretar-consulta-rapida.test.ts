@@ -178,6 +178,27 @@ describe("interpretar_consulta_rapida", () => {
     expect(interpretar_consulta_rapida("gastei 18 na farmacia no cartao azul", contexto())).toBeNull();
     expect(interpretar_consulta_rapida("apague o lancamento de farmacia", contexto())).toBeNull();
   });
+
+  it("lista pela descrição do lançamento, não trata tarifa como categoria", () => {
+    const resultado = interpretar_consulta_rapida(
+      "me mostre todos os lancamentos de Tarifa ad. mensal do cartão de crédito do cartao revolut visa",
+      contexto({
+        cartoes: [{ nome: "Revolut Visa", perfil: "pf", modalidade: "credito", temConta: false }],
+        categorias: [{ nome: "Tarifas", tipo: "despesa" }],
+      }),
+    );
+    expect(resultado).toMatchObject({
+      intencao: "CONSULTAR_VISAO",
+      tipo_visao: "historico",
+      detalhado: true,
+      filtros: {
+        periodo: { de: "2000-01-01", ate: "2026-08-03" },
+        cartao_nome: "Revolut Visa",
+        descricao: "Tarifa ad. mensal do cartão de crédito",
+      },
+    });
+    expect(resultado).not.toMatchObject({ filtros: { categoria_nome: expect.anything() } });
+  });
 });
 
 describe("interpretar_pedido_detalhe_historico", () => {

@@ -218,3 +218,8 @@ export function descricao_corresponde_busca(cadastrada: string, citada: string):
   // Basta um token significativo da citação aparecer no cadastro (ex.: "tênis").
   return tokensCit.some((token) => tokensCad.has(token) || chaveCad.includes(token));
 }
+
+/** Primeiro token útil para pré-filtro SQL (ILIKE), sem a hora da importação. */
+export function primeiro_token_busca(citada: string): string | null {
+  return tokens_significativos(citada)[0] ?? null;
+}

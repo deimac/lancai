@@ -10,9 +10,13 @@ import {
 } from "@lancai/banco";
 import { ErroRecursoNaoEncontrado, ErroValidacaoFinanceira, MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import { OrquestradorIA } from "@lancai/ia";
-import type { ResumoIngestao } from "@lancai/open-finance";
+import type { ParcelaSerieEntrada, ResumoIngestao } from "@lancai/open-finance";
 import { estimar_compra_em_parcela, planejar_complemento_parcelas_cartao } from "@lancai/open-finance";
-import { parcelamentoFonteSchema, type EventoFinanceiroNormalizado } from "@lancai/tipos";
+import {
+  data_iso_parcela,
+  parcelamentoFonteSchema,
+  type EventoFinanceiroNormalizado,
+} from "@lancai/tipos";
 import {
   type CandidatoDestinoPdf,
   type DestinoPdf,
@@ -20,6 +24,7 @@ import {
   type LinhaExtraidaPdf,
   type PreviewImportacaoPdf,
   type TipoDestinoPdf,
+  enriquecer_linha_pdf,
   exigir_destino_manual,
   hash_bytes_arquivo,
   lotes_texto_pdf,
@@ -114,7 +119,7 @@ export async function interpretar_linhas_pdf(
 ): Promise<LinhaExtraidaPdf[]> {
   const corpus = paginas && paginas.length > 0 ? paginas.join("\n") : texto;
   const peloTexto = extrair_lancamentos_do_texto(corpus);
-  if (peloTexto.length > 0) return peloTexto;
+  if (peloTexto.length > 0) return peloTexto.map(enriquecer_linha_pdf);
 
   const lotes = lotes_texto_pdf(
     paginas && paginas.length > 0 ? paginas : [texto],
@@ -127,7 +132,7 @@ export async function interpretar_linhas_pdf(
     for (let i = 0; i < lotes.length; i++) {
       extraidos.push(await interpretar_lote_pdf(lotes[i]!, i + 1, lotes.length, orquestrador));
     }
-    return unir_linhas_extraidas(extraidos);
+    return unir_linhas_extraidas(extraidos).map(enriquecer_linha_pdf);
   } catch {
     // Preview não pode cair com 503: parser vazio + IA fora → lista vazia e aviso no modal.
     return [];
@@ -297,7 +302,7 @@ export async function preview_importacao_pdf(entrada: {
   try {
     linhas = await interpretar(texto, paginas);
   } catch {
-    linhas = extrair_lancamentos_do_texto(corpus);
+    linhas = extrair_lancamentos_do_texto(corpus).map(enriquecer_linha_pdf);
   }
 
   return montar_preview_pdf({
@@ -419,6 +424,81 @@ async function carregar_destinos_confirmacao(
   return resultado;
 }
 
+function dia_iso_pdf(valor: string | Date | null | undefined): string | null {
+  if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
+    const y = valor.getFullYear();
+    const m = String(valor.getMonth() + 1).padStart(2, "0");
+    const d = String(valor.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return data_iso_parcela(valor);
+}
+
+function serie_parcela_do_evento(evento: EventoFinanceiroNormalizado): ParcelaSerieEntrada | null {
+  const parcela = evento.parcelamento;
+  if (!evento.cartaoId || !parcela || parcela.total < 2) return null;
+  const dataMovimento = dia_iso_pdf(evento.ocorridoEm) ?? evento.ocorridoEm;
+  const compraEm =
+    dia_iso_pdf(parcela.compraEm) ?? estimar_compra_em_parcela(dataMovimento, parcela.numero);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(compraEm) || !/^\d{4}-\d{2}-\d{2}$/.test(dataMovimento)) {
+    return null;
+  }
+  return {
+    parcelaNumero: parcela.numero,
+    parcelaTotal: parcela.total,
+    parcelaCompraEm: compraEm,
+    parcelaCompraValor: parcela.valorTotal != null ? Number(parcela.valorTotal).toFixed(2) : null,
+    valor: evento.valor,
+    dataMovimento,
+    descricao: evento.descricaoFonte,
+    idExterno: evento.idExterno ?? null,
+    status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
+    statusFonte: evento.statusFonte ?? "confirmado",
+  };
+}
+
+function serie_parcela_do_movimento(movimento: {
+  parcelaNumero: number | null;
+  parcelaTotal: number | null;
+  parcelaCompraEm: string | Date | null;
+  parcelaCompraValor: string | number | null;
+  valor: string | number;
+  dataMovimento: string | Date;
+  descricao: string;
+  idExterno: string | null;
+  status: string;
+  statusFonte: string | null;
+}): ParcelaSerieEntrada | null {
+  if (movimento.parcelaNumero == null || movimento.parcelaTotal == null || movimento.parcelaTotal < 2) {
+    return null;
+  }
+  const dataMovimento =
+    dia_iso_pdf(movimento.dataMovimento) ?? String(movimento.dataMovimento).slice(0, 10);
+  const compraEm =
+    dia_iso_pdf(movimento.parcelaCompraEm) ??
+    estimar_compra_em_parcela(dataMovimento, movimento.parcelaNumero);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(compraEm) || !/^\d{4}-\d{2}-\d{2}$/.test(dataMovimento)) {
+    return null;
+  }
+  return {
+    parcelaNumero: movimento.parcelaNumero,
+    parcelaTotal: movimento.parcelaTotal,
+    parcelaCompraEm: compraEm,
+    parcelaCompraValor:
+      movimento.parcelaCompraValor == null ? null : String(movimento.parcelaCompraValor),
+    valor: movimento.valor,
+    dataMovimento,
+    descricao: movimento.descricao,
+    idExterno: movimento.idExterno,
+    status: movimento.status,
+    statusFonte: movimento.statusFonte,
+  };
+}
+
+function chave_serie_parcela(serie: ParcelaSerieEntrada): string {
+  return [serie.parcelaNumero, serie.parcelaTotal, serie.parcelaCompraEm, serie.idExterno ?? ""].join("|");
+}
+
 async function completar_parcelas_futuras_pdf(entrada: {
   motor: MotorFinanceiro;
   eventos: EventoFinanceiroNormalizado[];
@@ -440,7 +520,18 @@ async function completar_parcelas_futuras_pdf(entrada: {
   const projetados: EventoFinanceiroNormalizado[] = [];
   for (const evento of cartoes) {
     const cartaoId = evento.cartaoId!;
-    const movimentos = await entrada.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+    const porChave = new Map<string, ParcelaSerieEntrada>();
+    const doBanco = await entrada.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+    for (const movimento of doBanco) {
+      const serie = serie_parcela_do_movimento(movimento);
+      if (!serie) continue;
+      porChave.set(chave_serie_parcela(serie), serie);
+    }
+    for (const candidato of entrada.eventos.filter((item) => item.cartaoId === cartaoId)) {
+      const serie = serie_parcela_do_evento(candidato);
+      if (!serie) continue;
+      porChave.set(chave_serie_parcela(serie), serie);
+    }
     projetados.push(
       ...planejar_complemento_parcelas_cartao({
         workspaceId: evento.workspaceId,
@@ -448,22 +539,7 @@ async function completar_parcelas_futuras_pdf(entrada: {
         fonte: "pdf",
         provedor: entrada.provedor,
         preservarDia: true,
-        movimentos: movimentos
-          .filter((movimento) => movimento.parcelaNumero != null && movimento.parcelaTotal != null)
-          .map((movimento) => ({
-            parcelaNumero: movimento.parcelaNumero!,
-            parcelaTotal: movimento.parcelaTotal!,
-            parcelaCompraEm:
-              movimento.parcelaCompraEm ??
-              estimar_compra_em_parcela(movimento.dataMovimento, movimento.parcelaNumero!),
-            parcelaCompraValor: movimento.parcelaCompraValor,
-            valor: movimento.valor,
-            dataMovimento: movimento.dataMovimento,
-            descricao: movimento.descricao,
-            idExterno: movimento.idExterno,
-            status: movimento.status,
-            statusFonte: movimento.statusFonte,
-          })),
+        movimentos: [...porChave.values()],
       }),
     );
   }
@@ -507,12 +583,21 @@ export async function confirmar_importacao_pdf(
 
   const categoriaIdNaoClassificado = await garantir_categoria_nao_classificado(entrada.usuarioId);
   const motor = deps.motor ?? new MotorFinanceiro(new RepositorioFinanceiroDrizzle());
-  const resultado = await motor.ingerir_eventos(eventos, {
+  const contexto = {
     usuarioId: entrada.usuarioId,
     criadoPor: entrada.usuarioId,
     categoriaIdNaoClassificado,
-    perfilPadrao: "pf",
-  });
+    perfilPadrao: "pf" as const,
+  };
+  const resultado = await motor.ingerir_eventos(eventos, contexto);
+
+  const comParcela = eventos.filter(
+    (evento) => evento.parcelamento && evento.parcelamento.total >= 2 && evento.idExterno,
+  );
+  if (comParcela.length > 0) {
+    // Reimportação: o 1/4 antigo entra como duplicata sem as colunas de parcela.
+    await motor.atualizar_fatos_da_fonte(comParcela, contexto);
+  }
 
   const projetados = await completar_parcelas_futuras_pdf({
     motor,

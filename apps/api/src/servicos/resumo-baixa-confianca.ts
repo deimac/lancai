@@ -138,7 +138,10 @@ export async function listar_filas_baixa_confianca(): Promise<UsuarioComRevisao[
         ),
       ),
     )
-    .orderBy(desc(movimento.dataMovimento), desc(movimento.dataLancamento));
+    .orderBy(
+      desc(movimento.dataMovimento),
+      sql`${movimento.ocorridoEmInstante} DESC NULLS LAST`,
+    );
 
   const porUsuario = new Map<string, UsuarioComRevisao>();
   for (const linha of linhas) {

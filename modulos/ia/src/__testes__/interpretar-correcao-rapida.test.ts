@@ -36,6 +36,29 @@ describe("interpretar_correcao_rapida", () => {
     });
   });
 
+  it("corrige valor com data depois do valor novo", () => {
+    expect(
+      interpretar_correcao_rapida(
+        "alterar valor Tarifa ad. mensal do cartão de crédito do cartao revolut visa para 19,99 do dia 10/07",
+        "2026-08-23",
+      ),
+    ).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { data_movimento: "2026-07-10" },
+      campos_alterados: { valor: 19.99 },
+    });
+  });
+
+  it("corrige valor em 10/07 no fim da frase", () => {
+    expect(
+      interpretar_correcao_rapida("corrige a tarifa do revolut para 19,99 em 10/07", "2026-08-23"),
+    ).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { data_movimento: "2026-07-10" },
+      campos_alterados: { valor: 19.99 },
+    });
+  });
+
   it("corrige valor com data e reais", () => {
     expect(
       interpretar_correcao_rapida("corrige o ifood de ontem para 45,90 reais", "2026-08-03"),

@@ -360,16 +360,16 @@ describe("ResolvedorIntencao", () => {
       expect(resultado.campos.categoriaId).toBe(categorias[0]?.id);
     });
 
-    it("aplica ignorado_em_relatorio e, sem nome, escolhe o mais recente", async () => {
+    it("aplica ignorado_em_relatorio e, sem nome, escolhe o lançamento mais recente", async () => {
       const antigo = criarMovimento({
         usuarioId,
         descricao: "Antigo",
-        dataLancamento: new Date("2026-07-01T10:00:00Z"),
+        dataMovimento: "2026-07-01",
       });
       const recente = criarMovimento({
         usuarioId,
         descricao: "Recente",
-        dataLancamento: new Date("2026-08-08T10:00:00Z"),
+        dataMovimento: "2026-08-08",
       });
       repositorio.movimentos.set(antigo.id, antigo);
       repositorio.movimentos.set(recente.id, recente);
@@ -448,14 +448,14 @@ describe("ResolvedorIntencao", () => {
         descricao: "Uber",
         dataMovimento: "2026-08-05",
         valor: "24.95",
-        dataLancamento: new Date("2026-08-05T10:00:00Z"),
+        ocorridoEmInstante: new Date("2026-08-05T10:00:00Z"),
       });
       const recente = criarMovimento({
         usuarioId,
         descricao: "Uber",
         dataMovimento: "2026-08-05",
         valor: "38.58",
-        dataLancamento: new Date("2026-08-05T12:00:00Z"),
+        ocorridoEmInstante: new Date("2026-08-05T12:00:00Z"),
       });
       repositorio.movimentos.set(antigo.id, antigo);
       repositorio.movimentos.set(recente.id, recente);
@@ -480,13 +480,13 @@ describe("ResolvedorIntencao", () => {
         usuarioId,
         descricao: "Tênis",
         dataMovimento: "2026-08-05",
-        dataLancamento: new Date("2026-08-05T12:00:00Z"),
+        ocorridoEmInstante: new Date("2026-08-05T12:00:00Z"),
       });
       const b = criarMovimento({
         usuarioId,
         descricao: "Tênis",
         dataMovimento: "2026-08-05",
-        dataLancamento: new Date("2026-08-05T11:00:00Z"),
+        ocorridoEmInstante: new Date("2026-08-05T11:00:00Z"),
       });
       repositorio.movimentos.set(a.id, a);
       repositorio.movimentos.set(b.id, b);

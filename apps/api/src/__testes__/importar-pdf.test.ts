@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ErroValidacaoFinanceira } from "@lancai/financeiro";
+import { planejar_complemento_parcelas_cartao } from "@lancai/open-finance";
 import {
   exigir_destino_manual,
   id_externo_pdf,
@@ -398,5 +399,132 @@ describe("importar PDF", () => {
       },
     });
     expect(linhas[0]?.descricao.toLowerCase()).toMatch(/moacyr/);
+  });
+
+  it("lê 1/4 depois do valor, típico de coluna à direita na fatura", () => {
+    const linhas = extrair_lancamentos_do_texto(
+      [
+        "13 de jul. de 2026 Moacyr Sanches Mascar R$475,00 1/4",
+        "14 de jul. de 2026 Uber R$32,90",
+      ].join("\n"),
+    );
+    const moacyr = linhas.find((linha) => /moacyr/i.test(linha.descricao));
+    expect(moacyr?.parcelamento).toMatchObject({ numero: 1, total: 4, valorTotal: 1900 });
+  });
+
+  it("não confunde 13/07 (dia/mês) com parcela e ainda acha o 1/4", () => {
+    const linhas = extrair_lancamentos_do_texto(
+      [
+        "13 de jul. de 2026 Moacyr Sanches Mascar 13/07 1/4 R$475,00",
+        "14 de jul. de 2026 Uber R$32,90",
+      ].join("\n"),
+    );
+    const moacyr = linhas.find((linha) => /moacyr/i.test(linha.descricao));
+    expect(moacyr?.parcelamento).toMatchObject({ numero: 1, total: 4 });
+  });
+
+  it("lê 'parcela 1 de 4' na linha da fatura", () => {
+    const linhas = extrair_lancamentos_do_texto(
+      [
+        "13 de jul. de 2026 Moacyr Sanches Mascar parcela 1 de 4 R$475,00",
+        "14 de jul. de 2026 Uber R$32,90",
+      ].join("\n"),
+    );
+    const moacyr = linhas.find((linha) => /moacyr/i.test(linha.descricao));
+    expect(moacyr?.parcelamento).toMatchObject({ numero: 1, total: 4 });
+  });
+
+  it("no confirmar, reconstitui parcelamento pela descrição se o preview omitiu o objeto", () => {
+    const workspaceId = randomUUID();
+    const eventos = montar_eventos_pdf({
+      linhas: [
+        {
+          ocorridoEm: "2026-07-13",
+          descricao: "Moacyr Sanches Mascar 1/4",
+          valor: 475,
+          tipo: "despesa",
+          destinoSugerido: "cartao",
+          destino: { tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome },
+        },
+      ],
+      destinos: [
+        {
+          tipo: "cartao",
+          id: CARTAO.id,
+          workspaceId,
+          sincronizada: false,
+          nome: CARTAO.nome,
+        },
+      ],
+      arquivoHash: "e".repeat(64),
+      provedor: "pdf",
+    });
+    expect(eventos[0]?.parcelamento).toMatchObject({
+      numero: 1,
+      total: 4,
+      compraEm: "2026-07-13",
+      valorTotal: 1900,
+    });
+    expect(eventos[0]?.cartaoId).toBe(CARTAO.id);
+  });
+
+  it("projeta 2/4, 3/4 e 4/4 no mesmo dia dos meses seguintes", () => {
+    const workspaceId = randomUUID();
+    const linhas = extrair_lancamentos_do_texto(
+      [
+        "13 de jul. de 2026 Moacyr Sanches Mascar R$475,00 1/4",
+        "14 de jul. de 2026 Uber R$32,90",
+      ].join("\n"),
+    );
+    const moacyr = linhas.find((linha) => /moacyr/i.test(linha.descricao));
+    expect(moacyr?.parcelamento).toBeDefined();
+    const eventos = montar_eventos_pdf({
+      linhas: [
+        {
+          ...moacyr!,
+          destino: { tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome },
+        },
+      ],
+      destinos: [
+        {
+          tipo: "cartao",
+          id: CARTAO.id,
+          workspaceId,
+          sincronizada: false,
+          nome: CARTAO.nome,
+        },
+      ],
+      arquivoHash: "f".repeat(64),
+      provedor: "pdf",
+    });
+    const parcela = eventos[0]?.parcelamento;
+    expect(parcela).toBeDefined();
+    const futuros = planejar_complemento_parcelas_cartao({
+      workspaceId,
+      cartaoId: CARTAO.id,
+      fonte: "pdf",
+      preservarDia: true,
+      movimentos: [
+        {
+          parcelaNumero: parcela!.numero,
+          parcelaTotal: parcela!.total,
+          parcelaCompraEm: parcela!.compraEm!,
+          parcelaCompraValor: String(parcela!.valorTotal),
+          valor: eventos[0]!.valor,
+          dataMovimento: eventos[0]!.ocorridoEm,
+          descricao: eventos[0]!.descricaoFonte,
+          idExterno: eventos[0]!.idExterno ?? null,
+          status: "realizado",
+          statusFonte: "confirmado",
+        },
+      ],
+    });
+    expect(futuros.map((evento) => evento.parcelamento?.numero)).toEqual([2, 3, 4]);
+    expect(futuros.map((evento) => evento.ocorridoEm)).toEqual([
+      "2026-08-13",
+      "2026-09-13",
+      "2026-10-13",
+    ]);
+    expect(futuros.every((evento) => evento.statusFonte === "pendente")).toBe(true);
   });
 });

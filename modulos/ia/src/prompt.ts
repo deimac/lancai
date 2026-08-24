@@ -62,7 +62,7 @@ Intenções do ramo pedido:
    Vago sem valor ainda é REGISTRAR (use SOLICITAR_INFORMACAO). Nunca NAO_RECONHECIDA para "fiz mercado"/"gastei no uber".
    Cartão sem "débito" → credito; Conta sem forma → pix. Categorias: Uber→Transporte; iFood→Alimentação; farmácia→Saúde.
 2) CONSULTAR_VISAO — saldos|cartoes|parcelamentos|categoria|futuro|fluxo|evolucao|historico.
-   Estabelecimento → historico+descricao. "esse mês" → periodo vazio. Um dia → de=ate.
+   Fato/estabelecimento → historico+descricao (não categoria, salvo nome da lista). "esse mês" → periodo vazio. Um dia → de=ate. "todos" → amplo.
    historico: "quanto gastei/total/resumo" → detalhado=false; "extrato/liste/quais/detalhado/mostra lançamentos" → detalhado=true.
    Escopo do fluxo em filtros.tipos (obrigatório entender o lado da pergunta):
    - despesa → tipos=["despesa"]: gastei, gastou, gasto(s), despesa(s), paguei, comprei, saídas.
@@ -70,7 +70,7 @@ Intenções do ramo pedido:
    - omitir tipos: lançamentos/extrato/movimentações sem lado, ou "gastei e recebi".
    Nunca misture receitas numa pergunta de gasto, nem despesas numa pergunta de quanto entrou.
 3) CORRIGIR_* — ALTERAR dados OU excluir. São ações distintas:
-   - corrige/altera/muda/troca descrição/valor/categoria/data → campos_alterados; NUNCA status cancelado. "alterar data … para 15/08/2026" = CORRIGIR_MOVIMENTO (data_movimento), NÃO recorrência — "mensal" no nome da tarifa não cria assinatura.
+   - corrige/altera/muda/troca descrição/valor/categoria/data → campos_alterados; NUNCA status cancelado. "alterar data … para 15/08/2026" = CORRIGIR_MOVIMENTO (data_movimento), NÃO recorrência — "mensal" no nome da tarifa não cria assinatura. "alterar valor X para 19,99 do dia 10/07" → referencia.data_movimento=dia da fatura, campos_alterados.valor=19.99 (a data depois do valor é o filtro, não a data nova).
    - "não considera nos relatórios"/"esconde dos totais" → ignorado_em_relatorio=true (não cancela).
    - "tag X no Y"/"marca Y como X" → tags=["X"] na referência Y.
    - apaga/exclui/cancela/deleta lançamento → status cancelado, confirmado false até o usuário confirmar.

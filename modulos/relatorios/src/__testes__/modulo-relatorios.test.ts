@@ -610,7 +610,8 @@ describe("ModuloRelatorios", () => {
           valor: "45.00",
           dataMovimento: "2026-08-15",
           contaId: conta.id,
-          dataLancamento: new Date("2026-08-15T12:00:00Z"),
+          ocorridoEmInstante: new Date("2026-08-15T12:00:00Z"),
+          dataLancamento: new Date("2026-08-23T12:00:00Z"),
         }),
       );
       repositorio.movimentos.set(
@@ -621,7 +622,8 @@ describe("ModuloRelatorios", () => {
           valor: "2500.00",
           dataMovimento: "2026-08-14",
           contaId: conta.id,
-          dataLancamento: new Date("2026-08-14T10:00:00Z"),
+          ocorridoEmInstante: new Date("2026-08-14T10:00:00Z"),
+          dataLancamento: new Date("2026-08-23T22:00:00Z"),
         }),
       );
       repositorio.movimentos.set(
@@ -632,7 +634,8 @@ describe("ModuloRelatorios", () => {
           valor: "32.00",
           dataMovimento: "2026-08-14",
           cartaoId: cartao.id,
-          dataLancamento: new Date("2026-08-14T18:00:00Z"),
+          ocorridoEmInstante: new Date("2026-08-14T18:00:00Z"),
+          dataLancamento: new Date("2026-08-14T08:00:00Z"),
         }),
       );
       repositorio.movimentos.set(

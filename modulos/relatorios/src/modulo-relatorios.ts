@@ -40,6 +40,8 @@ function normalizar_termo_descricao(texto: string): string {
   return texto
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
     .toLocaleLowerCase("pt-BR")
     .trim();
 }
@@ -435,7 +437,7 @@ export class ModuloRelatorios {
       const instanteA = a.ocorridoEmInstante?.getTime() ?? 0;
       const instanteB = b.ocorridoEmInstante?.getTime() ?? 0;
       if (instanteA !== instanteB) return instanteB - instanteA;
-      return b.dataLancamento.getTime() - a.dataLancamento.getTime();
+      return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
     });
 
     const totalReceitas = ordenados

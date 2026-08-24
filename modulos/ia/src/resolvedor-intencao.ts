@@ -602,7 +602,7 @@ export class ResolvedorIntencao {
         descricao: item.descricao,
         valor: Number(item.valor),
         dataMovimento: item.dataMovimento,
-        dataLancamento: item.dataLancamento,
+        ocorridoEmInstante: item.ocorridoEmInstante,
         tipo: item.tipo,
         origemRotulo,
         protegido: fato_protegido(item, origem),

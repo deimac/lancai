@@ -306,22 +306,100 @@ function sugerir_destino_pdf(desc: string): TipoDestinoPdf {
   return "conta";
 }
 
-function parcelamento_da_desc(
-  desc: string,
+const MAX_PARCELAS_PDF = 48;
+
+function parcelamento_valido(numero: number, total: number): boolean {
+  return (
+    Number.isInteger(numero) &&
+    Number.isInteger(total) &&
+    total >= 2 &&
+    total <= MAX_PARCELAS_PDF &&
+    numero >= 1 &&
+    numero <= total
+  );
+}
+
+function montar_parcelamento_pdf(
+  numero: number,
+  total: number,
   ocorridoEm: string,
   valor: number,
-): ParcelamentoPdf | undefined {
-  const match = desc.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/);
-  if (!match) return undefined;
-  const numero = Number(match[1]);
-  const total = Number(match[2]);
-  if (total < 2 || numero < 1 || numero > total) return undefined;
+  atual?: ParcelamentoPdf,
+): ParcelamentoPdf {
   return {
     numero,
     total,
-    compraEm: estimar_compra_em_parcela(ocorridoEm, numero),
-    valorTotal: Number((valor * total).toFixed(2)),
+    compraEm: atual?.compraEm ?? estimar_compra_em_parcela(ocorridoEm, numero),
+    valorTotal: atual?.valorTotal ?? Number((valor * total).toFixed(2)),
   };
+}
+
+/**
+ * Procura 1/4, 01/04, parcela 1 de 4 — no pedaço inteiro da linha, inclusive
+ * depois do valor. Não para no primeiro `13/07` (dia/mês) inválido como parcela.
+ */
+export function detectar_parcelamento_pdf(
+  texto: string,
+  ocorridoEm: string,
+  valor: number,
+): ParcelamentoPdf | undefined {
+  if (!texto.trim()) return undefined;
+
+  type Candidato = { numero: number; total: number; peso: number };
+  const candidatos: Candidato[] = [];
+
+  function considerar(numeroBruto: string, totalBruto: string, inicio: number, extra: number) {
+    const numero = Number(numeroBruto);
+    const total = Number(totalBruto);
+    if (!parcelamento_valido(numero, total)) return;
+    const janela = texto.slice(Math.max(0, inicio - 16), inicio + 28);
+    const peso =
+      extra +
+      (/\bparc(?:ela)?s?\.?\b/i.test(janela) ? 10 : 0) +
+      inicio;
+    candidatos.push({ numero, total, peso });
+  }
+
+  // Não casa 13/07/2026 (precisa do terceiro `/`). `(?:^|[^\d/])` evita 2026/13.
+  const fracao = /(?:^|[^\d/])(\d{1,2})\s*\/\s*(\d{1,2})(?!\s*\/\s*\d)/g;
+  for (const match of texto.matchAll(fracao)) {
+    if (match.index == null) continue;
+    considerar(match[1]!, match[2]!, match.index, 0);
+  }
+  const parcelaDe = /\bparc(?:ela)?s?\.?\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/gi;
+  for (const match of texto.matchAll(parcelaDe)) {
+    if (match.index == null) continue;
+    considerar(match[1]!, match[2]!, match.index, 20);
+  }
+  const deVezes = /\b(\d{1,2})\s+de\s+(\d{1,2})\s*x\b/gi;
+  for (const match of texto.matchAll(deVezes)) {
+    if (match.index == null) continue;
+    considerar(match[1]!, match[2]!, match.index, 15);
+  }
+
+  if (candidatos.length === 0) return undefined;
+  candidatos.sort((a, b) => b.peso - a.peso);
+  const escolhido = candidatos[0]!;
+  return montar_parcelamento_pdf(escolhido.numero, escolhido.total, ocorridoEm, valor);
+}
+
+export function completar_parcelamento_pdf(linha: {
+  ocorridoEm: string;
+  descricao: string;
+  valor: number;
+  parcelamento?: ParcelamentoPdf;
+}): ParcelamentoPdf | undefined {
+  const base =
+    linha.parcelamento ??
+    detectar_parcelamento_pdf(linha.descricao, linha.ocorridoEm, linha.valor);
+  if (!base) return undefined;
+  return montar_parcelamento_pdf(base.numero, base.total, linha.ocorridoEm, linha.valor, base);
+}
+
+export function enriquecer_linha_pdf(linha: LinhaExtraidaPdf): LinhaExtraidaPdf {
+  const parcelamento = completar_parcelamento_pdf(linha);
+  if (!parcelamento) return linha;
+  return { ...linha, parcelamento };
 }
 
 /**
@@ -391,13 +469,16 @@ function emitir_se_valido(
   dataIso: string | null,
   descricaoBruta: string,
   valor: { valor: number; negativo: boolean; mais: boolean },
+  textoParcela?: string,
 ): void {
   if (!dataIso) return;
   const descricao = limpar_descricao(descricaoBruta).slice(0, 180);
   if (!descricao || descricao.length < 2) return;
   if (linha_e_lixo(descricao) || desc_e_cabecalho(descricao) || desc_parece_prosa(descricao)) return;
   if (/^(fee|taxa|iof|fx fee|international fee)$/i.test(descricao)) return;
-  const parcela = parcelamento_da_desc(descricao, dataIso, valor.valor);
+  const parcela =
+    detectar_parcelamento_pdf(textoParcela ?? descricaoBruta, dataIso, valor.valor) ??
+    detectar_parcelamento_pdf(descricao, dataIso, valor.valor);
   saida.push({
     ocorridoEm: dataIso,
     descricao,
@@ -432,8 +513,7 @@ function extrair_por_tabela(
     if (valores.length > 1) chunksComVariosValores += 1;
     const principal = valores[0];
     if (!principal) continue;
-    const descricao = limpar_descricao(chunk.slice(0, principal.inicio));
-    emitir_se_valido(saida, data.iso, descricao, principal);
+    emitir_se_valido(saida, data.iso, chunk.slice(0, principal.inicio), principal, chunk);
   }
   if (datasPt < 2 && chunksComVariosValores > 0) return [];
   return saida.length >= 2 ? saida : [];
@@ -456,7 +536,13 @@ function extrair_por_marcas_recorrentes(
     const principal = valores.find((item) => item.valor >= 0.01);
     if (!principal) continue;
     const data = data_antes(datas, marca.index) ?? parse_data_lancamento(bloco);
-    emitir_se_valido(saida, data, bloco.slice(0, principal.inicio) || bloco, principal);
+    emitir_se_valido(
+      saida,
+      data,
+      bloco.slice(0, principal.inicio) || bloco,
+      principal,
+      bloco,
+    );
   }
   return saida;
 }
@@ -473,8 +559,8 @@ function extrair_por_data_valor(
     for (let v = 0; v < valores.length; v++) {
       const atual = valores[v]!;
       const descInicio = v === 0 ? 0 : valores[v - 1]!.fim;
-      const descricao = limpar_descricao(chunk.slice(descInicio, atual.inicio));
-      emitir_se_valido(saida, data.iso, descricao, atual);
+      const trecho = chunk.slice(descInicio, valores[v + 1]?.inicio ?? chunk.length);
+      emitir_se_valido(saida, data.iso, chunk.slice(descInicio, atual.inicio), atual, trecho);
     }
   }
   return saida;
@@ -694,6 +780,7 @@ export function montar_eventos_pdf(entrada: {
       );
     }
 
+    const parcelamento = completar_parcelamento_pdf(linha);
     const evento: EventoFinanceiroNormalizado = {
       workspaceId: destino.workspaceId,
       fonte: "pdf",
@@ -713,7 +800,7 @@ export function montar_eventos_pdf(entrada: {
       statusFonte: "confirmado",
       fatoImutavel: true,
       ...(destino.tipo === "conta" ? { contaId: destino.id } : { cartaoId: destino.id }),
-      ...(linha.parcelamento ? { parcelamento: linha.parcelamento } : {}),
+      ...(parcelamento ? { parcelamento } : {}),
     };
     return evento;
   });

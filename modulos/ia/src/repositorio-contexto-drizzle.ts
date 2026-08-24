@@ -14,7 +14,7 @@ import { calcularMelhorDiaCompra, paraColuna } from "@lancai/tipos";
 import type { EntradaAtualizarCartao, EntradaAtualizarConta, EntradaCriarCartao, EntradaCriarConta } from "@lancai/tipos";
 import { preparar_persistencia_plasticos } from "./cifragem-cartao";
 import { normalizar_codigo_busca } from "./codigo-movimento";
-import { chave_descricao_lancamento, descricao_corresponde_busca } from "./normalizar-descricao";
+import { chave_descricao_lancamento, descricao_corresponde_busca, primeiro_token_busca } from "./normalizar-descricao";
 import type {
   CriterioMovimentoSimilar,
   ReferenciaMovimentoParaCorrecao,
@@ -293,7 +293,11 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
               sql`replace(${movimentoTabela.id}::text, '-', '') like ${`${codigo}%`}`,
             ),
           )
-          .orderBy(desc(movimentoTabela.dataLancamento))
+          .orderBy(
+            desc(movimentoTabela.dataMovimento),
+            sql`${movimentoTabela.ocorridoEmInstante} DESC NULLS LAST`,
+            desc(movimentoTabela.id),
+          )
           .limit(5);
         return porCodigo;
       }
@@ -307,13 +311,21 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
     if (referencia.dataMovimento) {
       condicoes.push(eq(movimentoTabela.dataMovimento, referencia.dataMovimento));
     }
+    const token = referencia.descricao ? primeiro_token_busca(referencia.descricao) : null;
+    if (token) {
+      condicoes.push(ilike(movimentoTabela.descricao, `%${token}%`));
+    }
 
     const linhas = await this.banco
       .select()
       .from(movimentoTabela)
       .where(and(...condicoes))
-      .orderBy(desc(movimentoTabela.dataLancamento))
-      .limit(100);
+      .orderBy(
+        desc(movimentoTabela.dataMovimento),
+        sql`${movimentoTabela.ocorridoEmInstante} DESC NULLS LAST`,
+        desc(movimentoTabela.id),
+      )
+      .limit(50);
 
     if (!referencia.descricao) return linhas;
     return linhas.filter((movimento) =>
@@ -352,7 +364,11 @@ export class RepositorioContextoDrizzle implements RepositorioContexto {
       .select()
       .from(movimentoTabela)
       .where(and(...condicoes))
-      .orderBy(desc(movimentoTabela.dataLancamento))
+      .orderBy(
+        desc(movimentoTabela.dataMovimento),
+        sql`${movimentoTabela.ocorridoEmInstante} DESC NULLS LAST`,
+        desc(movimentoTabela.id),
+      )
       .limit(20);
 
     const alvo = chave_descricao_lancamento(criterio.descricao);

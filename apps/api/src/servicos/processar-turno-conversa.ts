@@ -29,6 +29,7 @@ import {
   interpretar_pedido_detalhe_historico,
   interpretar_pedido_mais_historico,
   normalizar_intencao_cadastro,
+  normalizar_intencao_consulta,
   normalizar_intencao_movimento,
   normalizar_intencao_plasticos,
   normalizar_intencao_recorrencia,
@@ -417,16 +418,20 @@ export async function processar_turno_conversa(
 
   // Vision/atalhos também passam pelos normalizadores (conta/data/slot-filling).
   if (intencaoBruta) {
-    intencao = normalizar_intencao_plasticos(
-      normalizar_intencao_recorrencia(
-        normalizar_intencao_cadastro(
-          normalizar_intencao_movimento(intencao, contexto, entrada.mensagem),
+    intencao = normalizar_intencao_consulta(
+      normalizar_intencao_plasticos(
+        normalizar_intencao_recorrencia(
+          normalizar_intencao_cadastro(
+            normalizar_intencao_movimento(intencao, contexto, entrada.mensagem),
+            contexto,
+            entrada.mensagem,
+          ),
           contexto,
           entrada.mensagem,
         ),
-        contexto,
         entrada.mensagem,
       ),
+      contexto,
       entrada.mensagem,
     );
   }

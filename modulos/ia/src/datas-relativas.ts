@@ -71,6 +71,11 @@ export function parsear_data_relativa_ou_br(texto: string, dataAtual: string): s
   return parsear_data_br(texto, dataAtual);
 }
 
+/** Intervalo amplo para "todos os lançamentos" (sem amarrar no mês atual). */
+export function periodo_historico_completo(dataAtual: string): { de: string; ate: string } {
+  return { de: "2000-01-01", ate: dataAtual };
+}
+
 /** Primeiro e último dia do mês de `dataISO` (YYYY-MM-DD). */
 export function inicio_fim_mes_iso(dataISO: string): { de: string; ate: string } {
   const [ano, mes] = dataISO.split("-").map(Number) as [number, number];

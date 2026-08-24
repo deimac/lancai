@@ -39,6 +39,17 @@ describe("inferir_origem_da_mensagem", () => {
       inferir_origem_da_mensagem("gastei 20 no cartão", contexto()),
     ).toEqual({ cartao_nome: "Azul Itaú" });
   });
+
+  it("liga Revolut Visa mesmo com 'cartão de crédito' na descrição", () => {
+    expect(
+      inferir_origem_da_mensagem(
+        "lançamentos de Tarifa ad. mensal do cartão de crédito do cartao revolut visa",
+        contexto({
+          cartoes: [{ nome: "Revolut Visa", perfil: "pf", modalidade: "credito", temConta: false }],
+        }),
+      ),
+    ).toEqual({ cartao_nome: "Revolut Visa" });
+  });
 });
 
 describe("resolver_nome_canonico", () => {

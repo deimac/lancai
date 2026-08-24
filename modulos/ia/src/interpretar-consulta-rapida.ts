@@ -2,7 +2,12 @@ import { LIMITE_ITENS_HISTORICO } from "@lancai/tipos";
 import type { IntencaoConsultarVisao, IntencaoDetectada, Perfil, TipoVisao } from "@lancai/tipos";
 import { consulta_historico_detalhada } from "./consulta-historico-detalhada";
 import { aplicar_escopo_fluxo_na_consulta } from "./escopo-fluxo-consulta";
-import { inicio_fim_mes_iso, somar_dias_iso_local } from "./datas-relativas";
+import { inicio_fim_mes_iso, periodo_historico_completo, somar_dias_iso_local } from "./datas-relativas";
+import {
+  categoria_do_contexto,
+  extrair_descricao_consulta_historico,
+  extrair_estabelecimento_conhecido,
+} from "./extrair-descricao-consulta";
 import { inferir_origem_da_mensagem } from "./inferir-origem-movimento";
 import { inferir_perfil_da_mensagem } from "./normalizar-intencao-movimento";
 import type { ContextoInterpretacao } from "./prompt";
@@ -49,9 +54,7 @@ const PEDIDO_SALDO =
 const PEDIDO_MES =
   /\b(esse\s+m[eê]s|neste\s+m[eê]s|m[eê]s\s+atual|do\s+m[eê]s|no\s+m[eê]s)\b/i;
 
-/** Estabelecimentos frequentes — filtro por `descricao`, não por categoria. */
-const ESTABELECIMENTO =
-  /\b(uber|99|ifood|i\s*food|rappi|netflix|spotify|amazon|magazine\s*luiza|magalu|farm[aá]cia|mercado|posto|shell|ipiranga)\b/i;
+const PEDIDO_TODOS = /\btod[oa]s?\b/i;
 
 /**
  * Reaproveita a última consulta de histórico quando o usuário pede o detalhe
@@ -72,7 +75,7 @@ export function interpretar_pedido_detalhe_historico(
     PEDIDO_DETALHE_FOLLOWUP.test(texto) &&
     !/\b(hoje|ontem|anteontem|esse\s+m[eê]s|neste\s+m[eê]s|\d{1,2}\/\d{1,2})\b/i.test(texto) &&
     !/\bquanto\s+(gastei|paguei)\b/i.test(texto) &&
-    !ESTABELECIMENTO.test(texto);
+    !extrair_estabelecimento_conhecido(texto);
 
   if (!soDetalhe && !followup) return null;
 
@@ -101,16 +104,6 @@ export function interpretar_pedido_mais_historico(
     detalhado: true,
     deslocamento: deslocamentoAtual + LIMITE_ITENS_HISTORICO,
   };
-}
-
-function extrair_estabelecimento(texto: string): string | null {
-  const m = ESTABELECIMENTO.exec(texto);
-  if (!m?.[1]) return null;
-  const bruto = m[1].replace(/\s+/g, "").toLocaleLowerCase("pt-BR");
-  if (bruto === "ifood") return "ifood";
-  if (bruto.startsWith("magazine") || bruto === "magalu") return "magalu";
-  if (bruto.startsWith("farm")) return "farmacia";
-  return bruto.normalize("NFD").replace(/\p{M}/gu, "");
 }
 
 function montar_consulta(
@@ -174,8 +167,8 @@ function interpretar_visao_nomeada(
 
 /**
  * Consultas óbvias sem LLM (economia de créditos).
- * Estabelecimento conhecido → histórico + descricao (mês atual se não houver período).
- * Categoria sem período continua na IA.
+ * Estabelecimento ou texto após "lançamentos de X" → histórico + descricao.
+ * Categoria cadastrada sem período continua na IA ("quanto gastei com Transporte?").
  */
 export function interpretar_consulta_rapida(
   mensagem: string,
@@ -206,22 +199,34 @@ export function interpretar_consulta_rapida(
 
   if (!PEDIDO_HISTORICO.test(texto) || !PERGUNTA.test(texto)) return null;
 
-  const estabelecimento = extrair_estabelecimento(lower);
+  const termo = extrair_descricao_consulta_historico(texto, contexto);
+  const categoriaNome = termo && !extrair_estabelecimento_conhecido(texto)
+    ? categoria_do_contexto(termo, contexto)
+    : null;
+  const descricao = termo && !categoriaNome ? termo : undefined;
+  const pedeLista = consulta_historico_detalhada(texto);
   const periodo =
     resolver_periodo_consulta(lower, contexto.dataAtual) ??
-    (estabelecimento ? inicio_fim_mes_iso(contexto.dataAtual) : null);
+    (PEDIDO_TODOS.test(texto) || (pedeLista && Boolean(descricao || categoriaNome))
+      ? periodo_historico_completo(contexto.dataAtual)
+      : descricao || categoriaNome
+        ? inicio_fim_mes_iso(contexto.dataAtual)
+        : pedeLista
+          ? { de: contexto.dataAtual, ate: contexto.dataAtual }
+          : null);
   if (!periodo) return null;
 
   const origem = inferir_origem_da_mensagem(texto, contexto);
   const intencao: IntencaoConsultarVisao = {
     intencao: "CONSULTAR_VISAO",
     tipo_visao: "historico",
-    detalhado: consulta_historico_detalhada(texto),
+    detalhado: pedeLista,
     filtros: {
       periodo,
       conta_nome: origem.conta_nome ?? null,
       cartao_nome: origem.cartao_nome ?? null,
-      ...(estabelecimento ? { descricao: estabelecimento } : {}),
+      ...(descricao ? { descricao } : {}),
+      ...(categoriaNome ? { categoria_nome: categoriaNome } : {}),
     },
   };
   return aplicar_escopo_fluxo_na_consulta(intencao, texto);
@@ -258,8 +263,8 @@ function resolver_periodo_consulta(
     return { de: d, ate: d };
   }
 
-  if (/^(quais|mostra|mostre|liste|ver|veja)\b/.test(texto) && PEDIDO_HISTORICO.test(texto)) {
-    return { de: dataAtual, ate: dataAtual };
+  if (PEDIDO_TODOS.test(texto) && PEDIDO_HISTORICO.test(texto)) {
+    return periodo_historico_completo(dataAtual);
   }
 
   // "quanto gastei/recebi?" sem período → mês atual (retrieve-first)

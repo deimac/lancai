@@ -65,6 +65,22 @@ export function formatarHoraBrasil(
   return hora && minuto ? `${hora}:${minuto}` : "";
 }
 
+/**
+ * Data civil do Fato (`YYYY-MM-DD`) e hora da instituição, se existir.
+ * Nunca use `dataLancamento` (momento da importação/gravação).
+ */
+export function formatarQuandoFato(
+  dataMovimento: string,
+  ocorridoEmInstante?: Date | string | null,
+): string {
+  const [ano, mes, dia] = dataMovimento.split("-");
+  const competencia = ano && mes && dia ? `${dia}/${mes}/${ano}` : dataMovimento;
+  if (!ocorridoEmInstante) return competencia;
+  const hora = formatarHoraBrasil(ocorridoEmInstante);
+  if (!hora || hora === "00:00") return competencia;
+  return `${competencia} ${hora}`;
+}
+
 export function paraDataISO(data: Date): string {
   return data.toISOString().slice(0, 10);
 }

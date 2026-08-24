@@ -16,6 +16,21 @@ export interface CriterioMovimentoSimilar {
   cartaoId?: string | null;
 }
 
+/** Ordem do Extrato: dia do Fato, depois instante da instituição — nunca a importação. */
+export function ordenar_por_data_do_fato<
+  T extends { id: string; dataMovimento: string; ocorridoEmInstante?: Date | null },
+>(itens: T[]): T[] {
+  return [...itens].sort((a, b) => {
+    if (a.dataMovimento !== b.dataMovimento) {
+      return a.dataMovimento < b.dataMovimento ? 1 : -1;
+    }
+    const instanteA = a.ocorridoEmInstante?.getTime() ?? 0;
+    const instanteB = b.ocorridoEmInstante?.getTime() ?? 0;
+    if (instanteA !== instanteB) return instanteB - instanteA;
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+  });
+}
+
 /**
  * Porta de leitura/escrita usada pelo `ResolvedorIntencao` para traduzir os
  * nomes em texto livre que a IA devolve (ex.: "Nubank", "Combustível") para

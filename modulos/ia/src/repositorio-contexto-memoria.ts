@@ -10,6 +10,7 @@ import type {
   ReferenciaMovimentoParaCorrecao,
   RepositorioContexto,
 } from "./repositorio-contexto";
+import { ordenar_por_data_do_fato } from "./repositorio-contexto";
 
 function correspondeAoNome(nomeArmazenado: string, nomeBuscado: string): boolean {
   return nomeArmazenado.toLowerCase().includes(nomeBuscado.toLowerCase());
@@ -198,8 +199,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
           return codigo_curto_movimento(movimento.id).startsWith(codigo) ||
             movimento.id.replace(/-/g, "").toLowerCase().startsWith(codigo);
         });
-        porCodigo.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
-        return porCodigo;
+        return ordenar_por_data_do_fato(porCodigo);
       }
     }
 
@@ -211,8 +211,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       }
       return true;
     });
-    candidatos.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
-    return candidatos;
+    return ordenar_por_data_do_fato(candidatos);
   }
 
   async buscarMovimentoParaCorrecao(usuarioId: string, referencia: ReferenciaMovimentoParaCorrecao) {
@@ -231,8 +230,7 @@ export class RepositorioContextoEmMemoria implements RepositorioContexto {
       if (!criterio.cartaoId && criterio.contaId && movimento.contaId !== criterio.contaId) return false;
       return chave_descricao_lancamento(movimento.descricao) === descricaoAlvo;
     });
-    candidatos.sort((a, b) => b.dataLancamento.getTime() - a.dataLancamento.getTime());
-    return candidatos[0];
+    return ordenar_por_data_do_fato(candidatos)[0];
   }
 
   async contarMovimentosVinculadosConta(contaId: string): Promise<number> {

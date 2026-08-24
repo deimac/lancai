@@ -1,12 +1,12 @@
-import { formatarDataHoraBrasil, formatarMoeda } from "@lancai/tipos";
+import { formatarMoeda, formatarQuandoFato } from "@lancai/tipos";
 
 export type ItemLancamentoSemelhante = {
   id: string;
   descricao: string;
   valor: number;
   dataMovimento: string;
-  /** Momento em que o lançamento foi gravado (timestamp). */
-  dataLancamento?: Date | string | null;
+  /** Instante da instituição, quando existe hora além do dia. */
+  ocorridoEmInstante?: Date | string | null;
   tipo?: string;
   origemRotulo?: string | null;
   /** Fato vindo do banco ou em conta sincronizada: não aceita correção nem exclusão. */
@@ -18,18 +18,8 @@ function sinal_valor(tipo?: string): "+" | "-" {
   return "-";
 }
 
-function formatar_quando(item: ItemLancamentoSemelhante): string {
-  if (item.dataLancamento) {
-    const formatado = formatarDataHoraBrasil(item.dataLancamento);
-    if (formatado) return formatado;
-  }
-  const [ano, mes, dia] = item.dataMovimento.split("-");
-  return `${dia}/${mes}/${ano}`;
-}
-
 /**
- * Lista numerada para desambiguação (WhatsApp): usuário responde 1, 2… ou "todos".
- * Mostra a descrição original e o horário do lançamento.
+ * Lista numerada para desambiguação. A data é a do Fato (Extrato), nunca a da importação.
  */
 export function montar_lista_lancamentos_semelhantes(
   _descricaoBusca: string,
@@ -40,7 +30,7 @@ export function montar_lista_lancamentos_semelhantes(
     const partes = [
       item.descricao.trim() || "Lançamento",
       `${sinal_valor(item.tipo)} ${formatarMoeda(Number(item.valor))}`,
-      formatar_quando(item),
+      formatarQuandoFato(item.dataMovimento, item.ocorridoEmInstante),
     ];
     if (item.origemRotulo?.trim()) partes.push(item.origemRotulo.trim());
     return `${i + 1}. ${partes.join(" · ")}`;

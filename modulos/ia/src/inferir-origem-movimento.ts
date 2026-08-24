@@ -46,6 +46,25 @@ function tokens_significativos(nome: string): string[] {
     .filter((token) => token.length >= 2 && !STOPWORDS.has(token));
 }
 
+function escapar_regex(texto: string): string {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Tira o sufixo "do cartão Revolut Visa" / "da conta C6" do termo de busca,
+ * para a descrição do lançamento não virar o nome do plástico.
+ */
+export function cortar_cadastro_do_texto(texto: string, nomeCadastro: string): string {
+  const tokens = tokens_significativos(nomeCadastro);
+  if (tokens.length === 0) return texto.trim();
+  const corpo = tokens.map(escapar_regex).join("\\s+");
+  const re = new RegExp(
+    String.raw`(?:\s+(?:do|da|de|dos|das|no|na|nos|nas|com))?(?:\s+(?:cart[aã]o|conta))?\s+${corpo}\s*$`,
+    "i",
+  );
+  return texto.replace(re, "").trim();
+}
+
 function pontuar_nome_na_mensagem(mensagemNorm: string, nome: string): number {
   const nomeNorm = normalizar_texto_busca(nome);
   if (mensagemNorm.includes(nomeNorm)) return 100 + nomeNorm.length;

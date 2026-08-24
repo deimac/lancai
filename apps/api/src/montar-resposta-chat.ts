@@ -1,6 +1,6 @@
 import {
-  formatarDataHoraBrasil,
   formatarMoeda,
+  formatarQuandoFato,
   separar_correcao_por_grupo,
 } from "@lancai/tipos";
 import type {
@@ -214,10 +214,10 @@ export async function montar_resposta_chat(
         }
       }
 
-      const horarioLancamento = resultado.movimentos[0]?.dataLancamento
-        ? formatarDataHoraBrasil(resultado.movimentos[0].dataLancamento)
-        : "";
-      const quando = horarioLancamento ? ` (${horarioLancamento})` : "";
+      const fato = resultado.movimentos[0];
+      const dataFato = fato?.dataMovimento ?? entrada.dataMovimento;
+      const quandoFato = dataFato ? formatarQuandoFato(dataFato, fato?.ocorridoEmInstante) : "";
+      const quando = quandoFato ? ` (${quandoFato})` : "";
 
       let base: string;
       if (resultado.parcelas.length > 1) {
