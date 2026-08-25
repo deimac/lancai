@@ -453,6 +453,48 @@ describe("AssistenteCoreV3", () => {
     expect(query?.tipos).toEqual(["receita"]);
   });
 
+  it("e sábado eu tive entradas? depois de ontem troca o período e mantém receita", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      dataAtual: "2026-08-25",
+      acts: {
+        "quanto tive de entradas ontem?": {
+          act: "new_query",
+          query: {
+            grain: "summary",
+            tipos: ["receita"],
+            period: { tipo: "personalizado", de: "2026-08-24", ate: "2026-08-24" },
+          },
+        },
+        "e sabado eu tive entradas?": {
+          act: "patch_query",
+          ops: [
+            { op: "set", slot: "period", value: { tipo: "personalizado", de: "<sábado>", ate: "<sábado>" } },
+          ],
+        },
+      },
+    });
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "quanto tive de entradas ontem?",
+      canal: "web",
+    });
+    expect(r1.diagnostico?.op).toBe("query");
+    const r2 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "e sabado eu tive entradas?",
+      sessaoId: r1.sessaoId,
+      canal: "web",
+    });
+    expect(r2.resposta).not.toMatch(/dados inválidos/i);
+    expect(r2.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r2.sessaoId);
+    expect(doc?.documento.query).toMatchObject({
+      tipos: ["receita"],
+      grain: "summary",
+      period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+    });
+  });
+
   it("write só com DialogueAct pede confirmação e executa no sim", async () => {
     const { core } = criarAssistenteCoreV3Teste({
       acts: {

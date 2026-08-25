@@ -195,4 +195,39 @@ describe("adapter ConversationState v1 ↔ ConversationContext v3", () => {
     });
     expect(estadoInicialConversacao().schemaVersion).toBe(1);
   });
+
+  it("resultado com label vazio não derruba o próximo turno", () => {
+    const ctx = normalizarConversationContext(
+      {
+        schemaVersion: 1,
+        version: 1,
+        query: {
+          entityDomain: "transactions",
+          grain: "summary",
+          tipos: ["receita"],
+          period: { tipo: "personalizado", de: "2026-08-24", ate: "2026-08-24" },
+        },
+        result: {
+          queryHash: "abc",
+          generatedAt: AGORA,
+          stale: false,
+          summary: { count: 1 },
+          rows: [
+            {
+              ordinal: 1,
+              entityType: "transaction",
+              entityId: MOVIMENTO,
+              label: "",
+              amount: 10,
+            },
+          ],
+        },
+        topic_history: [],
+        updated_at: AGORA,
+      },
+      AGORA,
+    );
+    expect(ctx.query?.tipos).toEqual(["receita"]);
+    expect(ctx.result?.rows[0]?.label).toBe("Lançamento");
+  });
 });

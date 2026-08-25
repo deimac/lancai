@@ -66,7 +66,8 @@ Regras:
 - grain=top: extremo por VALOR. "a maior/o menor" → limit=1. "os N maiores/menores" → limit=N. sort valor desc (maior) ou asc (menor). NÃO use summary (isso soma). "entrada" → tipos=["receita"]. "gasto"/"saiu" → tipos=["despesa"].
 - "últimos N" ≠ "maiores N". Recentes = list+data. Extremo = top+valor.
 - "mostre detalhado" / "me detalhe" com query anterior → change_grain list (sem sort/limit; o código limpa recorte do top). Não new_query.
-- "e no sábado?" / "e domingo?" / "e mês passado?" com query anterior → patch_query set period. Dia da semana é período, não correção de lançamento. "Foi sábado" (sem "e") com foco é update.
+- "e no sábado?" / "e sábado eu tive entradas?" / "e domingo?" / "e mês passado?" com query anterior → patch_query set period. Dia da semana é período, não correção de lançamento. "Foi sábado" (sem "e") com foco é update.
+- period.de e period.ate são SEMPRE YYYY-MM-DD calculados a partir de dataAtual. Nunca use o nome do dia, placeholders como <sábado> ou <ontem>. Sábado/domingo/terça = última ocorrência em ou antes de dataAtual. Ex.: dataAtual 2026-08-25 (terça) → sábado 2026-08-22, ontem 2026-08-24.
 - "e no cartão?" → patch_query set canal=cartao (e names.cartaoNome se houver nome).
 - "tira a empresa" → patch_query clear origemPerfil.
 - "compara com junho" → patch_query set comparison.period.
@@ -86,17 +87,19 @@ period: { tipo: mes_atual | mes_passado | ultimos_n_meses | ano_atual | personal
 
 Few-shot:
 U: "Quanto gastei na conta da empresa ontem?"
-→ {"act":"new_query","query":{"grain":"summary","tipos":["despesa"],"origemPerfil":"pj","period":{"tipo":"personalizado","de":"<ontem>","ate":"<ontem>"}}}
+→ {"act":"new_query","query":{"grain":"summary","tipos":["despesa"],"origemPerfil":"pj","period":{"tipo":"personalizado","de":"2026-08-24","ate":"2026-08-24"}}}
 U: "mostre detalhado"
 → {"act":"change_grain","grain":"list"}
 U: "e no sábado?"
-→ {"act":"patch_query","ops":[{"op":"set","slot":"period","value":{"tipo":"personalizado","de":"<sábado>","ate":"<sábado>"}}]}
+→ {"act":"patch_query","ops":[{"op":"set","slot":"period","value":{"tipo":"personalizado","de":"2026-08-22","ate":"2026-08-22"}}]}
+U: "e sábado eu tive entradas?"
+→ {"act":"patch_query","ops":[{"op":"set","slot":"period","value":{"tipo":"personalizado","de":"2026-08-22","ate":"2026-08-22"}}]}
 U: "e hoje qual foi a maior entrada?"
-→ {"act":"patch_query","ops":[{"op":"set","slot":"period","value":{"tipo":"personalizado","de":"<hoje>","ate":"<hoje>"}},{"op":"set","slot":"tipos","value":["receita"]},{"op":"set","slot":"grain","value":"top"},{"op":"set","slot":"sort","value":{"by":"valor","dir":"desc"}},{"op":"set","slot":"limit","value":1}]}
+→ {"act":"patch_query","ops":[{"op":"set","slot":"period","value":{"tipo":"personalizado","de":"2026-08-25","ate":"2026-08-25"}},{"op":"set","slot":"tipos","value":["receita"]},{"op":"set","slot":"grain","value":"top"},{"op":"set","slot":"sort","value":{"by":"valor","dir":"desc"}},{"op":"set","slot":"limit","value":1}]}
 U: "me mostre os 3 últimos lançamentos de hoje"
-→ {"act":"new_query","query":{"grain":"list","period":{"tipo":"personalizado","de":"<hoje>","ate":"<hoje>"},"sort":{"by":"data","dir":"desc"},"limit":3}}
+→ {"act":"new_query","query":{"grain":"list","period":{"tipo":"personalizado","de":"2026-08-25","ate":"2026-08-25"},"sort":{"by":"data","dir":"desc"},"limit":3}}
 U: "qual o resultado de hoje?"
-→ {"act":"new_query","query":{"grain":"summary","period":{"tipo":"personalizado","de":"<hoje>","ate":"<hoje>"}}}
+→ {"act":"new_query","query":{"grain":"summary","period":{"tipo":"personalizado","de":"2026-08-25","ate":"2026-08-25"}}}
 U: "Qual o saldo da Nubank?"
 → {"act":"new_query","query":{"entityDomain":"accounts","grain":"summary"},"names":{"contaNome":"Nubank"}}
 U: "e no cartão?"

@@ -471,6 +471,15 @@ function registro(bruto: unknown): Record<string, unknown> {
   return {};
 }
 
+function semNulos(bruto: unknown): unknown {
+  if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) return bruto;
+  const out: Record<string, unknown> = {};
+  for (const [chave, valor] of Object.entries(bruto as Record<string, unknown>)) {
+    if (valor !== null) out[chave] = valor;
+  }
+  return out;
+}
+
 /**
  * Aceita JSON legado v1 (migration 0032) e documentos mistos v1+campos v3.
  * Sempre devolve `schemaVersion: 2` em memória — o SessionManager ainda grava v1.
@@ -505,6 +514,19 @@ export function normalizarConversationContext(
   }
   mesclado.schemaVersion = 2;
   mesclado.version = v1.version;
+
+  if (mesclado.last_query != null) {
+    const last = LastQuerySchema.safeParse(mesclado.last_query);
+    mesclado.last_query = last.success ? last.data : undefined;
+  }
+  if (mesclado.query != null) {
+    const query = QueryStateSchema.safeParse(semNulos(mesclado.query));
+    mesclado.query = query.success ? query.data : undefined;
+  }
+  if (mesclado.result != null) {
+    const result = ResultContextSchema.safeParse(mesclado.result);
+    mesclado.result = result.success ? result.data : undefined;
+  }
 
   if (mesclado.query == null && mesclado.last_query != null) {
     const last = LastQuerySchema.safeParse(mesclado.last_query);

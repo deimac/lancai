@@ -41,4 +41,9 @@ describe("applySlotOps", () => {
     expect(estado.canal).toBe("cartao");
     expect(estado.period).toEqual({ tipo: "mes_atual" });
   });
+
+  it("entrada/saída em linguagem natural viram receita/despesa", () => {
+    const depois = applySlotOps(base(), [{ op: "set", slot: "tipos", value: ["entradas"] }]);
+    expect(depois.tipos).toEqual(["receita"]);
+  });
 });

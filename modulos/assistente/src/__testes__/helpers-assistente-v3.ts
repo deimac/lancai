@@ -77,6 +77,7 @@ export function criarAssistenteCoreV3Teste(opcoes: {
   ofTarget?: EntityRef;
   extra?: Record<string, ConversationUnderstanding>;
   acts?: Record<string, DialogueAct>;
+  dataAtual?: string;
 } = {}) {
   const repo = new SessionRepositoryMemory();
   const manager = new SessionManagerV3(repo, { agoraMs: () => AGORA });
@@ -190,7 +191,7 @@ export function criarAssistenteCoreV3Teste(opcoes: {
         return null;
       },
     },
-    { agoraMs: () => AGORA, dataAtual: () => DATA_ATUAL },
+    { agoraMs: () => AGORA, dataAtual: () => opcoes.dataAtual ?? DATA_ATUAL },
   );
 
   return { core, repo, manager, movimentos };

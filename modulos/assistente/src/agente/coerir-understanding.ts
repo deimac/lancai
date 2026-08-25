@@ -86,7 +86,7 @@ function continuar(
   });
 }
 
-function specDePeriodoRelativo(mensagem: string | undefined, dataAtual: string | undefined): PeriodSpec | undefined {
+export function specDePeriodoRelativo(mensagem: string | undefined, dataAtual: string | undefined): PeriodSpec | undefined {
   if (!mensagem || !dataAtual) return undefined;
   const extraido = periodo_relativo_da_mensagem(mensagem, dataAtual);
   if (!extraido) return undefined;

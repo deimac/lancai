@@ -14,6 +14,30 @@ import {
 } from "@lancai/tipos";
 import { z } from "zod";
 
+const ALIAS_TIPO: Record<string, string> = {
+  entrada: "receita",
+  entradas: "receita",
+  saida: "despesa",
+  saidas: "despesa",
+  gasto: "despesa",
+  gastos: "despesa",
+};
+
+function chaveTipo(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+function valorDoSlot(slot: SlotName, value: unknown): unknown {
+  if (slot !== "tipos" || !Array.isArray(value)) return value;
+  return value.map((item) => {
+    if (typeof item !== "string") return item;
+    return ALIAS_TIPO[chaveTipo(item)] ?? item;
+  });
+}
+
 const slotValor: Record<SlotName, z.ZodTypeAny> = {
   period: PeriodSpecSchema,
   comparison: z.object({ period: PeriodSpecSchema }),
@@ -54,7 +78,7 @@ export function applySlotOps(estado: QueryState, ops: SlotOp[]): QueryState {
       delete proximo[op.slot];
       continue;
     }
-    proximo[op.slot] = slotValor[op.slot].parse(op.value);
+    proximo[op.slot] = slotValor[op.slot].parse(valorDoSlot(op.slot, op.value));
   }
   return semUndefined(proximo as QueryState);
 }

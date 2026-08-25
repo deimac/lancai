@@ -67,8 +67,7 @@ export const QueryStateSchema = z
     sort: querySortSchema.optional(),
     limit: z.number().int().min(1).max(500).optional(),
     offset: z.number().int().nonnegative().optional(),
-  })
-  .strict();
+  });
 export type QueryState = z.infer<typeof QueryStateSchema>;
 
 export const QueryStatePartialSchema = QueryStateSchema.partial();
@@ -172,10 +171,23 @@ export const ResultRowRefSchema = z.object({
   ordinal: z.number().int().positive(),
   entityType: resultEntityTypeSchema,
   entityId: z.string().uuid(),
-  label: z.string().min(1),
+  label: z.preprocess(
+    (valor) => (typeof valor === "string" && valor.trim().length > 0 ? valor.trim() : "Lançamento"),
+    z.string().min(1),
+  ),
   amount: z.number().optional(),
 });
 export type ResultRowRef = z.infer<typeof ResultRowRefSchema>;
+
+function linhasResultadoValidas(bruto: unknown): ResultRowRef[] {
+  if (!Array.isArray(bruto)) return [];
+  const linhas: ResultRowRef[] = [];
+  for (const item of bruto.slice(0, 50)) {
+    const lido = ResultRowRefSchema.safeParse(item);
+    if (lido.success) linhas.push(lido.data);
+  }
+  return linhas;
+}
 
 export const ResultContextSchema = z.object({
   queryHash: z.string().min(1),
@@ -185,7 +197,7 @@ export const ResultContextSchema = z.object({
     count: z.number().int().nonnegative(),
     total: z.number().optional(),
   }),
-  rows: z.array(ResultRowRefSchema).max(50),
+  rows: z.preprocess(linhasResultadoValidas, z.array(ResultRowRefSchema).max(50)),
 });
 export type ResultContext = z.infer<typeof ResultContextSchema>;
 

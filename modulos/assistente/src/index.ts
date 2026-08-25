@@ -15,7 +15,8 @@ export {
 } from "./agente/assistente-core-v3";
 export { SemanticParserV2, type LlmParser, type SemanticParserDeps } from "./agente/semantic-parser-v2";
 export { UnderstandingExtractor, type EntradaUnderstandingExtractor } from "./agente/understanding-extractor";
-export { coerirUnderstandingComContexto, understandingPeriodShiftDaMensagem } from "./agente/coerir-understanding";
+export { coerirUnderstandingComContexto, understandingPeriodShiftDaMensagem, specDePeriodoRelativo } from "./agente/coerir-understanding";
+export { coerirDialogueActComContexto } from "./agente/coerir-dialogue-act";
 export { understandingToNeed, type OpcoesUnderstandingToNeed } from "./agente/understanding-to-need";
 export { planQuery, QueryPlanner } from "./agente/query-planner";
 export { planCommand, planCommandFromAct, planCancelarLancamentos, CommandPlanner, type CommandPlanResult, type OpcoesCommandPlanner } from "./agente/command-planner";

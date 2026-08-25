@@ -128,5 +128,7 @@ describe("prompt DialogueAct", () => {
     expect(system).toContain("change_grain");
     expect(system).toMatch(/cancela o 1/i);
     expect(system).toContain("ordinal_range");
+    expect(system).toMatch(/YYYY-MM-DD/);
+    expect(system).toMatch(/e sábado eu tive entradas/i);
   });
 });

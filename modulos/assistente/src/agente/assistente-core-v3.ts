@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { prefixar_nota_dia_semana } from "@lancai/ia";
+import { ZodError } from "zod";
 import {
   ConfirmationRequestSchema,
   EntityRefSchema,
@@ -24,6 +25,7 @@ import {
 } from "@lancai/tipos";
 import type { AssistenteInput, AssistenteOutput } from "./assistente-core";
 import { applySlotOps } from "./apply-slot-ops";
+import { coerirDialogueActComContexto } from "./coerir-dialogue-act";
 import { CommandExecutor } from "./command-executor";
 import { specCompiladoDe } from "./compile-query";
 import { DialogueActInvalidoError, type EntradaDialogueActExtractor } from "./dialogue-act-extractor";
@@ -250,13 +252,15 @@ function resultContextDe(
   const visao = data as { tipo?: string; dados?: { totalDespesas?: number; dias?: Array<{ itens: Array<{ id: string; descricao: string; valor: number }> }> } } | undefined;
   const itens = visao?.dados?.dias?.flatMap((d) => d.itens) ?? [];
   const linhas = (itens.length > 0 ? itens : ids.map((id) => ({ id, descricao: id, valor: undefined as number | undefined }))).slice(0, 50);
-  const rows = linhas.map((item, i) => ({
-    ordinal: i + 1,
-    entityType: "transaction" as const,
-    entityId: item.id,
-    label: item.descricao,
-    amount: typeof item.valor === "number" ? item.valor : undefined,
-  }));
+  const rows = linhas
+    .filter((item) => /^[0-9a-f-]{36}$/i.test(item.id))
+    .map((item, i) => ({
+      ordinal: i + 1,
+      entityType: "transaction" as const,
+      entityId: item.id,
+      label: (item.descricao ?? "").trim() || "Lançamento",
+      amount: typeof item.valor === "number" ? item.valor : undefined,
+    }));
   return {
     queryHash: hashQuery(query),
     generatedAt: agora,
@@ -400,7 +404,20 @@ export class AssistenteCoreV3 {
     let names: QueryNames | undefined;
 
     if (act.act === "new_query") {
-      query = estadoConsultaNovo(act.query);
+      try {
+        query = estadoConsultaNovo(act.query);
+      } catch (erro) {
+        if (erro instanceof ZodError) {
+          await this.persistir(sessionId, ctx, somenteLeitura);
+          return {
+            resposta: "Não entendi o pedido. Pode reformular?",
+            sessaoId: sessionId,
+            traceId,
+            diagnostico: { clarification: true, reason: "query_invalida" },
+          };
+        }
+        throw erro;
+      }
       names = act.names;
     } else if (act.act === "patch_query") {
       if (!query) {
@@ -412,7 +429,20 @@ export class AssistenteCoreV3 {
           diagnostico: { clarification: true, reason: "sem_query" },
         };
       }
-      query = applySlotOps(query, act.ops);
+      try {
+        query = applySlotOps(query, act.ops);
+      } catch (erro) {
+        if (erro instanceof ZodError) {
+          await this.persistir(sessionId, ctx, somenteLeitura);
+          return {
+            resposta: "Não entendi o pedido. Pode reformular?",
+            sessaoId: sessionId,
+            traceId,
+            diagnostico: { clarification: true, reason: "slot_invalido" },
+          };
+        }
+        throw erro;
+      }
       names = act.names;
     } else if (act.act === "change_grain") {
       if (!query) {
@@ -482,22 +512,22 @@ export class AssistenteCoreV3 {
   async processar(input: AssistenteInput): Promise<AssistenteOutput> {
     const traceId = randomUUID();
     const somenteLeitura = Boolean(input.somenteLeitura);
-
-    const session = await this.sessionManager.obterOuCriar(input.usuarioId, input.canal, input.sessaoId, {
-      persistir: !somenteLeitura,
-    });
-
-    if (input.canal === "whatsapp" && input.messageId && !somenteLeitura) {
-      if (await this.sessionManager.jaProcessado(input.messageId)) {
-        return { resposta: "Já processei essa mensagem.", sessaoId: session.id, traceId, duplicata: true };
-      }
-      await this.sessionManager.marcarProcessado(input.messageId, session.id);
-    }
-
-    let ctx = session.contexto;
+    let sessaoId = input.sessaoId ?? "";
 
     try {
-      ctx = promoverQueryState(ctx);
+      const session = await this.sessionManager.obterOuCriar(input.usuarioId, input.canal, input.sessaoId, {
+        persistir: !somenteLeitura,
+      });
+      sessaoId = session.id;
+
+      if (input.canal === "whatsapp" && input.messageId && !somenteLeitura) {
+        if (await this.sessionManager.jaProcessado(input.messageId)) {
+          return { resposta: "Já processei essa mensagem.", sessaoId: session.id, traceId, duplicata: true };
+        }
+        await this.sessionManager.marcarProcessado(input.messageId, session.id);
+      }
+
+      let ctx = promoverQueryState(session.contexto);
 
       if (ctx.pending_action?.type === "confirmation") {
         const saida = await this.tratarConfirmacao(input, session.id, ctx, traceId, somenteLeitura);
@@ -529,7 +559,11 @@ export class AssistenteCoreV3 {
         throw erro;
       }
 
-      const act = extraido.act;
+      const extraidoAct = coerirDialogueActComContexto(extraido.act, ctx, {
+        mensagem: input.mensagem,
+        dataAtual: this.dataAtual(),
+      });
+      const act = extraidoAct;
       const understanding = extraido.understanding;
 
       if (act.act !== "confirm") {
@@ -734,7 +768,7 @@ export class AssistenteCoreV3 {
       console.error("[assistente-v3] turno falhou", { traceId, err: message });
       return {
         resposta: `Tive um problema interno. Código: ${traceId.slice(0, 8)}.`,
-        sessaoId: session.id,
+        sessaoId,
         traceId,
         diagnostico: { blocked: true, reason: message },
       };
