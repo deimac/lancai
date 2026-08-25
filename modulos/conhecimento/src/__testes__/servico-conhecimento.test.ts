@@ -708,7 +708,7 @@ describe("ServicoConhecimento", () => {
       expect(resultado).toEqual({ aplicada: false, motivo: "nenhuma_casou" });
     });
 
-    it("marca pagamento de fatura pela ação da regra", async () => {
+    it("não aplica pagamento de fatura automaticamente pela regra", async () => {
       const catFatura = randomUUID();
       repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
       const movimento = criarMovimento({
@@ -728,11 +728,9 @@ describe("ServicoConhecimento", () => {
       });
 
       const resultado = await servico.aplicar_regras(movimento.id);
-      expect(resultado.aplicada).toBe(true);
-      if (!resultado.aplicada) return;
-      expect(resultado.movimento.papel).toBe("pagamento_fatura");
-      expect(resultado.movimento.ignoradoEmRelatorio).toBe(true);
-      expect(resultado.movimento.categoriaId).toBe(catFatura);
+      expect(resultado.aplicada).toBe(false);
+      expect(repositorio.movimentos.get(movimento.id)?.papel).toBe("gasto");
+      expect(repositorio.movimentos.get(movimento.id)?.ignoradoEmRelatorio).toBe(false);
     });
   });
 });
@@ -998,7 +996,7 @@ describe("criar_regra_a_partir_de_correcao", () => {
     expect(await servico.propor_regra_de_movimento(movimento.id)).toBeNull();
   });
 
-  it("cria regra com ação marcar_pagamento_fatura após correção manual", async () => {
+  it("não cria regra de pagamento de fatura após marcação manual", async () => {
     const catFatura = randomUUID();
     repositorio.cadastrarCategoria(catFatura, "Pagamento de fatura");
     const movimento = criarMovimento({
@@ -1013,10 +1011,10 @@ describe("criar_regra_a_partir_de_correcao", () => {
 
     const resultado = await servico.criar_regra_a_partir_de_correcao(movimento.id);
 
-    expect(resultado.criada).toBe(true);
-    if (!resultado.criada) return;
-    expect(resultado.regra.acoes).toEqual([{ tipo: "marcar_pagamento_fatura" }]);
-    expect(resultado.proposta.categoriaNome).toBe("Pagamento de fatura");
+    expect(resultado.criada).toBe(false);
+    if (resultado.criada) return;
+    expect(resultado.motivo).toBe("pagamento_fatura_manual");
+    expect(await servico.propor_regra_de_movimento(movimento.id)).toBeNull();
   });
 });
 

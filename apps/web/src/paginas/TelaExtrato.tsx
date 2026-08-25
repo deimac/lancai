@@ -44,6 +44,7 @@ import {
 import {
   competencia_default_fatura,
   modo_convite_pagamento_fatura,
+  mostra_acao_pagamento_fatura,
   mostra_check_pagamento_fatura,
 } from "../lib/extrato-pagamento-fatura";
 import {
@@ -944,7 +945,7 @@ export function TelaExtrato() {
                                   },
                                 ]
                               : []),
-                            ...(mostra_check_pagamento_fatura(movimento)
+                            ...(mostra_acao_pagamento_fatura(movimento)
                               ? [
                                   {
                                     rotulo:

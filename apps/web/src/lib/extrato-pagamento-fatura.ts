@@ -61,6 +61,20 @@ export function mostra_check_pagamento_fatura(movimento: Pick<
   return linha_aceita_pagamento_fatura(movimento);
 }
 
+/**
+ * Item do menu ⋯. Marcar só nos casos de quitação (saída na conta ou crédito
+ * no cartão). Desmarcar sempre que a linha já estiver como pagamento de fatura,
+ * mesmo que a classificação tenha sido um erro (entrada na conta, etc.).
+ */
+export function mostra_acao_pagamento_fatura(movimento: Pick<
+  MovimentoResumo,
+  "tipo" | "contaId" | "cartaoId" | "status" | "papel"
+>): boolean {
+  if (movimento.status === "cancelado") return false;
+  if (movimento.papel === "pagamento_fatura") return true;
+  return linha_aceita_pagamento_fatura(movimento);
+}
+
 export type ModoConvitePagamentoFatura = "nada" | "banner" | "check" | "marcado";
 
 export function modo_convite_pagamento_fatura(entrada: {

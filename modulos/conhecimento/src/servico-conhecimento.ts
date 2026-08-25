@@ -54,7 +54,12 @@ export interface PropostaRegra {
 
 export type ResultadoCriarRegraDeCorrecao =
   | { criada: true; regra: Regra; proposta: PropostaRegra }
-  | { criada: false; motivo: "sem_trecho" | "ja_existe"; proposta?: PropostaRegra; regra?: Regra };
+  | {
+      criada: false;
+      motivo: "sem_trecho" | "ja_existe" | "pagamento_fatura_manual";
+      proposta?: PropostaRegra;
+      regra?: Regra;
+    };
 
 /**
  * Enriquecimento do Lançai sobre uma movimentação: categoria, pessoa, tipo de gasto,
@@ -531,6 +536,8 @@ export class ServicoConhecimento {
     const trecho = propor_trecho_regra(movimento);
     if (!trecho) return null;
 
+    if (movimento.papel === "pagamento_fatura") return null;
+
     const categoria = await this.repositorio.obterCategoria(movimento.categoriaId);
     if (!categoria) return null;
 
@@ -555,6 +562,10 @@ export class ServicoConhecimento {
     const movimento = await this.repositorio.obterMovimento(movimentoId);
     if (!movimento) throw new ErroMovimentoNaoEncontrado(movimentoId);
 
+    if (movimento.papel === "pagamento_fatura") {
+      return { criada: false, motivo: "pagamento_fatura_manual" };
+    }
+
     const trecho = propor_trecho_regra(movimento);
     if (!trecho) return { criada: false, motivo: "sem_trecho" };
 
@@ -575,10 +586,7 @@ export class ServicoConhecimento {
     );
     if (igual) return { criada: false, motivo: "ja_existe", proposta, regra: igual };
 
-    const acoes =
-      movimento.papel === "pagamento_fatura"
-        ? [{ tipo: "marcar_pagamento_fatura" as const }]
-        : [{ tipo: "definir_categoria" as const, categoriaId: proposta.categoriaId }];
+    const acoes = [{ tipo: "definir_categoria" as const, categoriaId: proposta.categoriaId }];
 
     const regra = await this.criar_regra({
       workspaceId: movimento.workspaceId,
@@ -626,7 +634,7 @@ export class ServicoConhecimento {
       switch (acao.tipo) {
         case "definir_categoria": {
           const origem = await this.repositorio.obterCategoria(acao.categoriaId);
-          if (origem) conhecimento.categoriaId = origem.id;
+          if (origem && !eh_nome_pagamento_fatura(origem.nome)) conhecimento.categoriaId = origem.id;
           break;
         }
         case "definir_beneficiario": {
@@ -654,7 +662,6 @@ export class ServicoConhecimento {
           conhecimento.ignoradoEmRelatorio = true;
           break;
         case "marcar_pagamento_fatura":
-          conhecimento.papel = "pagamento_fatura";
           break;
         case "definir_perfil":
           conhecimento.tipoGasto = acao.perfil;
