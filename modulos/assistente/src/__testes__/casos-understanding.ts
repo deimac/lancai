@@ -1203,7 +1203,6 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
       question: {
         intent: "total",
         entities: {
-          merchant: "pix",
           account: "Mercado Pago",
           metric: "sum",
           period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
@@ -1218,7 +1217,6 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
       source_priority: ["transactions"],
       filters: {
         transactions: {
-          merchant: "pix",
           contaNome: "Mercado Pago",
           tipos: ["despesa"],
           periodo: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },

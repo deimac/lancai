@@ -31,6 +31,8 @@ describe("prompt understanding", () => {
     expect(system).toContain('NÃO use continuation.type "temporal"');
     expect(system).toContain("mes_atual");
     expect(system).toMatch(/Pix, TED, boleto/i);
+    expect(system).toMatch(/NÃO merchant e NÃO conta/i);
+    expect(system).not.toMatch(/merchant "pix"/i);
     expect(system).toMatch(/entradas/i);
     expect(system).toMatch(/fluxo cruzado/i);
     expect(system).toContain("tipoGasto");

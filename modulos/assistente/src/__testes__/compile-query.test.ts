@@ -155,7 +155,8 @@ describe("prompt DialogueAct", () => {
     expect(system).toContain("ordinal_range");
     expect(system).toMatch(/YYYY-MM-DD/);
     expect(system).toMatch(/e sábado eu tive entradas/i);
-    expect(system).toMatch(/Tayna Santos me enviou/i);
-    expect(system).toMatch(/recebi de pix da Tayna Santos/i);
+    expect(system).toMatch(/forma de pagamento, nunca merchant/i);
+    expect(system).toMatch(/estabelecimento é merchant/i);
+    expect(system).not.toMatch(/Tayna/i);
   });
 });

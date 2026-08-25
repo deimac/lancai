@@ -9,6 +9,7 @@ describe("extrair_contraparte_recebimento", () => {
     expect(extrair_contraparte_recebimento("quanto a Tayna Santos me enviou de pix?")).toBe(
       "Tayna Santos",
     );
+    expect(extrair_contraparte_recebimento("quanto o João me enviou de pix?")).toBe("João");
   });
 
   it("reconhece recebi de", () => {
@@ -26,6 +27,10 @@ describe("extrair_contraparte_recebimento", () => {
     );
     expect(extrair_contraparte_recebimento("quanto recebi um pix da Tayna Santos?")).toBe(
       "Tayna Santos",
+    );
+    expect(extrair_contraparte_recebimento("quanto recebi de pix do João?")).toBe("João");
+    expect(extrair_contraparte_recebimento("quanto recebi de pix da Maria Silva?")).toBe(
+      "Maria Silva",
     );
   });
 

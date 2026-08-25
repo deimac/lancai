@@ -124,7 +124,7 @@ Regras:
 - Falta dado obrigatório (valor, conta) → goal clarify + ambiguity.
 - "o Uber" com vários no last_query → ambiguity em field merchant.
 - Estabelecimento/fato (Uber, iFood, tarifa) → merchant, fonte transactions. Não trate como category salvo o usuário pedir categoria.
-- Pix, TED, boleto, dinheiro são forma de pagamento, NÃO merchant e NÃO conta. "quanto enviei de pix" → merchant "pix" (busca no texto da fonte), implicit_filters.tipo despesa. "recebi pix" → tipo receita. NÃO use tipo transferencia (isso é entre contas próprias).
+- Pix, TED, boleto, dinheiro, crédito e débito são forma de pagamento, NÃO merchant e NÃO conta. Com pessoa ou estabelecimento, merchant é esse nome. Sem pessoa, "enviei/recebi pix" → só implicit_filters.tipo despesa/receita. NÃO use tipo transferencia (isso é entre contas próprias).
 - "da minha conta X" / "no Mercado Pago" → entities.account. Não copie o nome da conta para merchant.
 - "ontem" → period personalizado com de e ate iguais ao dia anterior a dataAtual (YYYY-MM-DD). "hoje" → dataAtual. "domingo"/"sábado"/outros dias da semana → última ocorrência em ou antes de dataAtual (personalizado de=ate).
 - "quanto gastei" → intent total, metric sum, implicit_filters.tipo despesa.
@@ -163,7 +163,7 @@ U: "Estou gastando mais que mês passado?"
 
 Few-shot 4 — Pix enviado ontem numa conta:
 U: "quanto eu enviei de pix ontem da minha conta mercado pago?" (dataAtual 2026-08-24)
-→ {"goal":"answer","question":{"intent":"total","entities":{"merchant":"pix","account":"Mercado Pago","metric":"sum","period":{"tipo":"personalizado","de":"2026-08-23","ate":"2026-08-23"}},"implicit_filters":{"tipo":"despesa"}},"confidence":0.92,"required_sources":["transactions"]}
+→ {"goal":"answer","question":{"intent":"total","entities":{"account":"Mercado Pago","metric":"sum","period":{"tipo":"personalizado","de":"2026-08-23","ate":"2026-08-23"}},"implicit_filters":{"tipo":"despesa"}},"confidence":0.92,"required_sources":["transactions"]}
 
 Few-shot 5 — entradas numa conta:
 U: "quanto tive de entradas este mês na minha conta Mercado Pago?"

@@ -59,7 +59,7 @@ Regras:
 - Nomes de conta/cartão/categoria vão em names, nunca como UUID. IDs o código resolve.
 - "conta da empresa"/PJ como origem do dinheiro → origemPerfil=pj. Natureza pessoal vs empresa → tipoGasto. São slots independentes. Não use contaNome="empresa".
 - Você escolhe a OPERAÇÃO; o código soma, lista e calcula. Nunca calcule dinheiro.
-- grain=summary: total do universo filtrado. "quanto saiu/gastei" → tipos=["despesa"]. "quanto recebi/entrou" / "X me enviou de pix" / "recebi de pix da X" → tipos=["receita"]. "quanto enviei de pix" → tipos=["despesa"]. Pessoa que enviou é merchant; pix é forma — nunca merchant="pix" nem "pix da Tayna".
+- grain=summary: total do universo filtrado. "quanto saiu/gastei" → tipos=["despesa"]. "quanto recebi/entrou" → tipos=["receita"]. "quanto enviei" → tipos=["despesa"]. Pix, TED, boleto, dinheiro, crédito e débito são forma de pagamento, nunca merchant. Quem enviou/recebeu ou o estabelecimento é merchant.
 - Sem período na mensagem e pergunta de quem enviou/recebeu → omita period (o código busca o histórico). Não invente mes_atual.
 - Resultado/saldo do PERÍODO ("quanto sobrou", "entradas menos saídas", "resultado do dia") → grain=summary e clear tipos (receitas − despesas). Não é saldo de conta.
 - Saldo da CONTA ("saldo da Nubank") → entityDomain=accounts + names.contaNome. Não use histórico.
@@ -101,10 +101,6 @@ U: "me mostre os 3 últimos lançamentos de hoje"
 → {"act":"new_query","query":{"grain":"list","period":{"tipo":"personalizado","de":"2026-08-25","ate":"2026-08-25"},"sort":{"by":"data","dir":"desc"},"limit":3}}
 U: "qual o resultado de hoje?"
 → {"act":"new_query","query":{"grain":"summary","period":{"tipo":"personalizado","de":"2026-08-25","ate":"2026-08-25"}}}
-U: "quanto a Tayna Santos me enviou de pix?"
-→ {"act":"new_query","query":{"grain":"summary","tipos":["receita"],"merchant":"Tayna Santos"}}
-U: "quanto recebi de pix da Tayna Santos?"
-→ {"act":"new_query","query":{"grain":"summary","tipos":["receita"],"merchant":"Tayna Santos"}}
 U: "Qual o saldo da Nubank?"
 → {"act":"new_query","query":{"entityDomain":"accounts","grain":"summary"},"names":{"contaNome":"Nubank"}}
 U: "e no cartão?"
