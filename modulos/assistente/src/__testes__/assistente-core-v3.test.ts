@@ -483,6 +483,36 @@ describe("AssistenteCoreV3", () => {
     expect((doc?.documento.query as QueryState | undefined)?.period).toBeUndefined();
   });
 
+  it("quanto recebi de pix da Tayna? busca o nome, não a frase com pix", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      dataAtual: "2026-08-25",
+      acts: {
+        "quanto recebi de pix da Tayna Santos?": {
+          act: "new_query",
+          query: {
+            grain: "summary",
+            tipos: ["receita"],
+            merchant: "pix da Tayna Santos",
+            period: { tipo: "mes_atual" },
+          },
+        },
+      },
+    });
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "quanto recebi de pix da Tayna Santos?",
+      canal: "web",
+    });
+    expect(r.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r.sessaoId);
+    expect(doc?.documento.query).toMatchObject({
+      grain: "summary",
+      tipos: ["receita"],
+      merchant: "Tayna Santos",
+    });
+    expect((doc?.documento.query as QueryState | undefined)?.period).toBeUndefined();
+  });
+
   it("conta da empresa não pede slot de conta chamada empresa", async () => {
     const { core, repo } = criarAssistenteCoreV3Teste({
       dataAtual: "2026-08-25",

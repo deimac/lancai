@@ -156,5 +156,6 @@ describe("prompt DialogueAct", () => {
     expect(system).toMatch(/YYYY-MM-DD/);
     expect(system).toMatch(/e sábado eu tive entradas/i);
     expect(system).toMatch(/Tayna Santos me enviou/i);
+    expect(system).toMatch(/recebi de pix da Tayna Santos/i);
   });
 });

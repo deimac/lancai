@@ -84,14 +84,26 @@ export function extrair_descricao_consulta_historico(
 
 function limpar_contraparte(nome: string): string {
   return nome
-    .replace(/\s+(?:de|no|via|por)\s+pix\s*$/i, "")
+    .replace(/^(?:um\s+)?(?:pix|ted|transfer[eê]ncia)\s+(?:de|da|do)\s+/i, "")
+    .replace(/^(?:pix|ted)\s+/i, "")
+    .replace(/\s+(?:de|no|via|por)\s+(?:pix|ted)\s*$/i, "")
     .replace(/\bquanto\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+function contraparte_util(bruto: string | undefined): string | null {
+  if (!bruto) return null;
+  const nome = limpar_contraparte(bruto);
+  if (nome.length < 2) return null;
+  if (/^(pix|ted|transferencia|transferência)$/i.test(nome)) return null;
+  if (TERMO_SO_PERIODO.test(nome)) return null;
+  return nome;
+}
+
 /**
  * "quanto a Tayna Santos me enviou de pix?" → "Tayna Santos".
+ * "quanto recebi de pix da Tayna Santos?" → "Tayna Santos".
  * Não usa "pix" como estabelecimento: pix é forma de pagamento.
  */
 export function extrair_contraparte_recebimento(mensagem: string): string | null {
@@ -100,17 +112,19 @@ export function extrair_contraparte_recebimento(mensagem: string): string | null
     /\b(?:a|o)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.\s]{0,60}?)\s+me\s+(?:enviou|mandou|transferiu)\b/i.exec(
       texto,
     );
-  if (aMe?.[1]) {
-    const nome = limpar_contraparte(aMe[1]);
-    if (nome.length >= 2) return nome;
-  }
+  const doMe = contraparte_util(aMe?.[1]);
+  if (doMe) return doMe;
+
+  const recebiPixDe =
+    /\b(?:recebi|entrou)\s+(?:um\s+)?(?:de\s+|da\s+|do\s+)?(?:pix|ted)\s+(?:de|da|do)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.\s]{0,60}?)(?:\s*[?.!]?\s*$)/i.exec(
+      texto,
+    );
+  const doPix = contraparte_util(recebiPixDe?.[1]);
+  if (doPix) return doPix;
+
   const recebiDe =
     /\b(?:recebi|entrou)\s+(?:de|da|do)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.\s]{0,60}?)(?:\s+(?:de|no|via|por)\s+pix|\s*[?.!]?\s*$)/i.exec(
       texto,
     );
-  if (recebiDe?.[1]) {
-    const nome = limpar_contraparte(recebiDe[1]);
-    if (nome.length >= 2) return nome;
-  }
-  return null;
+  return contraparte_util(recebiDe?.[1]);
 }

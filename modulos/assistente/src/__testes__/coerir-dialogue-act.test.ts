@@ -129,6 +129,33 @@ describe("coerirDialogueActComContexto", () => {
     }
   });
 
+  it("quanto recebi de pix da Tayna? não usa pix como merchant", () => {
+    const act: DialogueAct = {
+      act: "new_query",
+      query: {
+        grain: "summary",
+        tipos: ["receita"],
+        merchant: "pix da Tayna Santos",
+        period: { tipo: "mes_atual" },
+      },
+    };
+    const coerido = coerirDialogueActComContexto(act, estadoInicialConversacaoV3(AGORA), {
+      mensagem: "quanto recebi de pix da Tayna Santos?",
+      dataAtual: TERCA,
+    });
+    expect(coerido).toMatchObject({
+      act: "new_query",
+      query: {
+        grain: "summary",
+        tipos: ["receita"],
+        merchant: "Tayna Santos",
+      },
+    });
+    if (coerido.act === "new_query") {
+      expect(coerido.query.period).toBeUndefined();
+    }
+  });
+
   it("patch depois de outra consulta não herda o período em pergunta de quem enviou", () => {
     const act: DialogueAct = {
       act: "patch_query",

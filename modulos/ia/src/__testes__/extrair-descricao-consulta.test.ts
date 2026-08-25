@@ -17,7 +17,20 @@ describe("extrair_contraparte_recebimento", () => {
     );
   });
 
+  it("não mistura pix no nome em recebi de pix da pessoa", () => {
+    expect(extrair_contraparte_recebimento("quanto recebi de pix da Tayna Santos?")).toBe(
+      "Tayna Santos",
+    );
+    expect(extrair_contraparte_recebimento("quanto recebi pix da Tayna Santos?")).toBe(
+      "Tayna Santos",
+    );
+    expect(extrair_contraparte_recebimento("quanto recebi um pix da Tayna Santos?")).toBe(
+      "Tayna Santos",
+    );
+  });
+
   it("não trata pix como nome", () => {
     expect(extrair_contraparte_recebimento("quanto eu enviei de pix ontem?")).toBeNull();
+    expect(extrair_contraparte_recebimento("quanto recebi de pix ontem?")).toBeNull();
   });
 });
