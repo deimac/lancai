@@ -81,7 +81,7 @@ function montarApplicationService(): ApplicationService {
       },
     },
     consultas: {
-      consultar: (spec, usuarioId) => consultar_assistente_v2(relatorios, spec, usuarioId),
+      consultar: (spec, usuarioId, opcoes) => consultar_assistente_v2(relatorios, spec, usuarioId, opcoes),
     },
   });
 }

@@ -47,8 +47,17 @@ export interface RulePort {
   }): Promise<{ id: string; nome: string }>;
 }
 
+export type OpcoesConsultaAssistente = {
+  primeiroNome?: string;
+  dataAtual?: string;
+};
+
 export interface QueryPort {
-  consultar(spec: QuerySpec, usuarioId: string): Promise<{ ids: string[]; formattedText: string; data?: unknown }>;
+  consultar(
+    spec: QuerySpec,
+    usuarioId: string,
+    opcoes?: OpcoesConsultaAssistente,
+  ): Promise<{ ids: string[]; formattedText: string; data?: unknown }>;
 }
 
 export interface CatalogoPort {
@@ -219,7 +228,10 @@ export class ApplicationService {
 
   private async executeQuery(spec: QuerySpec, context: CommandContext): Promise<CommandResult> {
     if (!this.deps.consultas) return { success: true, data: { ids: [], formattedText: "Sem dados." } };
-    const data = await this.deps.consultas.consultar(spec, context.authenticatedUserId);
+    const data = await this.deps.consultas.consultar(spec, context.authenticatedUserId, {
+      primeiroNome: context.primeiroNome,
+      dataAtual: context.dataAtual,
+    });
     return { success: true, data };
   }
 

@@ -18,7 +18,7 @@ export { UnderstandingExtractor, type EntradaUnderstandingExtractor } from "./ag
 export { coerirUnderstandingComContexto, understandingPeriodShiftDaMensagem } from "./agente/coerir-understanding";
 export { understandingToNeed, type OpcoesUnderstandingToNeed } from "./agente/understanding-to-need";
 export { planQuery, QueryPlanner } from "./agente/query-planner";
-export { planCommand, planCommandFromAct, CommandPlanner, type CommandPlanResult, type OpcoesCommandPlanner } from "./agente/command-planner";
+export { planCommand, planCommandFromAct, planCancelarLancamentos, CommandPlanner, type CommandPlanResult, type OpcoesCommandPlanner } from "./agente/command-planner";
 export {
   ReferenceResolverV3,
   resolveReferenceV3,

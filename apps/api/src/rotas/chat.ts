@@ -7,6 +7,7 @@ import { obterAssistenteCore } from "../servicos/assistente-v2";
 import { obterAssistenteCoreV3 } from "../servicos/assistente-v3";
 import { gravar_turno_chat } from "../servicos/gravar-turno-chat";
 import { intencaoParaRespostaChat } from "../servicos/intencao-resposta-assistente";
+import { primeiroNomeDoUsuario } from "../servicos/primeiro-nome-usuario";
 import { isFlagEnabled, pipelineAssistenteAtivo } from "../config/feature-flags";
 
 const schemaRequisicaoChat = z.object({
@@ -28,6 +29,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
     const dados = schemaRequisicaoChat.parse(requisicao.body);
     const pipeline = pipelineAssistenteAtivo();
+    const primeiroNome = await primeiroNomeDoUsuario(dados.usuarioId);
 
     if (isFlagEnabled("ASSISTENTE_V3_ASSISTANT")) {
       const resultado = await obterAssistenteCoreV3().processar({
@@ -35,6 +37,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
         mensagem: dados.mensagem,
         sessaoId: dados.sessaoId,
         canal: "web",
+        primeiroNome,
       });
       if (!resultado.duplicata) {
         await gravar_turno_chat({
@@ -74,6 +77,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
             sessaoId: resultado.sessaoId,
             canal: "web",
             somenteLeitura: true,
+            primeiroNome,
           })
           .then((v3) => {
             requisicao.log.info(
@@ -113,6 +117,7 @@ export async function registrar_rotas_chat(app: FastifyInstance) {
           sessaoId: legado.sessaoId,
           canal: "web",
           somenteLeitura: true,
+          primeiroNome,
         })
         .then((v3) => {
           requisicao.log.info(

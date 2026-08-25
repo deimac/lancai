@@ -350,6 +350,8 @@ export const CommandContextSchema = z.object({
   idempotencyKey: z.string().uuid(),
   traceId: z.string(),
   stateVersion: z.number().int().nonnegative(),
+  primeiroNome: z.string().min(1).optional(),
+  dataAtual: z.string().optional(),
 });
 
 export type CommandContext = z.infer<typeof CommandContextSchema>;

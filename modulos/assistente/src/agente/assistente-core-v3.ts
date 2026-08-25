@@ -27,7 +27,7 @@ import { applySlotOps } from "./apply-slot-ops";
 import { CommandExecutor } from "./command-executor";
 import { specCompiladoDe } from "./compile-query";
 import { DialogueActInvalidoError, type EntradaDialogueActExtractor } from "./dialogue-act-extractor";
-import { planCommand, planCommandFromAct } from "./command-planner";
+import { planCommand, planCommandFromAct, planCancelarLancamentos } from "./command-planner";
 import {
   updateAfterExecution,
   updateAfterPlan,
@@ -61,8 +61,10 @@ export type AssistenteCoreV3Opcoes = {
   dataAtual?: () => string;
 };
 
-const TEXTO_GREET =
-  "Olá! Posso lançar gastos, consultar extrato ou corrigir um lançamento.";
+function textoGreet(primeiroNome?: string): string {
+  const ola = primeiroNome ? `Olá, ${primeiroNome}.` : "Olá.";
+  return `${ola} Sou o Xai. Posso lançar gastos, consultar extrato ou corrigir um lançamento.`;
+}
 
 function hashPlan(plan: ExecutionPlan): string {
   return createHash("sha256").update(JSON.stringify(plan)).digest("hex").slice(0, 32);
@@ -97,7 +99,47 @@ function textoDiagnostico(suspicion: string | undefined, ctx: ConversationContex
     : "O total vem da consulta atual. Peça a lista se quiser ver cada lançamento.";
 }
 
+function idsDaFaixaOrdinal(
+  de: number,
+  ate: number,
+  ctx: ConversationContext,
+): Array<{ id: string; label: string; ordinal: number }> {
+  const ini = Math.min(de, ate);
+  const fim = Math.max(de, ate);
+  const rows = ctx.result?.rows ?? [];
+  if (rows.length > 0) {
+    return rows
+      .filter((r) => r.ordinal >= ini && r.ordinal <= fim)
+      .map((r) => ({ id: r.entityId, label: r.label, ordinal: r.ordinal }));
+  }
+  const fallback = ctx.last_query?.result_ids ?? [];
+  return fallback.slice(ini - 1, fim).map((id, i) => ({
+    id,
+    label: String(ini + i),
+    ordinal: ini + i,
+  }));
+}
+
 function resolverHintResultado(hint: ResultRefHint, ctx: ConversationContext): ResolutionResult {
+  if (hint.by === "ordinal_range") {
+    const ini = Math.min(hint.de, hint.ate);
+    const fim = Math.max(hint.de, hint.ate);
+    if (ini === fim) return resolverHintResultado({ by: "ordinal", n: ini }, ctx);
+    const faixa = idsDaFaixaOrdinal(hint.de, hint.ate, ctx);
+    if (faixa.length === 0) return { status: "not_found", reason: "Não achei esses itens na lista." };
+    if (faixa.length === 1) {
+      return resolverHintResultado({ by: "ordinal", n: faixa[0]!.ordinal }, ctx);
+    }
+    return {
+      status: "ambiguous",
+      candidates: faixa.map((item) => ({
+        entity: { id: item.id, type: "transaction" as const, label: item.label },
+        confidence: 0.9,
+        method: "positional" as const,
+      })),
+    };
+  }
+
   const rows = ctx.result?.rows ?? [];
   const ids = rows.map((r) => r.entityId);
   const fallbackIds = ctx.last_query?.result_ids ?? [];
@@ -113,7 +155,7 @@ function resolverHintResultado(hint: ResultRefHint, ctx: ConversationContext): R
         entity: {
           id,
           type: row?.entityType ?? "transaction",
-          label: row?.label ?? `#${hint.n}`,
+          label: row?.label ?? String(hint.n),
         },
         confidence: 1,
         method: "positional",
@@ -377,8 +419,16 @@ export class AssistenteCoreV3 {
         query = estadoConsultaNovo({ grain: act.grain, sort: act.sort, limit: act.limit });
       } else {
         const ops: SlotOp[] = [{ op: "set", slot: "grain", value: act.grain }];
-        if (act.sort) ops.push({ op: "set", slot: "sort", value: act.sort });
-        if (act.limit != null) ops.push({ op: "set", slot: "limit", value: act.limit });
+        if (act.sort) {
+          ops.push({ op: "set", slot: "sort", value: act.sort });
+        } else if (act.grain === "list" || act.grain === "summary") {
+          ops.push({ op: "clear", slot: "sort" });
+        }
+        if (act.limit != null) {
+          ops.push({ op: "set", slot: "limit", value: act.limit });
+        } else if (act.grain === "list" || act.grain === "summary") {
+          ops.push({ op: "clear", slot: "limit" });
+        }
         query = applySlotOps(query, ops);
       }
     } else if (act.act === "refresh") {
@@ -425,6 +475,7 @@ export class AssistenteCoreV3 {
       undefined,
       { confirmRequired: false, confirmed: false },
       input.mensagem,
+      input.primeiroNome,
     );
   }
 
@@ -490,7 +541,12 @@ export class AssistenteCoreV3 {
 
       if (act.act === "greet") {
         await this.persistir(session.id, ctx, somenteLeitura);
-        return { resposta: TEXTO_GREET, sessaoId: session.id, traceId, diagnostico: { op: "greet" } };
+        return {
+          resposta: textoGreet(input.primeiroNome),
+          sessaoId: session.id,
+          traceId,
+          diagnostico: { op: "greet" },
+        };
       }
 
       if (act.act === "cancel") {
@@ -534,6 +590,40 @@ export class AssistenteCoreV3 {
       }
 
       if (act.act === "refer_result") {
+        if (act.hint.by === "ordinal_range") {
+          const faixa = idsDaFaixaOrdinal(act.hint.de, act.hint.ate, ctx);
+          if (faixa.length === 0) {
+            await this.persistir(session.id, ctx, somenteLeitura);
+            return {
+              resposta: "Não achei esses itens na lista.",
+              sessaoId: session.id,
+              traceId,
+              diagnostico: { blocked: true, reason: "not_found" },
+            };
+          }
+          if (faixa.length === 1) {
+            const item = faixa[0]!;
+            ctx = updateAfterReferenceResolved(
+              ctx,
+              { id: item.id, type: "transaction", label: item.label },
+              { agora: this.agoraMs() },
+            );
+            await this.persistir(session.id, ctx, somenteLeitura);
+            return {
+              resposta: `É o lançamento ${item.label}.`,
+              sessaoId: session.id,
+              traceId,
+              diagnostico: { op: "query", executed: true },
+            };
+          }
+          await this.persistir(session.id, ctx, somenteLeitura);
+          return {
+            resposta: faixa.map((item) => `${item.ordinal}. ${item.label}`).join("\n"),
+            sessaoId: session.id,
+            traceId,
+            diagnostico: { op: "query", executed: true },
+          };
+        }
         const resolvido = resolverHintResultado(act.hint, ctx);
         if (resolvido.status === "ambiguous") {
           await this.persistir(session.id, ctx, somenteLeitura);
@@ -637,6 +727,7 @@ export class AssistenteCoreV3 {
         alvo,
         { confirmRequired: false, confirmed: false },
         input.mensagem,
+        input.primeiroNome,
       );
     } catch (erro) {
       const message = erro instanceof Error ? erro.message : String(erro);
@@ -674,6 +765,50 @@ export class AssistenteCoreV3 {
     traceId: string,
     somenteLeitura: boolean,
   ): Promise<AssistenteOutput> {
+    if (act.act === "delete" && act.target?.by === "ordinal_range") {
+      const faixa = idsDaFaixaOrdinal(act.target.de, act.target.ate, ctx);
+      if (faixa.length === 0) {
+        await this.persistir(sessionId, ctx, somenteLeitura);
+        return {
+          resposta: "Não achei esses itens na lista.",
+          sessaoId: sessionId,
+          traceId,
+          diagnostico: { blocked: true, reason: "not_found" },
+        };
+      }
+      const commandResult = planCancelarLancamentos(faixa.map((item) => item.id));
+      if (!commandResult || commandResult.kind !== "plan") {
+        await this.persistir(sessionId, ctx, somenteLeitura);
+        return {
+          resposta: "Não consegui entender. Pode reformular?",
+          sessaoId: sessionId,
+          traceId,
+          diagnostico: { blocked: true, reason: "unplanned" },
+        };
+      }
+      const primeiro = faixa[0]!;
+      const alvoFaixa =
+        faixa.length === 1
+          ? { id: primeiro.id, type: "transaction" as const, label: primeiro.label }
+          : {
+              id: primeiro.id,
+              type: "transaction" as const,
+              label: `${faixa.length} lançamentos`,
+            };
+      return this.seguirPlano(
+        commandResult.plan,
+        sessionId,
+        ctx,
+        input.usuarioId,
+        traceId,
+        somenteLeitura,
+        alvoFaixa,
+        { confirmRequired: false, confirmed: false },
+        input.mensagem,
+        input.primeiroNome,
+      );
+    }
+
     let resolved = this.alvoDoAct(act, ctx);
     if ((!resolved || resolved.status !== "resolved") && understanding) {
       resolved = (await this.resolverAlvo(understanding, ctx, input.usuarioId)) ?? resolved;
@@ -737,6 +872,7 @@ export class AssistenteCoreV3 {
       alvo,
       { confirmRequired: false, confirmed: false },
       input.mensagem,
+      input.primeiroNome,
     );
   }
 
@@ -772,6 +908,10 @@ export class AssistenteCoreV3 {
         confirmMsg = decisao.message ?? confirmMsg;
       }
     }
+    const cancelamentos = plan.steps.filter((s) => s.command.type === "cancel_transaction");
+    if (precisaConfirm && cancelamentos.length > 1) {
+      confirmMsg = `Cancelar ${cancelamentos.length} lançamentos? Ação irreversível.`;
+    }
     if (precisaConfirm) {
       return {
         allowed: true,
@@ -794,6 +934,7 @@ export class AssistenteCoreV3 {
     alvo: EntityRef | undefined,
     confirmacao: { confirmRequired: boolean; confirmed: boolean },
     mensagem: string,
+    primeiroNome?: string,
   ): Promise<AssistenteOutput> {
     const policy = this.avaliarPlano(plan, alvo);
     if (!policy.allowed) {
@@ -836,7 +977,7 @@ export class AssistenteCoreV3 {
     return this.executar(plan, sessionId, ctx, usuarioId, traceId, somenteLeitura, alvo, {
       confirmRequired: confirmacao.confirmRequired || policy.confirm,
       confirmed: confirmacao.confirmed,
-    }, mensagem);
+    }, mensagem, primeiroNome);
   }
 
   private async executar(
@@ -849,6 +990,7 @@ export class AssistenteCoreV3 {
     alvo: EntityRef | undefined,
     confirmacao: { confirmRequired: boolean; confirmed: boolean },
     mensagem: string,
+    primeiroNome?: string,
   ): Promise<AssistenteOutput> {
     if (somenteLeitura) {
       const resposta = prefixar_nota_dia_semana(
@@ -870,6 +1012,8 @@ export class AssistenteCoreV3 {
       idempotencyKey: randomUUID(),
       traceId,
       stateVersion: ctx.version,
+      primeiroNome,
+      dataAtual: this.dataAtual(),
     });
 
     const comando = comandoPrincipal(plan);
@@ -972,6 +1116,7 @@ export class AssistenteCoreV3 {
       execucao.alvo,
       { confirmRequired: true, confirmed: true },
       input.mensagem,
+      input.primeiroNome,
     );
   }
 

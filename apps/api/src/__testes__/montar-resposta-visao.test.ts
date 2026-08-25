@@ -135,7 +135,7 @@ describe("montar_resposta_visao", () => {
     };
     const texto = montar_resposta_visao({ tipo: "fluxo", dados });
     expect(texto).toContain(`${formatarMoeda(100)} de pessoal usando dinheiro da empresa`);
-    expect(texto).toContain("detalhado");
+    expect(texto).not.toContain("detalhado");
     expect(texto).not.toContain("Churrasco");
   });
 
@@ -238,14 +238,17 @@ describe("montar_resposta_visao", () => {
       },
     });
 
-    expect(texto).toContain("Lançamentos de 14/08/2026 a 15/08/2026 (3):");
-    expect(texto).toContain(`Receitas ${formatarMoeda(2500)}`);
-    expect(texto).toContain("15/08/2026");
-    expect(texto).toContain(`- #aaaaaaaa · Almoço · - ${formatarMoeda(45)} · C6 Bank`);
-    expect(texto).toContain(`- #bbbbbbbb · Uber · - ${formatarMoeda(32)} · cartão Nubank`);
+    expect(texto).toMatch(/você teve/i);
+    expect(texto).toContain("14 de agosto");
+    expect(texto).toContain("15 de agosto");
+    expect(texto).toContain(formatarMoeda(2500));
+    expect(texto).toContain(`1. Almoço · - ${formatarMoeda(45)} · C6 Bank`);
+    expect(texto).toContain(`2. Uber · - ${formatarMoeda(32)} · cartão Nubank`);
     expect(texto).not.toContain("despesa");
     expect(texto).not.toContain("pessoal");
-    expect(texto).toContain("Cancela o #a1b2c3d4");
+    expect(texto).not.toContain("#aaaaaaaa");
+    expect(texto).not.toContain("Cancela o");
+    expect(texto).not.toContain("detalhado");
   });
 
   it("histórico em modo resumo mostra só totais", () => {
@@ -283,8 +286,8 @@ describe("montar_resposta_visao", () => {
       { detalhado: false },
     );
 
-    expect(texto).toContain(`Você gastou ${formatarMoeda(63.53)} com "Uber"`);
-    expect(texto).toContain("detalhado");
+    expect(texto).toContain(`Você teve ${formatarMoeda(63.53)} de saídas com "Uber"`);
+    expect(texto).not.toContain("detalhado");
     expect(texto).not.toContain("#aaaaaaaa");
     expect(texto).not.toContain("Cancela o");
   });
@@ -326,7 +329,7 @@ describe("montar_resposta_visao", () => {
       { escopoFluxo: "despesa" },
     );
 
-    expect(texto).toContain(`Você gastou ${formatarMoeda(434.38)}`);
+    expect(texto).toContain(`Você teve ${formatarMoeda(434.38)} de saídas`);
     expect(texto).toContain("1/10");
     expect(texto).toContain(`total ${formatarMoeda(4343.8)}`);
     expect(texto).toContain("cartão Mercado Pago");
@@ -351,8 +354,9 @@ describe("montar_resposta_visao", () => {
       { detalhado: false, escopoFluxo: "despesa" },
     );
 
-    expect(texto).toContain(`Você gastou ${formatarMoeda(120)}`);
+    expect(texto).toContain(`Você teve ${formatarMoeda(120)} de saídas`);
     expect(texto).not.toContain("receitas");
+    expect(texto).not.toContain("detalhado");
   });
 
   it("escopo receita não menciona despesas no resumo", () => {
@@ -373,9 +377,10 @@ describe("montar_resposta_visao", () => {
       { detalhado: false, escopoFluxo: "receita" },
     );
 
-    expect(texto).toContain(`Você recebeu ${formatarMoeda(78511.16)}`);
+    expect(texto).toContain(`Você teve ${formatarMoeda(78511.16)} de entradas`);
     expect(texto).not.toContain("despesas");
     expect(texto).not.toContain("saldo");
+    expect(texto).not.toContain("detalhado");
   });
 
   it("informa quando o histórico do período está vazio", () => {
@@ -392,7 +397,7 @@ describe("montar_resposta_visao", () => {
         dias: [],
       },
     });
-    expect(texto).toBe("Não encontrei lançamentos nesse período.");
+    expect(texto).toBe("Não houve lançamentos de 1 de janeiro a 31 de janeiro.");
   });
 
   it("oferece paginação com mais quando há itens omitidos", () => {
@@ -429,6 +434,7 @@ describe("montar_resposta_visao", () => {
     expect(texto).toContain("mostrando 1–1 de 45");
     expect(texto).toContain('Diga "mais" para ver os próximos');
     expect(texto).not.toContain("Peça um intervalo menor para ver todos");
+    expect(texto).not.toContain("Cancela o");
   });
 
   it("marca continuação quando há deslocamento", () => {
@@ -464,5 +470,217 @@ describe("montar_resposta_visao", () => {
 
     expect(texto).toContain("Próximos lançamentos");
     expect(texto).toContain("mostrando 41–41 de 45");
+  });
+
+  it("destaque top lista a maior entrada em vez de somar o dia", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-24", ate: "2026-08-24" },
+          totalReceitas: 4734.05,
+          totalDespesas: 0,
+          saldoPeriodo: 4734.05,
+          totalItens: 2,
+          itensOmitidos: 1,
+          deslocamento: 0,
+          dias: [
+            {
+              data: "2026-08-24",
+              itens: [
+                {
+                  id: "aaaaaaaa-1111-2222-3333-444455556666",
+                  descricao: "PIX CLIENTE",
+                  tipo: "receita",
+                  valor: 7453,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { detalhado: false, escopoFluxo: "receita", destaque: "top", sentido: "desc" },
+    );
+
+    expect(texto).toContain(`A maior entrada em 24 de agosto foi ${formatarMoeda(7453)}`);
+    expect(texto).toContain("PIX CLIENTE");
+    expect(texto).not.toMatch(/você teve/i);
+    expect(texto).not.toContain(formatarMoeda(4734.05));
+    expect(texto).not.toContain("2 lançamentos");
+    expect(texto).not.toContain("#aaaaaaaa");
+  });
+
+  it("lista limitada não usa o cabeçalho de soma do período", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-24", ate: "2026-08-24" },
+          totalReceitas: 8000,
+          totalDespesas: 120,
+          saldoPeriodo: 7880,
+          totalItens: 10,
+          itensOmitidos: 7,
+          deslocamento: 0,
+          dias: [
+            {
+              data: "2026-08-24",
+              itens: [
+                {
+                  id: "aaaaaaaa-1111-2222-3333-444455556666",
+                  descricao: "Pix",
+                  tipo: "receita",
+                  valor: 500,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+                {
+                  id: "bbbbbbbb-1111-2222-3333-444455556666",
+                  descricao: "Almoço",
+                  tipo: "despesa",
+                  valor: 65,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+                {
+                  id: "cccccccc-1111-2222-3333-444455556666",
+                  descricao: "Uber",
+                  tipo: "despesa",
+                  valor: 32,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        listaLimitada: true,
+        ordenacaoLista: { by: "data", dir: "desc" },
+        escopoFluxo: "ambos",
+      },
+    );
+
+    expect(texto).toContain("Últimos 3 lançamentos em 24 de agosto:");
+    expect(texto).toContain("1. Pix");
+    expect(texto).not.toMatch(/você (teve|recebeu|gastou)/i);
+    expect(texto).not.toContain(formatarMoeda(8000));
+    expect(texto).not.toContain("#aaaaaaaa");
+  });
+
+  it("vocativo no resumo e no vazio, não na lista", () => {
+    const dados = {
+      periodo: { de: "2026-08-25", ate: "2026-08-25" },
+      totalReceitas: 100,
+      totalDespesas: 0,
+      saldoPeriodo: 100,
+      totalItens: 1,
+      itensOmitidos: 0,
+      deslocamento: 0,
+      dias: [
+        {
+          data: "2026-08-25",
+          itens: [
+            {
+              id: "aaaaaaaa-1111-2222-3333-444455556666",
+              descricao: "Pix",
+              tipo: "receita" as const,
+              valor: 100,
+              perfil: "pj" as const,
+              contaNome: "Mercado Pago",
+              cartaoNome: null,
+              categoriaNome: null,
+            },
+          ],
+        },
+      ],
+    };
+    const resumo = montar_resposta_visao(
+      { tipo: "historico", dados },
+      { detalhado: false, escopoFluxo: "receita", primeiroNome: "Ana", dataAtual: "2026-08-25" },
+    );
+    expect(resumo).toMatch(/^Ana, você teve/);
+    expect(resumo).toContain("hoje, 25 de agosto");
+    expect(resumo).not.toContain("Pix");
+
+    const lista = montar_resposta_visao(
+      { tipo: "historico", dados },
+      { detalhado: true, escopoFluxo: "receita", primeiroNome: "Ana", dataAtual: "2026-08-25" },
+    );
+    expect(lista).not.toMatch(/^Ana,/);
+    expect(lista).toContain("1. Pix");
+
+    const vazio = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          ...dados,
+          totalReceitas: 0,
+          totalItens: 0,
+          dias: [],
+        },
+      },
+      {
+        escopoFluxo: "despesa",
+        primeiroNome: "Ana",
+        dataAtual: "2026-08-25",
+        contraparteVazio: { entradas: 3, saidas: 0 },
+      },
+    );
+    expect(vazio).toMatch(/^Ana, não houve saídas hoje, 25 de agosto/);
+    expect(vazio).toContain("Nesse dia houve só 3 entradas");
+  });
+
+  it("inclui hora e Pix na linha quando existem no item", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-24", ate: "2026-08-24" },
+          totalReceitas: 2548.12,
+          totalDespesas: 0,
+          saldoPeriodo: 2548.12,
+          totalItens: 1,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [
+            {
+              data: "2026-08-24",
+              itens: [
+                {
+                  id: "aaaaaaaa-1111-2222-3333-444455556666",
+                  descricao: "CLAIR BOBATO LOPES",
+                  tipo: "receita",
+                  valor: 2548.12,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                  hora: "14:32",
+                  formaPagamento: "pix",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { escopoFluxo: "receita", dataAtual: "2026-08-25" },
+    );
+    expect(texto).toContain("1. CLAIR BOBATO LOPES · +");
+    expect(texto).toContain("14:32");
+    expect(texto).toContain("Pix");
+    expect(texto).toContain("Mercado Pago");
+    expect(texto).toContain("ontem, 24 de agosto");
   });
 });

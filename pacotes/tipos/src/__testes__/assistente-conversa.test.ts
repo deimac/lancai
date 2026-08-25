@@ -23,6 +23,21 @@ describe("QueryState adapter", () => {
     expect(query.grain).toBe("summary");
     expect(query.period).toBeUndefined();
   });
+
+  it("grain top não vira soma no spec", () => {
+    const query = estadoConsultaNovo({
+      grain: "top",
+      tipos: ["receita"],
+      sort: { by: "valor", dir: "desc" },
+      limit: 1,
+    });
+    const spec = queryStateToSpec(query);
+    expect(spec.aggregation).toBe("max");
+    expect(spec.limit).toBe(1);
+    expect(spec.orderBy).toBe("valor");
+    expect(spec.orderDir).toBe("desc");
+    expect(queryStateFromSpec(spec).grain).toBe("top");
+  });
 });
 
 describe("DialogueActSchema", () => {
@@ -36,5 +51,17 @@ describe("DialogueActSchema", () => {
 
   it("rejeita act desconhecido em vez de crashar o Core", () => {
     expect(DialogueActSchema.safeParse({ act: "chat" }).success).toBe(false);
+  });
+
+  it("aceita delete por ordinal e faixa", () => {
+    expect(
+      DialogueActSchema.parse({ act: "delete", target: { by: "ordinal", n: 2 } }),
+    ).toMatchObject({ act: "delete", target: { by: "ordinal", n: 2 } });
+    expect(
+      DialogueActSchema.parse({
+        act: "delete",
+        target: { by: "ordinal_range", de: 1, ate: 5 },
+      }),
+    ).toMatchObject({ act: "delete", target: { by: "ordinal_range", de: 1, ate: 5 } });
   });
 });

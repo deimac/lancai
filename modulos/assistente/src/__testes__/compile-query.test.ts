@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { estadoConsultaNovo } from "@lancai/tipos";
 import { applySlotOps } from "../agente/apply-slot-ops";
 import { compileQuery, visaoDeQueryState } from "../agente/compile-query";
+import { montarPromptSistemaDialogueAct } from "../prompts/dialogue-act";
 
 const USER = "00000000-0000-4000-8000-000000000001";
 
@@ -51,5 +52,81 @@ describe("compileQuery", () => {
       dataAtual: "2026-08-24",
     });
     expect(compiled.filtros.periodo).toBeUndefined();
+  });
+
+  it("grain top ordena por valor desc e limita a 1", () => {
+    const query = applySlotOps(
+      estadoConsultaNovo({
+        origemPerfil: "pj",
+        tipos: ["despesa"],
+        grain: "list",
+        period: { tipo: "personalizado", de: "2026-08-24", ate: "2026-08-24" },
+      }),
+      [
+        { op: "set", slot: "tipos", value: ["receita"] },
+        { op: "set", slot: "grain", value: "top" },
+      ],
+    );
+    const compiled = compileQuery(query, { usuarioId: USER, dataAtual: "2026-08-24" });
+    expect(compiled.visao).toBe("historico");
+    expect(compiled.filtros.tipos).toEqual(["receita"]);
+    expect(compiled.filtros.origemPerfil).toBe("pj");
+    expect(compiled.opcoes.ordenacao).toEqual({ by: "valor", dir: "desc" });
+    expect(compiled.opcoes.limite).toBe(1);
+  });
+
+  it("grain list honra sort e limit", () => {
+    const query = estadoConsultaNovo({
+      grain: "list",
+      period: { tipo: "personalizado", de: "2026-08-24", ate: "2026-08-24" },
+      sort: { by: "data", dir: "desc" },
+      limit: 3,
+    });
+    const compiled = compileQuery(query, { usuarioId: USER, dataAtual: "2026-08-24" });
+    expect(compiled.opcoes.ordenacao).toEqual({ by: "data", dir: "desc" });
+    expect(compiled.opcoes.limite).toBe(3);
+  });
+
+  it("grain top com sort asc é o menor, não o maior", () => {
+    const compiled = compileQuery(
+      estadoConsultaNovo({
+        grain: "top",
+        tipos: ["despesa"],
+        sort: { by: "valor", dir: "asc" },
+        limit: 1,
+      }),
+      { usuarioId: USER, dataAtual: "2026-08-24" },
+    );
+    expect(compiled.opcoes.ordenacao).toEqual({ by: "valor", dir: "asc" });
+    expect(compiled.opcoes.limite).toBe(1);
+  });
+
+  it("grain summary ignora sort e limit", () => {
+    const query = estadoConsultaNovo({
+      grain: "summary",
+      tipos: ["despesa"],
+      sort: { by: "valor", dir: "desc" },
+      limit: 3,
+    });
+    const compiled = compileQuery(query, { usuarioId: USER, dataAtual: "2026-08-24" });
+    expect(compiled.opcoes.ordenacao).toBeUndefined();
+    expect(compiled.opcoes.limite).toBeUndefined();
+  });
+});
+
+describe("prompt DialogueAct", () => {
+  it("ensina operações de grain sem atalho de frase", () => {
+    const system = montarPromptSistemaDialogueAct();
+    expect(system).toMatch(/maior entrada/i);
+    expect(system).toMatch(/grain=top/);
+    expect(system).toMatch(/"value":"top"/);
+    expect(system).toMatch(/NÃO use summary/i);
+    expect(system).toMatch(/últimos N/i);
+    expect(system).toContain('"grain":"list"');
+    expect(system).toMatch(/entradas menos saídas/i);
+    expect(system).toMatch(/entityDomain":"accounts/);
+    expect(system).toContain("change_grain");
+    expect(system).toMatch(/cancela o 1/i);
+    expect(system).toContain("ordinal_range");
   });
 });

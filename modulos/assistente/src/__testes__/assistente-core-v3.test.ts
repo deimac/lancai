@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ConversationUnderstandingSchema } from "@lancai/tipos";
+import { ConversationContextSchema, ConversationUnderstandingSchema, type QueryState } from "@lancai/tipos";
 import { documentoMistoDeContextoV3 } from "../agente/documento-misto";
-import { MOVIMENTO_UBER, contextoAposConsultaUber } from "./casos-understanding";
+import {
+  AGORA,
+  MOVIMENTO_UBER,
+  MOVIMENTO_UBER_B,
+  contextoListaTresUbers,
+  contextoAposConsultaUber,
+} from "./casos-understanding";
 import { criarAssistenteCoreV3Teste } from "./helpers-assistente-v3";
 import { IDS } from "./helpers-assistente";
 
@@ -121,7 +127,65 @@ describe("AssistenteCoreV3", () => {
     });
     expect(r.diagnostico?.op).toBe("greet");
     expect(r.resposta).toMatch(/olá/i);
+    expect(r.resposta).toMatch(/Xai/);
     expect(r.diagnostico?.executed).toBeFalsy();
+  });
+
+  it("greet inclui o primeiro nome quando informado", async () => {
+    const { core } = criarAssistenteCoreV3Teste();
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "Oi, tudo bem?",
+      canal: "web",
+      primeiroNome: "Ana",
+    });
+    expect(r.resposta).toMatch(/Olá, Ana/);
+    expect(r.resposta).toMatch(/Xai/);
+  });
+
+  it("delete do 1 ao 2 pede uma confirmação para o conjunto", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      acts: {
+        "cancela do 1 ao 2": {
+          act: "delete",
+          target: { by: "ordinal_range", de: 1, ate: 2 },
+        },
+      },
+    });
+    const ctx = ConversationContextSchema.parse({
+      ...contextoListaTresUbers(),
+      result: {
+        queryHash: "q",
+        generatedAt: AGORA,
+        stale: false,
+        summary: { count: 2 },
+        rows: [
+          {
+            ordinal: 1,
+            entityType: "transaction",
+            entityId: MOVIMENTO_UBER,
+            label: "Uber A",
+            amount: 42,
+          },
+          {
+            ordinal: 2,
+            entityType: "transaction",
+            entityId: MOVIMENTO_UBER_B,
+            label: "Uber B",
+            amount: 50,
+          },
+        ],
+      },
+    });
+    const doc = await repo.createDocumento(IDS.user, documentoMistoDeContextoV3(ctx));
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "cancela do 1 ao 2",
+      sessaoId: doc.id,
+      canal: "web",
+    });
+    expect(r.diagnostico?.confirm).toBe(true);
+    expect(r.resposta).toMatch(/2 lançamentos/i);
   });
 
   it("duplicata WhatsApp não reprocessa", async () => {
@@ -227,6 +291,166 @@ describe("AssistenteCoreV3", () => {
       grain: "list",
       period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
     });
+  });
+
+  it("e hoje qual foi a maior entrada? vira grain top de receita, não soma", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      acts: {
+        "saídas da conta da empresa ontem": {
+          act: "new_query",
+          query: {
+            grain: "summary",
+            tipos: ["despesa"],
+            origemPerfil: "pj",
+            period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+          },
+        },
+        "e hoje qual foi a maior entrada?": {
+          act: "patch_query",
+          ops: [
+            { op: "set", slot: "period", value: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" } },
+            { op: "set", slot: "tipos", value: ["receita"] },
+            { op: "set", slot: "grain", value: "top" },
+            { op: "set", slot: "sort", value: { by: "valor", dir: "desc" } },
+            { op: "set", slot: "limit", value: 1 },
+          ],
+        },
+      },
+    });
+
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "saídas da conta da empresa ontem",
+      canal: "web",
+    });
+    expect(r1.diagnostico?.op).toBe("query");
+
+    const r2 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "e hoje qual foi a maior entrada?",
+      sessaoId: r1.sessaoId,
+      canal: "web",
+    });
+    expect(r2.diagnostico?.op).toBe("query");
+    expect(r2.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r2.sessaoId);
+    expect(doc?.documento.query).toMatchObject({
+      origemPerfil: "pj",
+      tipos: ["receita"],
+      grain: "top",
+      limit: 1,
+      sort: { by: "valor", dir: "desc" },
+    });
+  });
+
+  it("os 3 últimos de hoje persistem grain list com limit 3", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      acts: {
+        "me mostre os 3 últimos lançamentos de hoje": {
+          act: "new_query",
+          query: {
+            grain: "list",
+            period: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" },
+            sort: { by: "data", dir: "desc" },
+            limit: 3,
+          },
+        },
+      },
+    });
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "me mostre os 3 últimos lançamentos de hoje",
+      canal: "web",
+    });
+    expect(r.diagnostico?.op).toBe("query");
+    const doc = await repo.getDocumento(r.sessaoId);
+    const query = doc?.documento.query as QueryState | undefined;
+    expect(query).toMatchObject({
+      grain: "list",
+      limit: 3,
+      sort: { by: "data", dir: "desc" },
+    });
+    expect(query?.tipos).toBeUndefined();
+  });
+
+  it("resultado de hoje é summary sem tipos (entradas menos saídas)", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      acts: {
+        "saídas da conta da empresa ontem": {
+          act: "new_query",
+          query: {
+            grain: "summary",
+            tipos: ["despesa"],
+            origemPerfil: "pj",
+            period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+          },
+        },
+        "qual o resultado de hoje?": {
+          act: "patch_query",
+          ops: [
+            { op: "set", slot: "period", value: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" } },
+            { op: "set", slot: "grain", value: "summary" },
+            { op: "clear", slot: "tipos" },
+          ],
+        },
+      },
+    });
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "saídas da conta da empresa ontem",
+      canal: "web",
+    });
+    const r2 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "qual o resultado de hoje?",
+      sessaoId: r1.sessaoId,
+      canal: "web",
+    });
+    expect(r2.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r2.sessaoId);
+    const query = doc?.documento.query as QueryState | undefined;
+    expect(query).toMatchObject({
+      origemPerfil: "pj",
+      grain: "summary",
+      period: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" },
+    });
+    expect(query?.tipos).toBeUndefined();
+  });
+
+  it("detalhado depois do maior limpa sort e limit", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      acts: {
+        "qual foi a maior entrada?": {
+          act: "new_query",
+          query: {
+            grain: "top",
+            tipos: ["receita"],
+            sort: { by: "valor", dir: "desc" },
+            limit: 1,
+            period: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" },
+          },
+        },
+        "mostre detalhado": { act: "change_grain", grain: "list" },
+      },
+    });
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "qual foi a maior entrada?",
+      canal: "web",
+    });
+    const r2 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "mostre detalhado",
+      sessaoId: r1.sessaoId,
+      canal: "web",
+    });
+    expect(r2.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r2.sessaoId);
+    const query = doc?.documento.query as QueryState | undefined;
+    expect(query?.grain).toBe("list");
+    expect(query?.sort).toBeUndefined();
+    expect(query?.limit).toBeUndefined();
+    expect(query?.tipos).toEqual(["receita"]);
   });
 
   it("write só com DialogueAct pede confirmação e executa no sim", async () => {

@@ -11,11 +11,36 @@ export type CompileQueryInput = {
   dataAtual: string;
 };
 
+export type OrdenacaoHistorico = { by: "valor" | "data" | "descricao"; dir: "asc" | "desc" };
+
+export type OpcoesConsultaCompilada = {
+  deslocamento: number;
+  ordenacao?: OrdenacaoHistorico;
+  limite?: number;
+};
+
 export type ConsultaCompilada = {
   visao: TipoVisao;
   filtros: FiltrosVisaoResolvidos;
-  opcoes: { deslocamento: number };
+  opcoes: OpcoesConsultaCompilada;
 };
+
+const TOP_PADRAO: OrdenacaoHistorico = { by: "valor", dir: "desc" };
+
+export function opcoesDeQuery(query: QueryState): OpcoesConsultaCompilada {
+  const opcoes: OpcoesConsultaCompilada = { deslocamento: query.offset ?? 0 };
+  if (query.grain === "summary") return opcoes;
+  if (query.grain === "top") {
+    opcoes.ordenacao = query.sort ?? TOP_PADRAO;
+    opcoes.limite = query.limit ?? 1;
+    return opcoes;
+  }
+  if (query.grain === "list") {
+    if (query.sort) opcoes.ordenacao = query.sort;
+    if (query.limit != null) opcoes.limite = query.limit;
+  }
+  return opcoes;
+}
 
 export function visaoDeQueryState(query: QueryState): TipoVisao {
   if (query.cruzado || query.direcao) return "fluxo";
@@ -50,7 +75,7 @@ export function compileQuery(query: QueryState, ctx: CompileQueryInput): Consult
   return {
     visao,
     filtros,
-    opcoes: { deslocamento: query.offset ?? 0 },
+    opcoes: opcoesDeQuery(query),
   };
 }
 

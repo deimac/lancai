@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ConversationUnderstandingSchema, type ResolutionResult } from "@lancai/tipos";
-import { planCommand, planCommandFromAct } from "../agente/command-planner";
-import { CASOS_UNDERSTANDING, DATA_ATUAL, MOVIMENTO_UBER } from "./casos-understanding";
+import { planCommand, planCommandFromAct, planCancelarLancamentos } from "../agente/command-planner";
+import { CASOS_UNDERSTANDING, DATA_ATUAL, MOVIMENTO_UBER, MOVIMENTO_UBER_B } from "./casos-understanding";
 
 function caso(id: string) {
   const c = CASOS_UNDERSTANDING.find((x) => x.id === id);
@@ -173,5 +173,18 @@ describe("planCommandFromAct", () => {
   it("delete sem alvo → unresolved", () => {
     const r = planCommandFromAct({ act: "delete" });
     expect(r?.kind).toBe("unresolved");
+  });
+});
+
+describe("planCancelarLancamentos", () => {
+  it("monta um step por id", () => {
+    const r = planCancelarLancamentos([MOVIMENTO_UBER, MOVIMENTO_UBER_B]);
+    expect(r.kind).toBe("plan");
+    if (r.kind !== "plan") return;
+    expect(r.plan.steps).toHaveLength(2);
+    expect(r.plan.steps.map((s) => s.command)).toEqual([
+      { type: "cancel_transaction", input: { movementId: MOVIMENTO_UBER } },
+      { type: "cancel_transaction", input: { movementId: MOVIMENTO_UBER_B } },
+    ]);
   });
 });

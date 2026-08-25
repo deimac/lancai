@@ -90,6 +90,24 @@ function planoDe(command: SimpleCommand, description: string): CommandPlanResult
   };
 }
 
+export function planCancelarLancamentos(ids: string[]): Exclude<CommandPlanResult, null> {
+  const validos = ids.filter((id) => UUID.test(id));
+  if (validos.length === 0) {
+    return { kind: "unresolved", resolution: { status: "not_found", reason: "Alvo não resolvido" } };
+  }
+  return {
+    kind: "plan",
+    plan: CommandPlanSchema.parse({
+      type: "command",
+      steps: validos.map((movementId, i) => ({
+        stepId: String(i + 1),
+        command: { type: "cancel_transaction", input: { movementId } },
+        description: "Cancelar lançamento",
+      })),
+    }),
+  };
+}
+
 function precisaAlvo(understanding: ConversationUnderstanding): boolean {
   const intent = understanding.question?.intent;
   if (intent === "update" || intent === "delete") return true;

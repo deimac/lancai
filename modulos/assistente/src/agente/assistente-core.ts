@@ -24,6 +24,8 @@ export interface AssistenteInput {
   intencaoPrevia?: Partial<UserRequest>;
   /** Shadow V3: não executa comando, não CAS, não marca messageId. */
   somenteLeitura?: boolean;
+  /** Primeiro nome do cadastro, se parecer pessoa física. */
+  primeiroNome?: string;
 }
 
 export interface AssistenteOutput {

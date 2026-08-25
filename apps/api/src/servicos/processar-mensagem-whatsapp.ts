@@ -6,6 +6,7 @@ import { eh_jid_grupo, extrair_telefone_whatsapp } from "./telefone-whatsapp";
 import { obterAssistenteCore } from "./assistente-v2";
 import { obterAssistenteCoreV3 } from "./assistente-v3";
 import { gravar_turno_chat } from "./gravar-turno-chat";
+import { primeiroNomeVocativo } from "./primeiro-nome-usuario";
 import { isFlagEnabled } from "../config/feature-flags";
 
 let evolutionSingleton: EvolutionService | null = null;
@@ -81,12 +82,15 @@ export async function processar_mensagem_whatsapp(
     return { processado: false, motivo: "nao_autorizado" };
   }
 
+  const primeiroNome = primeiroNomeVocativo(usuario.nome);
+
   if (isFlagEnabled("ASSISTENTE_V3_ASSISTANT")) {
     const v3 = await obterAssistenteCoreV3().processar({
       usuarioId: usuario.id,
       mensagem: mensagem_para_v3(texto, entrada.intencaoPrevia),
       canal: "whatsapp",
       messageId: entrada.messageId,
+      primeiroNome,
     });
     if (!v3.duplicata) {
       await gravar_turno_chat({
@@ -126,6 +130,7 @@ export async function processar_mensagem_whatsapp(
           canal: "whatsapp",
           messageId: entrada.messageId,
           somenteLeitura: true,
+          primeiroNome,
         })
         .then((v3) => {
           console.info("[assistant-v3] Shadow comparison", {
@@ -163,6 +168,7 @@ export async function processar_mensagem_whatsapp(
         canal: "whatsapp",
         messageId: entrada.messageId,
         somenteLeitura: true,
+        primeiroNome,
       })
       .then((v3) => {
         console.info("[assistant-v3] Shadow comparison", {

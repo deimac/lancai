@@ -5,6 +5,7 @@ import {
   descricao_mais_completa,
   eh_movimento_parcelado,
   enxugar_indice_parcela,
+  formatarHoraBrasil,
   paraNumero,
   schemaFiltrosVisaoResolvidos,
   somar,
@@ -34,6 +35,10 @@ export { LIMITE_ITENS_HISTORICO };
 export type OpcoesConsultaVisao = {
   /** Histórico: quantos itens pular (paginação via “mais”). */
   deslocamento?: number;
+  /** Histórico: ordenação (grain `top` usa valor desc). */
+  ordenacao?: { by: "valor" | "data" | "descricao"; dir: "asc" | "desc" };
+  /** Histórico: tamanho da página. Grain `top` usa 1 por padrão. */
+  limite?: number;
 };
 
 /** Normaliza para filtro por descrição/estabelecimento (ex.: Uber ≈ uber). */
@@ -125,7 +130,7 @@ export class ModuloRelatorios {
       case "historico":
         return {
           tipo: "historico",
-          dados: await this.consultar_historico(filtros, dataAtual, opcoes.deslocamento ?? 0),
+          dados: await this.consultar_historico(filtros, dataAtual, opcoes),
         };
     }
   }
@@ -438,10 +443,14 @@ export class ModuloRelatorios {
   private async consultar_historico(
     filtros: FiltrosVisaoResolvidos,
     dataAtual: string,
-    deslocamentoBruto = 0,
+    opcoes: OpcoesConsultaVisao = {},
   ) {
     const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
-    const deslocamento = Math.max(0, Math.floor(deslocamentoBruto));
+    const deslocamento = Math.max(0, Math.floor(opcoes.deslocamento ?? 0));
+    const tamanhoPagina =
+      opcoes.limite != null
+        ? Math.min(Math.max(1, Math.floor(opcoes.limite)), LIMITE_ITENS_HISTORICO)
+        : LIMITE_ITENS_HISTORICO;
 
     const [movimentosBrutos, contas, cartoes, categorias] = await Promise.all([
       this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo })),
@@ -458,14 +467,9 @@ export class ModuloRelatorios {
     const mapaCartoes = new Map(cartoes.map((cartao) => [cartao.id, cartao.nome]));
     const mapaCategorias = new Map(categorias.map((categoria) => [categoria.id, categoria.nome]));
 
-    const ordenados = [...movimentos].sort((a, b) => {
-      const porData = b.dataMovimento.localeCompare(a.dataMovimento);
-      if (porData !== 0) return porData;
-      const instanteA = a.ocorridoEmInstante?.getTime() ?? 0;
-      const instanteB = b.ocorridoEmInstante?.getTime() ?? 0;
-      if (instanteA !== instanteB) return instanteB - instanteA;
-      return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
-    });
+    const ordenados = [...movimentos].sort((a, b) =>
+      comparar_movimentos_historico(a, b, opcoes.ordenacao),
+    );
 
     const totalReceitas = ordenados
       .filter((movimento) => movimento.tipo === "receita")
@@ -476,7 +480,7 @@ export class ModuloRelatorios {
 
     const totalItens = ordenados.length;
     const deslocamentoEfetivo = Math.min(deslocamento, totalItens);
-    const exibidos = ordenados.slice(deslocamentoEfetivo, deslocamentoEfetivo + LIMITE_ITENS_HISTORICO);
+    const exibidos = ordenados.slice(deslocamentoEfetivo, deslocamentoEfetivo + tamanhoPagina);
     const itensOmitidos = Math.max(0, totalItens - deslocamentoEfetivo - exibidos.length);
 
     const porDia = new Map<string, ItemHistorico[]>();
@@ -489,6 +493,10 @@ export class ModuloRelatorios {
         parcelaTotal,
         parcelaCompraValor: movimento.parcelaCompraValor,
       });
+      const horaBruta = movimento.ocorridoEmInstante
+        ? formatarHoraBrasil(movimento.ocorridoEmInstante)
+        : "";
+      const hora = horaBruta && horaBruta !== "00:00" ? horaBruta : undefined;
       const item: ItemHistorico = {
         id: movimento.id,
         descricao: movimento.descricao,
@@ -501,6 +509,8 @@ export class ModuloRelatorios {
         parcelaNumero,
         parcelaTotal,
         parcelaCompraValor,
+        hora,
+        formaPagamento: movimento.formaPagamento ?? undefined,
       };
       const itensDoDia = porDia.get(movimento.dataMovimento) ?? [];
       itensDoDia.push(item);
@@ -523,6 +533,30 @@ export class ModuloRelatorios {
       dias,
     };
   }
+}
+
+function comparar_movimentos_historico(
+  a: { id: string; valor: string; descricao: string; dataMovimento: string; ocorridoEmInstante?: Date | null },
+  b: { id: string; valor: string; descricao: string; dataMovimento: string; ocorridoEmInstante?: Date | null },
+  ordenacao?: OpcoesConsultaVisao["ordenacao"],
+): number {
+  const dir = ordenacao?.dir === "asc" ? 1 : -1;
+  if (ordenacao?.by === "valor") {
+    const delta = paraNumero(a.valor) - paraNumero(b.valor);
+    if (delta !== 0) return dir * delta;
+  } else if (ordenacao?.by === "descricao") {
+    const porNome = a.descricao.localeCompare(b.descricao, "pt-BR");
+    if (porNome !== 0) return dir * porNome;
+  } else {
+    const porData = a.dataMovimento.localeCompare(b.dataMovimento);
+    if (porData !== 0) return (ordenacao?.by === "data" ? dir : -1) * porData;
+    const instanteA = a.ocorridoEmInstante?.getTime() ?? 0;
+    const instanteB = b.ocorridoEmInstante?.getTime() ?? 0;
+    if (instanteA !== instanteB) {
+      return (ordenacao?.by === "data" ? dir : -1) * (instanteA - instanteB);
+    }
+  }
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
 function moda_valor(valores: number[]): number {

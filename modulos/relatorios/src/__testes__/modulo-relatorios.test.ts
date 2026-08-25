@@ -710,6 +710,7 @@ describe("ModuloRelatorios", () => {
         descricao: "Almoço",
         contaNome: "C6 Bank",
         cartaoNome: null,
+        hora: "09:00",
       });
     });
 
@@ -928,6 +929,42 @@ describe("ModuloRelatorios", () => {
 
       expect(dados.totalItens).toBe(0);
       expect(dados.dias).toEqual([]);
+    });
+
+    it("ordena por valor desc e respeita limite 1 (maior entrada)", async () => {
+      const conta = criarConta(usuarioId);
+      repositorio.contas.set(conta.id, conta);
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "PIX menor",
+          tipo: "receita",
+          valor: "2000.00",
+          contaId: conta.id,
+          dataMovimento: DATA_ATUAL,
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "PIX maior",
+          tipo: "receita",
+          valor: "7453.00",
+          contaId: conta.id,
+          dataMovimento: DATA_ATUAL,
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, { tipos: ["receita"], periodo: { de: DATA_ATUAL, ate: DATA_ATUAL } }),
+        DATA_ATUAL,
+        { ordenacao: { by: "valor", dir: "desc" }, limite: 1 },
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+      expect(dados.totalItens).toBe(2);
+      expect(dados.dias.flatMap((dia) => dia.itens).map((item) => item.descricao)).toEqual(["PIX maior"]);
+      expect(dados.dias[0]?.itens[0]?.valor).toBe(7453);
     });
   });
 });

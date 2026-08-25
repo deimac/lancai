@@ -352,7 +352,7 @@ export async function montar_resposta_chat(
           ? escopo_dos_tipos(intencao.filtros.tipos)
           : "ambos";
       return prefixar_nota_dia_semana(
-        montar_resposta_visao(resultado, { detalhado, escopoFluxo }),
+        montar_resposta_visao(resultado, { detalhado, escopoFluxo, dataAtual: contexto.dataAtual }),
         contexto.mensagem ?? "",
         contexto.dataAtual,
       );

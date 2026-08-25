@@ -94,7 +94,7 @@ export interface ResultadoEvolucao {
 }
 
 export interface ItemHistorico {
-  /** UUID do movimento — usado para montar o código curto no chat. */
+  /** UUID do movimento — associação interna; o chat mostra o ordinal. */
   id: string;
   descricao: string;
   tipo: string;
@@ -105,6 +105,10 @@ export interface ItemHistorico {
   /** Prefixo amigável fica na formatação ("cartão X"); aqui só o nome. */
   cartaoNome: string | null;
   categoriaNome: string | null;
+  /** Hora civil `HH:mm` no fuso do app; omitida se só houver o dia. */
+  hora?: string | null;
+  /** Meio de pagamento do movimento, se gravado. Não inventar. */
+  formaPagamento?: string | null;
   /** Parcela OF/manual no próprio movimento (`parcela_numero`). */
   parcelaNumero?: number | null;
   parcelaTotal?: number | null;

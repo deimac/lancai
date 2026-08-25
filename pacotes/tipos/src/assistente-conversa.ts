@@ -103,6 +103,11 @@ export type SlotOp = z.infer<typeof SlotOpSchema>;
 
 export const ResultRefHintSchema = z.discriminatedUnion("by", [
   z.object({ by: z.literal("ordinal"), n: z.number().int().positive() }),
+  z.object({
+    by: z.literal("ordinal_range"),
+    de: z.number().int().positive(),
+    ate: z.number().int().positive(),
+  }),
   z.object({ by: z.literal("amount"), value: z.number() }),
   z.object({ by: z.literal("label"), text: z.string().min(1) }),
   z.object({ by: z.literal("type"), entityType: resultEntityTypeSchema }),
@@ -210,6 +215,7 @@ function omitUndefined<T extends Record<string, unknown>>(valor: T): Partial<T> 
 function grainDeSpec(spec: QuerySpec, need?: NeedParaQueryState): QueryGrain {
   if (spec.groupBy === "categoria" || need?.aggregation?.group_by?.includes("category")) return "category";
   if (spec.groupBy === "mes" || spec.visionType === "evolucao") return "month";
+  if (spec.aggregation === "max" || spec.aggregation === "min") return "top";
   if (spec.aggregation === "sum" || spec.aggregation === "count") return "summary";
   if (need?.expected_output === "list" || need?.aggregation?.type === "none") return "list";
   if (spec.aggregation == null && spec.visionType === "historico") return "list";
@@ -271,7 +277,8 @@ export function queryStateToSpec(query: QueryState, visao?: QuerySpec["visionTyp
     cruzado: query.cruzado,
     tipos: query.tipos,
     direcao: query.direcao,
-    aggregation: query.grain === "summary" || query.grain === "top" ? "sum" : undefined,
+    aggregation:
+      query.grain === "summary" ? "sum" : query.grain === "top" ? (query.sort?.dir === "asc" ? "min" : "max") : undefined,
     groupBy: query.grain === "category" ? "categoria" : query.grain === "month" ? "mes" : undefined,
     limit: query.limit,
     offset: query.offset,

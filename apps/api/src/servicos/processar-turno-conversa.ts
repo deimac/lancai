@@ -47,6 +47,7 @@ import { interpretar_resposta_confirmacao_duplicata } from "../interpretar-confi
 import { interpretar_resposta_confirmacao_exclusao } from "../interpretar-confirmacao-exclusao";
 import { interpretar_resposta_confirmacao_regra } from "../interpretar-confirmacao-regra";
 import { montar_dados_cartao_protegidos } from "../montar-dados-cartao";
+import { banco_usuario_nome } from "./primeiro-nome-usuario";
 import { montar_resposta_chat } from "../montar-resposta-chat";
 import { eh_atalho_menu, montar_resposta_menu } from "../montar-resposta-menu";
 import { verificar_senha_usuario } from "../verificar-senha-usuario";
@@ -247,16 +248,6 @@ async function montar_contexto(usuarioId: string, sessaoId: string): Promise<Con
     intencaoPendente,
     nomeUsuario: usuario,
   };
-}
-
-async function banco_usuario_nome(usuarioId: string): Promise<string | null> {
-  const banco = obter_banco();
-  const [linha] = await banco
-    .select({ nome: usuarioTabela.nome })
-    .from(usuarioTabela)
-    .where(eq(usuarioTabela.id, usuarioId))
-    .limit(1);
-  return linha?.nome ?? null;
 }
 
 async function responder_com_dados_cartao_apos_senha(entrada: {
