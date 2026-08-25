@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
+import { and, eq, getTableColumns, gte, inArray, isNotNull, isNull, lte, notInArray, or } from "drizzle-orm";
 import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
@@ -78,6 +78,23 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
     }
     condicoes.push(notInArray(movimentoTabela.status, filtro.statusExcluir ?? ["cancelado"]));
     if (filtro.perfil) condicoes.push(eq(movimentoTabela.tipoGasto, filtro.perfil));
+    if (filtro.origemPerfil) {
+      condicoes.push(
+        or(
+          and(isNotNull(movimentoTabela.cartaoId), eq(cartaoTabela.perfil, filtro.origemPerfil)),
+          and(
+            isNull(movimentoTabela.cartaoId),
+            isNotNull(movimentoTabela.contaId),
+            eq(contaTabela.perfil, filtro.origemPerfil),
+          ),
+        )!,
+      );
+    }
+    if (filtro.canal === "cartao") condicoes.push(isNotNull(movimentoTabela.cartaoId));
+    if (filtro.canal === "conta") {
+      condicoes.push(isNotNull(movimentoTabela.contaId));
+      condicoes.push(isNull(movimentoTabela.cartaoId));
+    }
     if (filtro.contaId) condicoes.push(eq(movimentoTabela.contaId, filtro.contaId));
     if (filtro.cartaoId) condicoes.push(eq(movimentoTabela.cartaoId, filtro.cartaoId));
     if (filtro.categoriaId) condicoes.push(eq(movimentoTabela.categoriaId, filtro.categoriaId));
@@ -88,10 +105,14 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
       condicoes.push(lte(movimentoTabela.dataMovimento, filtro.periodo.ate));
     }
 
-    return this.banco
-      .select()
-      .from(movimentoTabela)
-      .where(and(...condicoes));
+    const consulta = this.banco.select(getTableColumns(movimentoTabela)).from(movimentoTabela);
+    if (filtro.origemPerfil) {
+      return consulta
+        .leftJoin(contaTabela, eq(movimentoTabela.contaId, contaTabela.id))
+        .leftJoin(cartaoTabela, eq(movimentoTabela.cartaoId, cartaoTabela.id))
+        .where(and(...condicoes));
+    }
+    return consulta.where(and(...condicoes));
   }
 
   async listarParcelas(usuarioId: string, filtro: FiltroParcelas): Promise<ParcelaComMovimento[]> {

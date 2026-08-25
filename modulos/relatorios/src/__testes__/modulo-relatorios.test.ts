@@ -884,6 +884,40 @@ describe("ModuloRelatorios", () => {
       expect(dados2.dias.reduce((total, dia) => total + dia.itens.length, 0)).toBe(1);
     });
 
+    it("origemPerfil filtra pela conta/cartão, não pelo tipoGasto", async () => {
+      const contaPj = criarConta(usuarioId, { nome: "Conta PJ", perfil: "pj" });
+      const contaPf = criarConta(usuarioId, { nome: "Conta PF", perfil: "pf" });
+      repositorio.contas.set(contaPj.id, contaPj);
+      repositorio.contas.set(contaPf.id, contaPf);
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Almoço PF na PJ",
+          tipoGasto: "pf",
+          contaId: contaPj.id,
+          valor: "80.00",
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Almoço PF na PF",
+          tipoGasto: "pf",
+          contaId: contaPf.id,
+          valor: "40.00",
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, { origemPerfil: "pj" }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+      expect(dados.totalItens).toBe(1);
+      expect(dados.dias[0]?.itens[0]?.descricao).toBe("Almoço PF na PJ");
+    });
+
     it("retorna vazio quando não há lançamentos no período", async () => {
       const resultado = await relatorios.consultar_visao(
         "historico",

@@ -1,10 +1,11 @@
-import { somar_dias_iso_local } from "@lancai/ia";
+import { extrair_dia_da_semana, somar_dias_iso_local } from "@lancai/ia";
 import {
   CommandPlanSchema,
   hojeISO,
   type Ambiguity,
   type CommandPlan,
   type ConversationUnderstanding,
+  type DialogueAct,
   type EntityReference,
   type ResolutionResult,
   type SimpleCommand,
@@ -40,7 +41,9 @@ function dataDeRelative(relative: string, dataAtual: string): string | undefined
   if (r === "today" || r === "hoje") return dataAtual;
   if (r === "yesterday" || r === "ontem") return somar_dias_iso_local(dataAtual, -1);
   if (r === "last_week" || r.includes("semana")) return somar_dias_iso_local(dataAtual, -7);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(relative)) return relative;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(relative.trim())) return relative.trim();
+  const dia = extrair_dia_da_semana(relative, dataAtual);
+  if (dia) return dia.iso;
   return undefined;
 }
 
@@ -232,6 +235,112 @@ export function planCommand(
   }
 
   return null;
+}
+
+function numeroDoPatch(patch: Record<string, unknown>, ...chaves: string[]): number | undefined {
+  for (const chave of chaves) {
+    const valor = patch[chave];
+    if (typeof valor === "number" && Number.isFinite(valor)) return valor;
+  }
+  return undefined;
+}
+
+function textoDoPatch(patch: Record<string, unknown>, ...chaves: string[]): string | undefined {
+  for (const chave of chaves) {
+    const valor = patch[chave];
+    if (typeof valor === "string" && valor.trim()) return valor;
+  }
+  return undefined;
+}
+
+/**
+ * DialogueAct de escrita → CommandPlan. Usado na produção (sem Understanding).
+ */
+export function planCommandFromAct(
+  act: Extract<DialogueAct, { act: "write" | "update" | "delete" }>,
+  opcoes: OpcoesCommandPlanner = {},
+): CommandPlanResult {
+  const dataAtual = opcoes.dataAtual ?? hojeISO();
+
+  if (act.act === "write") {
+    const intent = act.intent;
+    if (intent.valor == null || intent.valor <= 0) {
+      return { kind: "clarify", ambiguity: [{ field: "amount", reason: "valor ausente" }] };
+    }
+    const dataISO = intent.data
+      ? /^\d{4}-\d{2}-\d{2}$/.test(intent.data)
+        ? intent.data
+        : dataDeRelative(intent.data, dataAtual)
+      : undefined;
+    return planoDe(
+      {
+        type: "create_transaction",
+        input: {
+          descricao: intent.descricao,
+          valor: intent.valor,
+          tipo: intent.tipo,
+          dataMovimento: dataISO,
+        },
+      },
+      `Lançar ${intent.descricao ?? "movimento"}`,
+    );
+  }
+
+  const resolved = opcoes.resolved;
+  if (!resolved) return { kind: "unresolved", resolution: { status: "not_found", reason: "Alvo não resolvido" } };
+  if (resolved.status === "ambiguous" || resolved.status === "not_found") {
+    return { kind: "unresolved", resolution: resolved };
+  }
+  const movementId = movementIdResolvido(resolved);
+  if (!movementId) {
+    return { kind: "unresolved", resolution: { status: "not_found", reason: "movementId ausente" } };
+  }
+
+  if (act.act === "delete") {
+    return planoDe({ type: "cancel_transaction", input: { movementId } }, "Cancelar lançamento");
+  }
+
+  const patch = act.patch;
+  const fatoPatch: NonNullable<Extract<SimpleCommand, { type: "update_transaction" }>["input"]["fatoPatch"]> = {};
+  const conhecimentoPatch: NonNullable<
+    Extract<SimpleCommand, { type: "update_transaction" }>["input"]["conhecimentoPatch"]
+  > = {};
+
+  const valor = numeroDoPatch(patch, "valor", "amount");
+  if (valor != null) fatoPatch.valor = valor;
+
+  const dataBruta = textoDoPatch(patch, "dataMovimento", "data");
+  if (dataBruta) {
+    const data = /^\d{4}-\d{2}-\d{2}$/.test(dataBruta) ? dataBruta : dataDeRelative(dataBruta, dataAtual);
+    if (data) fatoPatch.dataMovimento = data;
+  }
+
+  const perfil = patch.perfil;
+  if (perfil === "pf" || perfil === "pj") conhecimentoPatch.perfil = perfil;
+  if (Array.isArray(patch.tags)) {
+    conhecimentoPatch.tags = patch.tags.filter((t): t is string => typeof t === "string");
+  }
+  if (typeof patch.observacoes === "string") conhecimentoPatch.observacoes = patch.observacoes;
+  const categoriaId = textoDoPatch(patch, "categoriaId");
+  if (categoriaId && UUID.test(categoriaId)) conhecimentoPatch.categoriaId = categoriaId;
+
+  const temFato = Object.keys(fatoPatch).length > 0;
+  const temConhecimento = Object.keys(conhecimentoPatch).length > 0;
+  if (!temFato && !temConhecimento) {
+    return { kind: "clarify", ambiguity: [{ field: "value", reason: "nada para alterar" }] };
+  }
+
+  return planoDe(
+    {
+      type: "update_transaction",
+      input: {
+        movementId,
+        fatoPatch: temFato ? fatoPatch : undefined,
+        conhecimentoPatch: temConhecimento ? conhecimentoPatch : undefined,
+      },
+    },
+    "Atualizar lançamento",
+  );
 }
 
 export class CommandPlanner {

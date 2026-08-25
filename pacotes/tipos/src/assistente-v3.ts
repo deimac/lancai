@@ -25,6 +25,11 @@ import {
 import { perfilSchema } from "./cadastro";
 import { tipoMovimentoSchema } from "./movimento";
 import { direcaoFluxoSchema } from "./relatorio";
+import {
+  QueryStateSchema,
+  ResultContextSchema,
+  queryStateFromSpec,
+} from "./assistente-conversa";
 
 const nuloOu = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((valor) => (valor === undefined ? null : valor), schema.nullable());
@@ -70,6 +75,8 @@ export const TransactionFiltersSchema = z.object({
   cruzado: z.boolean().optional(),
   /** Lado do cruzado quando só um foi pedido. */
   direcao: direcaoFluxoSchema.optional(),
+  /** Só cartão ou só conta. */
+  canal: z.enum(["cartao", "conta"]).optional(),
   pessoaId: z.string().uuid().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -290,6 +297,10 @@ export const ConversationContextSchema = z.object({
   active_topic: nuloOu(ActiveTopicSchema),
   active_goal: nuloOu(ActiveGoalSchema),
   last_query: opcionalNulo(LastQuerySchema),
+  /** SoT da consulta analítica (contrato V3). */
+  query: opcionalNulo(QueryStateSchema),
+  /** Ponteiros do último resultado; não é o ledger. */
+  result: opcionalNulo(ResultContextSchema),
   focused_entity: nuloOu(EntityRefSchema),
   pending_action: nuloOu(PendingActionSchema),
   topic_history: z.array(TopicHistoryItemSchema).max(10),
@@ -361,6 +372,10 @@ function filtrosDeQuerySpec(spec: QuerySpec): TransactionFilters | undefined {
   if (spec.categoriaId) filtros.categoriaId = spec.categoriaId;
   if (spec.categoriaNome) filtros.categoriaNome = spec.categoriaNome;
   if (spec.perfil) filtros.perfil = spec.perfil;
+  if (spec.tipoGasto) filtros.perfil = spec.tipoGasto;
+  if (spec.origemPerfil) filtros.origemPerfil = spec.origemPerfil;
+  if (spec.canal) filtros.canal = spec.canal;
+  if (spec.cruzado) filtros.cruzado = true;
   if (spec.visionType === "fluxo") filtros.cruzado = true;
   if (spec.direcao) filtros.direcao = spec.direcao;
   if (spec.pessoaId) filtros.pessoaId = spec.pessoaId;
@@ -412,6 +427,7 @@ export function contextoV3DeEstadoV1(
   state: ConversationState,
   agora: number = Date.now(),
 ): ConversationContext {
+  const last = lastQueryDeEstadoV1(state);
   const updated_at = agora > 0 ? agora : 1;
   const periodo = state.explicitPeriod;
   return ConversationContextSchema.parse({
@@ -419,7 +435,8 @@ export function contextoV3DeEstadoV1(
     version: state.version,
     active_topic: periodo ? { period: periodo } : null,
     active_goal: null,
-    last_query: lastQueryDeEstadoV1(state),
+    last_query: last,
+    query: last ? queryStateFromSpec(last.query_spec, last.information_need) : undefined,
     focused_entity: state.currentEntity ?? null,
     pending_action: state.pendingConfirmation
       ? { type: "confirmation" as const, payload: state.pendingConfirmation }
@@ -470,6 +487,8 @@ export function normalizarConversationContext(
   if ("active_topic" in raw) mesclado.active_topic = raw.active_topic ?? null;
   if ("active_goal" in raw) mesclado.active_goal = raw.active_goal ?? null;
   if ("last_query" in raw && raw.last_query != null) mesclado.last_query = raw.last_query;
+  if ("query" in raw && raw.query != null) mesclado.query = raw.query;
+  if ("result" in raw && raw.result != null) mesclado.result = raw.result;
   if ("focused_entity" in raw) mesclado.focused_entity = raw.focused_entity ?? null;
   if ("pending_action" in raw) mesclado.pending_action = raw.pending_action ?? null;
   if (Array.isArray(raw.topic_history)) mesclado.topic_history = raw.topic_history;
@@ -486,6 +505,13 @@ export function normalizarConversationContext(
   }
   mesclado.schemaVersion = 2;
   mesclado.version = v1.version;
+
+  if (mesclado.query == null && mesclado.last_query != null) {
+    const last = LastQuerySchema.safeParse(mesclado.last_query);
+    if (last.success) {
+      mesclado.query = queryStateFromSpec(last.data.query_spec, last.data.information_need);
+    }
+  }
 
   return ConversationContextSchema.parse(mesclado);
 }

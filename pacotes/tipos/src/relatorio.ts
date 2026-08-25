@@ -8,6 +8,9 @@ export const LIMITE_ITENS_HISTORICO = 40;
 export const direcaoFluxoSchema = z.enum(["pessoal_com_empresa", "empresa_com_pessoal"]);
 export type DirecaoFluxo = z.infer<typeof direcaoFluxoSchema>;
 
+export const canalPagamentoSchema = z.enum(["cartao", "conta"]);
+export type CanalPagamento = z.infer<typeof canalPagamentoSchema>;
+
 const dataISOSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");
@@ -21,7 +24,12 @@ const dataISOSchema = z
  */
 export const schemaFiltrosVisaoResolvidos = z.object({
   usuarioId: z.string().uuid(),
+  /** Natureza do lançamento (`movimento.tipoGasto`). */
   perfil: perfilSchema.optional(),
+  /** Perfil da conta/cartão que pagou. Independente de `perfil`. */
+  origemPerfil: perfilSchema.optional(),
+  /** Só cartão ou só conta (sem cartão). */
+  canal: canalPagamentoSchema.optional(),
   contaId: z.string().uuid().optional(),
   cartaoId: z.string().uuid().optional(),
   categoriaId: z.string().uuid().optional(),

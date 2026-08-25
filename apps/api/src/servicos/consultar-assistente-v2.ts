@@ -1,15 +1,8 @@
-import { escopo_dos_tipos, resolver_periodo_spec } from "@lancai/ia";
+import { compileQuery } from "@lancai/assistente";
+import { hojeISO, queryStateFromSpec, type QuerySpec } from "@lancai/tipos";
+import { escopo_dos_tipos } from "@lancai/ia";
 import { ModuloRelatorios, type ResultadoVisao } from "@lancai/relatorios";
-import type { QuerySpec, TipoVisao } from "@lancai/tipos";
-import { hojeISO, tipoVisaoSchema } from "@lancai/tipos";
 import { montar_resposta_visao } from "../montar-resposta-visao";
-
-function tipoVisaoDe(spec: QuerySpec): TipoVisao {
-  const parsed = tipoVisaoSchema.safeParse(spec.visionType);
-  if (parsed.success) return parsed.data;
-  if (spec.groupBy === "categoria") return "categoria";
-  return "historico";
-}
 
 function idsDaVisao(resultado: ResultadoVisao): string[] {
   if (resultado.tipo === "historico") {
@@ -29,29 +22,18 @@ export async function consultar_assistente_v2(
   spec: QuerySpec,
   usuarioId: string,
 ): Promise<{ ids: string[]; formattedText: string; data?: unknown }> {
-  const periodo = resolver_periodo_spec(spec.period, hojeISO());
+  const query = queryStateFromSpec(spec);
+  const compiled = compileQuery(query, { usuarioId, dataAtual: hojeISO() });
   const resultado = await relatorios.consultar_visao(
-    tipoVisaoDe(spec),
-    {
-      usuarioId,
-      descricao: spec.merchant ?? spec.descricao,
-      perfil: spec.perfil,
-      contaId: spec.contaId,
-      cartaoId: spec.cartaoId,
-      categoriaId: spec.categoriaId,
-      pessoaId: spec.pessoaId,
-      periodo,
-      tipos: spec.tipos,
-      direcao: spec.direcao,
-    },
+    compiled.visao,
+    compiled.filtros,
     hojeISO(),
-    { deslocamento: spec.offset },
+    compiled.opcoes,
   );
   return {
     ids: idsDaVisao(resultado),
     formattedText: montar_resposta_visao(resultado, {
       detalhado: spec.aggregation !== "sum",
-      // Sem isto, "quanto entrou" filtra só receita e o texto ainda cita despesas R$ 0.
       escopoFluxo: escopo_dos_tipos(spec.tipos),
     }),
     data: resultado,

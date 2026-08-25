@@ -105,7 +105,7 @@ describe("ReferenceResolverV3", () => {
     expect(r.status).toBe("not_found");
   });
 
-  it("positional: lista expirada ignora last_query", async () => {
+  it("positional: last_query da sessão não expira por TTL", async () => {
     const ctxExpirado = ConversationContextSchema.parse({
       ...estadoInicialConversacaoV3(AGORA),
       last_query: {
@@ -126,7 +126,7 @@ describe("ReferenceResolverV3", () => {
       ctx,
       AGORA,
     );
-    expect(r.status).toBe("not_found");
+    expect(r.status).toBe("resolved");
   });
 
   it("temporal: ontem no last_query", async () => {

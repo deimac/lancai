@@ -69,6 +69,8 @@ export function planQuery(need: InformationNeed, context?: ConversationContext):
   if (tx?.descricao) spec.descricao = tx.descricao;
   if (tx?.tipos?.length) spec.tipos = tx.tipos;
   if (tx?.perfil) spec.perfil = tx.perfil;
+  if (tx?.origemPerfil) spec.origemPerfil = tx.origemPerfil;
+  if (tx?.canal) spec.canal = tx.canal;
   if (tx?.tags?.length) spec.tags = tx.tags;
   if (tx?.contaNome) spec.contaNome = tx.contaNome;
   if (tx?.cartaoNome) spec.cartaoNome = tx.cartaoNome;

@@ -1,8 +1,12 @@
 import type { Cartao, Categoria, Conta, Movimento, Parcela } from "@lancai/banco";
-import type { Perfil, StatusMovimento, TipoMovimento } from "@lancai/tipos";
+import type { CanalPagamento, Perfil, StatusMovimento, TipoMovimento } from "@lancai/tipos";
 
 export interface FiltroMovimentos {
+  /** Natureza do lançamento (`movimento.tipoGasto`). */
   perfil?: Perfil;
+  /** Perfil da conta/cartão que pagou. */
+  origemPerfil?: Perfil;
+  canal?: CanalPagamento;
   contaId?: string;
   cartaoId?: string;
   categoriaId?: string;

@@ -42,6 +42,16 @@ export class RepositorioRelatoriosMemoria implements RepositorioRelatorios {
       if (movimento.ignoradoEmRelatorio && !filtro.incluirIgnorados) return false;
       if (statusExcluir.includes(movimento.status)) return false;
       if (filtro.perfil && movimento.tipoGasto !== filtro.perfil) return false;
+      if (filtro.origemPerfil) {
+        const origem = movimento.cartaoId
+          ? this.cartoes.get(movimento.cartaoId)?.perfil
+          : movimento.contaId
+            ? this.contas.get(movimento.contaId)?.perfil
+            : undefined;
+        if (origem !== filtro.origemPerfil) return false;
+      }
+      if (filtro.canal === "cartao" && !movimento.cartaoId) return false;
+      if (filtro.canal === "conta" && (!movimento.contaId || movimento.cartaoId)) return false;
       if (filtro.contaId && movimento.contaId !== filtro.contaId) return false;
       if (filtro.cartaoId && movimento.cartaoId !== filtro.cartaoId) return false;
       if (filtro.categoriaId && movimento.categoriaId !== filtro.categoriaId) return false;

@@ -14,6 +14,8 @@ export function documentoMistoDeContextoV3(ctx: ConversationContext): SessionDoc
     active_topic: ctx.active_topic ?? null,
     active_goal: ctx.active_goal ?? null,
     last_query: ctx.last_query ?? null,
+    query: ctx.query ?? null,
+    result: ctx.result ?? null,
     focused_entity: ctx.focused_entity ?? null,
     pending_action: ctx.pending_action ?? null,
     topic_history: ctx.topic_history ?? [],

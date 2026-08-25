@@ -28,6 +28,7 @@ export class UnderstandingExtractor {
   constructor(private readonly orquestrador: OrquestradorIA) {}
 
   async extract(input: EntradaUnderstandingExtractor): Promise<ConversationUnderstanding> {
+    const dataAtual = input.dataAtual ?? hojeISO();
     const historico = (input.historico ?? []).slice(-HISTORICO_MAX_TURNOS);
     const bruto = await this.orquestrador.gerar_objeto_estruturado({
       schema: ConversationUnderstandingSchema,
@@ -37,13 +38,13 @@ export class UnderstandingExtractor {
         mensagem: input.mensagem,
         context: input.context,
         historico,
-        dataAtual: input.dataAtual ?? hojeISO(),
+        dataAtual,
       }),
     });
     const lido = ConversationUnderstandingSchema.parse(bruto);
     return coerirUnderstandingComContexto(lido, input.context, {
       mensagem: input.mensagem,
-      dataAtual: input.dataAtual ?? hojeISO(),
+      dataAtual,
     });
   }
 }

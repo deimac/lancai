@@ -1,4 +1,4 @@
-import { somar_dias_iso_local } from "@lancai/ia";
+import { extrair_dia_da_semana, somar_dias_iso_local } from "@lancai/ia";
 import { hojeISO } from "@lancai/tipos";
 import type {
   ConversationState,
@@ -67,7 +67,7 @@ export function fuzzyMatch(a: string, b: string): number {
 }
 
 function parseTemporalRelative(relative: string, currentDate: string): string {
-  const r = relative.toLocaleLowerCase("pt-BR");
+  const r = relative.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/\p{M}/gu, "");
   if (r === "today" || r === "hoje") return currentDate;
   if (r === "yesterday" || r === "ontem") return somar_dias_iso_local(currentDate, -1);
   if (r === "last_week" || /semana/.test(r)) return somar_dias_iso_local(currentDate, -7);
@@ -77,6 +77,9 @@ function parseTemporalRelative(relative: string, currentDate: string): string {
     const d = new Date(Date.UTC(ano!, mes! - 2, 1));
     return d.toISOString().slice(0, 7);
   }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(relative.trim())) return relative.trim();
+  const dia = extrair_dia_da_semana(relative, currentDate);
+  if (dia) return dia.iso;
   return relative;
 }
 

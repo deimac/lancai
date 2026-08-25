@@ -52,6 +52,7 @@ const SUITE: Array<{ categoria: string; id: string; esperado: Esperado }> = [
   { categoria: "computacao", id: "trend", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-period-shift", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-period-shift-domingo", esperado: { op: "query", executed: true } },
+  { categoria: "continuidade", id: "continue-period-shift-sabado", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-filter-add-cartao", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-filter-remove-merchant", esperado: { op: "query", executed: true } },
   { categoria: "continuidade", id: "continue-detail-request", esperado: { op: "query", executed: true } },
@@ -115,6 +116,8 @@ describe("política anti-atalho V3", () => {
     const aqui = dirname(fileURLToPath(import.meta.url));
     const fonte = readFileSync(join(aqui, "../agente/assistente-core-v3.ts"), "utf8");
     expect(fonte).not.toMatch(/semantic-parser/i);
-    expect(fonte).toContain("UnderstandingExtractor");
+    expect(fonte).toContain("ExtractorTurnoV3");
+    expect(fonte).toContain("DialogueAct");
+    expect(fonte).not.toContain("understandingToNeed");
   });
 });

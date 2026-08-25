@@ -2,17 +2,23 @@ export { err, ok, type Result } from "./resultado";
 export { SessionManager, type SessionManagerOpcoes } from "./agente/session-manager";
 export { SessionManagerV3, type SessionManagerV3Opcoes, type SessionRecordV3 } from "./agente/session-manager-v3";
 export { documentoMistoDeContextoV3 } from "./agente/documento-misto";
+export { applySlotOps, slotsMutados } from "./agente/apply-slot-ops";
+export { compileQuery, specCompiladoDe, visaoDeQueryState } from "./agente/compile-query";
+export { DialogueActExtractor, DialogueActInvalidoError, type EntradaDialogueActExtractor } from "./agente/dialogue-act-extractor";
+export { understandingToDialogueAct } from "./agente/understanding-to-dialogue-act";
 export {
   AssistenteCoreV3,
   type AssistenteCoreV3Opcoes,
   type CatalogoNomesAssistente,
+  type ExtractorTurnoV3,
+  type ExtracaoTurnoV3,
 } from "./agente/assistente-core-v3";
 export { SemanticParserV2, type LlmParser, type SemanticParserDeps } from "./agente/semantic-parser-v2";
 export { UnderstandingExtractor, type EntradaUnderstandingExtractor } from "./agente/understanding-extractor";
-export { coerirUnderstandingComContexto } from "./agente/coerir-understanding";
+export { coerirUnderstandingComContexto, understandingPeriodShiftDaMensagem } from "./agente/coerir-understanding";
 export { understandingToNeed, type OpcoesUnderstandingToNeed } from "./agente/understanding-to-need";
 export { planQuery, QueryPlanner } from "./agente/query-planner";
-export { planCommand, CommandPlanner, type CommandPlanResult, type OpcoesCommandPlanner } from "./agente/command-planner";
+export { planCommand, planCommandFromAct, CommandPlanner, type CommandPlanResult, type OpcoesCommandPlanner } from "./agente/command-planner";
 export {
   ReferenceResolverV3,
   resolveReferenceV3,

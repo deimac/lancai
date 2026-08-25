@@ -1,4 +1,4 @@
-import { somar_dias_iso_local } from "@lancai/ia";
+import { extrair_dia_da_semana, somar_dias_iso_local } from "@lancai/ia";
 import { hojeISO, type ConversationContext, type EntityReference, type LastQuery, type ResolutionResult } from "@lancai/tipos";
 import {
   decide,
@@ -11,7 +11,7 @@ import {
 export type ResolverDepsV3 = ResolverDeps;
 
 function parseTemporalRelative(relative: string, currentDate: string): string {
-  const r = relative.toLocaleLowerCase("pt-BR");
+  const r = relative.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/\p{M}/gu, "");
   if (r === "today" || r === "hoje") return currentDate;
   if (r === "yesterday" || r === "ontem") return somar_dias_iso_local(currentDate, -1);
   if (r === "last_week" || /semana/.test(r)) return somar_dias_iso_local(currentDate, -7);
@@ -21,6 +21,9 @@ function parseTemporalRelative(relative: string, currentDate: string): string {
     const d = new Date(Date.UTC(ano!, mes! - 2, 1));
     return d.toISOString().slice(0, 7);
   }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(relative.trim())) return relative.trim();
+  const dia = extrair_dia_da_semana(relative, currentDate);
+  if (dia) return dia.iso;
   return relative;
 }
 
@@ -30,11 +33,8 @@ function mesmoPeriodo(dataMovimento: unknown, alvo: string): boolean {
   return dataMovimento.slice(0, 10) === alvo.slice(0, 10);
 }
 
-function lastQueryValida(context: ConversationContext, agora: number): LastQuery | undefined {
-  const last = context.last_query;
-  if (!last) return undefined;
-  if (last.expires_at < agora) return undefined;
-  return last;
+function lastQueryValida(context: ConversationContext, _agora: number): LastQuery | undefined {
+  return context.last_query ?? undefined;
 }
 
 function entidadesDoHistorico(context: ConversationContext): EntityBusca[] {
@@ -94,6 +94,9 @@ export class ReferenceResolverV3 {
   ): Promise<ResolutionResult> {
     const currentDate = ctx.currentDate ?? hojeISO();
     const alvo = parseTemporalRelative(ref.relative, currentDate);
+    if (!/^\d{4}-\d{2}(-\d{2})?$/.test(alvo)) {
+      return { status: "not_found", reason: "Período não resolvido" };
+    }
     const last = lastQueryValida(context, agora);
     if (last) {
       const entities = await this.deps.getEntitiesByIds(last.result_ids);

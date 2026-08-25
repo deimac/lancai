@@ -5,6 +5,7 @@ import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeir
 import {
   AssistenteCoreV3,
   CommandExecutor,
+  DialogueActExtractor,
   PolicyEngine,
   PostgresIdempotencyStore,
   ReferenceResolverDepsDrizzle,
@@ -13,7 +14,6 @@ import {
   SessionManagerV3,
   SessionRepositoryDrizzle,
   ApplicationService,
-  UnderstandingExtractor,
   financeiroDoCore,
   NoopAuditoria,
   type TurnoUnderstanding,
@@ -92,10 +92,13 @@ function montarApplicationService(): ApplicationService {
 export function criarAssistenteCoreV3(): AssistenteCoreV3 {
   const contextoRepo = new RepositorioContextoDrizzle();
   const application = montarApplicationService();
+  const actExtractor = new DialogueActExtractor(new OrquestradorIA());
 
   return new AssistenteCoreV3(
     new SessionManagerV3(new SessionRepositoryDrizzle()),
-    new UnderstandingExtractor(new OrquestradorIA()),
+    {
+      extract: async (input) => ({ act: await actExtractor.extract(input) }),
+    },
     new ReferenceResolverV3(new ReferenceResolverDepsDrizzle()),
     new PolicyEngine(),
     new CommandExecutor(application),

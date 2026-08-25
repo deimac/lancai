@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { ConversationUnderstanding, EntityRef } from "@lancai/tipos";
+import type { ConversationUnderstanding, DialogueAct, EntityRef } from "@lancai/tipos";
 import { AssistenteCoreV3 } from "../agente/assistente-core-v3";
 import { CommandExecutor } from "../agente/command-executor";
 import { documentoMistoDeContextoV3 } from "../agente/documento-misto";
@@ -8,6 +8,7 @@ import type { EntityBusca, ResolverDeps } from "../agente/reference-resolver";
 import { ReferenceResolverV3 } from "../agente/reference-resolver-v3";
 import { ResponseGenerator } from "../agente/response-generator";
 import { SessionManagerV3 } from "../agente/session-manager-v3";
+import { understandingToDialogueAct } from "../agente/understanding-to-dialogue-act";
 import { ApplicationService, type FinanceiroPort } from "../application/application-service";
 import { MemoryIdempotencyStore } from "../application/idempotency-store";
 import { SessionRepositoryMemory } from "../repositorio/session-repository-memory";
@@ -75,6 +76,7 @@ function semearPadrao(movimentos: Map<string, EntityBusca>) {
 export function criarAssistenteCoreV3Teste(opcoes: {
   ofTarget?: EntityRef;
   extra?: Record<string, ConversationUnderstanding>;
+  acts?: Record<string, DialogueAct>;
 } = {}) {
   const repo = new SessionRepositoryMemory();
   const manager = new SessionManagerV3(repo, { agoraMs: () => AGORA });
@@ -157,10 +159,15 @@ export function criarAssistenteCoreV3Teste(opcoes: {
   const core = new AssistenteCoreV3(
     manager,
     {
-      extract: async ({ mensagem }) => {
+      extract: async ({ mensagem, context, dataAtual }) => {
+        const actDireto = opcoes.acts?.[mensagem];
+        if (actDireto) return { act: actDireto };
         const u = understandings[mensagem];
         if (!u) throw new Error(`sem understanding para: ${mensagem}`);
-        return u;
+        return {
+          act: understandingToDialogueAct(u, context, { dataAtual, mensagem }),
+          understanding: u,
+        };
       },
     },
     new ReferenceResolverV3(deps),

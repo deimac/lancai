@@ -5,6 +5,7 @@ import { aplicar_escopo_fluxo_na_consulta } from "./escopo-fluxo-consulta";
 import { eh_pedido_fluxo_cruzado } from "./pedido-fluxo-cruzado";
 import {
   inicio_fim_mes_iso,
+  parece_frase_followup_periodo,
   periodo_historico_completo,
   periodo_relativo_da_mensagem,
 } from "./datas-relativas";
@@ -90,13 +91,15 @@ export function interpretar_pedido_detalhe_historico(
   };
 }
 
-function parece_followup_periodo(texto: string): boolean {
-  const t = texto.trim();
+export function parece_continuacao_consulta(mensagem: string): boolean {
+  const t = mensagem.trim();
+  if (!t) return false;
   if (/^e\b/i.test(t)) return true;
-  const compacto = t.replace(/[?.!]/g, "").trim();
-  return /^(?:(?:n[oa]|em|de)\s+)?(?:ontem|hoje|anteontem|amanh[aã]|domingo|s[aá]bado|segunda(?:-feira)?|ter[cç]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|(?:este|esse|n?este)\s+m[eê]s|m[eê]s\s+passado)$/i.test(
-    compacto,
-  );
+  if (parece_frase_followup_periodo(t)) return true;
+  if (PEDIDO_SO_DETALHE.test(t)) return true;
+  if (PEDIDO_DETALHE_FOLLOWUP.test(t) && !/\bquanto\b/i.test(t) && !PERGUNTA.test(t)) return true;
+  if (PEDIDO_MAIS_HISTORICO.test(t)) return true;
+  return false;
 }
 
 /**
@@ -113,7 +116,7 @@ export function interpretar_pedido_periodo_followup(
   if (ultimaIntencaoIa.tipo_visao !== "historico" && ultimaIntencaoIa.tipo_visao !== "fluxo") {
     return null;
   }
-  if (!parece_followup_periodo(texto)) return null;
+  if (!parece_frase_followup_periodo(texto)) return null;
   if (extrair_estabelecimento_conhecido(texto)) return null;
 
   const periodo = resolver_periodo_consulta(texto.toLocaleLowerCase("pt-BR"), dataAtual);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConversationUnderstandingSchema, type ResolutionResult } from "@lancai/tipos";
-import { planCommand } from "../agente/command-planner";
+import { planCommand, planCommandFromAct } from "../agente/command-planner";
 import { CASOS_UNDERSTANDING, DATA_ATUAL, MOVIMENTO_UBER } from "./casos-understanding";
 
 function caso(id: string) {
@@ -140,5 +140,38 @@ describe("planCommand", () => {
 
   it("greet → null", () => {
     expect(planCommand(caso("greet").understanding)).toBeNull();
+  });
+});
+
+describe("planCommandFromAct", () => {
+  it("write → create_transaction", () => {
+    const r = planCommandFromAct({
+      act: "write",
+      intent: { tipo: "despesa", valor: 50, descricao: "Uber", contaNome: "Nubank" },
+    });
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+    });
+  });
+
+  it("update com amount no patch", () => {
+    const r = planCommandFromAct(
+      { act: "update", target: { by: "amount", value: 850 }, patch: { valor: 580 } },
+      { resolved: resolvido },
+    );
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toMatchObject({
+      type: "update_transaction",
+      input: { movementId: MOVIMENTO_UBER, fatoPatch: { valor: 580 } },
+    });
+  });
+
+  it("delete sem alvo → unresolved", () => {
+    const r = planCommandFromAct({ act: "delete" });
+    expect(r?.kind).toBe("unresolved");
   });
 });

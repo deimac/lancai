@@ -48,6 +48,28 @@ export function compactarConversationContext(context: ConversationContext): Reco
           result_count: context.last_query.result_ids.length,
         }
       : null,
+    query: context.query
+      ? {
+          grain: context.query.grain,
+          period: context.query.period,
+          origemPerfil: context.query.origemPerfil,
+          tipoGasto: context.query.tipoGasto,
+          canal: context.query.canal,
+          tipos: context.query.tipos,
+          merchant: context.query.merchant,
+        }
+      : null,
+    result: context.result
+      ? {
+          stale: context.result.stale,
+          summary: context.result.summary,
+          rows: context.result.rows.map((row) => ({
+            ordinal: row.ordinal,
+            label: row.label,
+            amount: row.amount,
+          })),
+        }
+      : null,
     topic_history: context.topic_history.slice(-3).map((item) => ({
       domain: item.topic.domain,
       goal: item.goal,
@@ -93,7 +115,7 @@ Regras:
 - Pergunta nova de gasto/receita/saldo/lista → goal answer + question.
 - Lançar/criar/transferir/parcelar → goal execute, intent create. NÃO peça agregação.
 - Corrigir/apagar/classificar → goal execute, intent update ou delete.
-- "e mês passado?" / "e ontem?" / "e domingo?" / "e sábado?" com consulta anterior → goal continue, continuation.type period_shift, inherits_from_previous true. Dia da semana é período, mesmo se coincidir com ontem. NÃO use detail_request.
+- "e mês passado?" / "e ontem?" / "e domingo?" / "e sábado?" / "e no sábado?" com consulta anterior → goal continue, continuation.type period_shift, inherits_from_previous true. Dia da semana é período, mesmo depois de um detalhe. NÃO use detail_request nem correction. "Foi sábado" (sem "e") é que corrige a data do lançamento em foco.
 - "e no cartão?" com consulta anterior → goal continue, continuation.type filter_add, inherits_from_previous true.
 - Depois de um total no last_query, se a mensagem NÃO traz merchant/conta/período novo → goal continue, continuation.type detail_request, inherits_from_previous true. Inclui "me detalhe os gastos", "detalhado", "mostra os lançamentos" e paráfrases. Não refaça a pergunta como total novo.
 - "foi ontem" / "na verdade foi dia X" com entidade em foco → goal continue, continuation.type correction, reference temporal. NÃO use continuation.type "temporal".
@@ -126,6 +148,8 @@ U: "E mês passado?"
 → {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"last_month"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
 U: "e domingo?"
 → {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"sunday"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
+U: "e no sábado?"
+→ {"goal":"continue","continuation":{"type":"period_shift","reference":{"type":"temporal","relative":"saturday"},"inherits_from_previous":true},"confidence":0.9,"required_sources":["transactions"]}
 U: "E no cartão?"
 → {"goal":"continue","question":{"intent":"total","entities":{"card":"cartão"}},"continuation":{"type":"filter_add","reference":{"type":"merchant","name":"cartão"},"inherits_from_previous":true},"confidence":0.86,"required_sources":["transactions","cards"]}
 U: "me detalhe os gastos"

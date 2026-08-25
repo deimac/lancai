@@ -7,6 +7,7 @@ import {
   AGORA,
   contextoAposConsultaFluxo,
   contextoAposConsultaUber,
+  contextoAposDetalheSaidasMercadoPago,
   contextoAposSaidasMercadoPago,
   needFluxoPessoalEmpresa,
 } from "./casos-understanding";
@@ -164,5 +165,63 @@ describe("coerirUnderstandingComContexto", () => {
     });
     expect(coerido.continuation?.type).toBe("period_shift");
     expect(coerido.continuation?.type).not.toBe("detail_request");
+  });
+
+  it("e no sábado? depois do detalhe continua a lista no sábado, não corrige a data", () => {
+    const u = ConversationUnderstandingSchema.parse({
+      goal: "continue",
+      continuation: {
+        type: "correction",
+        reference: { type: "temporal", relative: "saturday" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.8,
+      required_sources: ["transactions"],
+    });
+    const contexto = contextoAposDetalheSaidasMercadoPago("2026-08-23");
+    const coerido = coerirUnderstandingComContexto(u, contexto, {
+      mensagem: "e no sabado?",
+      dataAtual: "2026-08-23",
+    });
+    expect(coerido.continuation).toMatchObject({
+      type: "period_shift",
+      reference: { type: "temporal", relative: "saturday" },
+    });
+    const need = understandingToNeed(coerido, contexto, {
+      mensagem: "e no sabado?",
+      dataAtual: "2026-08-23",
+    });
+    expect(need?.expected_output).toBe("list");
+    expect(need?.filters?.transactions?.periodo).toEqual({
+      tipo: "personalizado",
+      de: "2026-08-22",
+      ate: "2026-08-22",
+    });
+    expect(need?.filters?.transactions?.contaNome).toBe("Mercado Pago");
+  });
+
+  it("pergunta nova completa não herda a conta da consulta anterior", () => {
+    const u = ConversationUnderstandingSchema.parse({
+      goal: "answer",
+      question: {
+        intent: "total",
+        entities: { metric: "sum", period: { tipo: "personalizado", de: "2026-08-23", ate: "2026-08-23" } },
+        implicit_filters: { tipo: "despesa", origemPerfil: "pj" },
+      },
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    });
+    const coerido = coerirUnderstandingComContexto(u, contextoAposSaidasMercadoPago("2026-08-10"), {
+      mensagem: "quanto tive de saidas ontem da minha conta da empresa?",
+      dataAtual: "2026-08-24",
+    });
+    expect(coerido.goal).toBe("answer");
+    expect(coerido.continuation).toBeUndefined();
+    const need = understandingToNeed(coerido, contextoAposSaidasMercadoPago("2026-08-10"), {
+      mensagem: "quanto tive de saidas ontem da minha conta da empresa?",
+      dataAtual: "2026-08-24",
+    });
+    expect(need?.filters?.transactions?.contaNome).toBeUndefined();
+    expect(need?.filters?.transactions?.origemPerfil).toBe("pj");
   });
 });

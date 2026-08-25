@@ -89,6 +89,44 @@ export function contextoAposSaidasMercadoPago(de: string): ConversationContext {
   });
 }
 
+export function needListaSaidasMercadoPagoDia(de: string): InformationNeed {
+  return need({
+    data_sources: ["transactions"],
+    source_priority: ["transactions"],
+    filters: {
+      transactions: {
+        contaNome: "Mercado Pago",
+        tipos: ["despesa"],
+        periodo: { tipo: "personalizado", de, ate: de },
+      },
+    },
+    aggregation: { type: "none", field: "valor" },
+    expected_output: "list",
+  });
+}
+
+export function contextoAposDetalheSaidasMercadoPago(de: string): ConversationContext {
+  const information_need = needListaSaidasMercadoPagoDia(de);
+  return ConversationContextSchema.parse({
+    ...estadoInicialConversacaoV3(AGORA),
+    active_topic: { domain: "spending", period: { tipo: "personalizado", de, ate: de } },
+    active_goal: "analyze",
+    last_query: {
+      information_need,
+      query_spec: {
+        visionType: "historico",
+        entityType: "transaction",
+        contaNome: "Mercado Pago",
+        tipos: ["despesa"],
+        period: { tipo: "personalizado", de, ate: de },
+      },
+      result_ids: [],
+      result_summary: { count: 1, total: 1584.29, period: { tipo: "personalizado", de, ate: de } },
+      expires_at: AGORA + 60_000,
+    },
+  });
+}
+
 export function understandingFluxoPessoalEmpresa(
   confidence = 0.92,
 ): ConversationUnderstanding {
@@ -374,6 +412,26 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
       required_sources: ["transactions"],
     }),
     need: needSaidasMercadoPagoDia("2026-08-23"),
+  },
+  {
+    id: "continue-period-shift-sabado",
+    mensagem: "e no sabado?",
+    context: contextoAposDetalheSaidasMercadoPago("2026-08-23"),
+    historico: [
+      { papel: "usuario", conteudo: "mostre detalhado" },
+      { papel: "sistema", conteudo: "SOCIETE AIR FRANCE · Mercado Pago" },
+    ],
+    understanding: und({
+      goal: "continue",
+      continuation: {
+        type: "period_shift",
+        reference: { type: "temporal", relative: "saturday" },
+        inherits_from_previous: true,
+      },
+      confidence: 0.9,
+      required_sources: ["transactions"],
+    }),
+    need: needListaSaidasMercadoPagoDia("2026-08-22"),
   },
   {
     id: "continue-filter-add-cartao",

@@ -9,6 +9,7 @@ import {
   schemaFiltrosVisaoResolvidos,
   somar,
 } from "@lancai/tipos";
+import type { FiltroMovimentos } from "./repositorio-relatorios";
 import type { FiltrosVisaoResolvidos, TipoVisao } from "@lancai/tipos";
 import { fimDoAno, inicioFimMesAtual, listarMesesEntre, ultimosMeses } from "./datas-relatorio";
 import { total_compra_parcela } from "./metadados-parcela";
@@ -44,6 +45,29 @@ function normalizar_termo_descricao(texto: string): string {
     .replace(/\s+/g, " ")
     .toLocaleLowerCase("pt-BR")
     .trim();
+}
+
+function filtroDeVisao(
+  filtros: FiltrosVisaoResolvidos,
+  extra: Partial<FiltroMovimentos> = {},
+): FiltroMovimentos {
+  return {
+    perfil: extra.perfil ?? filtros.perfil,
+    origemPerfil: extra.origemPerfil ?? filtros.origemPerfil,
+    canal: extra.canal ?? filtros.canal,
+    contaId: extra.contaId ?? filtros.contaId,
+    cartaoId: extra.cartaoId ?? filtros.cartaoId,
+    categoriaId: extra.categoriaId ?? filtros.categoriaId,
+    pessoaId: extra.pessoaId ?? filtros.pessoaId,
+    periodo: extra.periodo ?? filtros.periodo,
+    tipos: extra.tipos ?? filtros.tipos,
+    statusExcluir: extra.statusExcluir,
+    incluirIgnorados: extra.incluirIgnorados,
+  };
+}
+
+function perfilDeContaOuCartao(filtros: FiltrosVisaoResolvidos) {
+  return filtros.origemPerfil ?? filtros.perfil;
 }
 
 function descricao_corresponde(cadastrada: string, termo: string): boolean {
@@ -107,7 +131,7 @@ export class ModuloRelatorios {
   }
 
   private async consultar_saldos(filtros: FiltrosVisaoResolvidos) {
-    const todasContas = await this.repositorio.listarContas(filtros.usuarioId, filtros.perfil);
+    const todasContas = await this.repositorio.listarContas(filtros.usuarioId, perfilDeContaOuCartao(filtros));
     const contas = filtros.contaId ? todasContas.filter((conta) => conta.id === filtros.contaId) : todasContas;
 
     return {
@@ -117,7 +141,7 @@ export class ModuloRelatorios {
   }
 
   private async consultar_cartoes(filtros: FiltrosVisaoResolvidos) {
-    const todosCartoes = await this.repositorio.listarCartoes(filtros.usuarioId, filtros.perfil);
+    const todosCartoes = await this.repositorio.listarCartoes(filtros.usuarioId, perfilDeContaOuCartao(filtros));
     const cartoes = filtros.cartaoId ? todosCartoes.filter((cartao) => cartao.id === filtros.cartaoId) : todosCartoes;
 
     const linhas = await Promise.all(
@@ -165,9 +189,9 @@ export class ModuloRelatorios {
    */
   private async consultar_parcelamentos(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
     const [movimentos, parcelas, cartoes] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, { cartaoId: filtros.cartaoId }),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { cartaoId: filtros.cartaoId })),
       this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: filtros.cartaoId }),
-      this.repositorio.listarCartoes(filtros.usuarioId, filtros.perfil),
+      this.repositorio.listarCartoes(filtros.usuarioId, perfilDeContaOuCartao(filtros)),
     ]);
     const mapaCartoes = new Map(cartoes.map((cartao) => [cartao.id, cartao]));
     const idsSerieOf = new Set(
@@ -240,11 +264,10 @@ export class ModuloRelatorios {
 
     if (filtros.categoriaId) {
       const categoria = await this.repositorio.obterCategoria(filtros.categoriaId);
-      const movimentos = await this.repositorio.listarMovimentos(filtros.usuarioId, {
-        perfil: filtros.perfil,
-        categoriaId: filtros.categoriaId,
-        periodo,
-      });
+      const movimentos = await this.repositorio.listarMovimentos(
+        filtros.usuarioId,
+        filtroDeVisao(filtros, { categoriaId: filtros.categoriaId, periodo }),
+      );
 
       const despesas = movimentos.filter((movimento) => movimento.tipo === "despesa");
       const receitas = movimentos.filter((movimento) => movimento.tipo === "receita");
@@ -259,8 +282,8 @@ export class ModuloRelatorios {
     }
 
     const [movimentosDespesa, movimentosReceita, categorias] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, { perfil: filtros.perfil, periodo, tipos: ["despesa"] }),
-      this.repositorio.listarMovimentos(filtros.usuarioId, { perfil: filtros.perfil, periodo, tipos: ["receita"] }),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo, tipos: ["despesa"] })),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo, tipos: ["receita"] })),
       this.repositorio.listarCategorias(filtros.usuarioId),
     ]);
     const mapaCategorias = new Map(categorias.map((categoria) => [categoria.id, categoria.nome]));
@@ -298,12 +321,12 @@ export class ModuloRelatorios {
 
     const [parcelas, movimentos] = await Promise.all([
       this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: filtros.cartaoId, periodo }),
-      this.repositorio.listarMovimentos(filtros.usuarioId, { perfil: filtros.perfil, periodo }),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo })),
     ]);
 
     let parcelasFiltradas = parcelas;
     if (filtros.perfil) {
-      const cartoes = await this.repositorio.listarCartoes(filtros.usuarioId, filtros.perfil);
+      const cartoes = await this.repositorio.listarCartoes(filtros.usuarioId, perfilDeContaOuCartao(filtros));
       const idsCartoesDoPerfil = new Set(cartoes.map((cartao) => cartao.id));
       parcelasFiltradas = parcelas.filter((parcela) => idsCartoesDoPerfil.has(parcela.movimento.cartaoId ?? ""));
     }
@@ -345,13 +368,7 @@ export class ModuloRelatorios {
     const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
 
     const [movimentos, contas, cartoes] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, {
-        perfil: filtros.perfil,
-        periodo,
-        tipos: filtros.tipos,
-        contaId: filtros.contaId,
-        cartaoId: filtros.cartaoId,
-      }),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo })),
       this.repositorio.listarContas(filtros.usuarioId),
       this.repositorio.listarCartoes(filtros.usuarioId),
     ]);
@@ -391,11 +408,10 @@ export class ModuloRelatorios {
 
   private async consultar_evolucao(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
     const periodo = filtros.periodo ?? ultimosMeses(dataAtual, QUANTIDADE_MESES_EVOLUCAO);
-    const movimentos = await this.repositorio.listarMovimentos(filtros.usuarioId, {
-      perfil: filtros.perfil,
-      periodo,
-      tipos: ["receita", "despesa"],
-    });
+    const movimentos = await this.repositorio.listarMovimentos(
+      filtros.usuarioId,
+      filtroDeVisao(filtros, { periodo, tipos: ["receita", "despesa"] }),
+    );
 
     const totaisPorMes = new Map<string, { receitas: number; despesas: number }>();
     for (const movimento of movimentos) {
@@ -428,15 +444,7 @@ export class ModuloRelatorios {
     const deslocamento = Math.max(0, Math.floor(deslocamentoBruto));
 
     const [movimentosBrutos, contas, cartoes, categorias] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, {
-        perfil: filtros.perfil,
-        contaId: filtros.contaId,
-        cartaoId: filtros.cartaoId,
-        categoriaId: filtros.categoriaId,
-        pessoaId: filtros.pessoaId,
-        periodo,
-        tipos: filtros.tipos,
-      }),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo })),
       this.repositorio.listarContas(filtros.usuarioId),
       this.repositorio.listarCartoes(filtros.usuarioId),
       this.repositorio.listarCategorias(filtros.usuarioId),

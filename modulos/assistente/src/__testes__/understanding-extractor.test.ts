@@ -38,6 +38,7 @@ describe("prompt understanding", () => {
     expect(system).toContain("detail_request");
     expect(system).toMatch(/me detalhe os gastos/i);
     expect(system).toMatch(/e domingo/i);
+    expect(system).toMatch(/e no sábado/i);
     expect(system).toContain("sunday");
   });
 
@@ -86,6 +87,20 @@ describe("UnderstandingExtractor", () => {
     expect(args.schema).toBe(ConversationUnderstandingSchema);
     expect(args.system).toContain("UnderstandingExtractor");
     expect(args.prompt).toContain(caso.mensagem);
+  });
+
+  it("e no sábado? depois de um detalhe chama o LLM (sem atalho de frase)", async () => {
+    const caso = CASOS_UNDERSTANDING.find((c) => c.id === "continue-period-shift-sabado")!;
+    const { orquestrador, gerar } = stubLlm(caso.understanding);
+    const extractor = new UnderstandingExtractor(orquestrador);
+    const lido = await extractor.extract({
+      mensagem: caso.mensagem,
+      context: caso.context ?? estadoInicialConversacaoV3(AGORA),
+      dataAtual: DATA_ATUAL,
+    });
+    expect(gerar).toHaveBeenCalledOnce();
+    expect(lido.goal).toBe("continue");
+    expect(lido.continuation?.type).toBe("period_shift");
   });
 
   it("revalida com Zod e lança se o LLM devolver goal inválido", async () => {

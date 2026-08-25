@@ -148,6 +148,25 @@ export type PeriodoRelativo = {
   nomeDia?: string;
 };
 
+/**
+ * Frase de follow-up temporal: "e no sábado?", "domingo?", "e mês passado?".
+ * "e no cartão?" também começa com "e", mas só conta como período se
+ * `periodo_relativo_da_mensagem` achar âncora.
+ */
+export function parece_frase_followup_periodo(texto: string): boolean {
+  const t = texto.trim();
+  if (/^e\b/i.test(t)) return true;
+  const compacto = t.replace(/[?.!]/g, "").trim();
+  return /^(?:(?:n[oa]|em|de)\s+)?(?:ontem|hoje|anteontem|amanh[aã]|domingo|s[aá]bado|segunda(?:-feira)?|ter[cç]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|(?:este|esse|n?este)\s+m[eê]s|m[eê]s\s+passado)$/i.test(
+    compacto,
+  );
+}
+
+export function eh_followup_periodo(texto: string, dataAtual: string): boolean {
+  if (!parece_frase_followup_periodo(texto)) return false;
+  return periodo_relativo_da_mensagem(texto, dataAtual) != null;
+}
+
 /** Intervalo ISO a partir de ontem/hoje/domingo/mês passado na mensagem. */
 export function periodo_relativo_da_mensagem(texto: string, dataAtual: string): PeriodoRelativo | null {
   const lower = normalizar_sem_acento(texto);
