@@ -279,15 +279,24 @@ export function montar_resposta_visao(
         );
       }
 
+      const ranquearPorValor =
+        (destaqueTop && itensFlat.length > 1) || opcoes.ordenacaoLista?.by === "valor";
       let ordinal = 1;
-      const secoes = dias.map((dia) => {
-        const linhas = dia.itens.map((item) => {
-          const n = ordinal;
-          ordinal += 1;
-          return `${n}. ${linhaHistorico(item)}`;
-        });
-        return `${dataFaladaUmDia(dia.data, opcoes.dataAtual)}\n${linhas.join("\n")}`;
-      });
+      const secoes = ranquearPorValor
+        ? itensComDataOrdenadosPorValor(dias, opcoes.sentido === "asc").map(({ item, data }) => {
+            const n = ordinal;
+            ordinal += 1;
+            const quandoItem = dataFaladaUmDia(data, opcoes.dataAtual);
+            return `${n}. ${linhaHistorico(item)} · ${quandoItem}`;
+          })
+        : dias.map((dia) => {
+            const linhas = dia.itens.map((item) => {
+              const n = ordinal;
+              ordinal += 1;
+              return `${n}. ${linhaHistorico(item)}`;
+            });
+            return `${dataFaladaUmDia(dia.data, opcoes.dataAtual)}\n${linhas.join("\n")}`;
+          });
 
       const faixa =
         itensOmitidos > 0 || deslocamento > 0
@@ -319,37 +328,11 @@ export function montar_resposta_visao(
         ];
       } else if (deslocamento > 0) {
         cabecalho = [`Próximos lançamentos ${quando} (${faixa}):`];
-      } else if (rotuloDescricao || escopo === "despesa") {
-        cabecalho = [
-          fraseResumoHistorico({
-            escopo: rotuloDescricao ? "despesa" : escopo,
-            rotuloDescricao,
-            totalReceitas,
-            totalDespesas,
-            saldoPeriodo,
-            totalItens: faixa,
-            plural: "",
-            quando,
-          }),
-        ];
-      } else if (escopo === "receita") {
-        cabecalho = [
-          fraseResumoHistorico({
-            escopo: "receita",
-            rotuloDescricao: null,
-            totalReceitas,
-            totalDespesas,
-            saldoPeriodo,
-            totalItens: faixa,
-            plural: "",
-            quando,
-          }),
-        ];
       } else {
         cabecalho = [
           fraseResumoHistorico({
-            escopo: "ambos",
-            rotuloDescricao: null,
+            escopo,
+            rotuloDescricao,
             totalReceitas,
             totalDespesas,
             saldoPeriodo,
@@ -370,6 +353,17 @@ export function montar_resposta_visao(
   }
 }
 
+function ladoDoResumo(
+  escopo: EscopoFluxoConsulta,
+  totalReceitas: number,
+  totalDespesas: number,
+): EscopoFluxoConsulta {
+  if (totalReceitas > 0 && totalDespesas === 0) return "receita";
+  if (totalDespesas > 0 && totalReceitas === 0) return "despesa";
+  if (escopo === "despesa" || escopo === "receita") return escopo;
+  return "ambos";
+}
+
 function fraseResumoHistorico(entrada: {
   escopo: EscopoFluxoConsulta;
   rotuloDescricao: string | null;
@@ -384,14 +378,15 @@ function fraseResumoHistorico(entrada: {
     typeof entrada.totalItens === "number"
       ? `em ${entrada.totalItens} lançamento${entrada.plural}`
       : `(${entrada.totalItens})`;
-  if (entrada.rotuloDescricao || entrada.escopo === "despesa") {
-    const comDescricao = entrada.rotuloDescricao ? ` com "${entrada.rotuloDescricao}"` : "";
+  const comDescricao = entrada.rotuloDescricao ? ` com "${entrada.rotuloDescricao}"` : "";
+  const lado = ladoDoResumo(entrada.escopo, entrada.totalReceitas, entrada.totalDespesas);
+  if (lado === "despesa") {
     return `Você teve ${formatarMoeda(entrada.totalDespesas)} de saídas${comDescricao} ${entrada.quando}, ${contagem}.`;
   }
-  if (entrada.escopo === "receita") {
-    return `Você teve ${formatarMoeda(entrada.totalReceitas)} de entradas ${entrada.quando}, ${contagem}.`;
+  if (lado === "receita") {
+    return `Você teve ${formatarMoeda(entrada.totalReceitas)} de entradas${comDescricao} ${entrada.quando}, ${contagem}.`;
   }
-  return `Você teve ${formatarMoeda(entrada.totalReceitas)} de entradas e ${formatarMoeda(entrada.totalDespesas)} de saídas ${entrada.quando}. Resultado ${formatarMoeda(entrada.saldoPeriodo)}, ${contagem}.`;
+  return `Você teve ${formatarMoeda(entrada.totalReceitas)} de entradas e ${formatarMoeda(entrada.totalDespesas)} de saídas${comDescricao} ${entrada.quando}. Resultado ${formatarMoeda(entrada.saldoPeriodo)}, ${contagem}.`;
 }
 
 function textoHistoricoVazio(entrada: {
@@ -442,6 +437,20 @@ function fraseContraparte(
   return null;
 }
 
+function itensComDataOrdenadosPorValor(
+  dias: Array<{ data: string; itens: ItemHistorico[] }>,
+  menor: boolean,
+): Array<{ item: ItemHistorico; data: string }> {
+  const dir = menor ? 1 : -1;
+  return dias
+    .flatMap((dia) => dia.itens.map((item) => ({ item, data: dia.data })))
+    .sort((a, b) => {
+      const delta = a.item.valor - b.item.valor;
+      if (delta !== 0) return dir * delta;
+      return b.data.localeCompare(a.data);
+    });
+}
+
 function linhaHistorico(item: ItemHistorico): string {
   const origem = item.cartaoNome ? `cartão ${item.cartaoNome}` : item.contaNome ? item.contaNome : null;
   const valorComSinal = `${sinal_valor_historico(item.tipo)} ${formatarMoeda(item.valor)}`;
@@ -483,7 +492,7 @@ function fraseExtremo(entrada: {
   if (entrada.escopo === "receita") {
     return `A ${extremo} entrada ${entrada.periodoTexto} foi ${valor}: ${detalhe}.`;
   }
-  if (entrada.escopo === "despesa" || entrada.rotuloDescricao) {
+  if (entrada.escopo === "despesa") {
     return `O ${extremo} gasto ${entrada.periodoTexto} foi ${valor}: ${detalhe}.`;
   }
   return `O ${extremo} lançamento ${entrada.periodoTexto} foi ${valor}: ${detalhe}.`;
@@ -516,7 +525,7 @@ function cabecalho_destaque_top(entrada: {
   if (entrada.escopo === "receita") {
     return `As ${extremos} entradas ${entrada.periodoTexto} (${n}):`;
   }
-  if (entrada.escopo === "despesa" || entrada.rotuloDescricao) {
+  if (entrada.escopo === "despesa") {
     return `Os ${extremos} gastos ${entrada.periodoTexto} (${n}):`;
   }
   return `Os ${extremos} lançamentos ${entrada.periodoTexto} (${n}):`;

@@ -292,6 +292,50 @@ describe("montar_resposta_visao", () => {
     expect(texto).not.toContain("Cancela o");
   });
 
+  it("resumo com nome de quem enviou usa o total de entradas, não saídas zeradas", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-05", ate: "2026-08-20" },
+          filtroDescricao: "Tayna Santos",
+          totalReceitas: 450,
+          totalDespesas: 0,
+          saldoPeriodo: 450,
+          totalItens: 3,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [],
+        },
+      },
+      { detalhado: false, escopoFluxo: "receita" },
+    );
+    expect(texto).toContain(`Você teve ${formatarMoeda(450)} de entradas com "Tayna Santos"`);
+    expect(texto).not.toMatch(/R\$ 0,00 de saídas/i);
+  });
+
+  it("resumo com só entradas usa o valor mesmo se o escopo vier errado como saída", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-05", ate: "2026-08-20" },
+          filtroDescricao: "Tayna Santos",
+          totalReceitas: 450,
+          totalDespesas: 0,
+          saldoPeriodo: 450,
+          totalItens: 3,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [],
+        },
+      },
+      { detalhado: false, escopoFluxo: "despesa" },
+    );
+    expect(texto).toContain(`Você teve ${formatarMoeda(450)} de entradas com "Tayna Santos"`);
+    expect(texto).not.toMatch(/R\$ 0,00 de saídas/i);
+  });
+
   it("histórico detalhado informa N/M e total da compra parcelada", () => {
     const texto = montar_resposta_visao(
       {
@@ -512,6 +556,82 @@ describe("montar_resposta_visao", () => {
     expect(texto).not.toContain(formatarMoeda(4734.05));
     expect(texto).not.toContain("2 lançamentos");
     expect(texto).not.toContain("#aaaaaaaa");
+  });
+
+  it("destaque top com vários dias lista por valor, não por data", () => {
+    const texto = montar_resposta_visao(
+      {
+        tipo: "historico",
+        dados: {
+          periodo: { de: "2026-08-01", ate: "2026-08-31" },
+          totalReceitas: 0,
+          totalDespesas: 48310.3,
+          saldoPeriodo: -48310.3,
+          totalItens: 3,
+          itensOmitidos: 0,
+          deslocamento: 0,
+          dias: [
+            {
+              data: "2026-08-23",
+              itens: [
+                {
+                  id: "aaaaaaaa-1111-2222-3333-444455556666",
+                  descricao: "ALVEA VIAGENS",
+                  tipo: "despesa",
+                  valor: 6754.58,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+              ],
+            },
+            {
+              data: "2026-08-17",
+              itens: [
+                {
+                  id: "bbbbbbbb-1111-2222-3333-444455556666",
+                  descricao: "DENIS PEDRO GARCIA",
+                  tipo: "despesa",
+                  valor: 18596.72,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+              ],
+            },
+            {
+              data: "2026-08-15",
+              itens: [
+                {
+                  id: "cccccccc-1111-2222-3333-444455556666",
+                  descricao: "AGENCIA DE TURISMO SAKURA LTDA",
+                  tipo: "despesa",
+                  valor: 22959,
+                  perfil: "pj",
+                  contaNome: "Mercado Pago",
+                  cartaoNome: null,
+                  categoriaNome: null,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { detalhado: false, escopoFluxo: "despesa", destaque: "top", sentido: "desc" },
+    );
+
+    expect(texto).toMatch(/Os maiores gastos de 1 de agosto a 31 de agosto \(3\)/);
+    const sakura = texto.indexOf("AGENCIA DE TURISMO SAKURA LTDA");
+    const denis = texto.indexOf("DENIS PEDRO GARCIA");
+    const alvea = texto.indexOf("ALVEA VIAGENS");
+    expect(sakura).toBeGreaterThan(-1);
+    expect(denis).toBeGreaterThan(sakura);
+    expect(alvea).toBeGreaterThan(denis);
+    expect(texto).toContain(`1. AGENCIA DE TURISMO SAKURA LTDA · - ${formatarMoeda(22959)}`);
+    expect(texto).toContain("15 de agosto");
+    expect(texto).not.toMatch(/^23 de agosto/m);
   });
 
   it("lista limitada não usa o cabeçalho de soma do período", () => {

@@ -26,5 +26,6 @@ pnpm-debug.log*
 
 # Testes
 coverage/
+.tmp-analise/
 # Supabase local
 .supabase/

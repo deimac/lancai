@@ -9,10 +9,10 @@ import type { IntencaoConsultarVisao, TipoMovimento } from "@lancai/tipos";
 export type EscopoFluxoConsulta = "despesa" | "receita" | "ambos";
 
 const PEDIDO_DESPESA =
-  /\b(gastei|gastou|gastos?|despesas?|despendi|paguei|pagou|comprei|compramos|sa[ií]das?|saiu|sa[ií]ram)\b/i;
+  /\b(gastei|gastou|gastos?|despesas?|despendi|paguei|pagou|comprei|compramos|sa[ií]das?|saiu|sa[ií]ram|enviei|mandei)\b/i;
 
 const PEDIDO_RECEITA =
-  /\b(ganhei|ganhou|ganhos?|recebi|recebeu|receitas?|entrou|entraram|entradas?|renda|faturamento|faturei)\b/i;
+  /\b(ganhei|ganhou|ganhos?|recebi|recebeu|receitas?|entrou|entraram|entradas?|renda|faturamento|faturei|me\s+(enviou|mandou|transferiu)|enviou\s+(pra|para|pro)\s+(mim|me)|mandou\s+(pra|para)\s+mim)\b/i;
 
 const PEDIDO_EXTRATO_AMBOS =
   /\b(lan[cç]amentos?|extrato|movimenta[cç][oõ]es|movimentos?)\b/i;

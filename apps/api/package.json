@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "simular:xai": "tsx scripts/simular-consultas-xai.mts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

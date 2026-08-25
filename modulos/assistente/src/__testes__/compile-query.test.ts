@@ -54,6 +54,31 @@ describe("compileQuery", () => {
     expect(compiled.filtros.periodo).toBeUndefined();
   });
 
+  it("receita com pessoa e sem período busca o histórico completo", () => {
+    const compiled = compileQuery(
+      estadoConsultaNovo({
+        grain: "summary",
+        tipos: ["receita"],
+        merchant: "Tayna Santos",
+      }),
+      { usuarioId: USER, dataAtual: "2026-08-25" },
+    );
+    expect(compiled.filtros.descricao).toBe("Tayna Santos");
+    expect(compiled.filtros.tipos).toEqual(["receita"]);
+    expect(compiled.filtros.periodo).toEqual({ de: "2000-01-01", ate: "2026-08-25" });
+  });
+
+  it("pessoa sem tipos e sem período também busca o histórico completo", () => {
+    const compiled = compileQuery(
+      estadoConsultaNovo({
+        grain: "summary",
+        merchant: "Tayna Santos",
+      }),
+      { usuarioId: USER, dataAtual: "2026-08-25" },
+    );
+    expect(compiled.filtros.periodo).toEqual({ de: "2000-01-01", ate: "2026-08-25" });
+  });
+
   it("grain top ordena por valor desc e limita a 1", () => {
     const query = applySlotOps(
       estadoConsultaNovo({
@@ -130,5 +155,6 @@ describe("prompt DialogueAct", () => {
     expect(system).toContain("ordinal_range");
     expect(system).toMatch(/YYYY-MM-DD/);
     expect(system).toMatch(/e sábado eu tive entradas/i);
+    expect(system).toMatch(/Tayna Santos me enviou/i);
   });
 });

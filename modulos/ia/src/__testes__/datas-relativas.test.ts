@@ -7,6 +7,7 @@ import {
   parsear_data_relativa_ou_br,
   periodo_relativo_da_mensagem,
   prefixar_nota_dia_semana,
+  mensagem_cita_periodo,
   resolver_periodo_spec,
 } from "../datas-relativas";
 
@@ -101,5 +102,13 @@ describe("dia da semana relativo", () => {
       de: "2026-07-01",
       ate: "2026-07-31",
     });
+  });
+});
+
+describe("mensagem_cita_periodo", () => {
+  it("distingue recorte explícito de pergunta sem data", () => {
+    expect(mensagem_cita_periodo("quanto a tayna santos me enviou de pix?", "2026-08-25")).toBe(false);
+    expect(mensagem_cita_periodo("quanto a tayna me enviou ontem?", "2026-08-25")).toBe(true);
+    expect(mensagem_cita_periodo("entradas em agosto", "2026-08-25")).toBe(true);
   });
 });

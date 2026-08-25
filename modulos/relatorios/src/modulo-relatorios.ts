@@ -445,7 +445,7 @@ export class ModuloRelatorios {
     dataAtual: string,
     opcoes: OpcoesConsultaVisao = {},
   ) {
-    const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
+    const periodoFiltro = filtros.periodo ?? inicioFimMesAtual(dataAtual);
     const deslocamento = Math.max(0, Math.floor(opcoes.deslocamento ?? 0));
     const tamanhoPagina =
       opcoes.limite != null
@@ -453,7 +453,7 @@ export class ModuloRelatorios {
         : LIMITE_ITENS_HISTORICO;
 
     const [movimentosBrutos, contas, cartoes, categorias] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo })),
+      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo: periodoFiltro })),
       this.repositorio.listarContas(filtros.usuarioId),
       this.repositorio.listarCartoes(filtros.usuarioId),
       this.repositorio.listarCategorias(filtros.usuarioId),
@@ -521,6 +521,11 @@ export class ModuloRelatorios {
       .sort(([dataA], [dataB]) => dataB.localeCompare(dataA))
       .map(([data, itens]) => ({ data, itens }));
 
+    const periodo = periodoExibidoDoHistorico(
+      periodoFiltro,
+      ordenados.map((movimento) => movimento.dataMovimento),
+    );
+
     return {
       periodo,
       filtroDescricao: filtros.descricao ?? null,
@@ -533,6 +538,15 @@ export class ModuloRelatorios {
       dias,
     };
   }
+}
+
+function periodoExibidoDoHistorico(
+  filtro: { de: string; ate: string },
+  datas: string[],
+): { de: string; ate: string } {
+  if (filtro.de > "2000-01-01" || datas.length === 0) return filtro;
+  const ordenadas = [...datas].sort();
+  return { de: ordenadas[0]!, ate: ordenadas[ordenadas.length - 1]! };
 }
 
 function comparar_movimentos_historico(

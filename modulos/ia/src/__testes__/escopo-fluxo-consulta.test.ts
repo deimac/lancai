@@ -19,6 +19,13 @@ describe("inferir_escopo_fluxo_consulta", () => {
     expect(
       inferir_escopo_fluxo_consulta("quanto tive de entradas este mes na minha conta mercado pago?"),
     ).toBe("receita");
+    expect(inferir_escopo_fluxo_consulta("quanto a tayna santos me enviou de pix?")).toBe("receita");
+    expect(inferir_escopo_fluxo_consulta("ela mandou pra mim no pix")).toBe("receita");
+  });
+
+  it("enviei é saída; me enviou é entrada", () => {
+    expect(inferir_escopo_fluxo_consulta("quanto eu enviei de pix ontem?")).toBe("despesa");
+    expect(inferir_escopo_fluxo_consulta("quanto a tayna me enviou de pix?")).toBe("receita");
   });
 
   it("mantém extrato sem lado como ambos", () => {

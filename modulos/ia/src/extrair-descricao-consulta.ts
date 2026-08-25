@@ -81,3 +81,36 @@ export function extrair_descricao_consulta_historico(
   if (!match?.[1]) return null;
   return limpar_termo_consulta(match[1], contexto);
 }
+
+function limpar_contraparte(nome: string): string {
+  return nome
+    .replace(/\s+(?:de|no|via|por)\s+pix\s*$/i, "")
+    .replace(/\bquanto\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * "quanto a Tayna Santos me enviou de pix?" → "Tayna Santos".
+ * Não usa "pix" como estabelecimento: pix é forma de pagamento.
+ */
+export function extrair_contraparte_recebimento(mensagem: string): string | null {
+  const texto = mensagem.replace(/\s+/g, " ").trim();
+  const aMe =
+    /\b(?:a|o)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.\s]{0,60}?)\s+me\s+(?:enviou|mandou|transferiu)\b/i.exec(
+      texto,
+    );
+  if (aMe?.[1]) {
+    const nome = limpar_contraparte(aMe[1]);
+    if (nome.length >= 2) return nome;
+  }
+  const recebiDe =
+    /\b(?:recebi|entrou)\s+(?:de|da|do)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.\s]{0,60}?)(?:\s+(?:de|no|via|por)\s+pix|\s*[?.!]?\s*$)/i.exec(
+      texto,
+    );
+  if (recebiDe?.[1]) {
+    const nome = limpar_contraparte(recebiDe[1]);
+    if (nome.length >= 2) return nome;
+  }
+  return null;
+}

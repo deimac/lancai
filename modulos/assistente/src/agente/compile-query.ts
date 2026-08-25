@@ -1,4 +1,4 @@
-import { resolver_periodo_spec } from "@lancai/ia";
+import { periodo_historico_completo, resolver_periodo_spec } from "@lancai/ia";
 import type {
   FiltrosVisaoResolvidos,
   QueryState,
@@ -26,6 +26,12 @@ export type ConsultaCompilada = {
 };
 
 const TOP_PADRAO: OrdenacaoHistorico = { by: "valor", dir: "desc" };
+
+function deveUsarHistoricoCompleto(query: QueryState): boolean {
+  if (query.period || (!query.merchant && !query.descricao)) return false;
+  const soDespesa = query.tipos?.length === 1 && query.tipos[0] === "despesa";
+  return !soDespesa;
+}
 
 export function opcoesDeQuery(query: QueryState): OpcoesConsultaCompilada {
   const opcoes: OpcoesConsultaCompilada = { deslocamento: query.offset ?? 0 };
@@ -56,7 +62,11 @@ export function visaoDeQueryState(query: QueryState): TipoVisao {
  */
 export function compileQuery(query: QueryState, ctx: CompileQueryInput): ConsultaCompilada {
   const visao = visaoDeQueryState(query);
-  const periodo = query.period ? resolver_periodo_spec(query.period, ctx.dataAtual) : undefined;
+  const periodo = query.period
+    ? resolver_periodo_spec(query.period, ctx.dataAtual)
+    : deveUsarHistoricoCompleto(query)
+      ? periodo_historico_completo(ctx.dataAtual)
+      : undefined;
   const filtros: FiltrosVisaoResolvidos = {
     usuarioId: ctx.usuarioId,
     perfil: query.tipoGasto,

@@ -846,6 +846,42 @@ describe("ModuloRelatorios", () => {
       expect(dados.dias[0]?.itens[0]?.descricao).toBe("SOCIETE AIR FRANCE");
     });
 
+    it("no histórico completo fala o intervalo real dos lançamentos, não 2000", async () => {
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Tayna Santos",
+          tipo: "receita",
+          valor: "150.00",
+          dataMovimento: "2026-07-12",
+        }),
+      );
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          descricao: "Tayna Santos",
+          tipo: "receita",
+          valor: "200.00",
+          dataMovimento: "2026-08-10",
+        }),
+      );
+
+      const resultado = await relatorios.consultar_visao(
+        "historico",
+        filtrosBase(usuarioId, {
+          descricao: "Tayna Santos",
+          tipos: ["receita"],
+          periodo: { de: "2000-01-01", ate: DATA_ATUAL },
+        }),
+        DATA_ATUAL,
+      );
+      const dados = resultado.dados as ResultadoHistorico;
+
+      expect(dados.totalItens).toBe(2);
+      expect(dados.totalReceitas).toBe(350);
+      expect(dados.periodo).toEqual({ de: "2026-07-12", ate: "2026-08-10" });
+    });
+
     it("usa o mês atual quando o período não é informado e corta em 40 itens", async () => {
       const conta = criarConta(usuarioId, { nome: "C6 Bank" });
       repositorio.contas.set(conta.id, conta);

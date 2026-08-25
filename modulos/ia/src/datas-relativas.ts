@@ -246,6 +246,22 @@ export function periodo_historico_completo(dataAtual: string): { de: string; ate
   return { de: "2000-01-01", ate: dataAtual };
 }
 
+const MESES_NOME =
+  /\b(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i;
+
+/**
+ * A mensagem cita um recorte temporal. Sem isso, o código não inventa "mês atual"
+ * em pergunta de pessoa/Pix.
+ */
+export function mensagem_cita_periodo(texto: string, dataAtual: string): boolean {
+  if (periodo_relativo_da_mensagem(texto, dataAtual)) return true;
+  const t = texto.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/\p{M}/gu, "");
+  if (MESES_NOME.test(texto)) return true;
+  if (/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/.test(t)) return true;
+  if (/\b(semana|ano|mes)\b/.test(t)) return true;
+  return false;
+}
+
 /** Primeiro e último dia do mês de `dataISO` (YYYY-MM-DD). */
 export function inicio_fim_mes_iso(dataISO: string): { de: string; ate: string } {
   const [ano, mes] = dataISO.split("-").map(Number) as [number, number];

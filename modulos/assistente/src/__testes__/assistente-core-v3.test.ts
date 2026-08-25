@@ -453,6 +453,62 @@ describe("AssistenteCoreV3", () => {
     expect(query?.tipos).toEqual(["receita"]);
   });
 
+  it("quanto a tayna me enviou de pix? soma receita pelo nome e não inventa o mês", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      dataAtual: "2026-08-25",
+      acts: {
+        "quanto a tayna santos me enviou de pix?": {
+          act: "new_query",
+          query: {
+            grain: "summary",
+            tipos: ["despesa"],
+            merchant: "pix",
+            period: { tipo: "mes_atual" },
+          },
+        },
+      },
+    });
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "quanto a tayna santos me enviou de pix?",
+      canal: "web",
+    });
+    expect(r.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r.sessaoId);
+    expect(doc?.documento.query).toMatchObject({
+      grain: "summary",
+      tipos: ["receita"],
+      merchant: "tayna santos",
+    });
+    expect((doc?.documento.query as QueryState | undefined)?.period).toBeUndefined();
+  });
+
+  it("conta da empresa não pede slot de conta chamada empresa", async () => {
+    const { core, repo } = criarAssistenteCoreV3Teste({
+      dataAtual: "2026-08-25",
+      acts: {
+        "quanto gastei na conta da empresa este mês?": {
+          act: "new_query",
+          query: {
+            grain: "summary",
+            tipos: ["despesa"],
+            period: { tipo: "mes_atual" },
+          },
+          names: { contaNome: "empresa" },
+        },
+      },
+    });
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "quanto gastei na conta da empresa este mês?",
+      canal: "web",
+    });
+    expect(r.resposta).not.toMatch(/Não encontrei a conta empresa/i);
+    expect(r.diagnostico?.executed).toBe(true);
+    const doc = await repo.getDocumento(r.sessaoId);
+    expect(doc?.documento.query).toMatchObject({ origemPerfil: "pj", tipos: ["despesa"] });
+  });
+
   it("e sábado eu tive entradas? depois de ontem troca o período e mantém receita", async () => {
     const { core, repo } = criarAssistenteCoreV3Teste({
       dataAtual: "2026-08-25",
