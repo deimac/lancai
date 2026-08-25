@@ -8,9 +8,12 @@ import {
   paginar,
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
+  tipo_gasto_dashboard_da_query,
+  tipo_gasto_dashboard_para_query,
   tipo_gasto_para_query,
   papel_da_query,
   papel_para_query,
+  perfil_de_tipo_gasto,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
@@ -254,6 +257,12 @@ describe("parsers da URL", () => {
     expect(tipo_gasto_da_query("pf")).toBe("todas");
     expect(tipo_gasto_para_query("pessoal")).toBe("pessoal");
     expect(tipo_gasto_para_query("todas")).toBeNull();
+    expect(tipo_gasto_dashboard_da_query(null)).toBe("pessoal");
+    expect(tipo_gasto_dashboard_da_query("todos")).toBe("todas");
+    expect(tipo_gasto_dashboard_da_query("empresa")).toBe("empresa");
+    expect(tipo_gasto_dashboard_para_query("todas")).toBe("todos");
+    expect(perfil_de_tipo_gasto("pessoal")).toBe("pf");
+    expect(perfil_de_tipo_gasto("todas")).toBeUndefined();
   });
 
   it("lê papel gastos/pagamentos de fatura", () => {

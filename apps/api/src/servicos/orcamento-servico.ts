@@ -7,7 +7,7 @@ import {
   orcamento as orcamentoTabela,
   type Orcamento,
 } from "@lancai/banco";
-import { formatarMoeda } from "@lancai/tipos";
+import { formatarMoeda, type Perfil } from "@lancai/tipos";
 
 type TipoCategoria = "receita" | "despesa" | "ambos";
 
@@ -119,6 +119,7 @@ async function somar_gastos(
   fim: string,
   categoriaId?: string | null,
   tipoCategoria?: TipoCategoria | null,
+  tipoGasto?: Perfil,
 ): Promise<number> {
   const banco = obter_banco();
   const condicoes = [
@@ -129,6 +130,9 @@ async function somar_gastos(
   ];
   if (categoriaId) {
     condicoes.push(eq(movimentoTabela.categoriaId, categoriaId));
+  }
+  if (tipoGasto) {
+    condicoes.push(eq(movimentoTabela.tipoGasto, tipoGasto));
   }
 
   const [linha] = await banco
@@ -143,6 +147,7 @@ export async function listar_status_orcamentos(
   usuarioId: string,
   dataAtual: string,
   categoriaId?: string | null,
+  tipoGasto?: Perfil,
 ): Promise<StatusOrcamento[]> {
   const banco = obter_banco();
   const { inicio, fim } = mes_atual_iso(dataAtual);
@@ -170,7 +175,14 @@ export async function listar_status_orcamentos(
       tipoCategoria = cat?.tipo ?? null;
     }
     const limite = Number(orc.valorLimite);
-    const gasto = await somar_gastos(usuarioId, inicio, fim, orc.categoriaId, tipoCategoria);
+    const gasto = await somar_gastos(
+      usuarioId,
+      inicio,
+      fim,
+      orc.categoriaId,
+      tipoCategoria,
+      tipoGasto,
+    );
     const percentual = limite > 0 ? (gasto / limite) * 100 : 0;
     status.push({ orcamento: orc, categoriaNome, gasto, limite, percentual });
   }

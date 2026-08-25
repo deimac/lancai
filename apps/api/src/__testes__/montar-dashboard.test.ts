@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { montar_fluxo_caixa, montar_proximos_pagamentos, type DashboardCartao } from "../servicos/montar-dashboard";
+import {
+  agregar_totais_por_natureza,
+  filtrar_movimentos_por_natureza,
+  montar_fluxo_caixa,
+  montar_proximos_pagamentos,
+  perfil_de_tipo_gasto_dashboard,
+  type DashboardCartao,
+} from "../servicos/montar-dashboard";
 
 const cartao: DashboardCartao = {
   id: "cartao-mp",
@@ -192,10 +199,64 @@ describe("montar_proximos_pagamentos", () => {
   });
 });
 
-/**
- * Smoke do contrato da rota: o serviço real depende do banco.
- * A montagem do fluxo de saldo é pura e fica coberta indiretamente via shape.
- */
+describe("natureza do dashboard", () => {
+  it("mapeia query pessoal/empresa para pf/pj e ignora o resto", () => {
+    expect(perfil_de_tipo_gasto_dashboard("pessoal")).toBe("pf");
+    expect(perfil_de_tipo_gasto_dashboard("pf")).toBe("pf");
+    expect(perfil_de_tipo_gasto_dashboard("empresa")).toBe("pj");
+    expect(perfil_de_tipo_gasto_dashboard("pj")).toBe("pj");
+    expect(perfil_de_tipo_gasto_dashboard(undefined)).toBeUndefined();
+    expect(perfil_de_tipo_gasto_dashboard("todos")).toBeUndefined();
+  });
+
+  it("pessoal inclui gasto pf em conta pj e exclui gasto pj em conta pf", () => {
+    const churrascoNaEmpresa = {
+      id: "churrasco",
+      tipo: "despesa",
+      tipoGasto: "pf",
+      valor: "100",
+      contaPerfil: "pj",
+    };
+    const passagemNoPessoal = {
+      id: "passagem",
+      tipo: "despesa",
+      tipoGasto: "pj",
+      valor: "2300",
+      contaPerfil: "pf",
+    };
+    const mercadoNaPessoal = {
+      id: "mercado",
+      tipo: "despesa",
+      tipoGasto: "pf",
+      valor: "80",
+      contaPerfil: "pf",
+    };
+
+    const pessoal = filtrar_movimentos_por_natureza(
+      [churrascoNaEmpresa, passagemNoPessoal, mercadoNaPessoal],
+      "pf",
+    );
+    expect(pessoal.map((item) => item.id)).toEqual(["churrasco", "mercado"]);
+
+    const empresa = filtrar_movimentos_por_natureza(
+      [churrascoNaEmpresa, passagemNoPessoal, mercadoNaPessoal],
+      "pj",
+    );
+    expect(empresa.map((item) => item.id)).toEqual(["passagem"]);
+  });
+
+  it("agrega totais pessoais e da empresa no mesmo mês", () => {
+    const totais = agregar_totais_por_natureza([
+      { tipo: "despesa", valor: "100", tipoGasto: "pf" },
+      { tipo: "despesa", valor: "50", tipoGasto: "pj" },
+      { tipo: "receita", valor: "3000", tipoGasto: "pf" },
+      { tipo: "retirada", valor: "10", tipoGasto: "pf" },
+    ]);
+    expect(totais.pessoal).toEqual({ receitas: 3000, despesas: 100, resultado: 2900 });
+    expect(totais.empresa).toEqual({ receitas: 0, despesas: 50, resultado: -50 });
+  });
+});
+
 describe("contrato dashboard", () => {
   it("expõe campos esperados pelo web (KPIs superiores + cartões do mês)", () => {
     const amostra = {

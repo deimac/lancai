@@ -30,6 +30,13 @@ import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta, type ProximoPagamento } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
+import {
+  perfil_de_tipo_gasto,
+  tipo_gasto_dashboard_da_query,
+  tipo_gasto_dashboard_para_query,
+  tipo_gasto_para_query,
+  type TipoGastoExtrato,
+} from "../lib/filtrar-extrato";
 import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
 import { IconeCategoria } from "../componentes/IconeCategoria";
@@ -150,11 +157,47 @@ function Variacao({ valor }: { valor: number | null | undefined }) {
   );
 }
 
+const OPCOES_TIPO_GASTO: Array<{ valor: TipoGastoExtrato; rotulo: string }> = [
+  { valor: "todas", rotulo: "Todos" },
+  { valor: "pessoal", rotulo: "Pessoal" },
+  { valor: "empresa", rotulo: "Empresa" },
+];
+
+function SeletorTipoGasto({
+  valor,
+  onChange,
+}: {
+  valor: TipoGastoExtrato;
+  onChange: (proximo: TipoGastoExtrato) => void;
+}) {
+  return (
+    <div className="flex rounded-lg border border-borda p-0.5 text-xs">
+      {OPCOES_TIPO_GASTO.map((opcao) => (
+        <button
+          key={opcao.valor}
+          type="button"
+          onClick={() => onChange(opcao.valor)}
+          className={unir_classes(
+            "rounded-md px-2.5 py-1 font-medium transition",
+            valor === opcao.valor
+              ? "bg-primaria/15 text-primaria"
+              : "text-texto-suave hover:text-texto",
+          )}
+        >
+          {opcao.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function TelaDashboard() {
   const { usuario } = useAutenticacao();
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
   const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
+  const tipoGasto = tipo_gasto_dashboard_da_query(searchParams.get("tipoGasto"));
+  const perfilGasto = perfil_de_tipo_gasto(tipoGasto);
   const [dados, setDados] = useState<DashboardResposta | null>(null);
   const [visaoGeral, setVisaoGeral] = useState(false);
   const [carregando, setCarregando] = useState(true);
@@ -181,7 +224,7 @@ export function TelaDashboard() {
     setErro(null);
     try {
       const [dash, workspaces] = await Promise.all([
-        clienteApi.obter_dashboard(usuario.id, `${mes}-01`),
+        clienteApi.obter_dashboard(usuario.id, `${mes}-01`, perfilGasto),
         clienteApi.listar_workspaces(usuario.id).catch(() => []),
       ]);
       setDados(dash);
@@ -192,7 +235,7 @@ export function TelaDashboard() {
     } finally {
       setCarregando(false);
     }
-  }, [usuario, mes]);
+  }, [usuario, mes, perfilGasto]);
 
   useEffect(() => {
     void carregar();
@@ -201,7 +244,13 @@ export function TelaDashboard() {
   useEffect(() => {
     setPontoResultadoHover(null);
     setPontoCaixaHover(null);
-  }, [mes, abaGrafico]);
+  }, [mes, abaGrafico, tipoGasto]);
+
+  function escolher_tipo_gasto(proximo: TipoGastoExtrato) {
+    const params = new URLSearchParams(searchParams);
+    params.set("tipoGasto", tipo_gasto_dashboard_para_query(proximo));
+    setSearchParams(params, { replace: true });
+  }
 
   function escolher_mes(proximo: string) {
     const params = new URLSearchParams(searchParams);
@@ -274,6 +323,15 @@ export function TelaDashboard() {
   const legendaCaixa = pontoCaixaHover
     ? pontoCaixaHover
     : { saldo: ultimoCaixa?.saldo ?? 0, rotulo: null as string | null };
+  const natureza = dados.natureza;
+  const mostrarSplit = tipoGasto === "todas" && natureza;
+  const tipoExtratoQuery = tipo_gasto_para_query(tipoGasto);
+  const hrefExtrato = tipoExtratoQuery ? `/extrato?tipoGasto=${tipoExtratoQuery}` : "/extrato";
+  const cruzamento = dados.cruzamento;
+  const mostrarCruzamento =
+    !visaoGeral &&
+    cruzamento != null &&
+    (cruzamento.totalPessoalComEmpresa > 0 || cruzamento.totalEmpresaComPessoal > 0);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
@@ -283,8 +341,16 @@ export function TelaDashboard() {
           {visaoGeral ? (
             <p className="text-sm text-texto-suave">Todos os workspaces</p>
           ) : null}
+          <p className="mt-1 text-xs text-texto-suave">
+            {tipoGasto === "pessoal"
+              ? "Resultado e categorias: gastos seus em qualquer conta"
+              : tipoGasto === "empresa"
+                ? "Resultado e categorias: gastos da empresa em qualquer conta"
+                : "Resultado e categorias somam pessoal e empresa — saldo e caixa não mudam"}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          <SeletorTipoGasto valor={tipoGasto} onChange={escolher_tipo_gasto} />
           <button
             type="button"
             onClick={() => setOcultarValores((v) => !v)}
@@ -411,6 +477,13 @@ export function TelaDashboard() {
             {formatar_oculto(formatar_moeda(dados.resumo.receitasMes), ocultarValores)}
           </p>
           <Variacao valor={dados.resumo.variacaoReceitas} />
+          {mostrarSplit && natureza ? (
+            <p className="mt-2 text-xs text-texto-suave">
+              Pessoal {formatar_oculto(formatar_moeda(natureza.pessoal.receitas), ocultarValores)}
+              {" · "}
+              Empresa {formatar_oculto(formatar_moeda(natureza.empresa.receitas), ocultarValores)}
+            </p>
+          ) : null}
         </motion.div>
 
         <motion.div
@@ -428,6 +501,13 @@ export function TelaDashboard() {
             {formatar_oculto(formatar_moeda(dados.resumo.despesasMes), ocultarValores)}
           </p>
           <Variacao valor={dados.resumo.variacaoDespesas} />
+          {mostrarSplit && natureza ? (
+            <p className="mt-2 text-xs text-texto-suave">
+              Pessoal {formatar_oculto(formatar_moeda(natureza.pessoal.despesas), ocultarValores)}
+              {" · "}
+              Empresa {formatar_oculto(formatar_moeda(natureza.empresa.despesas), ocultarValores)}
+            </p>
+          ) : null}
         </motion.div>
       </div>
 
@@ -452,7 +532,13 @@ export function TelaDashboard() {
             <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
               Resultado do mês
             </p>
-            <p className="text-sm text-texto-suave">Receitas − despesas</p>
+            <p className="text-sm text-texto-suave">
+              {tipoGasto === "pessoal"
+                ? "Receitas − despesas pessoais"
+                : tipoGasto === "empresa"
+                  ? "Receitas − despesas da empresa"
+                  : "Receitas − despesas"}
+            </p>
             <Variacao valor={dados.resumo.variacaoResultado} />
           </div>
         </div>
@@ -469,6 +555,37 @@ export function TelaDashboard() {
         </p>
       </motion.div>
 
+      {mostrarCruzamento && cruzamento ? (
+        <motion.div
+          {...fade}
+          className="grid gap-4 rounded-2xl border border-borda bg-superficie/80 px-5 py-4 sm:grid-cols-2"
+        >
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+              Cruzamento neste workspace
+            </p>
+            <p className="mt-2 text-sm text-texto-suave">Pessoal pago com dinheiro da empresa</p>
+            <p className="text-lg font-semibold tabular-nums text-texto">
+              {formatar_oculto(
+                formatar_moeda(cruzamento.totalPessoalComEmpresa),
+                ocultarValores,
+              )}
+            </p>
+          </div>
+          <div className="sm:text-right">
+            <p className="mt-5 text-sm text-texto-suave sm:mt-6">
+              Empresa paga com dinheiro pessoal
+            </p>
+            <p className="text-lg font-semibold tabular-nums text-texto">
+              {formatar_oculto(
+                formatar_moeda(cruzamento.totalEmpresaComPessoal),
+                ocultarValores,
+              )}
+            </p>
+          </div>
+        </motion.div>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
         <motion.section
           {...fade}
@@ -483,6 +600,12 @@ export function TelaDashboard() {
               {abaGrafico === "caixa" ? (
                 <p className="mt-0.5 text-xs text-texto-suave">
                   Saldo na conta ao fim de cada dia — o último ponto é o disponível
+                </p>
+              ) : tipoGasto !== "todas" ? (
+                <p className="mt-0.5 text-xs text-texto-suave">
+                  {tipoGasto === "pessoal"
+                    ? "Só lançamentos pessoais, de qualquer conta"
+                    : "Só lançamentos da empresa, de qualquer conta"}
                 </p>
               ) : null}
             </div>
@@ -673,7 +796,7 @@ export function TelaDashboard() {
         >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-medium text-texto">Transações recentes</h2>
-            <Link to="/extrato" className="text-xs text-primaria hover:underline">
+            <Link to={hrefExtrato} className="text-xs text-primaria hover:underline">
               Ver transações
             </Link>
           </div>

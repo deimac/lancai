@@ -12,7 +12,9 @@ import {
   eh_movimento_parcelado,
   hojeISO,
   paraDataISO,
+  type Perfil,
 } from "@lancai/tipos";
+import { obter_escopo_leitura } from "./escopo-workspace";
 import { mapear_origem_cartoes } from "./origem-conta-cartao";
 import { listar_status_orcamentos } from "./orcamento-servico";
 
@@ -63,6 +65,17 @@ export interface OrcamentoDashboard {
   cor: string;
 }
 
+export interface TotaisNaturezaDashboard {
+  receitas: number;
+  despesas: number;
+  resultado: number;
+}
+
+export interface CruzamentoDashboard {
+  totalPessoalComEmpresa: number;
+  totalEmpresaComPessoal: number;
+}
+
 export interface DashboardResposta {
   mes: string;
   periodo: { de: string; ate: string };
@@ -89,6 +102,17 @@ export interface DashboardResposta {
     variacaoDespesas: number | null;
     variacaoResultado: number | null;
   };
+  /** Natureza aplicada ao P&L/categorias; null = todos. */
+  tipoGasto: Perfil | null;
+  /** Totais do mês por natureza, sempre os dois lados — para o subtítulo em Todos. */
+  natureza: {
+    pessoal: TotaisNaturezaDashboard;
+    empresa: TotaisNaturezaDashboard;
+  };
+  /**
+   * Cruzamento origem ≠ natureza. `null` na visão Geral (KPI de workspace/conta).
+   */
+  cruzamento: CruzamentoDashboard | null;
   naoClassificado: {
     quantidade: number;
     total: number;
@@ -122,15 +146,58 @@ export interface DashboardResposta {
 }
 
 /**
+ * `pessoal`/`empresa` na query do Cockpit viram `pf`/`pj`. Qualquer outro valor = todos.
+ */
+export function perfil_de_tipo_gasto_dashboard(valor?: string): Perfil | undefined {
+  if (valor === "pf" || valor === "pessoal") return "pf";
+  if (valor === "pj" || valor === "empresa") return "pj";
+  return undefined;
+}
+
+function arredondar(valor: number): number {
+  return Math.round(valor * 100) / 100;
+}
+
+export function filtrar_movimentos_por_natureza<T extends { tipoGasto: string }>(
+  movimentos: T[],
+  perfil?: Perfil,
+): T[] {
+  if (!perfil) return movimentos;
+  return movimentos.filter((movimento) => movimento.tipoGasto === perfil);
+}
+
+export function agregar_totais_por_natureza(
+  movimentos: Array<{ tipo: string; valor: string | number; tipoGasto: string }>,
+): { pessoal: TotaisNaturezaDashboard; empresa: TotaisNaturezaDashboard } {
+  const pessoal = { receitas: 0, despesas: 0 };
+  const empresa = { receitas: 0, despesas: 0 };
+  for (const movimento of movimentos) {
+    if (movimento.tipo !== "receita" && movimento.tipo !== "despesa") continue;
+    const alvo = movimento.tipoGasto === "pj" ? empresa : pessoal;
+    if (movimento.tipo === "receita") alvo.receitas += Number(movimento.valor);
+    else alvo.despesas += Number(movimento.valor);
+  }
+  const fechar = (item: { receitas: number; despesas: number }): TotaisNaturezaDashboard => {
+    const receitas = arredondar(item.receitas);
+    const despesas = arredondar(item.despesas);
+    return { receitas, despesas, resultado: arredondar(receitas - despesas) };
+  };
+  return { pessoal: fechar(pessoal), empresa: fechar(empresa) };
+}
+
+/**
  * Agrega o cockpit a partir do ModuloRelatorios — o web só exibe.
+ * `tipoGasto` recorta P&L, categorias e orçamentos; caixa e saldos ignoram.
  */
 export async function montar_dashboard(
   usuarioId: string,
   dataAtual = hojeISO(),
+  tipoGasto?: Perfil,
 ): Promise<DashboardResposta> {
   const hoje = hojeISO();
   const periodo = inicioFimMesAtual(dataAtual);
   const filtros = { usuarioId, periodo };
+  const filtrosNatureza = tipoGasto ? { ...filtros, perfil: tipoGasto } : filtros;
   const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
@@ -148,15 +215,21 @@ export async function montar_dashboard(
     categoriasDb,
     movimentosQuitadas,
     movimentosCaixa,
+    escopo,
+    fluxoVisao,
   ] =
     await Promise.all([
       relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
-      relatorios.consultar_visao("categoria", filtros, dataAtual),
+      relatorios.consultar_visao("categoria", filtrosNatureza, dataAtual),
       relatorios.consultar_visao("historico", filtros, dataAtual),
       relatorios.consultar_visao("cartoes", { usuarioId }, dataAtual),
       repositorio.listarMovimentos(usuarioId, { periodo, tipos: ["despesa"] }),
       repositorio.listarCartoes(usuarioId),
-      relatorios.consultar_visao("categoria", { usuarioId, periodo: periodoAnterior }, dataAnterior),
+      relatorios.consultar_visao(
+        "categoria",
+        { usuarioId, periodo: periodoAnterior, ...(tipoGasto ? { perfil: tipoGasto } : {}) },
+        dataAnterior,
+      ),
       relatorios.consultar_visao("futuro", { usuarioId, periodo }, dataAtual),
       repositorio.listarMovimentos(usuarioId, { periodo }),
       repositorio.listarCategorias(usuarioId),
@@ -171,6 +244,8 @@ export async function montar_dashboard(
         periodo: { de: periodo.de, ate: ateCaixa },
         incluirIgnorados: true,
       }),
+      obter_escopo_leitura(usuarioId),
+      relatorios.consultar_visao("fluxo", { usuarioId, periodo }, dataAtual),
     ]);
 
   if (
@@ -179,7 +254,8 @@ export async function montar_dashboard(
     historicoVisao.tipo !== "historico" ||
     cartoesVisao.tipo !== "cartoes" ||
     categoriaAnteriorVisao.tipo !== "categoria" ||
-    futuroVisao.tipo !== "futuro"
+    futuroVisao.tipo !== "futuro" ||
+    fluxoVisao.tipo !== "fluxo"
   ) {
     throw new Error("Resposta inesperada do ModuloRelatorios no dashboard.");
   }
@@ -252,12 +328,20 @@ export async function montar_dashboard(
     periodo,
     movimentos: movimentosCaixa,
   });
-  const fluxoResultado = montar_fluxo_resultado(movimentosMes, periodo);
+  const movimentosNatureza = filtrar_movimentos_por_natureza(movimentosMes, tipoGasto);
+  const fluxoResultado = montar_fluxo_resultado(movimentosNatureza, periodo);
   const visualPorNome = new Map(
     categoriasDb.map((item) => [item.nome, { icone: item.icone, cor: item.cor }] as const),
   );
-  const gastosPorCategoria = montar_ranking_tipo(movimentosMes, categoriasDb, "despesa");
-  const receitasPorCategoria = montar_ranking_tipo(movimentosMes, categoriasDb, "receita");
+  const gastosPorCategoria = montar_ranking_tipo(movimentosNatureza, categoriasDb, "despesa");
+  const receitasPorCategoria = montar_ranking_tipo(movimentosNatureza, categoriasDb, "receita");
+  const natureza = agregar_totais_por_natureza(movimentosMes);
+  const cruzamento = escopo.visaoAgregada
+    ? null
+    : {
+        totalPessoalComEmpresa: fluxoVisao.dados.totalPessoalComEmpresa,
+        totalEmpresaComPessoal: fluxoVisao.dados.totalEmpresaComPessoal,
+      };
   const resultadoAnterior = arredondar(
     categoriaAnteriorVisao.dados.totalReceitas - categoriaAnteriorVisao.dados.totalDespesas,
   );
@@ -283,7 +367,7 @@ export async function montar_dashboard(
 
   let orcamentos: OrcamentoDashboard[] = [];
   try {
-    const status = await listar_status_orcamentos(usuarioId, dataAtual);
+    const status = await listar_status_orcamentos(usuarioId, dataAtual, undefined, tipoGasto);
     orcamentos = status.map((item) => ({
       categoriaNome: item.categoriaNome,
       gasto: item.gasto,
@@ -337,6 +421,9 @@ export async function montar_dashboard(
       ),
       variacaoResultado: variacao_percentual(resultadoMes, resultadoAnterior),
     },
+    tipoGasto: tipoGasto ?? null,
+    natureza,
+    cruzamento,
     naoClassificado,
     gastosPorCategoria,
     receitasPorCategoria,
@@ -348,10 +435,6 @@ export async function montar_dashboard(
     contas: saldos.contas,
     cartoes: cartoesDetalhe,
   };
-}
-
-function arredondar(valor: number): number {
-  return Math.round(valor * 100) / 100;
 }
 
 async function contar_nao_classificados(

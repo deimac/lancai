@@ -454,6 +454,15 @@ export interface DashboardResposta {
     variacaoDespesas?: number | null;
     variacaoResultado?: number | null;
   };
+  tipoGasto?: "pf" | "pj" | null;
+  natureza?: {
+    pessoal: { receitas: number; despesas: number; resultado: number };
+    empresa: { receitas: number; despesas: number; resultado: number };
+  };
+  cruzamento?: {
+    totalPessoalComEmpresa: number;
+    totalEmpresaComPessoal: number;
+  } | null;
   naoClassificado: { quantidade: number; total: number };
   gastosPorCategoria: RankingCategoria[];
   receitasPorCategoria?: RankingCategoria[];
@@ -950,9 +959,14 @@ export const clienteApi = {
     });
   },
 
-  obter_dashboard(usuarioId: string, data?: string): Promise<DashboardResposta> {
+  obter_dashboard(
+    usuarioId: string,
+    data?: string,
+    tipoGasto?: "pf" | "pj",
+  ): Promise<DashboardResposta> {
     const query = new URLSearchParams({ usuarioId });
     if (data) query.set("data", data);
+    if (tipoGasto) query.set("tipoGasto", tipoGasto);
     return requisitar<DashboardResposta>(`/dashboard?${query.toString()}`);
   },
 

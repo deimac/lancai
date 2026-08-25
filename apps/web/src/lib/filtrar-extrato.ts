@@ -78,6 +78,23 @@ export function tipo_gasto_para_query(tipo: TipoGastoExtrato): string | null {
   return tipo === "todas" ? null : tipo;
 }
 
+/** Cockpit: sem param = pessoal (planejamento). `todos` força a soma misturada. */
+export function tipo_gasto_dashboard_da_query(valor: string | null): TipoGastoExtrato {
+  if (valor === "todos" || valor === "todas") return "todas";
+  if (valor === "empresa") return "empresa";
+  return "pessoal";
+}
+
+export function tipo_gasto_dashboard_para_query(tipo: TipoGastoExtrato): string {
+  return tipo === "todas" ? "todos" : tipo;
+}
+
+export function perfil_de_tipo_gasto(tipo: TipoGastoExtrato): "pf" | "pj" | undefined {
+  if (tipo === "pessoal") return "pf";
+  if (tipo === "empresa") return "pj";
+  return undefined;
+}
+
 export function papel_da_query(valor: string | null): PapelExtrato {
   if (valor === "gastos" || valor === "pagamentos_fatura") return valor;
   return "todas";
