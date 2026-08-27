@@ -422,6 +422,7 @@ export interface ProximoPagamento {
   contaNome: string | null;
   vencida: boolean;
   pago?: boolean;
+  dataPagamento?: string | null;
 }
 
 export interface OrcamentoDashboard {

@@ -9,6 +9,7 @@ import {
   adicionarMeses,
   competencia_ciclo_da_data,
   deISOParaData,
+  eh_credito_quitacao_no_cartao,
   eh_movimento_parcelado,
   hojeISO,
   mapa_fechamento_cartoes,
@@ -57,6 +58,8 @@ export interface ProximoPagamento {
   vencida: boolean;
   /** Fatura com Pix/TED ligado ao cartão e ao mês de vencimento. */
   pago: boolean;
+  /** Dia em que o Pix saiu; só em fatura paga. */
+  dataPagamento?: string | null;
 }
 
 export interface OrcamentoDashboard {
@@ -662,22 +665,33 @@ export function montar_proximos_pagamentos(entrada: {
     parcelaCompraEm?: string | Date | null;
   }>;
   pagamentosFatura?: Array<{
+    id?: string;
     status: string;
     papel?: string | null;
     cartaoFaturaId?: string | null;
     competenciaFatura?: string | null;
+    dataMovimento?: string;
+    valor?: string | number;
+    tipo?: string;
+    cartaoId?: string | null;
+    contaId?: string | null;
+    descricao?: string;
   }>;
   hoje: string;
   periodo: { de: string; ate: string };
 }): ProximoPagamento[] {
   const itens: ProximoPagamento[] = [];
   const mesAgenda = entrada.periodo.de.slice(0, 7);
-  const faturasQuitadas = new Set<string>();
+  const pixPorCartao = new Map<string, NonNullable<typeof entrada.pagamentosFatura>>();
   for (const movimento of entrada.pagamentosFatura ?? []) {
     if (movimento.status === "cancelado") continue;
     if (movimento.papel !== "pagamento_fatura") continue;
     if (!movimento.cartaoFaturaId || !movimento.competenciaFatura) continue;
-    faturasQuitadas.add(`${movimento.cartaoFaturaId}|${movimento.competenciaFatura}`);
+    if (movimento.competenciaFatura !== mesAgenda) continue;
+    if (eh_credito_duplicado_da_fatura(movimento)) continue;
+    const lista = pixPorCartao.get(movimento.cartaoFaturaId) ?? [];
+    lista.push(movimento);
+    pixPorCartao.set(movimento.cartaoFaturaId, lista);
   }
   const cartaoPorId = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
 
@@ -732,24 +746,43 @@ export function montar_proximos_pagamentos(entrada: {
 
   for (const cartao of entrada.cartoes) {
     const dia = String(cartao.vencimento).padStart(2, "0");
-    const data = `${mesAgenda}-${dia}`;
-    const pago = faturasQuitadas.has(`${cartao.id}|${mesAgenda}`);
-    itens.push({
-      id: `fatura-${cartao.id}`,
-      data,
-      descricao: `Fatura ${cartao.nome}`,
-      valor: cartao.gastoMes,
-      origem: "fatura",
-      contaNome: cartao.nome,
-      vencida: !pago && data < entrada.hoje,
-      pago,
-    });
+    const vencimento = `${mesAgenda}-${dia}`;
+    const pixs = [...(pixPorCartao.get(cartao.id) ?? [])].sort((a, b) =>
+      String(a.dataMovimento ?? "").localeCompare(String(b.dataMovimento ?? "")),
+    );
+    if (pixs.length === 0) {
+      itens.push({
+        id: `fatura-${cartao.id}`,
+        data: vencimento,
+        descricao: `Fatura ${cartao.nome}`,
+        valor: cartao.gastoMes,
+        origem: "fatura",
+        contaNome: cartao.nome,
+        vencida: vencimento < entrada.hoje,
+        pago: false,
+      });
+      continue;
+    }
+    for (const pix of pixs) {
+      const pagamento = pix.dataMovimento ? String(pix.dataMovimento).slice(0, 10) : null;
+      itens.push({
+        id: pix.id ?? `fatura-${cartao.id}-${pagamento ?? "pago"}`,
+        data: vencimento,
+        dataPagamento: pagamento,
+        descricao: `Fatura ${cartao.nome}`,
+        valor: pix.valor == null || pix.valor === "" ? cartao.gastoMes : Number(pix.valor),
+        origem: "fatura",
+        contaNome: cartao.nome,
+        vencida: false,
+        pago: true,
+      });
+    }
   }
 
   const vistos = new Set<string>();
   return itens
     .filter((item) => {
-      const chave = `${item.descricao}|${item.data}|${item.valor}`;
+      const chave = `${item.id}|${item.descricao}|${item.data}|${item.dataPagamento ?? ""}|${item.valor}`;
       if (vistos.has(chave)) return false;
       vistos.add(chave);
       return true;
@@ -757,7 +790,23 @@ export function montar_proximos_pagamentos(entrada: {
     .sort((a, b) => {
       if (a.pago !== b.pago) return Number(a.pago) - Number(b.pago);
       if (a.vencida !== b.vencida) return Number(b.vencida) - Number(a.vencida);
-      return a.data.localeCompare(b.data) || a.descricao.localeCompare(b.descricao, "pt-BR");
+      const dataA = a.dataPagamento ?? a.data;
+      const dataB = b.dataPagamento ?? b.data;
+      return dataA.localeCompare(dataB) || a.descricao.localeCompare(b.descricao, "pt-BR");
     })
     .slice(0, 16);
+}
+
+function eh_credito_duplicado_da_fatura(movimento: {
+  tipo?: string;
+  cartaoId?: string | null;
+  contaId?: string | null;
+  descricao?: string;
+}): boolean {
+  if (movimento.tipo === "receita" || movimento.tipo === "estorno") return true;
+  if (movimento.descricao && eh_credito_quitacao_no_cartao(movimento.descricao)) return true;
+  if (movimento.cartaoId && !movimento.contaId && movimento.tipo !== "despesa" && movimento.tipo !== "retirada") {
+    return true;
+  }
+  return false;
 }

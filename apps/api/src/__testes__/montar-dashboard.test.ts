@@ -234,6 +234,100 @@ describe("montar_proximos_pagamentos", () => {
       ]),
     );
   });
+
+  it("lista cada Pix da competência com vencimento e dia do pagamento", () => {
+    const azul: DashboardCartao = {
+      ...cartao,
+      id: "cartao-azul",
+      nome: "Azul Itaú Visa Platinum",
+      fechamento: 30,
+      vencimento: 6,
+      gastoMes: 6500.57,
+    };
+    const pagamentos = [
+      {
+        id: "pix-antecipado",
+        status: "realizado",
+        papel: "pagamento_fatura" as const,
+        cartaoFaturaId: "cartao-azul",
+        competenciaFatura: "2026-08",
+        dataMovimento: "2026-07-29",
+        valor: 6500.57,
+        tipo: "despesa",
+        contaId: "conta",
+        cartaoId: null,
+        descricao: "Pix fatura",
+      },
+      {
+        id: "pix-sobra",
+        status: "realizado",
+        papel: "pagamento_fatura" as const,
+        cartaoFaturaId: "cartao-azul",
+        competenciaFatura: "2026-08",
+        dataMovimento: "2026-08-05",
+        valor: 11.02,
+        tipo: "despesa",
+        contaId: "conta",
+        cartaoId: null,
+        descricao: "Pix sobra",
+      },
+      {
+        id: "credito-cartao",
+        status: "realizado",
+        papel: "pagamento_fatura" as const,
+        cartaoFaturaId: "cartao-azul",
+        competenciaFatura: "2026-08",
+        dataMovimento: "2026-07-29",
+        valor: 6500.57,
+        tipo: "receita",
+        contaId: null,
+        cartaoId: "cartao-azul",
+        descricao: "Pagamento recebido",
+      },
+    ];
+    const agosto = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [azul],
+      movimentos: [],
+      pagamentosFatura: pagamentos,
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    const faturasAgo = agosto.filter((item) => item.origem === "fatura");
+    expect(faturasAgo).toEqual([
+      expect.objectContaining({
+        data: "2026-08-06",
+        dataPagamento: "2026-07-29",
+        valor: 6500.57,
+        pago: true,
+        vencida: false,
+      }),
+      expect.objectContaining({
+        data: "2026-08-06",
+        dataPagamento: "2026-08-05",
+        valor: 11.02,
+        pago: true,
+        vencida: false,
+      }),
+    ]);
+    expect(faturasAgo).toHaveLength(2);
+
+    const setembro = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [{ ...azul, gastoMes: 80 }],
+      movimentos: [],
+      pagamentosFatura: pagamentos,
+      hoje: "2026-09-10",
+      periodo: { de: "2026-09-01", ate: "2026-09-30" },
+    });
+    expect(setembro.filter((item) => item.origem === "fatura")).toEqual([
+      expect.objectContaining({
+        data: "2026-09-06",
+        pago: false,
+        valor: 80,
+      }),
+    ]);
+  });
 });
 
 describe("natureza do dashboard", () => {

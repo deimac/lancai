@@ -920,13 +920,15 @@ export function TelaDashboard() {
                       </div>
                       <p className="text-xs text-texto-suave">
                         {formatar_data_curta(item.data)}
-                        {item.origem === "fatura"
-                          ? " · Fatura"
+                        {item.origem === "fatura" && item.dataPagamento
+                          ? ` · ${formatar_data_curta(item.dataPagamento)}`
                           : item.origem === "parcela"
                             ? " · Parcela"
                             : item.origem === "recorrente"
                               ? " · Recorrente"
-                              : " · Previsto"}
+                              : item.origem === "fatura"
+                                ? ""
+                                : " · Previsto"}
                       </p>
                     </div>
                     <span
