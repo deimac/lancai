@@ -122,6 +122,28 @@ describe("heurística de pagamento de fatura", () => {
     ).toBeNull();
   });
 
+  it("Pagamento recebido no cartão não ganha selo de compra do ciclo seguinte", () => {
+    expect(
+      selo_fatura_ciclo({
+        dataMovimento: "2026-08-14",
+        cartaoId: "mp",
+        fechamento: 12,
+        vencimento: 17,
+        tipo: "receita",
+        papel: "pagamento_fatura",
+      }),
+    ).toBeNull();
+    expect(
+      selo_fatura_ciclo({
+        dataMovimento: "2026-08-14",
+        cartaoId: "mp",
+        fechamento: 12,
+        vencimento: 17,
+        tipo: "receita",
+      }),
+    ).toBeNull();
+  });
+
   it("P&L do cartão usa o mês da fatura; conta usa o mês civil", () => {
     const cartoes = mapa_fechamento_cartoes([{ id: "mp", fechamento: 12 }]);
     expect(

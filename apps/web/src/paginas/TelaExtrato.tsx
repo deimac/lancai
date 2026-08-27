@@ -905,6 +905,8 @@ export function TelaExtrato() {
                   fechamento: cartaoMovimento?.fechamento,
                   vencimento: cartaoMovimento?.vencimento,
                   status: movimento.status,
+                  tipo: movimento.tipo,
+                  papel: movimento.papel,
                 });
                 return (
                   <tr

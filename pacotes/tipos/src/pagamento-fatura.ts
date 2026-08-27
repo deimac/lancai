@@ -251,6 +251,7 @@ export type SeloFaturaCiclo = {
 /**
  * Selo do extrato quando a compra é de um mês e a fatura é de outro.
  * Dentro do ciclo (compra e fatura no mesmo mês) não há selo.
+ * Crédito de quitação (`Pagamento recebido`) não é compra: não recebe selo.
  */
 export function selo_fatura_ciclo(entrada: {
   dataMovimento: string;
@@ -258,7 +259,11 @@ export function selo_fatura_ciclo(entrada: {
   fechamento?: number | null;
   vencimento?: number | null;
   status?: string | null;
+  tipo?: string | null;
+  papel?: string | null;
 }): SeloFaturaCiclo | null {
+  if (entrada.papel === "pagamento_fatura") return null;
+  if (entrada.tipo && entrada.tipo !== "despesa" && entrada.tipo !== "retirada") return null;
   if (!entrada.cartaoId) return null;
   if (entrada.fechamento == null || entrada.fechamento < 1) return null;
   const data = String(entrada.dataMovimento).slice(0, 10);
