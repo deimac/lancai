@@ -40,6 +40,7 @@ import {
 import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
 import { IconeCategoria } from "../componentes/IconeCategoria";
+import { SeletorTipoGasto } from "../componentes/SeletorTipoGasto";
 import { Botao } from "../componentes/ui/Botao";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
@@ -154,40 +155,6 @@ function Variacao({ valor }: { valor: number | null | undefined }) {
     <p className={unir_classes("mt-1 text-xs", positivo ? "text-receita" : "text-despesa")}>
       {positivo ? "▲" : "▼"} {Math.abs(valor).toFixed(1).replace(".", ",")}% vs mês anterior
     </p>
-  );
-}
-
-const OPCOES_TIPO_GASTO: Array<{ valor: TipoGastoExtrato; rotulo: string }> = [
-  { valor: "todas", rotulo: "Todos" },
-  { valor: "pessoal", rotulo: "Pessoal" },
-  { valor: "empresa", rotulo: "Empresa" },
-];
-
-function SeletorTipoGasto({
-  valor,
-  onChange,
-}: {
-  valor: TipoGastoExtrato;
-  onChange: (proximo: TipoGastoExtrato) => void;
-}) {
-  return (
-    <div className="flex rounded-lg border border-borda p-0.5 text-xs">
-      {OPCOES_TIPO_GASTO.map((opcao) => (
-        <button
-          key={opcao.valor}
-          type="button"
-          onClick={() => onChange(opcao.valor)}
-          className={unir_classes(
-            "rounded-md px-2.5 py-1 font-medium transition",
-            valor === opcao.valor
-              ? "bg-primaria/15 text-primaria"
-              : "text-texto-suave hover:text-texto",
-          )}
-        >
-          {opcao.rotulo}
-        </button>
-      ))}
-    </div>
   );
 }
 

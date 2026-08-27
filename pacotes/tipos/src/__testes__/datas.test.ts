@@ -55,6 +55,10 @@ describe("formatarQuandoFato", () => {
       "05/08/2026 14:32",
     );
   });
+
+  it("não cola hora do Brasil num dia UTC diferente (madrugada)", () => {
+    expect(formatarQuandoFato("2026-08-24", "2026-08-24T00:33:38.001Z")).toBe("24/08/2026");
+  });
 });
 
 describe("competência da fatura (parcela conta no vencimento)", () => {
@@ -110,11 +114,13 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
     expect(datas.get(2)).toBe("2026-07-01");
   });
 
-  it("purchaseDate 22:56 UTC permanece 01/06 no Brasil", () => {
+  it("purchaseDate 22:56 UTC permanece 01/06; madrugada UTC segue o calendário do date", () => {
     expect(dia_civil_iso("2026-06-01T22:56:00.000Z")).toBe("2026-06-01");
     expect(dia_civil_iso("2026-06-02T01:56:00.000Z")).toBe("2026-06-01");
     expect(dia_provedor_iso("2026-06-01T22:56:00.000Z")).toBe("2026-06-01");
+    expect(dia_provedor_iso("2026-06-02T01:56:00.000Z")).toBe("2026-06-02");
     expect(dia_provedor_iso("2026-08-06T00:00:00.000Z")).toBe("2026-08-06");
+    expect(dia_provedor_iso("2026-08-24T00:33:38.001Z")).toBe("2026-08-24");
   });
 
   it("datas civis vizinhas (fuso) são a mesma compra", () => {

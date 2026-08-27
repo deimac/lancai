@@ -78,6 +78,8 @@ export function formatarQuandoFato(
   if (!ocorridoEmInstante) return competencia;
   const hora = formatarHoraBrasil(ocorridoEmInstante);
   if (!hora || hora === "00:00") return competencia;
+  const diaBrasil = dia_civil_iso(ocorridoEmInstante);
+  if (diaBrasil && diaBrasil !== dataMovimento.slice(0, 10)) return competencia;
   return `${competencia} ${hora}`;
 }
 
@@ -128,20 +130,15 @@ export function dia_civil_iso(quando: string | Date, fuso = "America/Sao_Paulo")
 }
 
 /**
- * Dia que o provedor quis dizer. Meia-noite UTC é só o dia civil (não desloca
- * para a véspera no Brasil). Hora real usa o fuso do app.
+ * Dia que o provedor gravou no `date`. O app do banco usa o calendário UTC do
+ * instante (`2026-08-24T00:33:38Z` → 24/08). Converter para o Brasil deslocava
+ * madrugada UTC para a véspera.
  */
-export function dia_provedor_iso(quando: string, fuso = "America/Sao_Paulo"): string {
+export function dia_provedor_iso(quando: string, _fuso = "America/Sao_Paulo"): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(quando)) return quando;
   const data = new Date(quando);
   if (Number.isNaN(data.getTime())) return quando.slice(0, 10);
-  const soDia =
-    data.getUTCHours() === 0 &&
-    data.getUTCMinutes() === 0 &&
-    data.getUTCSeconds() === 0 &&
-    data.getUTCMilliseconds() === 0;
-  if (soDia) return data.toISOString().slice(0, 10);
-  return dia_civil_iso(quando, fuso) ?? quando.slice(0, 10);
+  return data.toISOString().slice(0, 10);
 }
 
 export function dias_calendario_entre(a: string, b: string): number {

@@ -274,10 +274,10 @@ const IOF_SOBRE_COMPRA_MAX = 0.04;
 const IOF_MAX_DIAS_DA_COMPRA = 5;
 
 /**
- * O app do banco mostra compra + IOF numa linha só. A Pluggy manda os dois.
- * Quando o par é único (~3,5% e janela de dias, ou comércio no texto), some o
- * IOF no valor da compra e marca o IOF como removido — a ingestão cancela a
- * linha extra e não cria outra. Sem par único, o IOF fica.
+ * O extrato do dia no app soma compra + IOF numa linha. A Pluggy manda os dois.
+ * A alíquota ~3,5% só amarra o par (já em real, único na janela). O valor
+ * somado é o IOF que a instituição lançou, não 3,5% recalculado. IOF de atraso,
+ * compra ainda em moeda estrangeira e empate de duas compras ficam separados.
  */
 export function incorporar_iof_nas_compras(
   movimentacoes: MovimentacaoExterna[],

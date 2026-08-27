@@ -14,6 +14,8 @@ import {
   papel_da_query,
   papel_para_query,
   perfil_de_tipo_gasto,
+  quantidade_filtros_drawer,
+  resumir_extrato,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
@@ -177,6 +179,17 @@ describe("filtrar_extrato", () => {
     expect(soAzul).toEqual(["3"]);
   });
 
+  it("isola todas as contas ou todos os cartões", () => {
+    expect(
+      filtrar_extrato(lote, contas, cartoes, { ...base, origem: { tipo: "contas" } }).map((m) => m.id),
+    ).toEqual(["1", "2", "4", "6"]);
+    expect(
+      filtrar_extrato(lote, contas, cartoes, { ...base, origem: { tipo: "cartoes" } }).map(
+        (m) => m.id,
+      ),
+    ).toEqual(["3"]);
+  });
+
   it("fila revisar pega só sem classificação, não IA com categoria", () => {
     const ids = filtrar_extrato(lote, contas, cartoes, { ...base, fila: "revisar" }).map((m) => m.id);
     expect(ids).toEqual(["4"]);
@@ -240,6 +253,10 @@ describe("parsers da URL", () => {
     expect(origem_da_query("conta:abc")).toEqual({ tipo: "conta", id: "abc" });
     expect(origem_da_query("cartao:azul")).toEqual({ tipo: "cartao", id: "azul" });
     expect(origem_para_query({ tipo: "conta", id: "abc" })).toBe("conta:abc");
+    expect(origem_da_query("contas")).toEqual({ tipo: "contas" });
+    expect(origem_da_query("cartoes")).toEqual({ tipo: "cartoes" });
+    expect(origem_para_query({ tipo: "contas" })).toBe("contas");
+    expect(origem_para_query({ tipo: "cartoes" })).toBe("cartoes");
     expect(origem_da_query("lixo")).toEqual({ tipo: "todas" });
   });
 
@@ -271,5 +288,57 @@ describe("parsers da URL", () => {
     expect(papel_da_query("x")).toBe("todas");
     expect(papel_para_query("gastos")).toBe("gastos");
     expect(papel_para_query("todas")).toBeNull();
+  });
+});
+
+describe("resumir_extrato", () => {
+  it("soma entradas, saídas sem fatura e o que falta classificar", () => {
+    const recorte = [
+      movimento({ id: "e", tipo: "receita", valor: "100", papel: "gasto" }),
+      movimento({ id: "s", tipo: "despesa", valor: "40", papel: "gasto" }),
+      movimento({
+        id: "f",
+        tipo: "despesa",
+        valor: "200",
+        papel: "pagamento_fatura",
+        descricao: "Fatura",
+      }),
+      movimento({
+        id: "r",
+        tipo: "despesa",
+        valor: "15",
+        categoriaNome: "Não classificado",
+        categoriaId: "cat-nc",
+      }),
+      movimento({ id: "c", tipo: "despesa", valor: "99", status: "cancelado" }),
+    ];
+    expect(resumir_extrato(recorte)).toEqual({
+      entradas: 100,
+      saidas: 55,
+      resultado: 45,
+      revisarQuantidade: 1,
+      revisarTotal: 15,
+    });
+  });
+});
+
+describe("quantidade_filtros_drawer", () => {
+  it("conta só o que fica fora da barra", () => {
+    expect(
+      quantidade_filtros_drawer({
+        categoriaId: null,
+        classificacao: "todas",
+        papel: "todas",
+        fila: "todas",
+      }),
+    ).toBe(0);
+    expect(
+      quantidade_filtros_drawer({
+        categoriaId: "cat-1",
+        classificacao: "ia",
+        papel: "gastos",
+        fila: "revisar",
+      }),
+    ).toBe(4);
   });
 });

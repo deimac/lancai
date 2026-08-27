@@ -268,10 +268,11 @@ Além dos cinco, `item/waiting_user_input` e `item/waiting_user_action` também 
 | `idExterno` | `id` | Estável — é por `id` que os webhooks de update e delete se referem à transação |
 | `descricaoFonte` | `descriptionRaw ?? description` | A Pluggy já separa original de limpo, exatamente como Fato e Conhecimento |
 | `descricao` inicial | `description` | Versão limpa da Pluggy é um bom ponto de partida para o Conhecimento |
-| `valor` | `Math.abs(amount)` | `amount` vem com sinal; nosso schema exige positivo e a direção está em `tipo` |
+| `valor` | `amountInAccountCurrency` se existir, senão `Math.abs(amount)` | Compra internacional: `amount` é USD/EUR; o valor na fatura em real está em `amountInAccountCurrency` |
 | `tipo` | `type` | `DEBIT` → despesa, `CREDIT` → receita. A Pluggy já normaliza a inversão do cartão: compra é sempre `DEBIT` |
 | `statusFonte` | `status` | `POSTED` → confirmado, `PENDING` → pendente |
-| `ocorridoEm` | `creditCardMetadata.billForecastDate` (preferência) ou `date` | Mês da fatura prevista manda no navegador de competências. Sem forecast, parcela PENDING usa compra+(N−1) meses — o `date` sozinho empilha todas as parcelas futuras no dia da compra |
+| `ocorridoEm` | `creditCardMetadata.billForecastDate` (preferência) ou calendário UTC de `date` | Mês da fatura prevista manda no navegador de competências. Sem forecast, parcela PENDING usa compra+(N−1) meses. Avulsa: o dia UTC do `date` — converter para o Brasil deslocava madrugada UTC (`00:33Z`) para a véspera, um dia antes do app do banco |
+| `IOF de compra` | soma na compra quando o par é único | Alíquota ~3,5% só identifica o par. O acréscimo é o valor do IOF da Pluggy, não 3,5% recalculado. IOF de atraso, moeda estrangeira ainda sem conversão e empate de duas compras no mesmo dia ficam linhas à parte |
 | `favorecidoFonte` | `merchant.name` ou `paymentData.receiver.name` | Qual usar é configuração por conexão, e é conceito de provedor — fica no módulo |
 | `provedor` | fixo `"pluggy"` | Rótulo opaco, ninguém fora do módulo interpreta |
 

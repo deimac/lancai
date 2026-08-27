@@ -12,6 +12,8 @@ export type ClassificacaoExtrato =
 
 export type OrigemExtrato =
   | { tipo: "todas" }
+  | { tipo: "contas" }
+  | { tipo: "cartoes" }
   | { tipo: "conta"; id: string }
   | { tipo: "cartao"; id: string };
 
@@ -56,6 +58,7 @@ export function classificacao_da_query(valor: string | null): ClassificacaoExtra
 
 export function origem_da_query(valor: string | null): OrigemExtrato {
   if (!valor) return { tipo: "todas" };
+  if (valor === "contas" || valor === "cartoes") return { tipo: valor };
   const separador = valor.indexOf(":");
   if (separador <= 0) return { tipo: "todas" };
   const tipo = valor.slice(0, separador);
@@ -66,6 +69,7 @@ export function origem_da_query(valor: string | null): OrigemExtrato {
 
 export function origem_para_query(origem: OrigemExtrato): string | null {
   if (origem.tipo === "todas") return null;
+  if (origem.tipo === "contas" || origem.tipo === "cartoes") return origem.tipo;
   return `${origem.tipo}:${origem.id}`;
 }
 
@@ -145,6 +149,8 @@ export function filtrar_extrato(
     if (filtros.fila === "manual" && movimento.fonte === "open_finance") return false;
     if (filtros.fila === "revisar" && !precisa_revisao(movimento)) return false;
 
+    if (filtros.origem.tipo === "contas" && !movimento.contaId) return false;
+    if (filtros.origem.tipo === "cartoes" && !movimento.cartaoId) return false;
     if (filtros.origem.tipo === "conta" && movimento.contaId !== filtros.origem.id) return false;
     if (filtros.origem.tipo === "cartao" && movimento.cartaoId !== filtros.origem.id) {
       return false;
@@ -179,6 +185,55 @@ export function filtrar_extrato(
 
     return true;
   });
+}
+
+function eh_entrada_extrato(tipo: string): boolean {
+  return tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte";
+}
+
+export type ResumoExtrato = {
+  entradas: number;
+  saidas: number;
+  resultado: number;
+  revisarQuantidade: number;
+  revisarTotal: number;
+};
+
+/** Totais do recorte já filtrado (exclui cancelados; saídas sem pagamento de fatura). */
+export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
+  let entradas = 0;
+  let saidas = 0;
+  let revisarQuantidade = 0;
+  let revisarTotal = 0;
+  for (const movimento of movimentos) {
+    if (movimento.status === "cancelado") continue;
+    const valor = Number(movimento.valor);
+    const seguro = Number.isFinite(valor) ? valor : 0;
+    if (eh_entrada_extrato(movimento.tipo)) entradas += seguro;
+    else if (movimento.papel !== "pagamento_fatura") saidas += seguro;
+    if (precisa_revisao(movimento)) {
+      revisarQuantidade += 1;
+      revisarTotal += seguro;
+    }
+  }
+  return {
+    entradas,
+    saidas,
+    resultado: entradas - saidas,
+    revisarQuantidade,
+    revisarTotal,
+  };
+}
+
+export function quantidade_filtros_drawer(
+  filtros: Pick<FiltrosExtrato, "categoriaId" | "classificacao" | "papel" | "fila">,
+): number {
+  let n = 0;
+  if (filtros.categoriaId) n += 1;
+  if (filtros.classificacao !== "todas") n += 1;
+  if (filtros.papel !== "todas") n += 1;
+  if (filtros.fila !== "todas") n += 1;
+  return n;
 }
 
 export type PaginaExtrato<T> = {

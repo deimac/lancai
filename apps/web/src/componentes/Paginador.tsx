@@ -1,4 +1,5 @@
 import { Botao } from "./ui/Botao";
+import { SeletorVisual } from "./ui/SeletorVisual";
 import { TAMANHOS_PAGINA } from "../lib/filtrar-extrato";
 import { unir_classes } from "../lib/unir-classes";
 
@@ -21,8 +22,10 @@ function paginas_visiveis(pagina: number, paginas: number): number[] {
   return Array.from({ length: fim - inicio + 1 }, (_, i) => inicio + i);
 }
 
-const CLASSE_SELECT =
-  "rounded-lg border border-borda bg-superficie px-2 py-1.5 text-sm text-texto outline-none focus:border-primaria";
+const OPCOES_POR_PAGINA = TAMANHOS_PAGINA.map((n) => ({
+  valor: String(n),
+  rotulo: String(n),
+}));
 
 export function Paginador({
   pagina,
@@ -44,18 +47,14 @@ export function Paginador({
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-xs text-texto-suave">
           Por página
-          <select
-            value={porPagina}
-            onChange={(e) => onPorPagina(Number(e.target.value))}
-            className={CLASSE_SELECT}
-            aria-label="Lançamentos por página"
-          >
-            {TAMANHOS_PAGINA.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+          <SeletorVisual
+            compacto
+            className="w-[4.75rem]"
+            ariaLabel="Lançamentos por página"
+            valor={String(porPagina)}
+            opcoes={OPCOES_POR_PAGINA}
+            onChange={(v) => onPorPagina(Number(v))}
+          />
         </label>
         <div className="flex items-center gap-1">
           <Botao

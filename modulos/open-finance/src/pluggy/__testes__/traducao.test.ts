@@ -143,21 +143,16 @@ describe("traduzir_transacao", () => {
     expect(mov.descricaoFonte).toBe("HOTELDOBARUERIBR  01/10");
   });
 
-  it("purchaseDate UTC que vira o dia no Brasil permanece 01/06", () => {
+  it("madrugada UTC do date não cai na véspera brasileira", () => {
     const mov = traduzir_transacao(
       tx({
-        status: "PENDING",
-        date: "2026-09-08T00:00:00.000Z",
-        creditCardMetadata: {
-          installmentNumber: 3,
-          totalInstallments: 10,
-          purchaseDate: "2026-06-02T01:56:00.000Z",
-          billForecastDate: "2026-09",
-        },
+        status: "POSTED",
+        date: "2026-08-24T00:33:38.001Z",
+        creditCardMetadata: null,
       }),
     );
-    expect(mov.parcelamento?.compraEm).toBe("2026-06-01");
-    expect(mov.ocorridoEm).toBe("2026-09-08");
+    expect(mov.ocorridoEm).toBe("2026-08-24");
+    expect(mov.ocorridoEmInstante).toBe("2026-08-24T00:33:38.001Z");
   });
 });
 
@@ -266,7 +261,7 @@ describe("traduzir_lote_transacoes", () => {
     expect(lote[0]?.statusFonte).not.toBe("removido");
   });
 
-  it("IOF ~3,5% some na compra — o banco mostra uma linha só", () => {
+  it("IOF some o valor real da Pluggy, não 3,5% recalculado", () => {
     const lote = traduzir_lote_transacoes([
       tx({
         id: "compra",
@@ -285,9 +280,10 @@ describe("traduzir_lote_transacoes", () => {
     ]);
     const compra = lote.find((m) => m.idExterno === "compra");
     const iof = lote.find((m) => m.idExterno === "iof");
-    expect(compra?.valor).toBe(231.91);
-    expect(iof?.statusFonte).toBe("removido");
     expect(iof?.valor).toBe(7.57);
+    expect(compra?.valor).toBe(224.34 + 7.57);
+    expect(compra?.valor).not.toBe(Number((224.34 * 1.035).toFixed(2)));
+    expect(iof?.statusFonte).toBe("removido");
   });
 
   it("IOF genérico do Nubank casa pela alíquota mesmo em dia vizinho", () => {

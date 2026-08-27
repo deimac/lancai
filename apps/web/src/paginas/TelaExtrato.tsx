@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
+  CreditCard,
+  ListFilter,
   MoreHorizontal,
   Repeat,
   Search,
   Tags,
   Trash2,
   UserRound,
+  Wallet,
   X,
 } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
@@ -30,8 +32,11 @@ import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
 import { MenuAcoes } from "../componentes/ui/MenuAcoes";
 import { ModalPagamentoFatura } from "../componentes/ui/ModalPagamentoFatura";
+import { SeletorVisual } from "../componentes/ui/SeletorVisual";
+import { DrawerFiltrosExtrato } from "../componentes/DrawerFiltrosExtrato";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { Paginador } from "../componentes/Paginador";
+import { SeletorTipoGasto } from "../componentes/SeletorTipoGasto";
 import { Dica } from "../componentes/ui/Dica";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
@@ -51,6 +56,7 @@ import {
   dispensar_convite_fatura,
   ler_faturas_dispensadas,
 } from "../lib/preferencias-fatura-dispensada";
+import { formatar_moeda } from "../lib/formatar";
 import {
   classificacao_da_query,
   fila_da_query,
@@ -61,6 +67,8 @@ import {
   paginar,
   papel_da_query,
   papel_para_query,
+  quantidade_filtros_drawer,
+  resumir_extrato,
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
   tipo_gasto_para_query,
@@ -149,9 +157,6 @@ function cor_valor(tipo: string, status: MovimentoResumo["status"]): string {
   return "text-texto-suave";
 }
 
-const CLASSE_SELECT =
-  "rounded-lg border border-borda bg-superficie px-3 py-2 text-sm text-texto outline-none focus:border-primaria disabled:opacity-60";
-
 function perfil_origem_movimento(
   movimento: Pick<MovimentoResumo, "contaId" | "cartaoId">,
   contas: ContaResumo[],
@@ -170,6 +175,54 @@ function rotulo_tipo_gasto(tipo: Perfil | null | undefined): string {
   if (tipo === "pj") return "Empresa";
   if (tipo === "pf") return "Pessoal";
   return "";
+}
+
+function ChipFiltro({ rotulo, onLimpar }: { rotulo: string; onLimpar: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-borda bg-superficie-alta px-2.5 py-0.5 text-xs text-texto">
+      {rotulo}
+      <button
+        type="button"
+        onClick={onLimpar}
+        className="rounded-full p-0.5 text-texto-suave hover:text-texto"
+        aria-label={`Remover filtro ${rotulo}`}
+      >
+        <X size={12} />
+      </button>
+    </span>
+  );
+}
+
+function PainelResumo({
+  titulo,
+  valor,
+  detalhe,
+  icone: Icone,
+  tom,
+}: {
+  titulo: string;
+  valor: string;
+  detalhe: string;
+  icone: ComponentType<{ size?: number; className?: string }>;
+  tom: "receita" | "despesa";
+}) {
+  return (
+    <div className="rounded-2xl border border-borda bg-superficie/80 p-4 shadow-sm shadow-black/20">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">{titulo}</span>
+        <Icone size={16} className={tom === "receita" ? "text-receita" : "text-despesa"} />
+      </div>
+      <p
+        className={unir_classes(
+          "text-2xl font-semibold tracking-tight tabular-nums",
+          tom === "receita" ? "text-receita" : "text-despesa",
+        )}
+      >
+        {valor}
+      </p>
+      <p className="mt-1 text-xs text-texto-suave">{detalhe}</p>
+    </div>
+  );
 }
 
 export function TelaExtrato() {
@@ -215,6 +268,7 @@ export function TelaExtrato() {
     competencia: string;
   } | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const depsDados = chave_dependencia(
     contexto?.versoes,
     "extrato",
@@ -334,14 +388,6 @@ export function TelaExtrato() {
     }
   }
 
-  const quantidadeRevisar = useMemo(
-    () =>
-      movimentos.filter(
-        (m) => m.dataMovimento.startsWith(`${mes}-`) && precisa_revisao(m),
-      ).length,
-    [movimentos, mes],
-  );
-
   const categoriasParaClassificar = useMemo(
     () =>
       categorias.filter(
@@ -369,6 +415,15 @@ export function TelaExtrato() {
     () => paginar(visiveis, pagina, porPagina),
     [visiveis, pagina, porPagina],
   );
+
+  const resumo = useMemo(() => resumir_extrato(visiveis), [visiveis]);
+
+  const filtrosDrawer = quantidade_filtros_drawer({
+    categoriaId,
+    classificacao,
+    papel,
+    fila: filtro,
+  });
 
   const filtrosAtivos =
     busca.trim() !== "" ||
@@ -604,131 +659,176 @@ export function TelaExtrato() {
         <SeletorMes mes={mes} onChange={escolher_mes} />
       </div>
 
-      {quantidadeRevisar > 0 && filtro !== "revisar" && (
-        <motion.button
-          type="button"
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={() => escolher_filtro("revisar")}
-          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-aviso/40 bg-aviso/10 px-4 py-3 text-left transition hover:bg-aviso/15"
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} className="text-aviso" />
-            <p className="text-sm text-texto">
-              {quantidadeRevisar} para revisar
-              <span className="text-texto-suave"> — sem classificação</span>
-            </p>
-          </div>
-          <span className="text-sm font-medium text-primaria">Abrir fila</span>
-        </motion.button>
-      )}
-
       <div className="flex flex-col gap-2">
-        <label className="relative block">
-          <span className="sr-only">Buscar lançamento</span>
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-suave"
-          />
-          <Campo
-            value={busca}
-            onChange={(e) => sincronizar_params({ busca: e.target.value })}
-            placeholder="Buscar por descrição, banco ou conta"
-            className="pl-9"
-          />
-        </label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Origens
-            <select
-              value={origem_para_query(origem) ?? ""}
-              onChange={(e) => sincronizar_params({ origem: origem_da_query(e.target.value || null) })}
-              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
-            >
-              <option value="">Todos</option>
-              {contas.length > 0 && (
-                <optgroup label="Contas">
-                  {contas.map((conta) => (
-                    <option key={conta.id} value={`conta:${conta.id}`}>
-                      {conta.nome}
-                    </option>
-                  ))}
-                </optgroup>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Buscar lançamento</span>
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-suave"
+            />
+            <Campo
+              value={busca}
+              onChange={(e) => sincronizar_params({ busca: e.target.value })}
+              placeholder="Buscar por descrição, banco ou conta"
+              className="pl-9"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <SeletorVisual
+              className="min-w-[10rem] flex-1 sm:w-52 sm:flex-none"
+              ariaLabel="Filtrar por origem"
+              valor={origem_para_query(origem) ?? ""}
+              opcoes={[
+                { valor: "", rotulo: "Todas as origens" },
+                { valor: "contas", rotulo: "Só contas", icone: Wallet, grupo: "Tipo" },
+                { valor: "cartoes", rotulo: "Só cartões", icone: CreditCard, grupo: "Tipo" },
+                ...contas.map((conta) => ({
+                  valor: `conta:${conta.id}`,
+                  rotulo: conta.nome,
+                  icone: Wallet,
+                  grupo: "Contas",
+                })),
+                ...cartoes.map((cartao) => ({
+                  valor: `cartao:${cartao.id}`,
+                  rotulo: cartao.nome,
+                  icone: CreditCard,
+                  grupo: "Cartões",
+                })),
+              ]}
+              onChange={(v) => sincronizar_params({ origem: origem_da_query(v || null) })}
+            />
+            <SeletorTipoGasto
+              valor={tipoGasto}
+              onChange={(proximo) => sincronizar_params({ tipoGasto: proximo })}
+            />
+            <button
+              type="button"
+              onClick={() => setFiltrosAbertos(true)}
+              className={unir_classes(
+                "relative shrink-0 rounded-lg border border-borda p-2 text-texto-suave transition hover:border-primaria/50 hover:text-texto",
+                filtrosDrawer > 0 && "border-primaria/40 text-primaria",
               )}
-              {cartoes.length > 0 && (
-                <optgroup label="Cartões">
-                  {cartoes.map((cartao) => (
-                    <option key={cartao.id} value={`cartao:${cartao.id}`}>
-                      {cartao.nome}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Categoria
-            <select
-              value={categoriaId ?? ""}
-              onChange={(e) => sincronizar_params({ categoriaId: e.target.value || null })}
-              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
+              aria-label="Mais filtros"
             >
-              <option value="">Todas</option>
-              {categorias.map((categoria) => (
-                <option key={categoria.id} value={categoria.id}>
-                  {categoria.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Classificação
-            <select
-              value={classificacao}
-              onChange={(e) =>
-                sincronizar_params({
-                  classificacao: classificacao_da_query(e.target.value),
-                })
-              }
-              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
-            >
-              <option value="todas">Todas</option>
-              <option value="usuario">Você</option>
-              <option value="regra">Regra</option>
-              <option value="ia">IA</option>
-              <option value="sem_classificar">Sem classificar</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Tipo de gasto
-            <select
-              value={tipoGasto === "todas" ? "" : tipoGasto}
-              onChange={(e) =>
-                sincronizar_params({ tipoGasto: tipo_gasto_da_query(e.target.value || null) })
-              }
-              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
-            >
-              <option value="">Todos</option>
-              <option value="pessoal">Pessoal</option>
-              <option value="empresa">Empresa</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-texto-suave">
-            Papel
-            <select
-              value={papel === "todas" ? "" : papel}
-              onChange={(e) =>
-                sincronizar_params({ papel: papel_da_query(e.target.value || null) })
-              }
-              className={unir_classes(CLASSE_SELECT, "normal-case tracking-normal")}
-            >
-              <option value="">Todos</option>
-              <option value="gastos">Só gastos</option>
-              <option value="pagamentos_fatura">Pagamentos de fatura</option>
-            </select>
-          </label>
+              <ListFilter size={16} />
+              {filtrosDrawer > 0 ? (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primaria px-1 text-[10px] font-semibold text-fundo">
+                  {filtrosDrawer}
+                </span>
+              ) : null}
+            </button>
+          </div>
         </div>
+        {filtrosDrawer > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {categoriaId ? (
+              <ChipFiltro
+                rotulo={categorias.find((c) => c.id === categoriaId)?.nome ?? "Categoria"}
+                onLimpar={() => sincronizar_params({ categoriaId: null })}
+              />
+            ) : null}
+            {classificacao !== "todas" ? (
+              <ChipFiltro
+                rotulo={
+                  classificacao === "usuario"
+                    ? "Você"
+                    : classificacao === "regra"
+                      ? "Regra"
+                      : classificacao === "ia"
+                        ? "IA"
+                        : "Sem classificar"
+                }
+                onLimpar={() => sincronizar_params({ classificacao: "todas" })}
+              />
+            ) : null}
+            {papel !== "todas" ? (
+              <ChipFiltro
+                rotulo={papel === "gastos" ? "Só gastos" : "Pagamentos de fatura"}
+                onLimpar={() => sincronizar_params({ papel: "todas" })}
+              />
+            ) : null}
+            {filtro !== "todas" ? (
+              <ChipFiltro
+                rotulo={
+                  filtro === "banco" ? "Do banco" : filtro === "manual" ? "Manuais" : "Para revisar"
+                }
+                onLimpar={() => escolher_filtro("todas")}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      <DrawerFiltrosExtrato
+        aberto={filtrosAbertos}
+        aoFechar={() => setFiltrosAbertos(false)}
+        quantidade={visiveis.length}
+        categorias={categorias}
+        categoriaId={categoriaId}
+        classificacao={classificacao}
+        papel={papel}
+        fila={filtro}
+        onCategoria={(id) => sincronizar_params({ categoriaId: id })}
+        onClassificacao={(valor) => sincronizar_params({ classificacao: valor })}
+        onPapel={(valor) => sincronizar_params({ papel: valor })}
+        onFila={(valor) => escolher_filtro(valor)}
+        onLimpar={() =>
+          sincronizar_params({
+            categoriaId: null,
+            classificacao: "todas",
+            papel: "todas",
+            filtro: "todas",
+          })
+        }
+      />
+
+      {!(carregando && movimentos.length === 0) ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <PainelResumo
+            titulo="Entradas"
+            valor={formatar_moeda(resumo.entradas)}
+            detalhe="receitas no recorte"
+            icone={ArrowDownLeft}
+            tom="receita"
+          />
+          <PainelResumo
+            titulo="Saídas"
+            valor={formatar_moeda(resumo.saidas)}
+            detalhe="sem pagamento de fatura"
+            icone={ArrowUpRight}
+            tom="despesa"
+          />
+          <PainelResumo
+            titulo="Resultado"
+            valor={`${resumo.resultado >= 0 ? "" : "−"}${formatar_moeda(Math.abs(resumo.resultado))}`}
+            detalhe={`${visiveis.length} lançamento${visiveis.length === 1 ? "" : "s"}`}
+            icone={resumo.resultado >= 0 ? ArrowDownLeft : ArrowUpRight}
+            tom={resumo.resultado >= 0 ? "receita" : "despesa"}
+          />
+          <button
+            type="button"
+            onClick={() => escolher_filtro("revisar")}
+            className={unir_classes(
+              "rounded-2xl border bg-superficie/80 p-4 text-left shadow-sm shadow-black/20 transition",
+              filtro === "revisar" ? "border-aviso/50" : "border-borda hover:border-aviso/40",
+            )}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+                Para revisar
+              </span>
+              <AlertTriangle size={16} className="text-aviso" />
+            </div>
+            <p className="text-2xl font-semibold tracking-tight text-texto tabular-nums">
+              {resumo.revisarQuantidade}
+            </p>
+            <p className="mt-1 text-xs text-texto-suave tabular-nums">
+              {formatar_moeda(resumo.revisarTotal)} sem classificação
+            </p>
+          </button>
+        </div>
+      ) : null}
 
       {erro && (
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
