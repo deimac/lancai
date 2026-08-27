@@ -11,6 +11,7 @@ import {
   tipo_gasto_dashboard_da_query,
   tipo_gasto_dashboard_para_query,
   tipo_gasto_para_query,
+  search_sem_tipo_gasto,
   papel_da_query,
   papel_para_query,
   perfil_de_tipo_gasto,
@@ -281,6 +282,8 @@ describe("parsers da URL", () => {
     expect(tipo_gasto_dashboard_para_query("todas")).toBeNull();
     expect(perfil_de_tipo_gasto("pessoal")).toBe("pf");
     expect(perfil_de_tipo_gasto("todas")).toBeUndefined();
+    expect(search_sem_tipo_gasto("?tipoGasto=pessoal&mes=2026-07")).toBe("?mes=2026-07");
+    expect(search_sem_tipo_gasto("?tipoGasto=pessoal")).toBe("");
   });
 
   it("lê papel gastos/pagamentos de fatura", () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   CalendarDays,
   Gauge,
@@ -26,6 +26,7 @@ import {
 import { MarcaLancai } from "../componentes/MarcaLancai";
 import { Botao } from "../componentes/ui/Botao";
 import { unir_classes } from "../lib/unir-classes";
+import { search_sem_tipo_gasto } from "../lib/filtrar-extrato";
 import {
   ler_sidebar_recolhida,
   salvar_sidebar_recolhida,
@@ -63,6 +64,8 @@ export type ContextoLayout = {
   posicaoPainel: PosicaoPainel;
   definirPosicaoPainel: (posicao: PosicaoPainel) => Promise<void>;
   tema: TemaLancai;
+  /** Incrementa ao clicar Cockpit no menu — a tela volta o filtro para Todos. */
+  geracaoCockpit: number;
 };
 
 export function LayoutAutenticado() {
@@ -75,6 +78,8 @@ export function LayoutAutenticado() {
   const [expandido, setExpandido] = useState(() => ler_painel_expandido());
   const [recolhida, setRecolhida] = useState(() => ler_sidebar_recolhida());
   const [tema, setTema] = useState<TemaLancai>(() => ler_tema());
+  const [geracaoCockpit, setGeracaoCockpit] = useState(0);
+  const location = useLocation();
 
   useEffect(() => {
     aplicar_tema(tema);
@@ -177,9 +182,16 @@ export function LayoutAutenticado() {
           {LINKS.map((link) => (
             <NavLink
               key={link.para}
-              to={link.para}
+              to={
+                link.para === "/"
+                  ? { pathname: "/", search: search_sem_tipo_gasto(location.search) }
+                  : link.para
+              }
               end={"fim" in link ? link.fim : false}
               title={link.rotulo}
+              onClick={() => {
+                if (link.para === "/") setGeracaoCockpit((n) => n + 1);
+              }}
               className={({ isActive }) =>
                 unir_classes(
                   "flex items-center rounded-lg text-sm transition",
@@ -253,9 +265,16 @@ export function LayoutAutenticado() {
                   {LINKS.map((link) => (
                     <NavLink
                       key={link.para}
-                      to={link.para}
+                      to={
+                        link.para === "/"
+                          ? { pathname: "/", search: search_sem_tipo_gasto(location.search) }
+                          : link.para
+                      }
                       end={"fim" in link ? link.fim : false}
                       aria-label={link.rotulo}
+                      onClick={() => {
+                        if (link.para === "/") setGeracaoCockpit((n) => n + 1);
+                      }}
                       className={({ isActive }) =>
                         unir_classes(
                           "rounded-lg p-2",
@@ -281,6 +300,7 @@ export function LayoutAutenticado() {
                   posicaoPainel: posicao,
                   definirPosicaoPainel: definir_posicao,
                   tema,
+                  geracaoCockpit,
                 } satisfies ContextoLayout
               }
             />

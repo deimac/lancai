@@ -32,8 +32,6 @@ import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import {
   perfil_de_tipo_gasto,
-  tipo_gasto_dashboard_da_query,
-  tipo_gasto_dashboard_para_query,
   tipo_gasto_para_query,
   type TipoGastoExtrato,
 } from "../lib/filtrar-extrato";
@@ -163,7 +161,7 @@ export function TelaDashboard() {
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
   const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
-  const tipoGasto = tipo_gasto_dashboard_da_query(searchParams.get("tipoGasto"));
+  const [tipoGasto, setTipoGasto] = useState<TipoGastoExtrato>("todas");
   const perfilGasto = perfil_de_tipo_gasto(tipoGasto);
   const [dados, setDados] = useState<DashboardResposta | null>(null);
   const [visaoGeral, setVisaoGeral] = useState(false);
@@ -209,16 +207,24 @@ export function TelaDashboard() {
   }, [carregar, depsDados]);
 
   useEffect(() => {
+    if (!contexto?.geracaoCockpit) return;
+    setTipoGasto("todas");
+  }, [contexto?.geracaoCockpit]);
+
+  useEffect(() => {
+    if (!searchParams.has("tipoGasto")) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete("tipoGasto");
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
     setPontoResultadoHover(null);
     setPontoCaixaHover(null);
   }, [mes, abaGrafico, tipoGasto]);
 
   function escolher_tipo_gasto(proximo: TipoGastoExtrato) {
-    const params = new URLSearchParams(searchParams);
-    const query = tipo_gasto_dashboard_para_query(proximo);
-    if (query) params.set("tipoGasto", query);
-    else params.delete("tipoGasto");
-    setSearchParams(params, { replace: true });
+    setTipoGasto(proximo);
   }
 
   function escolher_mes(proximo: string) {

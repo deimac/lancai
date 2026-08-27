@@ -92,6 +92,15 @@ export function tipo_gasto_dashboard_para_query(tipo: TipoGastoExtrato): string 
   return tipo_gasto_para_query(tipo);
 }
 
+/** Menu do Cockpit: tira `tipoGasto` da URL e mantém o mês. */
+export function search_sem_tipo_gasto(search: string): string {
+  const bruto = search.startsWith("?") ? search.slice(1) : search;
+  const params = new URLSearchParams(bruto);
+  params.delete("tipoGasto");
+  const texto = params.toString();
+  return texto ? `?${texto}` : "";
+}
+
 export function perfil_de_tipo_gasto(tipo: TipoGastoExtrato): "pf" | "pj" | undefined {
   if (tipo === "pessoal") return "pf";
   if (tipo === "empresa") return "pj";
