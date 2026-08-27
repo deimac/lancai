@@ -215,7 +215,9 @@ export function TelaDashboard() {
 
   function escolher_tipo_gasto(proximo: TipoGastoExtrato) {
     const params = new URLSearchParams(searchParams);
-    params.set("tipoGasto", tipo_gasto_dashboard_para_query(proximo));
+    const query = tipo_gasto_dashboard_para_query(proximo);
+    if (query) params.set("tipoGasto", query);
+    else params.delete("tipoGasto");
     setSearchParams(params, { replace: true });
   }
 
