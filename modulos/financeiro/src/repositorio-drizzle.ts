@@ -102,6 +102,33 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       );
   }
 
+  async listarMovimentosOfDoCartaoPorValor(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    cartaoId: string;
+    tipo: string;
+    valor: string;
+  }): Promise<Movimento[]> {
+    return this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.workspaceId, chave.workspaceId),
+          eq(movimentoTabela.fonte, chave.fonte as Movimento["fonte"]),
+          chave.provedor === undefined
+            ? isNull(movimentoTabela.provedor)
+            : eq(movimentoTabela.provedor, chave.provedor),
+          eq(movimentoTabela.cartaoId, chave.cartaoId),
+          eq(movimentoTabela.tipo, chave.tipo as Movimento["tipo"]),
+          sql`${movimentoTabela.valor} = ${chave.valor}::numeric`,
+          ne(movimentoTabela.status, "cancelado"),
+          ne(movimentoTabela.statusFonte, "removido"),
+        ),
+      );
+  }
+
   async listarMovimentosParceladosDoCartao(cartaoId: string): Promise<Movimento[]> {
     return this.banco
       .select()

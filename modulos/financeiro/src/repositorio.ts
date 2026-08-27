@@ -90,6 +90,18 @@ export interface RepositorioFinanceiro {
     fingerprint: string;
   }): Promise<Movimento[]>;
   /**
+   * Créditos de quitação no cartão (mesmo valor) — a instituição manda o
+   * pagamento duas vezes, com idExterno diferente.
+   */
+  listarMovimentosOfDoCartaoPorValor(chave: {
+    workspaceId: string;
+    fonte: string;
+    provedor?: string;
+    cartaoId: string;
+    tipo: string;
+    valor: string;
+  }): Promise<Movimento[]>;
+  /**
    * Movimentos de cartão com metadados de parcelamento — usados para completar
    * séries que o Open Finance entrega incompletas.
    */

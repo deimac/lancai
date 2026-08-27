@@ -6,6 +6,7 @@ import {
   deISOParaData,
   descricao_ainda_automatica,
   descricoes_da_mesma_serie,
+  eh_credito_quitacao_no_cartao,
   enxugar_descricao_conhecimento,
   fato_imune_correcao,
   garantir_parcelas_subsequentes,
@@ -226,6 +227,34 @@ export class MotorFinanceiro {
       valor: evento.valor,
       descricaoFonte: evento.descricaoFonte,
       favorecidoFonte: evento.favorecidoFonte,
+    });
+  }
+
+  /**
+   * Nubank manda o mesmo pagamento da fatura com dois idExterno. Acha o
+   * crédito de quitação já ingerido no cartão (mesmo valor, ±1 dia).
+   */
+  async localizar_duplicata_credito_quitacao(
+    evento: EventoFinanceiroNormalizado,
+  ): Promise<Movimento | undefined> {
+    if (evento.fonte !== "open_finance" || !evento.cartaoId) return undefined;
+    if (evento.tipo !== "receita" || !eh_credito_quitacao_no_cartao(evento.descricaoFonte)) {
+      return undefined;
+    }
+
+    const candidatos = await this.repositorio.listarMovimentosOfDoCartaoPorValor({
+      workspaceId: evento.workspaceId,
+      fonte: evento.fonte,
+      provedor: evento.provedor,
+      cartaoId: evento.cartaoId,
+      tipo: evento.tipo,
+      valor: paraColuna(evento.valor),
+    });
+
+    return candidatos.find((movimento) => {
+      if (movimento.idExterno === evento.idExterno) return false;
+      if (!eh_credito_quitacao_no_cartao(movimento.descricaoFonte)) return false;
+      return datas_civis_proximas(movimento.dataMovimento, evento.ocorridoEm);
     });
   }
 

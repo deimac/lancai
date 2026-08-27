@@ -385,6 +385,56 @@ describe("traduzir_lote_transacoes", () => {
     expect(lote.find((m) => m.idExterno === "b")?.valor).toBe(100);
     expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).not.toBe("removido");
   });
+
+  it("pagamento recebido pendente some no POSTED da fatura", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "pendente",
+        type: "CREDIT",
+        status: "PENDING",
+        amount: -9622.31,
+        date: "2026-08-10T13:10:51.850Z",
+        descriptionRaw: "Pagamento recebido",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "fatura",
+        type: "CREDIT",
+        status: "POSTED",
+        amount: -9622.31,
+        date: "2026-08-10T03:00:00.000Z",
+        descriptionRaw: "Pagamento recebido",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.find((m) => m.idExterno === "fatura")?.statusFonte).toBe("confirmado");
+    expect(lote.find((m) => m.idExterno === "pendente")?.statusFonte).toBe("removido");
+  });
+
+  it("não mistura dois Pagamento recebido de valores diferentes", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "a",
+        type: "CREDIT",
+        status: "POSTED",
+        amount: -100,
+        date: "2026-08-10T03:00:00.000Z",
+        descriptionRaw: "Pagamento recebido",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "b",
+        type: "CREDIT",
+        status: "POSTED",
+        amount: -200,
+        date: "2026-08-10T03:00:00.000Z",
+        descriptionRaw: "Pagamento recebido",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.find((m) => m.idExterno === "a")?.statusFonte).not.toBe("removido");
+    expect(lote.find((m) => m.idExterno === "b")?.statusFonte).not.toBe("removido");
+  });
 });
 
 describe("somar_meses", () => {

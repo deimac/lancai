@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Conta } from "@lancai/banco";
+import type { Conta, Cartao } from "@lancai/banco";
 import { MotorFinanceiro, RepositorioFinanceiroMemoria } from "@lancai/financeiro";
 import { ErroConexaoExternaInexistente, ErroWebhookInvalido } from "../erros";
 import type { MovimentacaoExterna } from "../provedor";
@@ -11,6 +11,31 @@ import { ServicoIngestaoOpenFinance } from "../servico-ingestao";
 const WORKSPACE = "00000000-0000-4000-8000-000000000010";
 const CONEXAO_EXTERNA = "item-abc";
 const CONTA_EXTERNA = "acc-1";
+
+function criarCartao(usuarioId: string, sobrepor: Partial<Cartao> = {}): Cartao {
+  const agora = new Date();
+  return {
+    id: randomUUID(),
+    nome: "Nu Mastercard Platinum",
+    limite: "30000.00",
+    saldo: "0",
+    fechamento: 2,
+    vencimento: 10,
+    melhorDiaCompra: 3,
+    perfil: "pf",
+    modalidade: "credito",
+    ativo: true,
+    sincronizada: true,
+    dadosPlasticosCifrados: null,
+    contaId: null,
+    usuarioId,
+    workspaceId: WORKSPACE,
+    dataCriacao: agora,
+    dataAtualizacao: agora,
+    contaFinanceiraId: null,
+    ...sobrepor,
+  };
+}
 
 function criarConta(sobrepor: Partial<Conta> = {}): Conta {
   const agora = new Date();
@@ -392,6 +417,98 @@ describe("ServicoIngestaoOpenFinance", () => {
       expect(compra?.valor).toBe("263.65");
       expect(iof?.status).toBe("cancelado");
       expect(iof?.statusFonte).toBe("removido");
+    });
+
+    it("cancela Pagamento recebido pendente quando chega o POSTED da fatura", async () => {
+      const cartao = criarCartao(usuarioId);
+      financeiro.cartoes.set(cartao.id, cartao);
+      repositorio.associar(conexaoId, [
+        {
+          contaExternaId: CONTA_EXTERNA,
+          nome: "Nu Mastercard Platinum",
+          tipo: "CREDIT_CARD",
+          contaId: null,
+          cartaoId: cartao.id,
+        },
+      ]);
+
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({
+          idExterno: "pendente",
+          tipo: "receita",
+          valor: 9622.31,
+          ocorridoEm: "2026-08-10",
+          descricaoFonte: "Pagamento recebido",
+          statusFonte: "pendente",
+        }),
+      ]);
+      await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-pendente"));
+
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({
+          idExterno: "fatura",
+          tipo: "receita",
+          valor: 9622.31,
+          ocorridoEm: "2026-08-10",
+          descricaoFonte: "Pagamento recebido",
+          statusFonte: "confirmado",
+        }),
+      ]);
+      const { resumo } = await entregar(
+        provedor.anunciar_alteracao(CONEXAO_EXTERNA, "ev-fatura", ["fatura"]),
+      );
+
+      expect(resumo?.criados).toBe(1);
+      expect(resumo?.removidos).toBe(1);
+      const pendente = [...financeiro.movimentos.values()].find((m) => m.idExterno === "pendente");
+      const fatura = [...financeiro.movimentos.values()].find((m) => m.idExterno === "fatura");
+      expect(pendente?.status).toBe("cancelado");
+      expect(fatura?.status).toBe("realizado");
+    });
+
+    it("não cria o Pagamento recebido pendente se o confirmado já existe", async () => {
+      const cartao = criarCartao(usuarioId);
+      financeiro.cartoes.set(cartao.id, cartao);
+      repositorio.associar(conexaoId, [
+        {
+          contaExternaId: CONTA_EXTERNA,
+          nome: "Nu Mastercard Platinum",
+          tipo: "CREDIT_CARD",
+          contaId: null,
+          cartaoId: cartao.id,
+        },
+      ]);
+
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({
+          idExterno: "fatura",
+          tipo: "receita",
+          valor: 9622.31,
+          ocorridoEm: "2026-08-10",
+          descricaoFonte: "Pagamento recebido",
+          statusFonte: "confirmado",
+        }),
+      ]);
+      await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-fatura"));
+
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({
+          idExterno: "pendente",
+          tipo: "receita",
+          valor: 9622.31,
+          ocorridoEm: "2026-08-10",
+          descricaoFonte: "Pagamento recebido",
+          statusFonte: "pendente",
+        }),
+      ]);
+      const { resumo } = await entregar(
+        provedor.anunciar_alteracao(CONEXAO_EXTERNA, "ev-pendente", ["pendente"]),
+      );
+
+      expect(resumo?.criados).toBe(0);
+      expect([...financeiro.movimentos.values()].filter((m) => m.status !== "cancelado")).toHaveLength(
+        1,
+      );
     });
 
     /**

@@ -49,6 +49,15 @@ export function descricao_parece_pagamento_fatura(...textos: Array<string | null
   return PADROES_DESCRICAO.some((padrao) => padrao.test(junto));
 }
 
+/**
+ * Crédito de quitação no extrato do cartão (Nubank: "Pagamento recebido").
+ * A Open Finance manda duas linhas para o mesmo pagamento — pendente e fatura.
+ * Não usa a heurística acima: "Pagamento recebido" não deve marcar fatura sozinho.
+ */
+export function eh_credito_quitacao_no_cartao(descricao: string): boolean {
+  return /^pagamento recebido$/i.test(descricao.trim());
+}
+
 /** Débito na conta (Pix/TED da quitação) ou crédito de quitação no extrato do cartão. */
 export function linha_aceita_pagamento_fatura(movimento: {
   tipo: string;

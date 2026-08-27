@@ -3,6 +3,7 @@ import {
   competencia_vencimento_proximo,
   data_proxima_do_vencimento,
   descricao_parece_pagamento_fatura,
+  eh_credito_quitacao_no_cartao,
   intervalo_ciclo_fatura,
   competencia_ciclo_da_data,
   linha_aceita_pagamento_fatura,
@@ -44,6 +45,8 @@ describe("heurística de pagamento de fatura", () => {
     expect(descricao_parece_pagamento_fatura("Pagamento com QR Pix MUNICIPIO")).toBe(false);
     expect(descricao_parece_pagamento_fatura("Pagamento PIX")).toBe(false);
     expect(descricao_parece_pagamento_fatura("Pagamento recebido")).toBe(false);
+    expect(eh_credito_quitacao_no_cartao("Pagamento recebido")).toBe(true);
+    expect(eh_credito_quitacao_no_cartao("Pagamento PIX")).toBe(false);
   });
 
   it("só oferece o check em débito de conta ou crédito no cartão", () => {

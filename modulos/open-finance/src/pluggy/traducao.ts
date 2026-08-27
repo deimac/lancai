@@ -6,6 +6,7 @@ import {
   descricoes_da_mesma_serie,
   dia_provedor_iso,
   dias_calendario_entre,
+  eh_credito_quitacao_no_cartao,
   garantir_parcelas_subsequentes,
   somar_meses_calendario,
 } from "@lancai/tipos";
@@ -164,8 +165,8 @@ export function transacao_tem_valor_na_moeda_da_conta(transacao: TransacaoPluggy
 
 /**
  * Tradução de um lote: descarta internacional sem conversão, omite compra cujo
- * IOF denuncia valor ainda estrangeiro, e incorpora IOF de compra (~3,5%) no
- * valor da compra — o app do banco mostra uma linha só.
+ * IOF denuncia valor ainda estrangeiro, incorpora IOF de compra (~3,5%) no
+ * valor da compra e some o segundo "Pagamento recebido" da fatura.
  */
 export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): MovimentacaoExterna[] {
   const traduzidas: MovimentacaoExterna[] = [];
@@ -173,8 +174,10 @@ export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): Movimen
     if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
     traduzidas.push(traduzir_transacao(transacao));
   }
-  return incorporar_iof_nas_compras(
-    espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas)),
+  return absorver_creditos_de_fatura_duplicados(
+    incorporar_iof_nas_compras(
+      espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas)),
+    ),
   );
 }
 
@@ -332,6 +335,60 @@ export function incorporar_iof_nas_compras(
     if (extra) return { ...item, valor: arredondar(item.valor + extra) };
     return item;
   });
+}
+
+/**
+ * Nubank/Open Finance emite o pagamento da fatura duas vezes no cartão: um
+ * CREDIT pendente (hora real) e outro POSTED na fatura fechada (meia-noite).
+ * Ficam as duas linhas no extrato. Quando o par é único no lote, some a cópia.
+ */
+export function absorver_creditos_de_fatura_duplicados(
+  movimentacoes: MovimentacaoExterna[],
+): MovimentacaoExterna[] {
+  const indices: number[] = [];
+  for (let indice = 0; indice < movimentacoes.length; indice++) {
+    const item = movimentacoes[indice]!;
+    if (item.tipo === "receita" && eh_credito_quitacao_no_cartao(item.descricaoFonte)) {
+      indices.push(indice);
+    }
+  }
+  if (indices.length < 2) return movimentacoes;
+
+  const usado = new Set<number>();
+  const remover = new Set<number>();
+
+  for (const i of indices) {
+    if (usado.has(i)) continue;
+    const ancora = movimentacoes[i]!;
+    const cluster = [i];
+    for (const j of indices) {
+      if (j === i || usado.has(j)) continue;
+      const outro = movimentacoes[j]!;
+      if (outro.contaExternaId !== ancora.contaExternaId) continue;
+      if (outro.valor !== ancora.valor) continue;
+      if (dias_calendario_entre(ancora.ocorridoEm, outro.ocorridoEm) > 1) continue;
+      cluster.push(j);
+    }
+    if (cluster.length < 2) continue;
+    cluster.sort(
+      (a, b) =>
+        preferencia_credito_quitacao(movimentacoes[b]!) - preferencia_credito_quitacao(movimentacoes[a]!),
+    );
+    const vencedor = cluster[0]!;
+    for (const indice of cluster) {
+      usado.add(indice);
+      if (indice !== vencedor) remover.add(indice);
+    }
+  }
+
+  if (remover.size === 0) return movimentacoes;
+  return movimentacoes.map((item, indice) =>
+    remover.has(indice) ? { ...item, statusFonte: "removido" } : item,
+  );
+}
+
+function preferencia_credito_quitacao(item: MovimentacaoExterna): number {
+  return item.statusFonte === "confirmado" ? 1 : 0;
 }
 
 /**

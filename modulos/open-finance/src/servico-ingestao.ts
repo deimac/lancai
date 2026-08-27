@@ -3,6 +3,7 @@ import {
   data_iso_parcela,
   datas_civis_proximas,
   descricoes_da_mesma_serie,
+  eh_credito_quitacao_no_cartao,
   type EventoFinanceiroNormalizado,
 } from "@lancai/tipos";
 import {
@@ -728,8 +729,9 @@ export class ServicoIngestaoOpenFinance {
     resumo: ResumoIngestao,
     opcoes: { filtrarCriacao?: FiltrarCriacaoIngestao } = {},
   ): Promise<void> {
-    const absorvidos = eventos.filter((evento) => evento.statusFonte === "removido");
-    const vivos = eventos.filter((evento) => evento.statusFonte !== "removido");
+    const { marcados, cancelarExistentes } = await this.marcar_creditos_quitacao_duplicados(eventos);
+    const absorvidos = marcados.filter((evento) => evento.statusFonte === "removido");
+    const vivos = marcados.filter((evento) => evento.statusFonte !== "removido");
 
     if (vivos.length > 0) {
       const alteracao = await this.motor.atualizar_fatos_da_fonte(vivos, contexto, {
@@ -771,6 +773,72 @@ export class ServicoIngestaoOpenFinance {
       );
       resumo.removidos += remocao.removidos.length;
     }
+
+    if (cancelarExistentes.length > 0) {
+      const remocao = await this.motor.remover_fatos_da_fonte(cancelarExistentes, contexto);
+      resumo.removidos += remocao.removidos.length;
+    }
+  }
+
+  /**
+   * Segundo "Pagamento recebido" no cartão (id novo, mesmo valor, ±1 dia):
+   * cancela o pendente quando chega o POSTED, e não cria o pendente se o
+   * confirmado já existe.
+   */
+  private async marcar_creditos_quitacao_duplicados(
+    eventos: EventoFinanceiroNormalizado[],
+  ): Promise<{
+    marcados: EventoFinanceiroNormalizado[];
+    cancelarExistentes: Array<{
+      workspaceId: string;
+      fonte: EventoFinanceiroNormalizado["fonte"];
+      provedor?: string;
+      idExterno: string;
+    }>;
+  }> {
+    const cancelarExistentes: Array<{
+      workspaceId: string;
+      fonte: EventoFinanceiroNormalizado["fonte"];
+      provedor?: string;
+      idExterno: string;
+    }> = [];
+    const aposLote = absorver_creditos_quitacao_no_lote(eventos);
+    const marcados: EventoFinanceiroNormalizado[] = [];
+
+    for (const evento of aposLote) {
+      if (
+        evento.statusFonte === "removido" ||
+        !evento.cartaoId ||
+        evento.tipo !== "receita" ||
+        !eh_credito_quitacao_no_cartao(evento.descricaoFonte)
+      ) {
+        marcados.push(evento);
+        continue;
+      }
+
+      const duplicata = await this.motor.localizar_duplicata_credito_quitacao(evento);
+      if (!duplicata?.idExterno) {
+        marcados.push(evento);
+        continue;
+      }
+
+      const novoEMelhor =
+        evento.statusFonte === "confirmado" && duplicata.statusFonte === "pendente";
+      if (novoEMelhor) {
+        marcados.push(evento);
+        cancelarExistentes.push({
+          workspaceId: evento.workspaceId,
+          fonte: evento.fonte,
+          provedor: evento.provedor,
+          idExterno: duplicata.idExterno,
+        });
+        continue;
+      }
+
+      marcados.push({ ...evento, statusFonte: "removido" });
+    }
+
+    return { marcados, cancelarExistentes };
   }
 
   /**
@@ -815,4 +883,53 @@ export class ServicoIngestaoOpenFinance {
 
     return { eventos, semDestino };
   }
+}
+
+function absorver_creditos_quitacao_no_lote(
+  eventos: EventoFinanceiroNormalizado[],
+): EventoFinanceiroNormalizado[] {
+  const indices: number[] = [];
+  for (let indice = 0; indice < eventos.length; indice++) {
+    const evento = eventos[indice]!;
+    if (
+      evento.statusFonte !== "removido" &&
+      evento.cartaoId &&
+      evento.tipo === "receita" &&
+      eh_credito_quitacao_no_cartao(evento.descricaoFonte)
+    ) {
+      indices.push(indice);
+    }
+  }
+  if (indices.length < 2) return eventos;
+
+  const usado = new Set<number>();
+  const remover = new Set<number>();
+  for (const i of indices) {
+    if (usado.has(i)) continue;
+    const ancora = eventos[i]!;
+    const cluster = [i];
+    for (const j of indices) {
+      if (j === i || usado.has(j)) continue;
+      const outro = eventos[j]!;
+      if (outro.cartaoId !== ancora.cartaoId) continue;
+      if (outro.valor !== ancora.valor) continue;
+      if (!datas_civis_proximas(ancora.ocorridoEm, outro.ocorridoEm)) continue;
+      cluster.push(j);
+    }
+    if (cluster.length < 2) continue;
+    cluster.sort((a, b) => {
+      const pa = eventos[a]!.statusFonte === "confirmado" ? 1 : 0;
+      const pb = eventos[b]!.statusFonte === "confirmado" ? 1 : 0;
+      return pb - pa;
+    });
+    const vencedor = cluster[0]!;
+    for (const indice of cluster) {
+      usado.add(indice);
+      if (indice !== vencedor) remover.add(indice);
+    }
+  }
+  if (remover.size === 0) return eventos;
+  return eventos.map((evento, indice) =>
+    remover.has(indice) ? { ...evento, statusFonte: "removido" } : evento,
+  );
 }
