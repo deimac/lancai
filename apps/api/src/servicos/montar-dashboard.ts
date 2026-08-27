@@ -11,7 +11,10 @@ import {
   deISOParaData,
   eh_movimento_parcelado,
   hojeISO,
+  mapa_fechamento_cartoes,
+  movimento_no_resultado_do_mes,
   paraDataISO,
+  periodo_amplo_do_ciclo,
   type Perfil,
 } from "@lancai/tipos";
 import { obter_escopo_leitura } from "./escopo-workspace";
@@ -185,6 +188,44 @@ export function agregar_totais_por_natureza(
   return { pessoal: fechar(pessoal), empresa: fechar(empresa) };
 }
 
+export function somar_receitas_despesas(
+  movimentos: Array<{ tipo: string; valor: string | number; papel?: string | null }>,
+): { receitas: number; despesas: number } {
+  let receitas = 0;
+  let despesas = 0;
+  for (const movimento of movimentos) {
+    if (movimento.papel === "pagamento_fatura") continue;
+    if (movimento.tipo === "receita") receitas += Number(movimento.valor);
+    else if (movimento.tipo === "despesa") despesas += Number(movimento.valor);
+  }
+  return { receitas: arredondar(receitas), despesas: arredondar(despesas) };
+}
+
+export function agregar_gasto_cartao_por_competencia(
+  movimentos: Array<{
+    tipo: string;
+    valor: string | number;
+    dataMovimento: string;
+    cartaoId?: string | null;
+    papel?: string | null;
+  }>,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  mes: string,
+): Map<string, { gasto: number; quantidade: number }> {
+  const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
+  for (const movimento of movimentos) {
+    if (!movimento.cartaoId) continue;
+    if (movimento.tipo !== "despesa") continue;
+    if (movimento.papel === "pagamento_fatura") continue;
+    if (!movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao)) continue;
+    const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
+    atual.gasto += Number(movimento.valor);
+    atual.quantidade += 1;
+    gastoPorCartao.set(movimento.cartaoId, atual);
+  }
+  return gastoPorCartao;
+}
+
 /**
  * Agrega o cockpit a partir do ModuloRelatorios — o web só exibe.
  * `tipoGasto` recorta P&L, categorias e orçamentos; caixa e saldos ignoram.
@@ -196,22 +237,21 @@ export async function montar_dashboard(
 ): Promise<DashboardResposta> {
   const hoje = hojeISO();
   const periodo = inicioFimMesAtual(dataAtual);
+  const mes = dataAtual.slice(0, 7);
   const filtros = { usuarioId, periodo };
-  const filtrosNatureza = tipoGasto ? { ...filtros, perfil: tipoGasto } : filtros;
   const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
+  const mesAnterior = periodoAnterior.de.slice(0, 7);
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
+  const periodoPnL = periodo_amplo_do_ciclo(periodo, 2);
 
   const [
     saldosVisao,
-    categoriaVisao,
     historicoVisao,
     cartoesVisao,
-    despesasCartaoMes,
     cartoesDb,
-    categoriaAnteriorVisao,
     futuroVisao,
-    movimentosMes,
+    movimentosAmplo,
     categoriasDb,
     movimentosQuitadas,
     movimentosCaixa,
@@ -220,18 +260,11 @@ export async function montar_dashboard(
   ] =
     await Promise.all([
       relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
-      relatorios.consultar_visao("categoria", filtrosNatureza, dataAtual),
       relatorios.consultar_visao("historico", filtros, dataAtual),
       relatorios.consultar_visao("cartoes", { usuarioId }, dataAtual),
-      repositorio.listarMovimentos(usuarioId, { periodo, tipos: ["despesa"] }),
       repositorio.listarCartoes(usuarioId),
-      relatorios.consultar_visao(
-        "categoria",
-        { usuarioId, periodo: periodoAnterior, ...(tipoGasto ? { perfil: tipoGasto } : {}) },
-        dataAnterior,
-      ),
       relatorios.consultar_visao("futuro", { usuarioId, periodo }, dataAtual),
-      repositorio.listarMovimentos(usuarioId, { periodo }),
+      repositorio.listarMovimentos(usuarioId, { periodo: periodoPnL }),
       repositorio.listarCategorias(usuarioId),
       repositorio.listarMovimentos(usuarioId, {
         periodo: {
@@ -250,10 +283,8 @@ export async function montar_dashboard(
 
   if (
     saldosVisao.tipo !== "saldos" ||
-    categoriaVisao.tipo !== "categoria" ||
     historicoVisao.tipo !== "historico" ||
     cartoesVisao.tipo !== "cartoes" ||
-    categoriaAnteriorVisao.tipo !== "categoria" ||
     futuroVisao.tipo !== "futuro" ||
     fluxoVisao.tipo !== "fluxo"
   ) {
@@ -261,18 +292,21 @@ export async function montar_dashboard(
   }
 
   const saldos = saldosVisao.dados;
-  const categoria = categoriaVisao.dados;
   const historico = historicoVisao.dados;
   const cartoes = cartoesVisao.dados;
+  const fechamentoPorCartao = mapa_fechamento_cartoes(cartoesDb);
+  const movimentosPnL = movimentosAmplo.filter((movimento) =>
+    movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao),
+  );
+  const movimentosPnLAnterior = movimentosAmplo.filter((movimento) =>
+    movimento_no_resultado_do_mes(movimento, mesAnterior, fechamentoPorCartao),
+  );
 
-  const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
-  for (const movimento of despesasCartaoMes) {
-    if (!movimento.cartaoId) continue;
-    const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
-    atual.gasto += Number(movimento.valor);
-    atual.quantidade += 1;
-    gastoPorCartao.set(movimento.cartaoId, atual);
-  }
+  const gastoPorCartao = agregar_gasto_cartao_por_competencia(
+    movimentosAmplo,
+    fechamentoPorCartao,
+    mes,
+  );
 
   const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
   const origens = await mapear_origem_cartoes(idsCartoes);
@@ -319,33 +353,36 @@ export async function montar_dashboard(
     (soma, cartao) => soma + cartao.quantidadeLancamentos,
     0,
   );
-  const resultadoMes = arredondar(categoria.totalReceitas - categoria.totalDespesas);
+  const movimentosNatureza = filtrar_movimentos_por_natureza(movimentosPnL, tipoGasto);
+  const movimentosNaturezaAnterior = filtrar_movimentos_por_natureza(
+    movimentosPnLAnterior,
+    tipoGasto,
+  );
+  const totaisMes = somar_receitas_despesas(movimentosNatureza);
+  const totaisAnterior = somar_receitas_despesas(movimentosNaturezaAnterior);
+  const resultadoMes = arredondar(totaisMes.receitas - totaisMes.despesas);
+  const resultadoAnterior = arredondar(totaisAnterior.receitas - totaisAnterior.despesas);
 
-  const naoClassificado = await contar_nao_classificados(usuarioId, periodo);
+  const naoClassificado = contar_nao_classificados_em(movimentosPnL, categoriasDb);
   const fluxoSaldo = montar_fluxo_caixa({
     saldoAtual: saldos.totalGeral,
     hoje,
     periodo,
     movimentos: movimentosCaixa,
   });
-  const movimentosNatureza = filtrar_movimentos_por_natureza(movimentosMes, tipoGasto);
   const fluxoResultado = montar_fluxo_resultado(movimentosNatureza, periodo);
   const visualPorNome = new Map(
     categoriasDb.map((item) => [item.nome, { icone: item.icone, cor: item.cor }] as const),
   );
   const gastosPorCategoria = montar_ranking_tipo(movimentosNatureza, categoriasDb, "despesa");
   const receitasPorCategoria = montar_ranking_tipo(movimentosNatureza, categoriasDb, "receita");
-  const natureza = agregar_totais_por_natureza(movimentosMes);
+  const natureza = agregar_totais_por_natureza(movimentosPnL);
   const cruzamento = escopo.visaoAgregada
     ? null
     : {
         totalPessoalComEmpresa: fluxoVisao.dados.totalPessoalComEmpresa,
         totalEmpresaComPessoal: fluxoVisao.dados.totalEmpresaComPessoal,
       };
-  const resultadoAnterior = arredondar(
-    categoriaAnteriorVisao.dados.totalReceitas - categoriaAnteriorVisao.dados.totalDespesas,
-  );
-
   const recentes = historico.dias
     .flatMap((dia) =>
       dia.itens.map((item) => {
@@ -387,7 +424,7 @@ export async function montar_dashboard(
   const proximosPagamentos = montar_proximos_pagamentos({
     futuro: futuroVisao.dados.itens,
     cartoes: cartoesDetalhe,
-    movimentos: movimentosMes,
+    movimentos: movimentosAmplo,
     pagamentosFatura: movimentosQuitadas,
     // O web manda o dia 1 do mês selecionado; vencido/em aberto compara com hoje de verdade.
     hoje,
@@ -407,18 +444,12 @@ export async function montar_dashboard(
       percentualUtilizadoCartoes,
       gastoCartoesMes,
       quantidadeLancamentosCartoesMes,
-      receitasMes: categoria.totalReceitas,
-      despesasMes: categoria.totalDespesas,
+      receitasMes: totaisMes.receitas,
+      despesasMes: totaisMes.despesas,
       resultadoMes,
       saldoPeriodo: historico.saldoPeriodo,
-      variacaoReceitas: variacao_percentual(
-        categoria.totalReceitas,
-        categoriaAnteriorVisao.dados.totalReceitas,
-      ),
-      variacaoDespesas: variacao_percentual(
-        categoria.totalDespesas,
-        categoriaAnteriorVisao.dados.totalDespesas,
-      ),
+      variacaoReceitas: variacao_percentual(totaisMes.receitas, totaisAnterior.receitas),
+      variacaoDespesas: variacao_percentual(totaisMes.despesas, totaisAnterior.despesas),
       variacaoResultado: variacao_percentual(resultadoMes, resultadoAnterior),
     },
     tipoGasto: tipoGasto ?? null,
@@ -437,27 +468,27 @@ export async function montar_dashboard(
   };
 }
 
-async function contar_nao_classificados(
-  usuarioId: string,
-  periodo: { de: string; ate: string },
-): Promise<{ quantidade: number; total: number }> {
-  const categorias = await repositorio.listarCategorias(usuarioId);
+export function contar_nao_classificados_em(
+  movimentos: Array<{
+    tipo: string;
+    valor: string | number;
+    categoriaId: string | null;
+    papel?: string | null;
+  }>,
+  categorias: Array<{ id: string; nome: string }>,
+): { quantidade: number; total: number } {
   const categoria = categorias.find(
-    (item: { id: string; nome: string }) =>
+    (item) =>
       item.nome.toLocaleLowerCase("pt-BR") ===
       CATEGORIA_NAO_CLASSIFICADO.toLocaleLowerCase("pt-BR"),
   );
   if (!categoria) return { quantidade: 0, total: 0 };
 
-  const movimentos = await repositorio.listarMovimentos(usuarioId, {
-    periodo,
-    categoriaId: categoria.id,
-    tipos: ["despesa", "receita"],
-  });
-
   let total = 0;
   let quantidade = 0;
   for (const movimento of movimentos) {
+    if (movimento.categoriaId !== categoria.id) continue;
+    if (movimento.tipo !== "despesa" && movimento.tipo !== "receita") continue;
     if (movimento.papel === "pagamento_fatura") continue;
     quantidade += 1;
     total += Number(movimento.valor);
@@ -571,7 +602,8 @@ function montar_fluxo_resultado(
 }> {
   const porDia = new Map<string, { entradas: number; saidas: number }>();
   for (const movimento of movimentos) {
-    const dia = String(movimento.dataMovimento).slice(0, 10);
+    const diaBruto = String(movimento.dataMovimento).slice(0, 10);
+    const dia = diaBruto < periodo.de ? periodo.de : diaBruto > periodo.ate ? periodo.ate : diaBruto;
     const atual = porDia.get(dia) ?? { entradas: 0, saidas: 0 };
     const valor = Number(movimento.valor);
     if (["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo)) {
@@ -649,13 +681,9 @@ export function montar_proximos_pagamentos(entrada: {
   }
   const cartaoPorId = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
 
-  const coberto_pela_fatura = (cartaoId: string | null | undefined, data: string): boolean => {
+  const coberto_pela_fatura = (cartaoId: string | null | undefined, _data: string): boolean => {
     if (!cartaoId) return false;
-    const cartao = cartaoPorId.get(cartaoId);
-    if (!cartao) return false;
-    const competencia = competencia_ciclo_da_data(data, cartao.fechamento);
-    if (faturasQuitadas.has(`${cartaoId}|${competencia}`)) return true;
-    return competencia === mesAgenda;
+    return cartaoPorId.has(cartaoId);
   };
 
   const vencida_do_cartao = (

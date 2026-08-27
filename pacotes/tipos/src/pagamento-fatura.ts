@@ -1,3 +1,5 @@
+import { adicionarMeses, deISOParaData, paraDataISO } from "./datas";
+
 /**
  * Heurística de sugestão de pagamento de fatura (Conhecimento).
  * Nunca aplica sozinha: a pessoa confirma no Extrato.
@@ -152,6 +154,127 @@ export function competencia_ciclo_da_data(dataISO: string, fechamento: number): 
   }
   const proximo = new Date(Date.UTC(ano, mes, 1));
   return `${proximo.getUTCFullYear()}-${String(proximo.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+const MESES_CURTOS = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+] as const;
+
+const MESES_EXTENSO = [
+  "janeiro",
+  "fevereiro",
+  "março",
+  "abril",
+  "maio",
+  "junho",
+  "julho",
+  "agosto",
+  "setembro",
+  "outubro",
+  "novembro",
+  "dezembro",
+] as const;
+
+function indice_mes(competencia: string): number {
+  const mes = Number(competencia.slice(5, 7));
+  return Number.isFinite(mes) ? mes - 1 : -1;
+}
+
+export function rotulo_mes_curto(competencia: string): string {
+  return MESES_CURTOS[indice_mes(competencia)] ?? competencia.slice(5, 7);
+}
+
+export function nome_mes_extenso(competencia: string): string {
+  return MESES_EXTENSO[indice_mes(competencia)] ?? competencia;
+}
+
+/** Mês do P&L: conta = civil; cartão = competência do ciclo de fechamento. */
+export function mes_resultado_do_movimento(
+  dataMovimento: string,
+  cartaoId: string | null | undefined,
+  fechamento: number | null | undefined,
+): string {
+  const data = String(dataMovimento).slice(0, 10);
+  const mesCivil = data.slice(0, 7);
+  if (!cartaoId || fechamento == null || fechamento < 1) return mesCivil;
+  return competencia_ciclo_da_data(data, fechamento);
+}
+
+export function mapa_fechamento_cartoes(
+  cartoes: Array<{ id: string; fechamento?: number | null }>,
+): Map<string, number> {
+  const mapa = new Map<string, number>();
+  for (const cartao of cartoes) {
+    if (cartao.fechamento != null && cartao.fechamento >= 1) {
+      mapa.set(cartao.id, cartao.fechamento);
+    }
+  }
+  return mapa;
+}
+
+export function movimento_no_resultado_do_mes(
+  movimento: { dataMovimento: string; cartaoId?: string | null },
+  mes: string,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+): boolean {
+  const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
+  return mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento) === mes;
+}
+
+/** Amplia o recorte civil para caber compras do ciclo que caíram no mês anterior. */
+export function periodo_amplo_do_ciclo(
+  periodo: { de: string; ate: string },
+  mesesAnteriores = 1,
+): { de: string; ate: string } {
+  return {
+    de: paraDataISO(adicionarMeses(deISOParaData(periodo.de), -mesesAnteriores)),
+    ate: periodo.ate,
+  };
+}
+
+export type SeloFaturaCiclo = {
+  rotulo: string;
+  dica: string;
+};
+
+/**
+ * Selo do extrato quando a compra é de um mês e a fatura é de outro.
+ * Dentro do ciclo (compra e fatura no mesmo mês) não há selo.
+ */
+export function selo_fatura_ciclo(entrada: {
+  dataMovimento: string;
+  cartaoId?: string | null;
+  fechamento?: number | null;
+  vencimento?: number | null;
+  status?: string | null;
+}): SeloFaturaCiclo | null {
+  if (!entrada.cartaoId) return null;
+  if (entrada.fechamento == null || entrada.fechamento < 1) return null;
+  const data = String(entrada.dataMovimento).slice(0, 10);
+  const mesCompra = data.slice(0, 7);
+  const competencia = competencia_ciclo_da_data(data, entrada.fechamento);
+  if (competencia === mesCompra) return null;
+
+  const rotulo = `Fatura ${rotulo_mes_curto(competencia)}`;
+  const mesNome = nome_mes_extenso(competencia);
+  const vencimento =
+    entrada.vencimento != null && entrada.vencimento >= 1 ? ` (vence dia ${entrada.vencimento})` : "";
+  const dica =
+    entrada.status === "previsto"
+      ? `Em aberto. Entra na fatura de ${mesNome}${vencimento}.`
+      : `Entra na fatura de ${mesNome}${vencimento}.`;
+  return { rotulo, dica };
 }
 
 export function valores_proximos(a: number, b: number, tolerancia = TOLERANCIA_VALOR_REAIS): boolean {

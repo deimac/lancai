@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CalendarDays } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
-import { clienteApi, ErroApi, type MovimentoResumo } from "../lib/api";
+import { clienteApi, ErroApi, type CartaoResumo, type MovimentoResumo } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { formatar_moeda } from "../lib/formatar";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import { rotulo_natureza } from "../lib/natureza-extrato";
 import { unir_classes } from "../lib/unir-classes";
-import { hojeISO } from "@lancai/tipos";
+import { hojeISO, competencia_ciclo_da_data, mapa_fechamento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
 
 function dias_do_mes(yyyyMm: string): Date[] {
   const partes = yyyyMm.split("-");
@@ -24,12 +24,26 @@ function iso_dia(data: Date): string {
   return data.toISOString().slice(0, 10);
 }
 
+function data_na_agenda(
+  item: Pick<MovimentoResumo, "dataMovimento" | "cartaoId">,
+  cartoes: CartaoResumo[],
+): string {
+  const data = item.dataMovimento.slice(0, 10);
+  if (!item.cartaoId) return data;
+  const cartao = cartoes.find((c) => c.id === item.cartaoId);
+  if (!cartao?.fechamento) return data;
+  const competencia = competencia_ciclo_da_data(data, cartao.fechamento);
+  if (competencia === data.slice(0, 7)) return data;
+  return `${competencia}-${String(cartao.vencimento).padStart(2, "0")}`;
+}
+
 export function TelaAgendadas() {
   const { usuario } = useAutenticacao();
   const contexto = useContextoLayout();
   const [searchParams, setSearchParams] = useSearchParams();
   const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
+  const [cartoes, setCartoes] = useState<CartaoResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const hoje = hojeISO();
@@ -40,7 +54,12 @@ export function TelaAgendadas() {
     setCarregando(true);
     setErro(null);
     try {
-      setMovimentos(await clienteApi.listar_movimentos(usuario.id));
+      const [lista, cartoesCarregados] = await Promise.all([
+        clienteApi.listar_movimentos(usuario.id),
+        clienteApi.listar_cartoes(usuario.id, true),
+      ]);
+      setMovimentos(lista);
+      setCartoes(cartoesCarregados);
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar os agendamentos.");
     } finally {
@@ -52,31 +71,31 @@ export function TelaAgendadas() {
     void carregar();
   }, [carregar, deps]);
 
-  const agendados = useMemo(
-    () =>
-      movimentos.filter(
-        (item) =>
-          item.status === "previsto" &&
-          item.dataMovimento.startsWith(`${mes}-`) &&
-          item.tipo !== "receita",
-      ),
-    [movimentos, mes],
-  );
+  const agendados = useMemo(() => {
+    const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
+    return movimentos.filter(
+      (item) =>
+        item.status === "previsto" &&
+        item.tipo !== "receita" &&
+        movimento_no_resultado_do_mes(item, mes, fechamentoPorCartao),
+    );
+  }, [movimentos, mes, cartoes]);
 
-  const vencidos = agendados.filter((item) => item.dataMovimento < hoje);
-  const futuros = agendados.filter((item) => item.dataMovimento >= hoje);
+  const vencidos = agendados.filter((item) => data_na_agenda(item, cartoes) < hoje);
+  const futuros = agendados.filter((item) => data_na_agenda(item, cartoes) >= hoje);
   const dias = dias_do_mes(mes);
   const primeiro = dias[0];
   const offset = primeiro ? primeiro.getUTCDay() : 0;
   const porDia = useMemo(() => {
     const mapa = new Map<string, MovimentoResumo[]>();
     for (const item of agendados) {
-      const lista = mapa.get(item.dataMovimento) ?? [];
+      const dia = data_na_agenda(item, cartoes);
+      const lista = mapa.get(dia) ?? [];
       lista.push(item);
-      mapa.set(item.dataMovimento, lista);
+      mapa.set(dia, lista);
     }
     return mapa;
-  }, [agendados]);
+  }, [agendados, cartoes]);
 
   if (!usuario) return null;
 
@@ -136,7 +155,7 @@ export function TelaAgendadas() {
               {dias.map((dia) => {
                 const iso = iso_dia(dia);
                 const itens = porDia.get(iso) ?? [];
-                const vencida = itens.some((item) => item.dataMovimento < hoje);
+                const vencida = itens.some((item) => data_na_agenda(item, cartoes) < hoje);
                 return (
                   <div
                     key={iso}
@@ -172,7 +191,7 @@ export function TelaAgendadas() {
             ) : (
               <ul className="divide-y divide-borda">
                 {agendados.map((item) => {
-                  const vencida = item.dataMovimento < hoje;
+                  const vencida = data_na_agenda(item, cartoes) < hoje;
                   return (
                     <li key={item.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                       <div className="min-w-0">

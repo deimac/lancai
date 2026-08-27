@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agregar_gasto_cartao_por_competencia,
   agregar_totais_por_natureza,
   filtrar_movimentos_por_natureza,
   montar_fluxo_caixa,
@@ -197,6 +198,42 @@ describe("montar_proximos_pagamentos", () => {
       ]),
     );
   });
+
+  it("compra depois do fechamento não aparece em aberto no mês da fatura já paga", () => {
+    const mp: DashboardCartao = { ...cartao, fechamento: 12, gastoMes: 0 };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [mp],
+      movimentos: [
+        {
+          id: "agencias",
+          descricao: "E AGENCIAS*619063",
+          valor: 970.76,
+          status: "previsto",
+          dataMovimento: "2026-08-25",
+          fonte: "open_finance",
+          tipo: "despesa",
+          cartaoId: "cartao-mp",
+        },
+      ],
+      pagamentosFatura: [
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          cartaoFaturaId: "cartao-mp",
+          competenciaFatura: "2026-08",
+        },
+      ],
+      hoje: "2026-08-27",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.some((item) => item.descricao.includes("619063"))).toBe(false);
+    expect(itens).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ origem: "fatura", pago: true, vencida: false }),
+      ]),
+    );
+  });
 });
 
 describe("natureza do dashboard", () => {
@@ -373,5 +410,29 @@ describe("montar_fluxo_caixa", () => {
     expect(pontos[0]?.saldo).toBe(70);
     expect(pontos[9]?.saldo).toBe(110);
     expect(pontos.at(-1)?.saldo).toBe(110);
+  });
+});
+
+describe("agregar_gasto_cartao_por_competencia", () => {
+  it("agosto ignora compra pós-fechamento; setembro inclui", () => {
+    const fechamento = new Map([["cartao-mp", 12]]);
+    const movimentos = [
+      {
+        tipo: "despesa",
+        valor: "970.76",
+        dataMovimento: "2026-08-25",
+        cartaoId: "cartao-mp",
+      },
+      {
+        tipo: "despesa",
+        valor: "80",
+        dataMovimento: "2026-08-10",
+        cartaoId: "cartao-mp",
+      },
+    ];
+    const agosto = agregar_gasto_cartao_por_competencia(movimentos, fechamento, "2026-08");
+    const setembro = agregar_gasto_cartao_por_competencia(movimentos, fechamento, "2026-09");
+    expect(agosto.get("cartao-mp")).toEqual({ gasto: 80, quantidade: 1 });
+    expect(setembro.get("cartao-mp")).toEqual({ gasto: 970.76, quantidade: 1 });
   });
 });

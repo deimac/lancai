@@ -462,6 +462,35 @@ describe("ModuloRelatorios", () => {
 
       expect(dados.ranking).toEqual([{ categoriaNome: "Não classificado", total: 150 }]);
     });
+
+    it("compra de cartão depois do fechamento soma na competência da fatura, não no mês civil", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, { fechamento: 12, vencimento: 17 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+      repositorio.movimentos.set(
+        randomUUID(),
+        criarMovimento(usuarioId, categoria.id, {
+          cartaoId: cartao.id,
+          valor: "970.76",
+          dataMovimento: "2026-08-25",
+        }),
+      );
+
+      const agosto = await relatorios.consultar_visao(
+        "categoria",
+        filtrosBase(usuarioId, { periodo: { de: "2026-08-01", ate: "2026-08-31" } }),
+        "2026-08-27",
+      );
+      const setembro = await relatorios.consultar_visao(
+        "categoria",
+        filtrosBase(usuarioId, { periodo: { de: "2026-09-01", ate: "2026-09-30" } }),
+        "2026-09-10",
+      );
+
+      expect((agosto.dados as ResultadoCategoria).totalDespesas).toBe(0);
+      expect((setembro.dados as ResultadoCategoria).totalDespesas).toBe(970.76);
+    });
   });
 
   describe("futuro", () => {

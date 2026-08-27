@@ -26,7 +26,7 @@ import {
   type ContaResumo,
   type MovimentoResumo,
 } from "../lib/api";
-import { sugerir_pagamento_fatura, type Perfil, hora_visivel_do_fato } from "@lancai/tipos";
+import { sugerir_pagamento_fatura, selo_fatura_ciclo, type Perfil, hora_visivel_do_fato } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -420,7 +420,10 @@ export function TelaExtrato() {
     [visiveis, pagina, porPagina],
   );
 
-  const resumo = useMemo(() => resumir_extrato(visiveis), [visiveis]);
+  const resumo = useMemo(
+    () => resumir_extrato(visiveis, { mes, cartoes: cartoesTodos }),
+    [visiveis, mes, cartoesTodos],
+  );
 
   const filtrosDrawer = quantidade_filtros_drawer({
     categoriaId,
@@ -834,6 +837,12 @@ export function TelaExtrato() {
         </div>
       ) : null}
 
+      {resumo.proximaFatura > 0 ? (
+        <p className="text-xs text-aviso">
+          {formatar_moeda(resumo.proximaFatura)} na próxima fatura
+        </p>
+      ) : null}
+
       {erro && (
         <div className="rounded-lg border border-perigo/40 bg-perigo/10 px-3 py-2 text-sm text-texto">
           {erro}
@@ -887,6 +896,16 @@ export function TelaExtrato() {
                 const origemPerfil = perfil_origem_movimento(movimento, contas, cartoes);
                 const ehGasto = movimento.tipo === "despesa" || movimento.tipo === "retirada";
                 const categoriaAtual = categorias.find((c) => c.id === movimento.categoriaId);
+                const cartaoMovimento = movimento.cartaoId
+                  ? cartoesTodos.find((item) => item.id === movimento.cartaoId)
+                  : undefined;
+                const seloFatura = selo_fatura_ciclo({
+                  dataMovimento: movimento.dataMovimento,
+                  cartaoId: movimento.cartaoId,
+                  fechamento: cartaoMovimento?.fechamento,
+                  vencimento: cartaoMovimento?.vencimento,
+                  status: movimento.status,
+                });
                 return (
                   <tr
                     key={movimento.id}
@@ -980,7 +999,16 @@ export function TelaExtrato() {
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-texto-suave">
-                      {formatar_data(movimento.dataMovimento)}
+                      <span className="inline-flex items-center gap-1.5">
+                        {formatar_data(movimento.dataMovimento)}
+                        {seloFatura ? (
+                          <Dica texto={seloFatura.dica}>
+                            <span className="inline-flex cursor-default rounded-md border border-aviso/40 bg-aviso/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-aviso">
+                              {seloFatura.rotulo}
+                            </span>
+                          </Dica>
+                        ) : null}
+                      </span>
                     </td>
                     <td
                       className={unir_classes(

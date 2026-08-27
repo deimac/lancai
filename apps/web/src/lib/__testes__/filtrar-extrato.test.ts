@@ -319,6 +319,45 @@ describe("resumir_extrato", () => {
       resultado: 45,
       revisarQuantidade: 1,
       revisarTotal: 15,
+      proximaFatura: 0,
+    });
+  });
+
+  it("compra de cartão depois do fechamento não entra nas saídas do mês da compra", () => {
+    const recorte = [
+      movimento({
+        id: "agencias",
+        tipo: "despesa",
+        valor: "970.76",
+        cartaoId: "cartao-mp",
+        contaId: null,
+        dataMovimento: "2026-08-25",
+        status: "previsto",
+      }),
+      movimento({
+        id: "pizza",
+        tipo: "despesa",
+        valor: "80",
+        cartaoId: "cartao-itau",
+        contaId: null,
+        dataMovimento: "2026-08-18",
+      }),
+    ];
+    expect(
+      resumir_extrato(recorte, {
+        mes: "2026-08",
+        cartoes: [
+          { id: "cartao-mp", fechamento: 12 },
+          { id: "cartao-itau", fechamento: 30 },
+        ],
+      }),
+    ).toEqual({
+      entradas: 0,
+      saidas: 80,
+      resultado: -80,
+      revisarQuantidade: 0,
+      revisarTotal: 0,
+      proximaFatura: 970.76,
     });
   });
 });

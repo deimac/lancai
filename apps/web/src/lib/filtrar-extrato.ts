@@ -1,5 +1,6 @@
 import type { MovimentoResumo } from "./api";
 import { eh_nao_classificado, precisa_revisao } from "./fila-revisao";
+import { mapa_fechamento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
 
 export type FilaExtrato = "todas" | "banco" | "manual" | "revisar";
 
@@ -195,20 +196,35 @@ export type ResumoExtrato = {
   resultado: number;
   revisarQuantidade: number;
   revisarTotal: number;
+  proximaFatura: number;
 };
 
+export type CartaoCicloExtrato = { id: string; fechamento?: number | null };
+
 /** Totais do recorte já filtrado (exclui cancelados; saídas sem pagamento de fatura). */
-export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
+export function resumir_extrato(
+  movimentos: MovimentoResumo[],
+  opcoes?: { mes?: string; cartoes?: CartaoCicloExtrato[] },
+): ResumoExtrato {
+  const fechamentoPorCartao = mapa_fechamento_cartoes(opcoes?.cartoes ?? []);
   let entradas = 0;
   let saidas = 0;
   let revisarQuantidade = 0;
   let revisarTotal = 0;
+  let proximaFatura = 0;
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
     const valor = Number(movimento.valor);
     const seguro = Number.isFinite(valor) ? valor : 0;
-    if (eh_entrada_extrato(movimento.tipo)) entradas += seguro;
-    else if (movimento.papel !== "pagamento_fatura") saidas += seguro;
+    if (eh_entrada_extrato(movimento.tipo)) {
+      entradas += seguro;
+    } else if (movimento.papel !== "pagamento_fatura") {
+      const noResultado =
+        !opcoes?.mes ||
+        movimento_no_resultado_do_mes(movimento, opcoes.mes, fechamentoPorCartao);
+      if (noResultado) saidas += seguro;
+      else proximaFatura += seguro;
+    }
     if (precisa_revisao(movimento)) {
       revisarQuantidade += 1;
       revisarTotal += seguro;
@@ -220,6 +236,7 @@ export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
     resultado: entradas - saidas,
     revisarQuantidade,
     revisarTotal,
+    proximaFatura,
   };
 }
 

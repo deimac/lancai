@@ -1,12 +1,13 @@
-import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gte, lte, ne } from "drizzle-orm";
 import {
+  cartao as cartaoTabela,
   categoria as categoriaTabela,
   eh_categoria_sistema,
   movimento as movimentoTabela,
   obter_banco,
 } from "@lancai/banco";
-import { hojeISO } from "@lancai/tipos";
-import { gasto_do_orcamento, listar_status_orcamentos, SOMA_ENTRADAS, SOMA_SAIDAS } from "./orcamento-servico";
+import { hojeISO, mapa_fechamento_cartoes, movimento_no_resultado_do_mes, periodo_amplo_do_ciclo } from "@lancai/tipos";
+import { gasto_do_orcamento, listar_status_orcamentos } from "./orcamento-servico";
 
 export type CategoriaUi = {
   id: string;
@@ -36,39 +37,67 @@ export async function montar_categorias_ui(
 ): Promise<CategoriaUi[]> {
   const banco = obter_banco();
   const { inicio, fim } = mes_iso(dataAtual);
+  const mes = dataAtual.slice(0, 7);
+  const amplo = periodo_amplo_do_ciclo({ de: inicio, ate: fim }, 1);
   const categorias = await banco
     .select()
     .from(categoriaTabela)
     .where(and(eq(categoriaTabela.usuarioId, usuarioId), eq(categoriaTabela.ativo, true)));
 
-  const totais = await banco
-    .select({
-      categoriaId: movimentoTabela.categoriaId,
-      saidas: SOMA_SAIDAS,
-      entradas: SOMA_ENTRADAS,
-      quantidade: sql<number>`count(*)::int`,
-    })
-    .from(movimentoTabela)
-    .where(
-      and(
-        eq(movimentoTabela.usuarioId, usuarioId),
-        gte(movimentoTabela.dataMovimento, inicio),
-        lte(movimentoTabela.dataMovimento, fim),
-        ne(movimentoTabela.status, "cancelado"),
+  const [movimentos, cartoes] = await Promise.all([
+    banco
+      .select({
+        dataMovimento: movimentoTabela.dataMovimento,
+        cartaoId: movimentoTabela.cartaoId,
+        categoriaId: movimentoTabela.categoriaId,
+        tipo: movimentoTabela.tipo,
+        valor: movimentoTabela.valor,
+        tipoGasto: movimentoTabela.tipoGasto,
+        status: movimentoTabela.status,
+      })
+      .from(movimentoTabela)
+      .where(
+        and(
+          eq(movimentoTabela.usuarioId, usuarioId),
+          gte(movimentoTabela.dataMovimento, amplo.de),
+          lte(movimentoTabela.dataMovimento, amplo.ate),
+          ne(movimentoTabela.status, "cancelado"),
+        ),
       ),
-    )
-    .groupBy(movimentoTabela.categoriaId);
+    banco
+      .select({ id: cartaoTabela.id, fechamento: cartaoTabela.fechamento })
+      .from(cartaoTabela)
+      .where(eq(cartaoTabela.usuarioId, usuarioId)),
+  ]);
 
-  const mapaTotais = new Map(
-    totais.map((linha) => [
-      linha.categoriaId,
-      {
-        saidas: Number(linha.saidas),
-        entradas: Number(linha.entradas),
-        quantidade: Number(linha.quantidade),
-      },
-    ]),
+  const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
+  const noMes = movimentos.filter((movimento) =>
+    movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao),
   );
+
+  const mapaTotais = new Map<string, { saidas: number; entradas: number; quantidade: number }>();
+  for (const movimento of noMes) {
+    if (!movimento.categoriaId) continue;
+    const atual = mapaTotais.get(movimento.categoriaId) ?? {
+      saidas: 0,
+      entradas: 0,
+      quantidade: 0,
+    };
+    const valor = Number(movimento.valor);
+    const seguro = Number.isFinite(valor) ? valor : 0;
+    if (movimento.tipo === "despesa" || movimento.tipo === "retirada" || movimento.tipo === "emprestimo") {
+      atual.saidas += seguro;
+    } else if (
+      movimento.tipo === "receita" ||
+      movimento.tipo === "reembolso" ||
+      movimento.tipo === "estorno" ||
+      movimento.tipo === "aporte"
+    ) {
+      atual.entradas += seguro;
+    }
+    atual.quantidade += 1;
+    mapaTotais.set(movimento.categoriaId, atual);
+  }
 
   let orcamentos: Awaited<ReturnType<typeof listar_status_orcamentos>> = [];
   try {

@@ -7,6 +7,10 @@ import {
   intervalo_ciclo_fatura,
   competencia_ciclo_da_data,
   linha_aceita_pagamento_fatura,
+  mapa_fechamento_cartoes,
+  movimento_no_resultado_do_mes,
+  periodo_amplo_do_ciclo,
+  selo_fatura_ciclo,
   sugerir_pagamento_fatura,
   valores_proximos,
   type CartaoSugestaoFatura,
@@ -78,6 +82,73 @@ describe("heurística de pagamento de fatura", () => {
     expect(competencia_ciclo_da_data("2026-08-10", 10)).toBe("2026-08");
     expect(competencia_ciclo_da_data("2026-08-11", 10)).toBe("2026-09");
     expect(competencia_ciclo_da_data("2026-07-11", 10)).toBe("2026-08");
+  });
+
+  it("Mercado Pago fecha 12: compra 25/08 entra na fatura de setembro", () => {
+    expect(competencia_ciclo_da_data("2026-08-25", 12)).toBe("2026-09");
+    expect(competencia_ciclo_da_data("2026-08-12", 12)).toBe("2026-08");
+    expect(competencia_ciclo_da_data("2026-08-13", 12)).toBe("2026-09");
+  });
+
+  it("selo só quando a competência da fatura é outro mês", () => {
+    expect(
+      selo_fatura_ciclo({
+        dataMovimento: "2026-08-25",
+        cartaoId: "mp",
+        fechamento: 12,
+        vencimento: 17,
+        status: "previsto",
+      }),
+    ).toEqual({
+      rotulo: "Fatura set",
+      dica: "Em aberto. Entra na fatura de setembro (vence dia 17).",
+    });
+    expect(
+      selo_fatura_ciclo({
+        dataMovimento: "2026-08-18",
+        cartaoId: "itau",
+        fechamento: 30,
+        vencimento: 10,
+        status: "previsto",
+      }),
+    ).toBeNull();
+    expect(
+      selo_fatura_ciclo({
+        dataMovimento: "2026-08-25",
+        cartaoId: null,
+        fechamento: 12,
+        vencimento: 17,
+      }),
+    ).toBeNull();
+  });
+
+  it("P&L do cartão usa o mês da fatura; conta usa o mês civil", () => {
+    const cartoes = mapa_fechamento_cartoes([{ id: "mp", fechamento: 12 }]);
+    expect(
+      movimento_no_resultado_do_mes(
+        { dataMovimento: "2026-08-25", cartaoId: "mp" },
+        "2026-08",
+        cartoes,
+      ),
+    ).toBe(false);
+    expect(
+      movimento_no_resultado_do_mes(
+        { dataMovimento: "2026-08-25", cartaoId: "mp" },
+        "2026-09",
+        cartoes,
+      ),
+    ).toBe(true);
+    expect(
+      movimento_no_resultado_do_mes(
+        { dataMovimento: "2026-08-25", cartaoId: null },
+        "2026-08",
+        cartoes,
+      ),
+    ).toBe(true);
+    expect(periodo_amplo_do_ciclo({ de: "2026-08-01", ate: "2026-08-31" })).toEqual({
+      de: "2026-07-01",
+      ate: "2026-08-31",
+    });
   });
 
   it("sugere pela descrição na conta preferencial, sem aplicar sozinha", () => {

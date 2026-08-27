@@ -6,7 +6,11 @@ import {
   eh_movimento_parcelado,
   enxugar_indice_parcela,
   hora_visivel_do_fato,
+  mapa_fechamento_cartoes,
+  mes_resultado_do_movimento,
+  movimento_no_resultado_do_mes,
   paraNumero,
+  periodo_amplo_do_ciclo,
   schemaFiltrosVisaoResolvidos,
   somar,
 } from "@lancai/tipos";
@@ -73,6 +77,26 @@ function filtroDeVisao(
 
 function perfilDeContaOuCartao(filtros: FiltrosVisaoResolvidos) {
   return filtros.origemPerfil ?? filtros.perfil;
+}
+
+async function recortar_resultado_do_periodo<
+  T extends { dataMovimento: string; cartaoId?: string | null },
+>(
+  repositorio: RepositorioRelatorios,
+  usuarioId: string,
+  periodo: { de: string; ate: string },
+  movimentos: T[],
+): Promise<T[]> {
+  const mes = periodo.de.slice(0, 7);
+  const cartoes = await repositorio.listarCartoes(usuarioId);
+  const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
+  return movimentos.filter((movimento) => {
+    if (movimento.cartaoId) {
+      return movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao);
+    }
+    const dia = String(movimento.dataMovimento).slice(0, 10);
+    return dia >= periodo.de && dia <= periodo.ate;
+  });
 }
 
 function descricao_corresponde(cadastrada: string, termo: string): boolean {
@@ -266,12 +290,19 @@ export class ModuloRelatorios {
 
   private async consultar_categoria(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
     const periodo = filtros.periodo ?? inicioFimMesAtual(dataAtual);
+    const periodoLeitura = periodo_amplo_do_ciclo(periodo, 1);
 
     if (filtros.categoriaId) {
       const categoria = await this.repositorio.obterCategoria(filtros.categoriaId);
-      const movimentos = await this.repositorio.listarMovimentos(
+      const movimentosBrutos = await this.repositorio.listarMovimentos(
         filtros.usuarioId,
-        filtroDeVisao(filtros, { categoriaId: filtros.categoriaId, periodo }),
+        filtroDeVisao(filtros, { categoriaId: filtros.categoriaId, periodo: periodoLeitura }),
+      );
+      const movimentos = await recortar_resultado_do_periodo(
+        this.repositorio,
+        filtros.usuarioId,
+        periodo,
+        movimentosBrutos,
       );
 
       const despesas = movimentos.filter((movimento) => movimento.tipo === "despesa");
@@ -286,10 +317,20 @@ export class ModuloRelatorios {
       };
     }
 
-    const [movimentosDespesa, movimentosReceita, categorias] = await Promise.all([
-      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo, tipos: ["despesa"] })),
-      this.repositorio.listarMovimentos(filtros.usuarioId, filtroDeVisao(filtros, { periodo, tipos: ["receita"] })),
+    const [movimentosDespesaBrutos, movimentosReceitaBrutos, categorias] = await Promise.all([
+      this.repositorio.listarMovimentos(
+        filtros.usuarioId,
+        filtroDeVisao(filtros, { periodo: periodoLeitura, tipos: ["despesa"] }),
+      ),
+      this.repositorio.listarMovimentos(
+        filtros.usuarioId,
+        filtroDeVisao(filtros, { periodo: periodoLeitura, tipos: ["receita"] }),
+      ),
       this.repositorio.listarCategorias(filtros.usuarioId),
+    ]);
+    const [movimentosDespesa, movimentosReceita] = await Promise.all([
+      recortar_resultado_do_periodo(this.repositorio, filtros.usuarioId, periodo, movimentosDespesaBrutos),
+      recortar_resultado_do_periodo(this.repositorio, filtros.usuarioId, periodo, movimentosReceitaBrutos),
     ]);
     const mapaCategorias = new Map(categorias.map((categoria) => [categoria.id, categoria.nome]));
 
@@ -413,14 +454,21 @@ export class ModuloRelatorios {
 
   private async consultar_evolucao(filtros: FiltrosVisaoResolvidos, dataAtual: string) {
     const periodo = filtros.periodo ?? ultimosMeses(dataAtual, QUANTIDADE_MESES_EVOLUCAO);
-    const movimentos = await this.repositorio.listarMovimentos(
-      filtros.usuarioId,
-      filtroDeVisao(filtros, { periodo, tipos: ["receita", "despesa"] }),
-    );
+    const periodoLeitura = periodo_amplo_do_ciclo(periodo, 1);
+    const [movimentos, cartoes] = await Promise.all([
+      this.repositorio.listarMovimentos(
+        filtros.usuarioId,
+        filtroDeVisao(filtros, { periodo: periodoLeitura, tipos: ["receita", "despesa"] }),
+      ),
+      this.repositorio.listarCartoes(filtros.usuarioId),
+    ]);
+    const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
 
     const totaisPorMes = new Map<string, { receitas: number; despesas: number }>();
     for (const movimento of movimentos) {
-      const mes = movimento.dataMovimento.slice(0, 7);
+      const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
+      const mes = mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento);
+      if (mes < periodo.de.slice(0, 7) || mes > periodo.ate.slice(0, 7)) continue;
       const atual = totaisPorMes.get(mes) ?? { receitas: 0, despesas: 0 };
       if (movimento.tipo === "receita") atual.receitas = somar(atual.receitas, movimento.valor);
       else atual.despesas = somar(atual.despesas, movimento.valor);

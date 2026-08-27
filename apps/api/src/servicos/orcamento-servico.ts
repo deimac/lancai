@@ -1,5 +1,6 @@
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import {
+  cartao as cartaoTabela,
   categoria as categoriaTabela,
   garantir_workspace_do_usuario,
   movimento as movimentoTabela,
@@ -7,18 +8,16 @@ import {
   orcamento as orcamentoTabela,
   type Orcamento,
 } from "@lancai/banco";
-import { formatarMoeda, type Perfil } from "@lancai/tipos";
+import {
+  formatarMoeda,
+  mapa_fechamento_cartoes,
+  movimento_no_resultado_do_mes,
+  periodo_amplo_do_ciclo,
+  type Perfil,
+} from "@lancai/tipos";
 
 type TipoCategoria = "receita" | "despesa" | "ambos";
 
-export const SOMA_SAIDAS = sql<string>`coalesce(sum(case when ${movimentoTabela.tipo}::text in ('despesa', 'retirada', 'emprestimo') then ${movimentoTabela.valor} else 0 end), 0)`;
-export const SOMA_ENTRADAS = sql<string>`coalesce(sum(case when ${movimentoTabela.tipo}::text in ('receita', 'reembolso', 'estorno', 'aporte') then ${movimentoTabela.valor} else 0 end), 0)`;
-
-/**
- * Quanto do limite a categoria consumiu no mês.
- * `ambos` é saldo: saídas menos entradas (reembolso/receita reduz o gasto).
- * Demais tipos e o teto geral seguem só as saídas.
- */
 export function gasto_do_orcamento(
   tipoCategoria: TipoCategoria | null | undefined,
   saidas: number,
@@ -34,6 +33,53 @@ function mes_atual_iso(dataAtual: string): { inicio: string; fim: string; chave:
   const ultimoDia = new Date(Number(ano), Number(mes), 0).getDate();
   const fim = `${ano}-${mes}-${String(ultimoDia).padStart(2, "0")}`;
   return { inicio, fim, chave: `${ano}-${mes}` };
+}
+
+export type MovimentoGastoOrcamento = {
+  dataMovimento: string;
+  cartaoId?: string | null;
+  categoriaId?: string | null;
+  tipo: string;
+  valor: string | number;
+  tipoGasto: string;
+  status: string;
+};
+
+export function somar_gastos_dos_movimentos(
+  movimentos: MovimentoGastoOrcamento[],
+  opcoes: {
+    mes: string;
+    fechamentoPorCartao: ReadonlyMap<string, number>;
+    categoriaId?: string | null;
+    tipoGasto?: Perfil;
+  },
+): { saidas: number; entradas: number } {
+  let saidas = 0;
+  let entradas = 0;
+  for (const movimento of movimentos) {
+    if (movimento.status === "cancelado") continue;
+    if (opcoes.categoriaId && movimento.categoriaId !== opcoes.categoriaId) continue;
+    if (opcoes.tipoGasto && movimento.tipoGasto !== opcoes.tipoGasto) continue;
+    if (!movimento_no_resultado_do_mes(movimento, opcoes.mes, opcoes.fechamentoPorCartao)) {
+      continue;
+    }
+    const valor = Number(movimento.valor);
+    if (!Number.isFinite(valor)) continue;
+    if (movimento.tipo === "despesa" || movimento.tipo === "retirada" || movimento.tipo === "emprestimo") {
+      saidas += valor;
+    } else if (
+      movimento.tipo === "receita" ||
+      movimento.tipo === "reembolso" ||
+      movimento.tipo === "estorno" ||
+      movimento.tipo === "aporte"
+    ) {
+      entradas += valor;
+    }
+  }
+  return {
+    saidas: Math.round(saidas * 100) / 100,
+    entradas: Math.round(entradas * 100) / 100,
+  };
 }
 
 export async function definir_orcamento(entrada: {
@@ -113,34 +159,50 @@ export type StatusOrcamento = {
   percentual: number;
 };
 
-async function somar_gastos(
+async function carregar_movimentos_orcamento(
   usuarioId: string,
-  inicio: string,
-  fim: string,
-  categoriaId?: string | null,
-  tipoCategoria?: TipoCategoria | null,
+  dataAtual: string,
   tipoGasto?: Perfil,
-): Promise<number> {
+): Promise<{
+  mes: string;
+  movimentos: MovimentoGastoOrcamento[];
+  fechamentoPorCartao: Map<string, number>;
+}> {
   const banco = obter_banco();
+  const { inicio, fim, chave } = mes_atual_iso(dataAtual);
+  const amplo = periodo_amplo_do_ciclo({ de: inicio, ate: fim }, 1);
   const condicoes = [
     eq(movimentoTabela.usuarioId, usuarioId),
-    gte(movimentoTabela.dataMovimento, inicio),
-    lte(movimentoTabela.dataMovimento, fim),
-    sql`${movimentoTabela.status} <> 'cancelado'`,
+    gte(movimentoTabela.dataMovimento, amplo.de),
+    lte(movimentoTabela.dataMovimento, amplo.ate),
+    ne(movimentoTabela.status, "cancelado"),
   ];
-  if (categoriaId) {
-    condicoes.push(eq(movimentoTabela.categoriaId, categoriaId));
-  }
   if (tipoGasto) {
     condicoes.push(eq(movimentoTabela.tipoGasto, tipoGasto));
   }
-
-  const [linha] = await banco
-    .select({ saidas: SOMA_SAIDAS, entradas: SOMA_ENTRADAS })
-    .from(movimentoTabela)
-    .where(and(...condicoes));
-
-  return gasto_do_orcamento(tipoCategoria, Number(linha?.saidas ?? 0), Number(linha?.entradas ?? 0));
+  const [movimentos, cartoes] = await Promise.all([
+    banco
+      .select({
+        dataMovimento: movimentoTabela.dataMovimento,
+        cartaoId: movimentoTabela.cartaoId,
+        categoriaId: movimentoTabela.categoriaId,
+        tipo: movimentoTabela.tipo,
+        valor: movimentoTabela.valor,
+        tipoGasto: movimentoTabela.tipoGasto,
+        status: movimentoTabela.status,
+      })
+      .from(movimentoTabela)
+      .where(and(...condicoes)),
+    banco
+      .select({ id: cartaoTabela.id, fechamento: cartaoTabela.fechamento })
+      .from(cartaoTabela)
+      .where(eq(cartaoTabela.usuarioId, usuarioId)),
+  ]);
+  return {
+    mes: chave,
+    movimentos,
+    fechamentoPorCartao: mapa_fechamento_cartoes(cartoes),
+  };
 }
 
 export async function listar_status_orcamentos(
@@ -150,7 +212,11 @@ export async function listar_status_orcamentos(
   tipoGasto?: Perfil,
 ): Promise<StatusOrcamento[]> {
   const banco = obter_banco();
-  const { inicio, fim } = mes_atual_iso(dataAtual);
+  const { mes, movimentos, fechamentoPorCartao } = await carregar_movimentos_orcamento(
+    usuarioId,
+    dataAtual,
+    tipoGasto,
+  );
 
   const orcamentos = await banco
     .select()
@@ -175,14 +241,12 @@ export async function listar_status_orcamentos(
       tipoCategoria = cat?.tipo ?? null;
     }
     const limite = Number(orc.valorLimite);
-    const gasto = await somar_gastos(
-      usuarioId,
-      inicio,
-      fim,
-      orc.categoriaId,
-      tipoCategoria,
-      tipoGasto,
-    );
+    const totais = somar_gastos_dos_movimentos(movimentos, {
+      mes,
+      fechamentoPorCartao,
+      categoriaId: orc.categoriaId,
+    });
+    const gasto = gasto_do_orcamento(tipoCategoria, totais.saidas, totais.entradas);
     const percentual = limite > 0 ? (gasto / limite) * 100 : 0;
     status.push({ orcamento: orc, categoriaNome, gasto, limite, percentual });
   }
