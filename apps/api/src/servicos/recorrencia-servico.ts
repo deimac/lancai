@@ -1,8 +1,7 @@
-import { and, eq, gte, ilike, lte, ne, or } from "drizzle-orm";
+import { and, eq, gte, ilike, inArray, lte, ne, or } from "drizzle-orm";
 import {
   cartao as cartaoTabela,
   conta as contaTabela,
-  garantir_workspace_do_usuario,
   movimento as movimentoTabela,
   obter_banco,
   recorrencia as recorrenciaTabela,
@@ -16,6 +15,7 @@ import {
 } from "@lancai/relatorios";
 import { formatarMoeda, hojeISO, normalizar_descricao_parcela, paraNumero } from "@lancai/tipos";
 import { score_descricao_conciliacao } from "./conciliar-manual-com-fonte";
+import { exigir_workspace_escrita, obter_escopo_leitura } from "./escopo-workspace";
 
 const LIMIAR_EQUIVALENTE = 0.35;
 
@@ -137,7 +137,7 @@ export async function criar_recorrencia(entrada: {
     .insert(recorrenciaTabela)
     .values({
       usuarioId: entrada.usuarioId,
-      workspaceId: await garantir_workspace_do_usuario(banco, entrada.usuarioId),
+      workspaceId: await exigir_workspace_escrita(entrada.usuarioId),
       descricao: entrada.descricao.trim(),
       valor: entrada.valor.toFixed(2),
       tipo: entrada.tipo,
@@ -157,13 +157,20 @@ export async function listar_recorrencias(
   usuarioId: string,
   opcoes: { incluirInativas?: boolean } = {},
 ): Promise<Recorrencia[]> {
+  const escopo = await obter_escopo_leitura(usuarioId);
+  if (escopo.workspaceIds.length === 0) return [];
   const banco = obter_banco();
-  const condicoes = [eq(recorrenciaTabela.usuarioId, usuarioId)];
+  const condicoes = [
+    eq(recorrenciaTabela.usuarioId, usuarioId),
+    inArray(recorrenciaTabela.workspaceId, escopo.workspaceIds),
+  ];
   if (!opcoes.incluirInativas) condicoes.push(eq(recorrenciaTabela.ativa, true));
   return banco.select().from(recorrenciaTabela).where(and(...condicoes));
 }
 
 export async function cancelar_recorrencia(usuarioId: string, descricao: string): Promise<Recorrencia | null> {
+  const escopo = await obter_escopo_leitura(usuarioId);
+  if (escopo.workspaceIds.length === 0) return null;
   const banco = obter_banco();
   const [encontrada] = await banco
     .select()
@@ -171,6 +178,7 @@ export async function cancelar_recorrencia(usuarioId: string, descricao: string)
     .where(
       and(
         eq(recorrenciaTabela.usuarioId, usuarioId),
+        inArray(recorrenciaTabela.workspaceId, escopo.workspaceIds),
         eq(recorrenciaTabela.ativa, true),
         ilike(recorrenciaTabela.descricao, `%${descricao.trim()}%`),
       ),
