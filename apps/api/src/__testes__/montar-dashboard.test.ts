@@ -25,20 +25,28 @@ const cartao: DashboardCartao = {
   quantidadeLancamentos: 4,
 };
 
+function credito_quitacao(overrides: Record<string, unknown> = {}) {
+  return {
+    status: "realizado",
+    papel: "pagamento_fatura",
+    competenciaFatura: "2026-08",
+    tipo: "receita",
+    cartaoId: "cartao-mp",
+    contaId: null,
+    descricao: "Pagamento recebido",
+    dataMovimento: "2026-08-10",
+    valor: 320,
+    ...overrides,
+  };
+}
+
 describe("montar_proximos_pagamentos", () => {
-  it("marca a fatura como paga quando há pagamento ligado àquele cartão e vencimento", () => {
+  it("marca a fatura como paga quando o cartão recebeu crédito de quitação no mês", () => {
     const itens = montar_proximos_pagamentos({
       futuro: [],
       cartoes: [cartao],
       movimentos: [],
-      pagamentosFatura: [
-        {
-          status: "realizado",
-          papel: "pagamento_fatura",
-          cartaoFaturaId: "cartao-mp",
-          competenciaFatura: "2026-08",
-        },
-      ],
+      pagamentosFatura: [credito_quitacao()],
       hoje: "2026-08-21",
       periodo: { de: "2026-08-01", ate: "2026-08-31" },
     });
@@ -61,14 +69,7 @@ describe("montar_proximos_pagamentos", () => {
       futuro: [],
       cartoes: [cartao, outro],
       movimentos: [],
-      pagamentosFatura: [
-        {
-          status: "realizado",
-          papel: "pagamento_fatura",
-          cartaoFaturaId: "cartao-mp",
-          competenciaFatura: "2026-08",
-        },
-      ],
+      pagamentosFatura: [credito_quitacao()],
       hoje: "2026-08-21",
       periodo: { de: "2026-08-01", ate: "2026-08-31" },
     });
@@ -100,14 +101,7 @@ describe("montar_proximos_pagamentos", () => {
           cartaoId: "cartao-mp",
         },
       ],
-      pagamentosFatura: [
-        {
-          status: "realizado",
-          papel: "pagamento_fatura",
-          cartaoFaturaId: "cartao-mp",
-          competenciaFatura: "2026-08",
-        },
-      ],
+      pagamentosFatura: [credito_quitacao()],
       hoje: "2026-08-21",
       periodo: { de: "2026-08-01", ate: "2026-08-31" },
     });
@@ -175,14 +169,7 @@ describe("montar_proximos_pagamentos", () => {
       futuro: [],
       cartoes: [cartao],
       movimentos: [],
-      pagamentosFatura: [
-        {
-          status: "realizado",
-          papel: "pagamento_fatura",
-          cartaoFaturaId: "cartao-mp",
-          competenciaFatura: "2026-07",
-        },
-      ],
+      pagamentosFatura: [credito_quitacao({ competenciaFatura: "2026-07" })],
       hoje: "2026-08-21",
       periodo: { de: "2026-08-01", ate: "2026-08-31" },
     });
@@ -216,14 +203,7 @@ describe("montar_proximos_pagamentos", () => {
           cartaoId: "cartao-mp",
         },
       ],
-      pagamentosFatura: [
-        {
-          status: "realizado",
-          papel: "pagamento_fatura",
-          cartaoFaturaId: "cartao-mp",
-          competenciaFatura: "2026-08",
-        },
-      ],
+      pagamentosFatura: [credito_quitacao()],
       hoje: "2026-08-27",
       periodo: { de: "2026-08-01", ate: "2026-08-31" },
     });
@@ -235,11 +215,12 @@ describe("montar_proximos_pagamentos", () => {
     );
   });
 
-  it("lista cada Pix da competência com vencimento e dia do pagamento", () => {
+  it("lista cada crédito no cartão da competência com vencimento e dia do pagamento", () => {
     const azul: DashboardCartao = {
       ...cartao,
       id: "cartao-azul",
       nome: "Azul Itaú Visa Platinum",
+      perfil: "pf",
       fechamento: 30,
       vencimento: 6,
       gastoMes: 6500.57,
@@ -271,19 +252,21 @@ describe("montar_proximos_pagamentos", () => {
         cartaoId: null,
         descricao: "Pix sobra",
       },
-      {
+      credito_quitacao({
         id: "credito-cartao",
-        status: "realizado",
-        papel: "pagamento_fatura" as const,
+        cartaoId: "cartao-azul",
         cartaoFaturaId: "cartao-azul",
-        competenciaFatura: "2026-08",
         dataMovimento: "2026-07-29",
         valor: 6500.57,
-        tipo: "receita",
-        contaId: null,
+      }),
+      credito_quitacao({
+        id: "credito-sobra",
         cartaoId: "cartao-azul",
-        descricao: "Pagamento recebido",
-      },
+        cartaoFaturaId: "cartao-azul",
+        dataMovimento: "2026-08-05",
+        valor: 11.02,
+        descricao: "Pagamento PIX",
+      }),
     ];
     const agosto = montar_proximos_pagamentos({
       futuro: [],
@@ -326,6 +309,96 @@ describe("montar_proximos_pagamentos", () => {
         pago: false,
         valor: 80,
       }),
+    ]);
+  });
+
+  it("Pix 11,02 tagged no MP Visa + crédito no Azul vira Fatura Azul, nunca Fatura Mercado Pago", () => {
+    const azul: DashboardCartao = {
+      ...cartao,
+      id: "cartao-azul",
+      nome: "Azul Itaú Visa Platinum",
+      perfil: "pf",
+      fechamento: 30,
+      vencimento: 6,
+      gastoMes: 11.02,
+    };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [cartao, azul],
+      movimentos: [],
+      pagamentosFatura: [
+        {
+          id: "pix-conta-mp",
+          status: "realizado",
+          papel: "pagamento_fatura",
+          cartaoFaturaId: "cartao-mp",
+          competenciaFatura: "2026-08",
+          dataMovimento: "2026-08-05",
+          valor: 11.02,
+          tipo: "despesa",
+          contaId: "conta-mp",
+          cartaoId: null,
+          descricao: "ITAU UNIBANCO HOLDING S A",
+        },
+        credito_quitacao({
+          id: "credito-azul",
+          cartaoId: "cartao-azul",
+          dataMovimento: "2026-08-05",
+          valor: 11.02,
+          descricao: "Pagamento PIX",
+        }),
+        credito_quitacao({
+          id: "credito-mp",
+          cartaoId: "cartao-mp",
+          dataMovimento: "2026-08-13",
+          valor: 3373.95,
+        }),
+      ],
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    const faturas = itens.filter((item) => item.origem === "fatura");
+    expect(faturas).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          descricao: "Fatura Azul Itaú Visa Platinum",
+          valor: 11.02,
+          pago: true,
+          dataPagamento: "2026-08-05",
+        }),
+        expect.objectContaining({
+          descricao: "Fatura Mercado Pago Visa",
+          valor: 3373.95,
+          pago: true,
+          dataPagamento: "2026-08-13",
+        }),
+      ]),
+    );
+    expect(faturas).toHaveLength(2);
+    expect(
+      faturas.some((item) => item.descricao === "Fatura Mercado Pago Visa" && item.valor === 11.02),
+    ).toBe(false);
+  });
+
+  it("filtro Pessoal omite cartão Empresa", () => {
+    const azul: DashboardCartao = {
+      ...cartao,
+      id: "cartao-azul",
+      nome: "Azul Itaú Visa Platinum",
+      perfil: "pf",
+      gastoMes: 80,
+    };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [cartao, azul],
+      movimentos: [],
+      tipoGasto: "pf",
+      hoje: "2026-08-21",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    const faturas = itens.filter((item) => item.origem === "fatura");
+    expect(faturas).toEqual([
+      expect.objectContaining({ descricao: "Fatura Azul Itaú Visa Platinum", pago: false }),
     ]);
   });
 });

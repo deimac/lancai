@@ -56,9 +56,9 @@ export interface ProximoPagamento {
   origem: "previsto" | "parcela" | "fatura" | "recorrente";
   contaNome: string | null;
   vencida: boolean;
-  /** Fatura com Pix/TED ligado ao cartão e ao mês de vencimento. */
+  /** Fatura com crédito de quitação no cartão no mês. */
   pago: boolean;
-  /** Dia em que o Pix saiu; só em fatura paga. */
+  /** Dia em que o crédito entrou no cartão; só em fatura paga. */
   dataPagamento?: string | null;
 }
 
@@ -429,6 +429,7 @@ export async function montar_dashboard(
     cartoes: cartoesDetalhe,
     movimentos: movimentosAmplo,
     pagamentosFatura: movimentosQuitadas,
+    tipoGasto,
     // O web manda o dia 1 do mês selecionado; vencido/em aberto compara com hoje de verdade.
     hoje,
     periodo,
@@ -677,23 +678,28 @@ export function montar_proximos_pagamentos(entrada: {
     contaId?: string | null;
     descricao?: string;
   }>;
+  tipoGasto?: Perfil;
   hoje: string;
   periodo: { de: string; ate: string };
 }): ProximoPagamento[] {
   const itens: ProximoPagamento[] = [];
   const mesAgenda = entrada.periodo.de.slice(0, 7);
-  const pixPorCartao = new Map<string, NonNullable<typeof entrada.pagamentosFatura>>();
+  const cartoes = entrada.tipoGasto
+    ? entrada.cartoes.filter((cartao) => cartao.perfil === entrada.tipoGasto)
+    : entrada.cartoes;
+  const creditosPorCartao = new Map<string, NonNullable<typeof entrada.pagamentosFatura>>();
   for (const movimento of entrada.pagamentosFatura ?? []) {
     if (movimento.status === "cancelado") continue;
     if (movimento.papel !== "pagamento_fatura") continue;
-    if (!movimento.cartaoFaturaId || !movimento.competenciaFatura) continue;
-    if (movimento.competenciaFatura !== mesAgenda) continue;
-    if (eh_credito_duplicado_da_fatura(movimento)) continue;
-    const lista = pixPorCartao.get(movimento.cartaoFaturaId) ?? [];
+    if (!movimento.competenciaFatura || movimento.competenciaFatura !== mesAgenda) continue;
+    if (!eh_credito_quitacao_da_fatura(movimento)) continue;
+    const cartaoId = movimento.cartaoId;
+    if (!cartaoId) continue;
+    const lista = creditosPorCartao.get(cartaoId) ?? [];
     lista.push(movimento);
-    pixPorCartao.set(movimento.cartaoFaturaId, lista);
+    creditosPorCartao.set(cartaoId, lista);
   }
-  const cartaoPorId = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
+  const cartaoPorId = new Map(cartoes.map((cartao) => [cartao.id, cartao]));
 
   const coberto_pela_fatura = (cartaoId: string | null | undefined, _data: string): boolean => {
     if (!cartaoId) return false;
@@ -744,13 +750,13 @@ export function montar_proximos_pagamentos(entrada: {
     });
   }
 
-  for (const cartao of entrada.cartoes) {
+  for (const cartao of cartoes) {
     const dia = String(cartao.vencimento).padStart(2, "0");
     const vencimento = `${mesAgenda}-${dia}`;
-    const pixs = [...(pixPorCartao.get(cartao.id) ?? [])].sort((a, b) =>
+    const creditos = [...(creditosPorCartao.get(cartao.id) ?? [])].sort((a, b) =>
       String(a.dataMovimento ?? "").localeCompare(String(b.dataMovimento ?? "")),
     );
-    if (pixs.length === 0) {
+    if (creditos.length === 0) {
       itens.push({
         id: `fatura-${cartao.id}`,
         data: vencimento,
@@ -763,14 +769,14 @@ export function montar_proximos_pagamentos(entrada: {
       });
       continue;
     }
-    for (const pix of pixs) {
-      const pagamento = pix.dataMovimento ? String(pix.dataMovimento).slice(0, 10) : null;
+    for (const credito of creditos) {
+      const pagamento = credito.dataMovimento ? String(credito.dataMovimento).slice(0, 10) : null;
       itens.push({
-        id: pix.id ?? `fatura-${cartao.id}-${pagamento ?? "pago"}`,
+        id: credito.id ?? `fatura-${cartao.id}-${pagamento ?? "pago"}`,
         data: vencimento,
         dataPagamento: pagamento,
         descricao: `Fatura ${cartao.nome}`,
-        valor: pix.valor == null || pix.valor === "" ? cartao.gastoMes : Number(pix.valor),
+        valor: credito.valor == null || credito.valor === "" ? cartao.gastoMes : Number(credito.valor),
         origem: "fatura",
         contaNome: cartao.nome,
         vencida: false,
@@ -797,15 +803,17 @@ export function montar_proximos_pagamentos(entrada: {
     .slice(0, 16);
 }
 
-function eh_credito_duplicado_da_fatura(movimento: {
+/** Crédito de quitação no extrato do cartão — o débito na conta não entra nos Próximos. */
+function eh_credito_quitacao_da_fatura(movimento: {
   tipo?: string;
   cartaoId?: string | null;
   contaId?: string | null;
   descricao?: string;
 }): boolean {
+  if (!movimento.cartaoId) return false;
   if (movimento.tipo === "receita" || movimento.tipo === "estorno") return true;
   if (movimento.descricao && eh_credito_quitacao_no_cartao(movimento.descricao)) return true;
-  if (movimento.cartaoId && !movimento.contaId && movimento.tipo !== "despesa" && movimento.tipo !== "retirada") {
+  if (!movimento.contaId && movimento.tipo !== "despesa" && movimento.tipo !== "retirada") {
     return true;
   }
   return false;
