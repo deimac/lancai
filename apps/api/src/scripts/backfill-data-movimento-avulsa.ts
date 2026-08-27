@@ -1,7 +1,7 @@
 /**
- * Avulsas OF: `data_movimento` = dia civil Brasil quando o instante tem hora
- * real (UTC ≥ 01:00). Cancela projeção de recorrência que casa com o Fato
- * (1 centavo).
+ * Avulsas OF: `data_movimento` = relógio da instituição (UTC−6). Carimbo
+ * `00:00Z` / `03:00Z` permanece no dia UTC. Cancela projeção de recorrência
+ * que casa com o Fato (1 centavo).
  *
  * Uso (raiz, com .env):
  *   pnpm --filter @lancai/api exec tsx src/scripts/backfill-data-movimento-avulsa.ts

@@ -424,9 +424,9 @@ export function omitir_compras_incompativeis_com_iof(
 }
 
 /**
- * Guarda a hora só quando ela descreve o mesmo dia que gravamos em `ocorridoEm`.
- * Parcela cuja competência foi deslocada para o mês da fatura não herda o relógio
- * da compra — senão o extrato de outubro ordenaria com horas de julho.
+ * Guarda a hora da Pluggy quando o dia do Fato é o UTC, o Brasil ou o relógio
+ * da instituição (UTC−6). Parcela cuja competência foi deslocada para o mês da
+ * fatura não herda o relógio da compra.
  */
 export function instante_do_movimento(dateIso: string, diaMovimento: string): string | undefined {
   if (!dateIso.includes("T")) return undefined;
@@ -434,7 +434,10 @@ export function instante_do_movimento(dateIso: string, diaMovimento: string): st
   if (Number.isNaN(parsed.getTime())) return undefined;
   const diaUtc = dia_provedor_iso(dateIso);
   const diaBrasil = dia_civil_iso(dateIso);
-  if (diaUtc !== diaMovimento && diaBrasil !== diaMovimento) return undefined;
+  const diaInstituicao = dia_movimento_avulsa(dateIso);
+  if (diaUtc !== diaMovimento && diaBrasil !== diaMovimento && diaInstituicao !== diaMovimento) {
+    return undefined;
+  }
   return parsed.toISOString();
 }
 

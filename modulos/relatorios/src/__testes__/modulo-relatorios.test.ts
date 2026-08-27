@@ -710,7 +710,7 @@ describe("ModuloRelatorios", () => {
         descricao: "Almoço",
         contaNome: "C6 Bank",
         cartaoNome: null,
-        hora: "09:00",
+        hora: "06:00",
       });
     });
 

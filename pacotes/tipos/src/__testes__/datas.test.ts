@@ -52,19 +52,20 @@ describe("formatarQuandoFato", () => {
     expect(formatarQuandoFato("2026-07-10", "2026-07-10T00:00:00.000Z")).toBe("10/07/2026");
   });
 
-  it("anexa a hora real da instituição", () => {
+  it("anexa a hora real da instituição (UTC−6)", () => {
     expect(formatarQuandoFato("2026-08-05", new Date("2026-08-05T17:32:00.000Z"))).toBe(
-      "05/08/2026 14:32",
+      "05/08/2026 11:32",
     );
   });
 
-  it("não cola hora do Brasil num dia UTC diferente (madrugada)", () => {
+  it("omite a hora quando o relógio da instituição cai noutro dia", () => {
     expect(formatarQuandoFato("2026-08-24", "2026-08-24T00:33:38.001Z")).toBe("24/08/2026");
     expect(hora_visivel_do_fato("2026-08-24", "2026-08-24T00:33:38.001Z")).toBe("");
   });
 
-  it("mostra hora Brasil quando o dia do Fato é o civil", () => {
-    expect(hora_visivel_do_fato("2026-08-18", "2026-08-19T02:27:09.000Z")).toBe("23:27");
+  it("mostra a hora do app do banco quando o dia do Fato é o UTC−6", () => {
+    expect(hora_visivel_do_fato("2026-08-18", "2026-08-19T02:27:09.000Z")).toBe("20:27");
+    expect(hora_visivel_do_fato("2026-08-08", "2026-08-09T00:09:56.000Z")).toBe("18:09");
   });
 });
 
@@ -130,10 +131,13 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
     expect(dia_provedor_iso("2026-08-24T00:33:38.001Z")).toBe("2026-08-24");
   });
 
-  it("avulsa com hora real usa o dia Brasil; stub 00:xx UTC permanece UTC", () => {
+  it("avulsa usa o relógio da instituição (UTC−6); carimbo 00:00Z/03:00Z permanece UTC", () => {
     expect(dia_movimento_avulsa("2026-08-19T02:27:09.000Z")).toBe("2026-08-18");
-    expect(dia_movimento_avulsa("2026-08-24T00:33:38.001Z")).toBe("2026-08-24");
+    expect(dia_movimento_avulsa("2026-08-09T00:09:56.000Z")).toBe("2026-08-08");
+    expect(dia_movimento_avulsa("2026-08-08T04:15:28.000Z")).toBe("2026-08-07");
+    expect(dia_movimento_avulsa("2026-08-24T00:33:38.001Z")).toBe("2026-08-23");
     expect(dia_movimento_avulsa("2026-08-06T00:00:00.000Z")).toBe("2026-08-06");
+    expect(dia_movimento_avulsa("2026-08-12T03:00:00.000Z")).toBe("2026-08-12");
   });
 
   it("datas civis vizinhas (fuso) são a mesma compra", () => {

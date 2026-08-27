@@ -5,7 +5,7 @@ import {
   descricao_mais_completa,
   eh_movimento_parcelado,
   enxugar_indice_parcela,
-  formatarHoraBrasil,
+  hora_visivel_do_fato,
   paraNumero,
   schemaFiltrosVisaoResolvidos,
   somar,
@@ -493,10 +493,11 @@ export class ModuloRelatorios {
         parcelaTotal,
         parcelaCompraValor: movimento.parcelaCompraValor,
       });
-      const horaBruta = movimento.ocorridoEmInstante
-        ? formatarHoraBrasil(movimento.ocorridoEmInstante)
-        : "";
-      const hora = horaBruta && horaBruta !== "00:00" ? horaBruta : undefined;
+      const horaBruta = hora_visivel_do_fato(
+        movimento.dataMovimento,
+        movimento.ocorridoEmInstante,
+      );
+      const hora = horaBruta || undefined;
       const item: ItemHistorico = {
         id: movimento.id,
         descricao: movimento.descricao,

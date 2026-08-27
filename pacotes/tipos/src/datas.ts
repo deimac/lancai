@@ -65,19 +65,53 @@ export function formatarHoraBrasil(
   return hora && minuto ? `${hora}:${minuto}` : "";
 }
 
+/** Offset fixo: o app do banco mostra o `date` da Pluggy menos 6 h (Brasília − 3 h). */
+const OFFSET_RELOGIO_INSTITUICAO_MS = 6 * 60 * 60 * 1000;
+
+function como_data(quando: Date | string): Date | null {
+  const data = typeof quando === "string" ? new Date(quando) : quando;
+  if (Number.isNaN(data.getTime())) return null;
+  return data;
+}
+
 /**
- * Hora do Fato no extrato. Vazia se não há instante, se é meia-noite UTC, ou se
- * o dia Brasil do instante não é o `data_movimento` (madrugada UTC / stub).
+ * Relógio que o app da instituição mostra. Offset fixo — não usar fuso com
+ * horário de verão (`America/Chicago`).
+ */
+export function instante_relogio_instituicao(quando: Date | string): Date | null {
+  const data = como_data(quando);
+  if (!data) return null;
+  return new Date(data.getTime() - OFFSET_RELOGIO_INSTITUICAO_MS);
+}
+
+/**
+ * Hora `HH:mm` no relógio da instituição. Carimbo de dia (`00:00Z` / `03:00Z`)
+ * vira `00:00` para o extrato omitir.
+ */
+export function formatarHoraInstituicao(quando: Date | string): string {
+  if (eh_carimbo_dia_provedor(quando)) return "00:00";
+  const relogio = instante_relogio_instituicao(quando);
+  if (!relogio) return "";
+  const hora = String(relogio.getUTCHours()).padStart(2, "0");
+  const minuto = String(relogio.getUTCMinutes()).padStart(2, "0");
+  return `${hora}:${minuto}`;
+}
+
+/**
+ * Hora do Fato no extrato. Vazia se não há instante, se é carimbo de dia, ou se
+ * o relógio da instituição (UTC−6) não cai no `data_movimento`.
  */
 export function hora_visivel_do_fato(
   dataMovimento: string,
   ocorridoEmInstante?: Date | string | null,
 ): string {
   if (!ocorridoEmInstante) return "";
-  const hora = formatarHoraBrasil(ocorridoEmInstante);
+  if (eh_carimbo_dia_provedor(ocorridoEmInstante)) return "";
+  const hora = formatarHoraInstituicao(ocorridoEmInstante);
   if (!hora || hora === "00:00") return "";
-  const diaBrasil = dia_civil_iso(ocorridoEmInstante);
-  if (diaBrasil && diaBrasil !== dataMovimento.slice(0, 10)) return "";
+  const relogio = instante_relogio_instituicao(ocorridoEmInstante);
+  const dia = relogio?.toISOString().slice(0, 10);
+  if (dia && dia !== dataMovimento.slice(0, 10)) return "";
   return hora;
 }
 
@@ -142,9 +176,7 @@ export function dia_civil_iso(quando: string | Date, fuso = "America/Sao_Paulo")
 }
 
 /**
- * Dia que o provedor gravou no `date`. O app do banco usa o calendário UTC do
- * instante (`2026-08-24T00:33:38Z` → 24/08). Converter para o Brasil deslocava
- * madrugada UTC para a véspera.
+ * Dia que o provedor gravou no `date` (calendário UTC do instante).
  */
 export function dia_provedor_iso(quando: string, _fuso = "America/Sao_Paulo"): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(quando)) return quando;
@@ -154,24 +186,35 @@ export function dia_provedor_iso(quando: string, _fuso = "America/Sao_Paulo"): s
 }
 
 /**
- * Stub de data da Pluggy: `00:00Z` ou `00:33Z` — o banco quis o dia UTC, não
- * 21h da véspera no Brasil. Hora UTC ≥ 01:00 é relógio de verdade.
+ * Carimbo de dia da Pluggy: `00:00:00Z` (só a data) ou `03:00:00Z` (meia-noite
+ * em Brasília — Nubank/Mercado Pago). Minuto/segundo/ms têm de ser zero.
+ * `00:09Z` / `00:33Z` são relógio de verdade (iFood à noite).
  */
+export function eh_carimbo_dia_provedor(quando: Date | string): boolean {
+  if (typeof quando === "string" && /^\d{4}-\d{2}-\d{2}$/.test(quando)) return true;
+  const data = como_data(quando);
+  if (!data) return true;
+  if (data.getUTCMinutes() !== 0 || data.getUTCSeconds() !== 0 || data.getUTCMilliseconds() !== 0) {
+    return false;
+  }
+  const hora = data.getUTCHours();
+  return hora === 0 || hora === 3;
+}
+
+/** @deprecated Use `eh_carimbo_dia_provedor`. */
 export function eh_stub_horario_provedor(quando: string): boolean {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(quando)) return true;
-  const data = new Date(quando);
-  if (Number.isNaN(data.getTime())) return true;
-  return data.getUTCHours() === 0;
+  return eh_carimbo_dia_provedor(quando);
 }
 
 /**
- * Avulsa no extrato: dia civil Brasil quando o `date` tem hora real
- * (pizza 02:27Z → 18/08). Stub `00:xxZ` permanece no calendário UTC (24/08).
+ * Avulsa no extrato: relógio da instituição (UTC−6). Pizza `02:27Z` → 18/08;
+ * Vituri `00:09Z` → 08/08. Carimbo `00:00Z` / `03:00Z` permanece no dia UTC.
  */
-export function dia_movimento_avulsa(quando: string, fuso = "America/Sao_Paulo"): string {
+export function dia_movimento_avulsa(quando: string, _fuso = "America/Sao_Paulo"): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(quando)) return quando;
-  if (eh_stub_horario_provedor(quando)) return dia_provedor_iso(quando);
-  return dia_civil_iso(quando, fuso) ?? dia_provedor_iso(quando);
+  if (eh_carimbo_dia_provedor(quando)) return dia_provedor_iso(quando);
+  const relogio = instante_relogio_instituicao(quando);
+  return relogio?.toISOString().slice(0, 10) ?? dia_provedor_iso(quando);
 }
 
 export function dias_calendario_entre(a: string, b: string): number {

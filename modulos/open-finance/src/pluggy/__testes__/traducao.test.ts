@@ -143,7 +143,7 @@ describe("traduzir_transacao", () => {
     expect(mov.descricaoFonte).toBe("HOTELDOBARUERIBR  01/10");
   });
 
-  it("madrugada UTC do date não cai na véspera brasileira", () => {
+  it("00:33Z é relógio real: dia e instante seguem UTC−6", () => {
     const mov = traduzir_transacao(
       tx({
         status: "POSTED",
@@ -151,11 +151,11 @@ describe("traduzir_transacao", () => {
         creditCardMetadata: null,
       }),
     );
-    expect(mov.ocorridoEm).toBe("2026-08-24");
+    expect(mov.ocorridoEm).toBe("2026-08-23");
     expect(mov.ocorridoEmInstante).toBe("2026-08-24T00:33:38.001Z");
   });
 
-  it("compra à noite no Brasil cai no dia civil, não no UTC", () => {
+  it("compra à noite no app (pizza) cai no dia UTC−6, instante Pluggy intacto", () => {
     const mov = traduzir_transacao(
       tx({
         status: "PENDING",
@@ -166,6 +166,41 @@ describe("traduzir_transacao", () => {
     );
     expect(mov.ocorridoEm).toBe("2026-08-18");
     expect(mov.ocorridoEmInstante).toBe("2026-08-19T02:27:09.000Z");
+  });
+
+  it("Vituri 00:09Z e Dom João 04:15Z usam o dia do app; carimbo 03:00Z não anda", () => {
+    const vituri = traduzir_transacao(
+      tx({
+        status: "POSTED",
+        date: "2026-08-09T00:09:56.000Z",
+        descriptionRaw: "IFD*VITURI CORREIA LTDAMARINGABR",
+        creditCardMetadata: null,
+      }),
+    );
+    expect(vituri.ocorridoEm).toBe("2026-08-08");
+    expect(vituri.ocorridoEmInstante).toBe("2026-08-09T00:09:56.000Z");
+
+    const joao = traduzir_transacao(
+      tx({
+        status: "POSTED",
+        date: "2026-08-08T04:15:28.000Z",
+        descriptionRaw: "IFD*DOM JOAO HAMBURGUERIAMARINGABR",
+        creditCardMetadata: null,
+      }),
+    );
+    expect(joao.ocorridoEm).toBe("2026-08-07");
+    expect(joao.ocorridoEmInstante).toBe("2026-08-08T04:15:28.000Z");
+
+    const nu = traduzir_transacao(
+      tx({
+        status: "POSTED",
+        date: "2026-08-12T03:00:00.000Z",
+        descriptionRaw: "Mith Store",
+        creditCardMetadata: null,
+      }),
+    );
+    expect(nu.ocorridoEm).toBe("2026-08-12");
+    expect(nu.ocorridoEmInstante).toBe("2026-08-12T03:00:00.000Z");
   });
 });
 
