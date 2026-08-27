@@ -59,6 +59,8 @@ export interface TransacaoPluggy {
      * PENDING — ao contrário de `billId`, que só aparece depois do fechamento.
      */
     billForecastDate?: string | null;
+    /** Nubank: `IOF_COMPRA_INTERNACIONAL` na linha de IOF, separado da compra. */
+    feeTypeAdditionalInfo?: string | null;
   } | null;
 }
 

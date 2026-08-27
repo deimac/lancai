@@ -1,9 +1,11 @@
 import type { StatusFonte } from "@lancai/tipos";
 import {
+  arredondar,
   data_movimento_parcela,
   datas_civis_proximas,
   descricoes_da_mesma_serie,
   dia_provedor_iso,
+  dias_calendario_entre,
   garantir_parcelas_subsequentes,
   somar_meses_calendario,
 } from "@lancai/tipos";
@@ -161,8 +163,9 @@ export function transacao_tem_valor_na_moeda_da_conta(transacao: TransacaoPluggy
 }
 
 /**
- * Tradução de um lote: descarta internacional sem conversão e, no que restou,
- * omite compra cujo IOF do mesmo dia denuncia valor ainda estrangeiro.
+ * Tradução de um lote: descarta internacional sem conversão, omite compra cujo
+ * IOF denuncia valor ainda estrangeiro, e incorpora IOF de compra (~3,5%) no
+ * valor da compra — o app do banco mostra uma linha só.
  */
 export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): MovimentacaoExterna[] {
   const traduzidas: MovimentacaoExterna[] = [];
@@ -170,7 +173,9 @@ export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): Movimen
     if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
     traduzidas.push(traduzir_transacao(transacao));
   }
-  return espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas));
+  return incorporar_iof_nas_compras(
+    espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas)),
+  );
 }
 
 function chave_compra_parcela(movimentacao: MovimentacaoExterna): string | null {
@@ -232,6 +237,8 @@ function espaçar_parcelas_do_lote(movimentacoes: MovimentacaoExterna[]): Movime
 }
 
 function comercio_do_iof(descricao: string): string | null {
+  const aspas = /^IOF de "(.+)"\s*$/i.exec(descricao.trim());
+  if (aspas?.[1]?.trim()) return aspas[1].trim();
   const match = /^IOF INTERNACIONAL\s*-\s*(.+)$/i.exec(descricao.trim());
   const resto = match?.[1]?.trim();
   return resto ? resto : null;
@@ -239,6 +246,92 @@ function comercio_do_iof(descricao: string): string | null {
 
 function normalizar_descricao(descricao: string): string {
   return descricao.replace(/\s+/g, "").toLowerCase();
+}
+
+/** IOF da compra internacional — não o de atraso de fatura. */
+export function eh_iof_compra_internacional(descricao: string): boolean {
+  const texto = descricao.trim();
+  if (!texto || /atraso/i.test(texto)) return false;
+  if (/^IOF de compra internacional$/i.test(texto)) return true;
+  if (/^IOF de "/i.test(texto)) return true;
+  if (/^IOF INTERNACIONAL\s*-/i.test(texto)) return true;
+  return false;
+}
+
+export function transacao_eh_iof_compra(transacao: TransacaoPluggy): boolean {
+  const taxa = transacao.creditCardMetadata?.feeTypeAdditionalInfo;
+  if (taxa === "IOF_COMPRA_INTERNACIONAL") return true;
+  return eh_iof_compra_internacional(transacao.descriptionRaw ?? transacao.description ?? "");
+}
+
+/** IOF de cartão internacional é 3,5% do real. Folga cobre arredondamento da instituição. */
+const IOF_SOBRE_COMPRA_MIN = 0.03;
+const IOF_SOBRE_COMPRA_MAX = 0.04;
+/** A Pluggy costuma postar o IOF no mesmo dia ou até 3 dias depois. */
+const IOF_MAX_DIAS_DA_COMPRA = 5;
+
+/**
+ * O app do banco mostra compra + IOF numa linha só. A Pluggy manda os dois.
+ * Quando o par é único (~3,5% e janela de dias, ou comércio no texto), some o
+ * IOF no valor da compra e marca o IOF como removido — a ingestão cancela a
+ * linha extra e não cria outra. Sem par único, o IOF fica.
+ */
+export function incorporar_iof_nas_compras(
+  movimentacoes: MovimentacaoExterna[],
+): MovimentacaoExterna[] {
+  const iofs: number[] = [];
+  for (let indice = 0; indice < movimentacoes.length; indice++) {
+    const item = movimentacoes[indice]!;
+    if (item.tipo === "despesa" && eh_iof_compra_internacional(item.descricaoFonte)) {
+      iofs.push(indice);
+    }
+  }
+  if (iofs.length === 0) return movimentacoes;
+
+  const compraUsada = new Set<number>();
+  const par = new Map<number, number>();
+  const acrescimo = new Map<number, number>();
+
+  for (const iofIdx of iofs) {
+    const iof = movimentacoes[iofIdx]!;
+    const comercio = comercio_do_iof(iof.descricaoFonte);
+    const candidatos: Array<{ idx: number; dias: number; desvio: number }> = [];
+
+    for (let idx = 0; idx < movimentacoes.length; idx++) {
+      if (idx === iofIdx || compraUsada.has(idx)) continue;
+      const compra = movimentacoes[idx]!;
+      if (compra.contaExternaId !== iof.contaExternaId) continue;
+      if (compra.tipo !== "despesa" || compra.valor <= 0) continue;
+      if (eh_iof_compra_internacional(compra.descricaoFonte)) continue;
+      const ratio = iof.valor / compra.valor;
+      if (ratio < IOF_SOBRE_COMPRA_MIN || ratio > IOF_SOBRE_COMPRA_MAX) continue;
+      const dias = dias_calendario_entre(iof.ocorridoEm, compra.ocorridoEm);
+      if (dias > IOF_MAX_DIAS_DA_COMPRA) continue;
+      if (comercio && !descricoes_da_mesma_serie(comercio, compra.descricaoFonte)) continue;
+      candidatos.push({ idx, dias, desvio: Math.abs(ratio - 0.035) });
+    }
+
+    candidatos.sort((a, b) => a.dias - b.dias || a.desvio - b.desvio);
+    const melhor = candidatos[0];
+    if (!melhor) continue;
+    const empate = candidatos.filter(
+      (item) => item.dias === melhor.dias && Math.abs(item.desvio - melhor.desvio) < 1e-9,
+    );
+    if (empate.length > 1) continue;
+
+    compraUsada.add(melhor.idx);
+    par.set(iofIdx, melhor.idx);
+    acrescimo.set(melhor.idx, arredondar((acrescimo.get(melhor.idx) ?? 0) + iof.valor));
+  }
+
+  if (par.size === 0) return movimentacoes;
+
+  return movimentacoes.map((item, indice) => {
+    if (par.has(indice)) return { ...item, statusFonte: "removido" };
+    const extra = acrescimo.get(indice);
+    if (extra) return { ...item, valor: arredondar(item.valor + extra) };
+    return item;
+  });
 }
 
 /**

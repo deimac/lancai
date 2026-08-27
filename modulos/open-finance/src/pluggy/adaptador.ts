@@ -1,3 +1,4 @@
+import { dia_provedor_iso } from "@lancai/tipos";
 import { ErroProvedorIndisponivel, ErroWebhookInvalido } from "../erros";
 import type {
   ContaExterna,
@@ -20,14 +21,12 @@ import type {
   WebhookPluggy,
 } from "./tipos";
 import {
-  omitir_compras_incompativeis_com_iof,
-  transacao_tem_valor_na_moeda_da_conta,
+  transacao_eh_iof_compra,
   traduzir_conta,
   traduzir_data,
   traduzir_lote_transacoes,
   traduzir_motivo,
   traduzir_status_item,
-  traduzir_transacao,
 } from "./traducao";
 
 /** O Connect Token vale 30 minutos. */
@@ -35,6 +34,8 @@ const VALIDADE_TOKEN_MS = 30 * 60 * 1000;
 
 /** A Pluggy aceita no máximo 500 identificadores por requisição. */
 const MAXIMO_IDS_POR_BUSCA = 500;
+/** IOF de compra internacional chega até alguns dias depois da compra. */
+const JANELA_IOF_DIAS = 6;
 
 export interface ConfigAdaptadorPluggy extends ConfigPluggy {
   /** URL do nosso webhook, repassada ao provedor na criação do token. */
@@ -150,7 +151,8 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
     if (idsExternos.length === 0) return [];
 
     const contas = await this.listar_contas_externas(conexaoExterna);
-    const encontradas = new Map<string, MovimentacaoExterna>();
+    const brutas = new Map<string, TransacaoPluggy>();
+    const pedidos = new Set(idsExternos);
 
     for (const conta of contas) {
       for (const lote of this.fatiar(idsExternos, MAXIMO_IDS_POR_BUSCA)) {
@@ -168,15 +170,16 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
             await this.cliente.obter<RespostaPaginada<TransacaoPluggy>>(caminho);
 
           for (const transacao of corpo.results ?? []) {
-            if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
-            encontradas.set(transacao.id, traduzir_transacao(transacao));
+            brutas.set(transacao.id, transacao);
           }
           caminho = this.resolver_proxima(corpo.next);
         }
       }
+
+      await this.ampliar_janela_da_compra_do_iof(conta.idExterno, brutas, pedidos);
     }
 
-    return omitir_compras_incompativeis_com_iof([...encontradas.values()]);
+    return traduzir_lote_transacoes([...brutas.values()]);
   }
 
   async obter_estado(conexaoExterna: string): Promise<EstadoConexao> {
@@ -330,9 +333,53 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
     return proxima.startsWith("?") ? `/v2/transactions${proxima}` : proxima;
   }
 
+  /**
+   * Webhook de alteração manda só o id do IOF. Sem a compra no lote, não dá
+   * para somar. Recolhe a janela da conta para o par aparecer na tradução.
+   */
+  private async ampliar_janela_da_compra_do_iof(
+    accountId: string,
+    brutas: Map<string, TransacaoPluggy>,
+    pedidos: Set<string>,
+  ): Promise<void> {
+    const iofs = [...brutas.values()].filter(
+      (transacao) =>
+        transacao.accountId === accountId &&
+        pedidos.has(transacao.id) &&
+        transacao_eh_iof_compra(transacao),
+    );
+    if (iofs.length === 0) return;
+
+    let maisAntigo: string | null = null;
+    for (const iof of iofs) {
+      const dia = dia_provedor_iso(iof.date);
+      if (!maisAntigo || dia < maisAntigo) maisAntigo = dia;
+    }
+    if (!maisAntigo) return;
+
+    const desde = recuar_dias_iso(maisAntigo, JANELA_IOF_DIAS);
+    let caminho: string | null =
+      `/v2/transactions?accountId=${encodeURIComponent(accountId)}` + `&dateFrom=${desde}`;
+
+    while (caminho) {
+      const corpo: RespostaPaginada<TransacaoPluggy> =
+        await this.cliente.obter<RespostaPaginada<TransacaoPluggy>>(caminho);
+      for (const transacao of corpo.results ?? []) {
+        if (!brutas.has(transacao.id)) brutas.set(transacao.id, transacao);
+      }
+      caminho = this.resolver_proxima(corpo.next);
+    }
+  }
+
   private *fatiar<T>(itens: T[], tamanho: number): Generator<T[]> {
     for (let inicio = 0; inicio < itens.length; inicio += tamanho) {
       yield itens.slice(inicio, inicio + tamanho);
     }
   }
+}
+
+function recuar_dias_iso(dia: string, dias: number): string {
+  const data = new Date(`${dia}T00:00:00.000Z`);
+  data.setUTCDate(data.getUTCDate() - dias);
+  return data.toISOString().slice(0, 10);
 }

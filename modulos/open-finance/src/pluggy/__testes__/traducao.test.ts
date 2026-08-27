@@ -263,9 +263,10 @@ describe("traduzir_lote_transacoes", () => {
     ]);
     expect(lote.map((m) => m.idExterno)).toEqual(["iof"]);
     expect(lote[0]?.valor).toBe(7.57);
+    expect(lote[0]?.statusFonte).not.toBe("removido");
   });
 
-  it("IOF ~3,5% no mesmo dia mantém compra e IOF — valor já está em real", () => {
+  it("IOF ~3,5% some na compra — o banco mostra uma linha só", () => {
     const lote = traduzir_lote_transacoes([
       tx({
         id: "compra",
@@ -282,8 +283,107 @@ describe("traduzir_lote_transacoes", () => {
         creditCardMetadata: null,
       }),
     ]);
-    expect(lote.map((m) => m.idExterno)).toEqual(["compra", "iof"]);
-    expect(lote[0]?.valor).toBe(224.34);
+    const compra = lote.find((m) => m.idExterno === "compra");
+    const iof = lote.find((m) => m.idExterno === "iof");
+    expect(compra?.valor).toBe(231.91);
+    expect(iof?.statusFonte).toBe("removido");
+    expect(iof?.valor).toBe(7.57);
+  });
+
+  it("IOF genérico do Nubank casa pela alíquota mesmo em dia vizinho", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "wizz",
+        amount: -2434.77,
+        amountInAccountCurrency: 2434.77,
+        currencyCode: "USD",
+        date: "2026-07-29T16:43:55.001Z",
+        descriptionRaw: "Wizz Airiqk3sa",
+        creditCardMetadata: { billForecastDate: "2026-08" },
+      }),
+      tx({
+        id: "iof",
+        amount: -85.22,
+        date: "2026-07-30T07:40:56.865Z",
+        descriptionRaw: "IOF de compra internacional",
+        creditCardMetadata: { feeTypeAdditionalInfo: "IOF_COMPRA_INTERNACIONAL" },
+      }),
+    ]);
+    expect(lote.find((m) => m.idExterno === "wizz")?.valor).toBe(2519.99);
+    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).toBe("removido");
+  });
+
+  it("USD com amountInAccountCurrency some o IOF nomeado no real", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "github",
+        amount: -10,
+        amountInAccountCurrency: -55,
+        currencyCode: "USD",
+        date: "2026-02-11T00:00:00.000Z",
+        descriptionRaw: "GITHUB, INC.GITHUB.COMUS",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "iof",
+        amount: -1.92,
+        date: "2026-02-11T00:00:00.000Z",
+        descriptionRaw: "IOF INTERNACIONAL - GITHUB, INC.GITHUB.COMUS",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.find((m) => m.idExterno === "github")?.valor).toBe(56.92);
+    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).toBe("removido");
+  });
+
+  it("não mistura IOF de atraso com compra", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "compra",
+        amount: -328.86,
+        date: "2026-06-11T00:00:00.000Z",
+        descriptionRaw: "Mercado",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "atraso",
+        amount: -11.51,
+        date: "2026-06-11T00:00:00.000Z",
+        descriptionRaw: "IOF de atraso",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.find((m) => m.idExterno === "compra")?.valor).toBe(328.86);
+    expect(lote.find((m) => m.idExterno === "atraso")?.statusFonte).not.toBe("removido");
+  });
+
+  it("não soma IOF ambíguo quando duas compras batem 3,5% no mesmo dia", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "a",
+        amount: -100,
+        date: "2026-08-01T00:00:00.000Z",
+        descriptionRaw: "Loja A",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "b",
+        amount: -100,
+        date: "2026-08-01T00:00:00.000Z",
+        descriptionRaw: "Loja B",
+        creditCardMetadata: null,
+      }),
+      tx({
+        id: "iof",
+        amount: -3.5,
+        date: "2026-08-01T00:00:00.000Z",
+        descriptionRaw: "IOF de compra internacional",
+        creditCardMetadata: null,
+      }),
+    ]);
+    expect(lote.find((m) => m.idExterno === "a")?.valor).toBe(100);
+    expect(lote.find((m) => m.idExterno === "b")?.valor).toBe(100);
+    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).not.toBe("removido");
   });
 });
 

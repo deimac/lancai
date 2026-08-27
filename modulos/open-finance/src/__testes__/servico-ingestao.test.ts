@@ -337,6 +337,63 @@ describe("ServicoIngestaoOpenFinance", () => {
       expect(resumo?.criados).toBe(0);
     });
 
+    it("não cria linha de IOF absorvido — só a compra entra", async () => {
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({
+          idExterno: "compra",
+          valor: 263.65,
+          descricaoFonte: "Finnair O9nvosh",
+        }),
+        movimentacao({
+          idExterno: "iof",
+          valor: 8.92,
+          descricaoFonte: "IOF de compra internacional",
+          statusFonte: "removido",
+        }),
+      ]);
+
+      const { resumo } = await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-iof"));
+
+      expect(resumo?.criados).toBe(1);
+      expect(resumo?.removidos).toBe(0);
+      const movimentos = [...financeiro.movimentos.values()];
+      expect(movimentos).toHaveLength(1);
+      expect(movimentos[0]?.idExterno).toBe("compra");
+      expect(movimentos[0]?.valor).toBe("263.65");
+    });
+
+    it("cancela IOF já ingerido quando a compra passa a carregar o total", async () => {
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({ idExterno: "compra", valor: 254.73, descricaoFonte: "Finnair O9nvosh" }),
+        movimentacao({
+          idExterno: "iof",
+          valor: 8.92,
+          descricaoFonte: "IOF de compra internacional",
+        }),
+      ]);
+      await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-1"));
+
+      provedor.semear(CONEXAO_EXTERNA, [
+        movimentacao({ idExterno: "compra", valor: 263.65, descricaoFonte: "Finnair O9nvosh" }),
+        movimentacao({
+          idExterno: "iof",
+          valor: 8.92,
+          descricaoFonte: "IOF de compra internacional",
+          statusFonte: "removido",
+        }),
+      ]);
+      const { resumo } = await entregar(
+        provedor.anunciar_alteracao(CONEXAO_EXTERNA, "ev-2", ["compra", "iof"]),
+      );
+
+      expect(resumo?.removidos).toBe(1);
+      const compra = [...financeiro.movimentos.values()].find((m) => m.idExterno === "compra");
+      const iof = [...financeiro.movimentos.values()].find((m) => m.idExterno === "iof");
+      expect(compra?.valor).toBe("263.65");
+      expect(iof?.status).toBe("cancelado");
+      expect(iof?.statusFonte).toBe("removido");
+    });
+
     /**
      * Desaparecimento registrado, seção 8.6 de 13-OPEN_FINANCE.md: a linha fica.
      * Saldo institucional não deriva do Fato — não sobe/desce na remoção.

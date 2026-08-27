@@ -459,30 +459,9 @@ export class ServicoIngestaoOpenFinance {
       resumo.semDestino += semDestino;
 
       if (eventos.length > 0) {
-        /**
-         * Atualiza o que já existe (ex.: data da parcela PENDING com
-         * `billForecastDate`) e só cria o desconhecido — reimportar o histórico
-         * deixa de ser “só duplicados”.
-         */
-        const alteracao = await this.motor.atualizar_fatos_da_fonte(eventos, contexto, {
-          reidentificarPorFingerprint: Boolean(opcoes.filtrarCriacao),
+        await this.aplicar_eventos_da_fonte(eventos, contexto, resumo, {
+          filtrarCriacao: opcoes.filtrarCriacao,
         });
-        resumo.atualizados += alteracao.atualizados.length;
-
-        let paraCriar = alteracao.desconhecidos;
-        if (paraCriar.length > 0 && opcoes.filtrarCriacao) {
-          const filtrado = await opcoes.filtrarCriacao(paraCriar);
-          paraCriar = filtrado.aceitos;
-          resumo.puladosSemanticos += filtrado.pulados;
-        }
-
-        if (paraCriar.length > 0) {
-          await this.cancelar_projetadas_substituidas(paraCriar, contexto, resumo);
-          const resultado = await this.motor.ingerir_eventos(paraCriar, contexto);
-          resumo.criados += resultado.criados.length;
-          resumo.duplicados += resultado.duplicados;
-          resumo.movimentoIdsCriados.push(...resultado.criados.map((m) => m.id));
-        }
       }
 
       opcoes.aoPagina?.({ paginas: resumo.paginas, criados: resumo.criados });
@@ -529,16 +508,8 @@ export class ServicoIngestaoOpenFinance {
       return soSemDestino;
     }
 
-    const alteracao = await this.motor.atualizar_fatos_da_fonte(eventos, contexto);
-    const resumo = { ...resumo_vazio(), semDestino, atualizados: alteracao.atualizados.length };
-
-    if (alteracao.desconhecidos.length > 0) {
-      await this.cancelar_projetadas_substituidas(alteracao.desconhecidos, contexto, resumo);
-      const criacao = await this.motor.ingerir_eventos(alteracao.desconhecidos, contexto);
-      resumo.criados = criacao.criados.length;
-      resumo.duplicados = criacao.duplicados;
-      resumo.movimentoIdsCriados = criacao.criados.map((m) => m.id);
-    }
+    const resumo = { ...resumo_vazio(), semDestino };
+    await this.aplicar_eventos_da_fonte(eventos, contexto, resumo);
 
     await this.completar_parcelas_projetadas(conexao, mapa, contexto, resumo);
 
@@ -744,6 +715,62 @@ export class ServicoIngestaoOpenFinance {
     resumo.criados += criacao.criados.length;
     resumo.duplicados += criacao.duplicados;
     resumo.movimentoIdsCriados.push(...criacao.criados.map((m) => m.id));
+  }
+
+  /**
+   * IOF absorvido pela compra chega com `statusFonte = removido`: cancela a
+   * linha extra se já existia e nunca a cria. O restante segue o fluxo normal
+   * (atualizar Fato conhecido / criar o desconhecido).
+   */
+  private async aplicar_eventos_da_fonte(
+    eventos: EventoFinanceiroNormalizado[],
+    contexto: ContextoIngestao,
+    resumo: ResumoIngestao,
+    opcoes: { filtrarCriacao?: FiltrarCriacaoIngestao } = {},
+  ): Promise<void> {
+    const absorvidos = eventos.filter((evento) => evento.statusFonte === "removido");
+    const vivos = eventos.filter((evento) => evento.statusFonte !== "removido");
+
+    if (vivos.length > 0) {
+      const alteracao = await this.motor.atualizar_fatos_da_fonte(vivos, contexto, {
+        reidentificarPorFingerprint: Boolean(opcoes.filtrarCriacao),
+      });
+      resumo.atualizados += alteracao.atualizados.length;
+
+      let paraCriar = alteracao.desconhecidos;
+      if (paraCriar.length > 0 && opcoes.filtrarCriacao) {
+        const filtrado = await opcoes.filtrarCriacao(paraCriar);
+        paraCriar = filtrado.aceitos;
+        resumo.puladosSemanticos += filtrado.pulados;
+      }
+
+      if (paraCriar.length > 0) {
+        await this.cancelar_projetadas_substituidas(paraCriar, contexto, resumo);
+        const resultado = await this.motor.ingerir_eventos(paraCriar, contexto);
+        resumo.criados += resultado.criados.length;
+        resumo.duplicados += resultado.duplicados;
+        resumo.movimentoIdsCriados.push(...resultado.criados.map((m) => m.id));
+      }
+    }
+
+    if (absorvidos.length > 0) {
+      const remocao = await this.motor.remover_fatos_da_fonte(
+        absorvidos.flatMap((evento) =>
+          evento.idExterno
+            ? [
+                {
+                  workspaceId: evento.workspaceId,
+                  fonte: evento.fonte,
+                  provedor: evento.provedor,
+                  idExterno: evento.idExterno,
+                },
+              ]
+            : [],
+        ),
+        contexto,
+      );
+      resumo.removidos += remocao.removidos.length;
+    }
   }
 
   /**
