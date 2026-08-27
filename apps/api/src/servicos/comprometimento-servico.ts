@@ -1,3 +1,8 @@
+import { and, eq, inArray } from "drizzle-orm";
+import {
+  cartao as cartaoTabela,
+  obter_banco,
+} from "@lancai/banco";
 import {
   ModuloRelatorios,
   RepositorioRelatoriosDrizzle,
@@ -11,6 +16,7 @@ import {
   normalizar_descricao_parcela,
   paraDataISO,
 } from "@lancai/tipos";
+import { obter_escopo_leitura } from "./escopo-workspace";
 import { listar_recorrencias, padrao_ja_conhecido } from "./recorrencia-servico";
 
 const relatorios = new ModuloRelatorios(new RepositorioRelatoriosDrizzle());
@@ -37,22 +43,64 @@ export type ComprometimentoMensal = {
   recorrentes: RecorrenteComprometimento[];
 };
 
+type CartaoDoEscopo = { id: string; perfil: string };
+
+/**
+ * Recorrentes/parcelados seguem o workspace ativo (não a visão Geral).
+ * Cartão de outro espaço não entra; gasto PJ em cartão PF (e o inverso) também
+ * não — senão o Pessoal herda hotel/agência no cartão pessoal.
+ */
+export function filtrar_compras_do_workspace(
+  compras: CompraParcelada[],
+  entrada: { visaoAgregada: boolean; cartoes: CartaoDoEscopo[] },
+): CompraParcelada[] {
+  if (entrada.visaoAgregada) return compras;
+  const porId = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
+  return compras.filter((compra) => {
+    if (!compra.cartaoId) return false;
+    const cartao = porId.get(compra.cartaoId);
+    if (!cartao) return false;
+    if (compra.tipoGasto && compra.tipoGasto !== cartao.perfil) return false;
+    return true;
+  });
+}
+
 export async function montar_comprometimento(
   usuarioId: string,
   dataAtual: string,
 ): Promise<ComprometimentoMensal> {
+  const escopo = await obter_escopo_leitura(usuarioId);
+  if (escopo.workspaceIds.length === 0) {
+    return { meses: [], compras: [], recorrentes: [] };
+  }
+
   const visao = await relatorios.consultar_visao("parcelamentos", { usuarioId }, dataAtual);
   if (visao.tipo !== "parcelamentos") {
     throw new Error("Resposta inesperada do relatório de parcelamentos.");
   }
 
-  const [movimentos, categorias, contas, cartoes, todasRecorrencias] = await Promise.all([
+  const [movimentos, categorias, contas, cartoes, todasRecorrencias, cartoesEscopo] = await Promise.all([
     repositorio.listarMovimentos(usuarioId, { tipos: ["despesa"] }),
     repositorio.listarCategorias(usuarioId),
     repositorio.listarContas(usuarioId),
     repositorio.listarCartoes(usuarioId),
     listar_recorrencias(usuarioId, { incluirInativas: true }),
+    obter_banco()
+      .select({ id: cartaoTabela.id, perfil: cartaoTabela.perfil })
+      .from(cartaoTabela)
+      .where(
+        and(
+          eq(cartaoTabela.usuarioId, usuarioId),
+          inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
+          eq(cartaoTabela.ativo, true),
+        ),
+      ),
   ]);
+
+  const compras = filtrar_compras_do_workspace(visao.dados.compras, {
+    visaoAgregada: escopo.visaoAgregada,
+    cartoes: cartoesEscopo,
+  });
 
   const mapaCat = new Map(categorias.map((item) => [item.id, item]));
   const mapaConta = new Map(contas.map((item) => [item.id, item.nome]));
@@ -106,7 +154,7 @@ export async function montar_comprometimento(
     .reduce((soma, item) => soma + item.valor, 0);
 
   const meses = rotulosMes.map((mes) => {
-    const parcelas = visao.dados.compras.reduce((soma, compra) => {
+    const parcelas = compras.reduce((soma, compra) => {
       const doMes = compra.parcelasPorMes.find((item) => item.mes === mes);
       return soma + (doMes?.valor ?? 0);
     }, 0);
@@ -115,7 +163,7 @@ export async function montar_comprometimento(
 
   return {
     meses,
-    compras: visao.dados.compras,
+    compras,
     recorrentes,
   };
 }

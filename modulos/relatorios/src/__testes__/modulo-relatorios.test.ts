@@ -341,6 +341,8 @@ describe("ModuloRelatorios", () => {
       const compra = dados.compras[0]!;
       expect(compra.descricao).toBe("Passagem LATAM");
       expect(compra.cartaoNome).toBe("C6");
+      expect(compra.cartaoId).toBe(cartao.id);
+      expect(compra.tipoGasto).toBe("pf");
       expect(compra.valorTotal).toBe(1200);
       expect(compra.valorParcela).toBe(400);
       expect(compra.parcelasTotais).toBe(3);
@@ -385,6 +387,34 @@ describe("ModuloRelatorios", () => {
       expect(compra.parcelasPagas).toBe(6);
       expect(compra.parcelasRestantes).toBe(2);
       expect(compra.valorParcela).toBe(61.57);
+    });
+
+    it("não inclui parcelamento cujo cartão não está na lista do workspace", async () => {
+      const conta = criarConta(usuarioId);
+      const cartaoPessoal = criarCartao(usuarioId, conta.id, { nome: "Nu Mastercard Platinum" });
+      const cartaoEmpresa = criarCartao(usuarioId, conta.id, { nome: "Mercado Pago Visa" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartaoPessoal.id, cartaoPessoal);
+
+      const datas = ["2026-07-01", "2026-08-01", "2026-09-01"];
+      datas.forEach((data, indice) => {
+        const movimento = criarMovimento(usuarioId, categoria.id, {
+          descricao: "MERCADOLIVRE*KASMOBILE",
+          cartaoId: cartaoEmpresa.id,
+          valor: "61.57",
+          dataMovimento: data,
+          parcelaNumero: indice + 6,
+          parcelaTotal: 10,
+          parcelaCompraEm: "2026-02-27",
+          tipoGasto: "pj",
+          status: indice === 0 ? "realizado" : "previsto",
+        });
+        repositorio.movimentos.set(movimento.id, movimento);
+      });
+
+      const resultado = await relatorios.consultar_visao("parcelamentos", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoParcelamentos;
+      expect(dados.compras).toEqual([]);
     });
 
     it("não lista compras à vista (uma única parcela) como parcelamento", async () => {

@@ -104,15 +104,20 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
       condicoes.push(gte(movimentoTabela.dataMovimento, filtro.periodo.de));
       condicoes.push(lte(movimentoTabela.dataMovimento, filtro.periodo.ate));
     }
+    // Cartão de outro workspace não entra, mesmo se o movimento.workspace_id tiver vazado.
+    condicoes.push(
+      or(
+        isNull(movimentoTabela.cartaoId),
+        inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
+      )!,
+    );
 
-    const consulta = this.banco.select(getTableColumns(movimentoTabela)).from(movimentoTabela);
-    if (filtro.origemPerfil) {
-      return consulta
-        .leftJoin(contaTabela, eq(movimentoTabela.contaId, contaTabela.id))
-        .leftJoin(cartaoTabela, eq(movimentoTabela.cartaoId, cartaoTabela.id))
-        .where(and(...condicoes));
-    }
-    return consulta.where(and(...condicoes));
+    return this.banco
+      .select(getTableColumns(movimentoTabela))
+      .from(movimentoTabela)
+      .leftJoin(contaTabela, eq(movimentoTabela.contaId, contaTabela.id))
+      .leftJoin(cartaoTabela, eq(movimentoTabela.cartaoId, cartaoTabela.id))
+      .where(and(...condicoes));
   }
 
   async listarParcelas(usuarioId: string, filtro: FiltroParcelas): Promise<ParcelaComMovimento[]> {
@@ -121,6 +126,10 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
     const condicoes = [
       eq(movimentoTabela.usuarioId, usuarioId),
       inArray(movimentoTabela.workspaceId, escopo.workspaceIds),
+      or(
+        isNull(movimentoTabela.cartaoId),
+        inArray(cartaoTabela.workspaceId, escopo.workspaceIds),
+      )!,
     ];
     condicoes.push(notInArray(parcelaTabela.status, filtro.statusExcluir ?? ["cancelado"]));
     if (filtro.cartaoId) condicoes.push(eq(movimentoTabela.cartaoId, filtro.cartaoId));
@@ -133,6 +142,7 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
       .select({ parcela: parcelaTabela, movimento: movimentoTabela })
       .from(parcelaTabela)
       .innerJoin(movimentoTabela, eq(parcelaTabela.movimentoId, movimentoTabela.id))
+      .leftJoin(cartaoTabela, eq(movimentoTabela.cartaoId, cartaoTabela.id))
       .where(and(...condicoes));
 
     return linhas.map((linha) => ({ ...linha.parcela, movimento: linha.movimento }));

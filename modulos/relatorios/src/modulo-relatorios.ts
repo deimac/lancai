@@ -238,7 +238,9 @@ export class ModuloRelatorios {
       compras.push(
         montar_compra_de_itens({
           descricao: descricao_mais_completa(grupo.map((item) => item.descricao)),
+          cartaoId: primeira.cartaoId ?? null,
           cartaoNome: cartao?.nome ?? "cartão desconhecido",
+          tipoGasto: tipo_gasto_predominante(grupo.map((item) => item.tipoGasto)),
           valorTotal:
             total_compra_parcela({
               valorParcela: paraNumero(primeira.valor),
@@ -272,7 +274,9 @@ export class ModuloRelatorios {
       compras.push(
         montar_compra_de_itens({
           descricao: enxugar_indice_parcela(primeira.movimento.descricao),
+          cartaoId: primeira.movimento.cartaoId ?? null,
           cartaoNome: cartao?.nome ?? "cartão desconhecido",
+          tipoGasto: tipo_gasto_predominante(grupoParcelas.map((item) => item.movimento.tipoGasto)),
           valorTotal: paraNumero(primeira.movimento.valor),
           parcelasTotais: grupoParcelas.length,
           itens: grupoParcelas.map((parcela) => ({
@@ -639,9 +643,22 @@ function moda_valor(valores: number[]): number {
   return moda;
 }
 
+function tipo_gasto_predominante(valores: Array<string | null | undefined>): string | null {
+  let pessoal = 0;
+  let empresa = 0;
+  for (const valor of valores) {
+    if (valor === "pj") empresa += 1;
+    else if (valor === "pf") pessoal += 1;
+  }
+  if (empresa === 0 && pessoal === 0) return null;
+  return empresa > pessoal ? "pj" : "pf";
+}
+
 function montar_compra_de_itens(entrada: {
   descricao: string;
+  cartaoId?: string | null;
   cartaoNome: string;
+  tipoGasto?: string | null;
   valorTotal: number;
   parcelasTotais: number;
   itens: Array<{ data: string; valor: string | number; parcelaNumero?: number | null }>;
@@ -668,7 +685,9 @@ function montar_compra_de_itens(entrada: {
     : moda_valor(valores);
   return {
     descricao: entrada.descricao,
+    cartaoId: entrada.cartaoId ?? null,
     cartaoNome: entrada.cartaoNome,
+    tipoGasto: entrada.tipoGasto ?? null,
     valorTotal: entrada.valorTotal,
     valorParcela,
     parcelasTotais: entrada.parcelasTotais,

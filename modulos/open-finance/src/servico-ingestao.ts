@@ -677,14 +677,19 @@ export class ServicoIngestaoOpenFinance {
         }));
 
       const orfas = ids_projetadas_orfas_apos_uniao(entradas);
+      const workspaceDoCartao =
+        movimentos.find((movimento) => movimento.workspaceId)?.workspaceId ?? conexao.workspaceId;
       if (orfas.length > 0) {
         const { removidos } = await this.motor.remover_fatos_da_fonte(
-          orfas.map((idExterno) => ({
-            workspaceId: conexao.workspaceId,
-            fonte: "open_finance" as const,
-            provedor: this.provedor.id,
-            idExterno,
-          })),
+          orfas.map((idExterno) => {
+            const origem = movimentos.find((movimento) => movimento.idExterno === idExterno);
+            return {
+              workspaceId: origem?.workspaceId ?? workspaceDoCartao,
+              fonte: "open_finance" as const,
+              provedor: this.provedor.id,
+              idExterno,
+            };
+          }),
           contexto,
         );
         resumo.removidos += removidos.length;
@@ -692,7 +697,7 @@ export class ServicoIngestaoOpenFinance {
 
       const series = agrupar_series_parcelamento(entradas);
       const faltantes = planejar_parcelas_faltantes({
-        workspaceId: conexao.workspaceId,
+        workspaceId: workspaceDoCartao,
         cartaoId,
         series,
       });
@@ -700,7 +705,7 @@ export class ServicoIngestaoOpenFinance {
       eventos.push(
         ...eventos_de_parcelas_projetadas(
           {
-            workspaceId: conexao.workspaceId,
+            workspaceId: workspaceDoCartao,
             cartaoId,
             fonte: "open_finance",
             provedor: this.provedor.id,

@@ -37,7 +37,7 @@ export function TelaRecorrentes() {
   const [mesSelecionado, setMesSelecionado] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const deps = chave_dependencia(contexto?.versoes, "extrato", "dashboard");
+  const deps = chave_dependencia(contexto?.versoes, "extrato", "dashboard", "cartoes");
 
   const carregar = useCallback(async () => {
     if (!usuario) return;

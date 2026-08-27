@@ -23,6 +23,10 @@ export interface ResultadoCartoes {
 export interface CompraParcelada {
   descricao: string;
   cartaoNome: string;
+  /** Presente nas séries de cartão — a tela Recorrentes recorta por workspace com isso. */
+  cartaoId?: string | null;
+  /** Natureza predominante da série (`pf` / `pj`). */
+  tipoGasto?: string | null;
   valorTotal: number;
   /** Valor de uma parcela (o que cai no mês), não o total da compra. */
   valorParcela: number;
