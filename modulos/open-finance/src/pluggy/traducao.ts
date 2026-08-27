@@ -4,6 +4,8 @@ import {
   data_movimento_parcela,
   datas_civis_proximas,
   descricoes_da_mesma_serie,
+  dia_civil_iso,
+  dia_movimento_avulsa,
   dia_provedor_iso,
   dias_calendario_entre,
   eh_credito_quitacao_no_cartao,
@@ -122,7 +124,7 @@ function data_do_movimento(transacao: TransacaoPluggy): string {
     });
   }
 
-  return dateDia;
+  return dia_movimento_avulsa(transacao.date);
 }
 
 /** Moeda da fatura no cartão brasileiro. `amount` só é BRL quando a Pluggy não diz outra coisa. */
@@ -430,8 +432,9 @@ export function instante_do_movimento(dateIso: string, diaMovimento: string): st
   if (!dateIso.includes("T")) return undefined;
   const parsed = new Date(dateIso);
   if (Number.isNaN(parsed.getTime())) return undefined;
-  const diaProvedor = dia_provedor_iso(dateIso);
-  if (diaProvedor !== diaMovimento) return undefined;
+  const diaUtc = dia_provedor_iso(dateIso);
+  const diaBrasil = dia_civil_iso(dateIso);
+  if (diaUtc !== diaMovimento && diaBrasil !== diaMovimento) return undefined;
   return parsed.toISOString();
 }
 

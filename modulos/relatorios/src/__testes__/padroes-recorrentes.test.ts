@@ -130,4 +130,37 @@ describe("detectar_padroes_recorrentes", () => {
     expect(padroes).toHaveLength(1);
     expect(padrao_estavel_para_gerar(padroes[0]!)).toBe(false);
   });
+
+  it("usa a moda, não a média, quando um mês destoa um centavo", () => {
+    const padroes = detectar_padroes_recorrentes(
+      [
+        despesa({
+          descricao: "IFD*IFOOD CLUB",
+          valor: "7.95",
+          dataMovimento: "2026-05-18",
+          cartaoId: "itau",
+        }),
+        despesa({
+          descricao: "IFD*IFOOD CLUB",
+          valor: "7.95",
+          dataMovimento: "2026-06-18",
+          cartaoId: "itau",
+        }),
+        despesa({
+          descricao: "IFD*IFOOD CLUB",
+          valor: "7.98",
+          dataMovimento: "2026-07-18",
+          cartaoId: "itau",
+        }),
+        despesa({
+          descricao: "IFD*IFOOD CLUB",
+          valor: "7.95",
+          dataMovimento: "2026-08-18",
+          cartaoId: "itau",
+        }),
+      ],
+      "2026-08-22",
+    );
+    expect(padroes[0]?.valor).toBe(7.95);
+  });
 });

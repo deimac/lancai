@@ -6,10 +6,12 @@ import {
   datas_civis_proximas,
   deISOParaData,
   dia_civil_iso,
+  dia_movimento_avulsa,
   dia_provedor_iso,
   formatarDataHoraBrasil,
   formatarHoraBrasil,
   formatarQuandoFato,
+  hora_visivel_do_fato,
   garantir_parcelas_subsequentes,
   hojeISO,
   paraDataISO,
@@ -58,6 +60,11 @@ describe("formatarQuandoFato", () => {
 
   it("não cola hora do Brasil num dia UTC diferente (madrugada)", () => {
     expect(formatarQuandoFato("2026-08-24", "2026-08-24T00:33:38.001Z")).toBe("24/08/2026");
+    expect(hora_visivel_do_fato("2026-08-24", "2026-08-24T00:33:38.001Z")).toBe("");
+  });
+
+  it("mostra hora Brasil quando o dia do Fato é o civil", () => {
+    expect(hora_visivel_do_fato("2026-08-18", "2026-08-19T02:27:09.000Z")).toBe("23:27");
   });
 });
 
@@ -121,6 +128,12 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
     expect(dia_provedor_iso("2026-06-02T01:56:00.000Z")).toBe("2026-06-02");
     expect(dia_provedor_iso("2026-08-06T00:00:00.000Z")).toBe("2026-08-06");
     expect(dia_provedor_iso("2026-08-24T00:33:38.001Z")).toBe("2026-08-24");
+  });
+
+  it("avulsa com hora real usa o dia Brasil; stub 00:xx UTC permanece UTC", () => {
+    expect(dia_movimento_avulsa("2026-08-19T02:27:09.000Z")).toBe("2026-08-18");
+    expect(dia_movimento_avulsa("2026-08-24T00:33:38.001Z")).toBe("2026-08-24");
+    expect(dia_movimento_avulsa("2026-08-06T00:00:00.000Z")).toBe("2026-08-06");
   });
 
   it("datas civis vizinhas (fuso) são a mesma compra", () => {

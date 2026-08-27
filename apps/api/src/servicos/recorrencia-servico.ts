@@ -13,7 +13,12 @@ import {
   padrao_estavel_para_gerar,
   type PadraoRecorrente,
 } from "@lancai/relatorios";
-import { formatarMoeda, hojeISO, normalizar_descricao_parcela, paraNumero } from "@lancai/tipos";
+import {
+  diferenca_em_centavos,
+  formatarMoeda,
+  hojeISO,
+  normalizar_descricao_parcela,
+} from "@lancai/tipos";
 import { score_descricao_conciliacao } from "./conciliar-manual-com-fonte";
 import { exigir_workspace_escrita, obter_escopo_leitura } from "./escopo-workspace";
 
@@ -52,7 +57,7 @@ export function ja_existe_cobranca_equivalente(entrada: {
     if (item.fonte === "recorrencia") return false;
     if (item.tipo !== entrada.tipo) return false;
     if ((item.contaId ?? null) !== contaId || (item.cartaoId ?? null) !== cartaoId) return false;
-    if (paraNumero(item.valor) !== paraNumero(entrada.valor)) return false;
+    if (diferenca_em_centavos(item.valor, entrada.valor) > 1) return false;
     const score = score_descricao_conciliacao(
       entrada.descricao,
       item.descricaoFonte || item.descricao,

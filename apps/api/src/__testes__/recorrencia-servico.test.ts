@@ -43,6 +43,26 @@ describe("ja_existe_cobranca_equivalente", () => {
     ).toBe(true);
   });
 
+  it("casa iFood a 1 centavo do Fato OF", () => {
+    expect(
+      ja_existe_cobranca_equivalente({
+        descricao: "IFD*IFOOD CLUBOsascoBR",
+        valor: 7.96,
+        tipo: "despesa",
+        cartaoId: "itau",
+        movimentos: [
+          cobranca({
+            descricao: "IFD*IFOOD CLUBOsascoBR",
+            descricaoFonte: "IFD*IFOOD CLUBOsascoBR",
+            valor: "7.95",
+            contaId: null,
+            cartaoId: "itau",
+          }),
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it("não casa valor diferente", () => {
     expect(
       ja_existe_cobranca_equivalente({

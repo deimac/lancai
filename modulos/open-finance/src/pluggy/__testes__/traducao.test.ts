@@ -154,6 +154,19 @@ describe("traduzir_transacao", () => {
     expect(mov.ocorridoEm).toBe("2026-08-24");
     expect(mov.ocorridoEmInstante).toBe("2026-08-24T00:33:38.001Z");
   });
+
+  it("compra à noite no Brasil cai no dia civil, não no UTC", () => {
+    const mov = traduzir_transacao(
+      tx({
+        status: "PENDING",
+        date: "2026-08-19T02:27:09.000Z",
+        descriptionRaw: "IFD*GD PIZZAS DELIVERY LTMARINGABR",
+        creditCardMetadata: null,
+      }),
+    );
+    expect(mov.ocorridoEm).toBe("2026-08-18");
+    expect(mov.ocorridoEmInstante).toBe("2026-08-19T02:27:09.000Z");
+  });
 });
 
 describe("traduzir_lote_transacoes", () => {

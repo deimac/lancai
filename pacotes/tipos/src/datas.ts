@@ -66,6 +66,22 @@ export function formatarHoraBrasil(
 }
 
 /**
+ * Hora do Fato no extrato. Vazia se não há instante, se é meia-noite UTC, ou se
+ * o dia Brasil do instante não é o `data_movimento` (madrugada UTC / stub).
+ */
+export function hora_visivel_do_fato(
+  dataMovimento: string,
+  ocorridoEmInstante?: Date | string | null,
+): string {
+  if (!ocorridoEmInstante) return "";
+  const hora = formatarHoraBrasil(ocorridoEmInstante);
+  if (!hora || hora === "00:00") return "";
+  const diaBrasil = dia_civil_iso(ocorridoEmInstante);
+  if (diaBrasil && diaBrasil !== dataMovimento.slice(0, 10)) return "";
+  return hora;
+}
+
+/**
  * Data civil do Fato (`YYYY-MM-DD`) e hora da instituição, se existir.
  * Nunca use `dataLancamento` (momento da importação/gravação).
  */
@@ -75,12 +91,8 @@ export function formatarQuandoFato(
 ): string {
   const [ano, mes, dia] = dataMovimento.split("-");
   const competencia = ano && mes && dia ? `${dia}/${mes}/${ano}` : dataMovimento;
-  if (!ocorridoEmInstante) return competencia;
-  const hora = formatarHoraBrasil(ocorridoEmInstante);
-  if (!hora || hora === "00:00") return competencia;
-  const diaBrasil = dia_civil_iso(ocorridoEmInstante);
-  if (diaBrasil && diaBrasil !== dataMovimento.slice(0, 10)) return competencia;
-  return `${competencia} ${hora}`;
+  const hora = hora_visivel_do_fato(dataMovimento, ocorridoEmInstante);
+  return hora ? `${competencia} ${hora}` : competencia;
 }
 
 export function paraDataISO(data: Date): string {
@@ -139,6 +151,27 @@ export function dia_provedor_iso(quando: string, _fuso = "America/Sao_Paulo"): s
   const data = new Date(quando);
   if (Number.isNaN(data.getTime())) return quando.slice(0, 10);
   return data.toISOString().slice(0, 10);
+}
+
+/**
+ * Stub de data da Pluggy: `00:00Z` ou `00:33Z` — o banco quis o dia UTC, não
+ * 21h da véspera no Brasil. Hora UTC ≥ 01:00 é relógio de verdade.
+ */
+export function eh_stub_horario_provedor(quando: string): boolean {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(quando)) return true;
+  const data = new Date(quando);
+  if (Number.isNaN(data.getTime())) return true;
+  return data.getUTCHours() === 0;
+}
+
+/**
+ * Avulsa no extrato: dia civil Brasil quando o `date` tem hora real
+ * (pizza 02:27Z → 18/08). Stub `00:xxZ` permanece no calendário UTC (24/08).
+ */
+export function dia_movimento_avulsa(quando: string, fuso = "America/Sao_Paulo"): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(quando)) return quando;
+  if (eh_stub_horario_provedor(quando)) return dia_provedor_iso(quando);
+  return dia_civil_iso(quando, fuso) ?? dia_provedor_iso(quando);
 }
 
 export function dias_calendario_entre(a: string, b: string): number {

@@ -72,6 +72,23 @@ function mediana_inteiro(valores: number[]): number | null {
   return ordenados[Math.floor((ordenados.length - 1) / 2)] ?? null;
 }
 
+function moda_centavos(valores: number[]): number {
+  const contagem = new Map<number, number>();
+  for (const valor of valores) {
+    const centavos = Math.round(valor * 100);
+    contagem.set(centavos, (contagem.get(centavos) ?? 0) + 1);
+  }
+  let melhor = 0;
+  let moda = valores[0] ?? 0;
+  for (const [centavos, n] of contagem) {
+    if (n > melhor) {
+      melhor = n;
+      moda = centavos / 100;
+    }
+  }
+  return moda;
+}
+
 /**
  * Assinatura ainda vigente: mesma descrição + valor estável, ~1 vez por mês,
  * no mesmo dia, com cobrança neste mês ou no anterior. Fora: Uber/iFood
@@ -133,10 +150,9 @@ export function detectar_padroes_recorrentes(
     if ([...grupo.porMes.values()].some((n) => n > 2)) continue;
     if (grupo.valores.length / meses.length > 1.5) continue;
     if (amplitude_dias(grupo.dias) > 7) continue;
-    const soma = grupo.valores.reduce((acc, n) => acc + n, 0);
     padroes.push({
       descricao: grupo.descricao,
-      valor: Math.round((soma / grupo.valores.length) * 100) / 100,
+      valor: moda_centavos(grupo.valores),
       mesesObservados: meses,
       categoriaId: grupo.categoriaId,
       contaId: grupo.contaId,

@@ -12,7 +12,7 @@ import {
 } from "@lancai/conhecimento";
 import { MotorFinanceiro, RepositorioFinanceiroDrizzle } from "@lancai/financeiro";
 import { chave_descricao_lancamento, descricao_corresponde_busca } from "@lancai/ia";
-import { paraNumero } from "@lancai/tipos";
+import { diferenca_em_centavos } from "@lancai/tipos";
 
 const JANELA_MANUAL_DIAS = 3;
 const JANELA_RECORRENCIA_DIAS = 7;
@@ -79,7 +79,8 @@ export function escolher_pares_conciliacao(
     for (const manual of manuais) {
       if (manual.contaId !== fato.contaId || manual.cartaoId !== fato.cartaoId) continue;
       if (manual.tipo !== fato.tipo) continue;
-      if (paraNumero(manual.valor) !== paraNumero(fato.valor)) continue;
+      const centavos = diferenca_em_centavos(manual.valor, fato.valor);
+      if (manual.fonte === "recorrencia" ? centavos > 1 : centavos !== 0) continue;
 
       const dias = dias_entre(String(manual.dataMovimento).slice(0, 10), String(fato.dataMovimento).slice(0, 10));
       if (dias > janelaDias) continue;

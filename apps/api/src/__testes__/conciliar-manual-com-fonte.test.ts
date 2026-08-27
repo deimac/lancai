@@ -160,4 +160,27 @@ describe("escolher_pares_conciliacao", () => {
     expect(escolher_pares_conciliacao([fato], [outraConta], 7)).toEqual([]);
     expect(escolher_pares_conciliacao([fato], [outroValor], 7)).toEqual([]);
   });
+
+  it("casa recorrência a 1 centavo do Fato e recusa R$ 5 no manual", () => {
+    const fato = mov({
+      id: "fato-1",
+      fonte: "open_finance",
+      descricao: "x",
+      descricaoFonte: "IFD*IFOOD CLUBOsascoBR",
+      valor: "7.95",
+      cartaoId: "itau",
+      contaId: null,
+    });
+    const gerado = mov({
+      id: "rec-1",
+      fonte: "recorrencia",
+      descricao: "IFD*IFOOD CLUBOsascoBR",
+      valor: "7.96",
+      cartaoId: "itau",
+      contaId: null,
+    });
+    expect(escolher_pares_conciliacao([fato], [gerado], 7)).toEqual([
+      { fatoId: "fato-1", manualId: "rec-1", score: expect.any(Number) },
+    ]);
+  });
 });

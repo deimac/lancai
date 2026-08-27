@@ -26,7 +26,7 @@ import {
   type ContaResumo,
   type MovimentoResumo,
 } from "../lib/api";
-import { sugerir_pagamento_fatura, type Perfil, formatarHoraBrasil } from "@lancai/tipos";
+import { sugerir_pagamento_fatura, type Perfil, hora_visivel_do_fato } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -992,9 +992,8 @@ export function TelaExtrato() {
                         {formatar_valor(movimento.tipo, movimento.valor)}
                       </p>
                       <p className="text-right text-[11px] tabular-nums text-texto-suave">
-                        {movimento.ocorridoEmInstante
-                          ? formatarHoraBrasil(movimento.ocorridoEmInstante)
-                          : "00:00"}
+                        {hora_visivel_do_fato(movimento.dataMovimento, movimento.ocorridoEmInstante) ||
+                          "00:00"}
                       </p>
                     </td>
                     <td className="relative px-2 py-2.5">

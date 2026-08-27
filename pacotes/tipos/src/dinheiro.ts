@@ -32,6 +32,11 @@ export function subtrair(minuendo: string | number, subtraendo: string | number)
   return arredondar(paraNumero(minuendo) - paraNumero(subtraendo));
 }
 
+/** Distância em centavos (7,95 vs 7,96 → 1). */
+export function diferenca_em_centavos(a: string | number, b: string | number): number {
+  return Math.round(Math.abs(paraNumero(a) - paraNumero(b)) * 100);
+}
+
 export function formatarMoeda(valor: string | number): string {
   return paraNumero(valor).toLocaleString("pt-BR", {
     style: "currency",
