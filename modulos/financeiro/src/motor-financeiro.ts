@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
   arredondar,
+  coerir_data_parcela_cartao,
+  datas_civis_proximas,
   deISOParaData,
   descricao_ainda_automatica,
-  enxugar_descricao_fonte,
+  descricoes_da_mesma_serie,
+  enxugar_descricao_conhecimento,
   fato_imune_correcao,
+  garantir_parcelas_subsequentes,
   paraColuna,
   paraNumero,
   schemaCorrigirFatoManual,
@@ -360,6 +364,96 @@ export class MotorFinanceiro {
   }
 
   /**
+   * Parcela de cartão conta no mês da fatura (fechamento/vencimento), não no
+   * lançamento. Na mesma série, N+1 é o ciclo seguinte à N.
+   */
+  private async aplicar_competencia_parcela_cartao(
+    eventos: EventoFinanceiroNormalizado[],
+  ): Promise<EventoFinanceiroNormalizado[]> {
+    const cartoes = new Map<string, { fechamento: number; vencimento: number }>();
+    const coeridos: EventoFinanceiroNormalizado[] = [];
+
+    for (const evento of eventos) {
+      const parc = evento.parcelamento;
+      if (!evento.cartaoId || !parc?.numero || parc.numero < 1) {
+        coeridos.push(evento);
+        continue;
+      }
+      if (!cartoes.has(evento.cartaoId)) {
+        const cartao = await this.repositorio.obterCartao(evento.cartaoId);
+        if (cartao) {
+          cartoes.set(evento.cartaoId, {
+            fechamento: cartao.fechamento,
+            vencimento: cartao.vencimento,
+          });
+        }
+      }
+      const ciclo = cartoes.get(evento.cartaoId);
+      const ocorridoEm = coerir_data_parcela_cartao({
+        ocorridoEm: evento.ocorridoEm,
+        numero: parc.numero,
+        compraEm: parc.compraEm,
+        fechamento: ciclo?.fechamento,
+        vencimento: ciclo?.vencimento,
+      });
+      if (ocorridoEm === evento.ocorridoEm) {
+        coeridos.push(evento);
+        continue;
+      }
+      coeridos.push({ ...evento, ocorridoEm, ocorridoEmInstante: undefined });
+    }
+
+    return this.espacar_parcelas_do_lote(coeridos);
+  }
+
+  private espacar_parcelas_do_lote(
+    eventos: EventoFinanceiroNormalizado[],
+  ): EventoFinanceiroNormalizado[] {
+    const saida = [...eventos];
+    const indices: number[] = [];
+    saida.forEach((evento, indice) => {
+      if (evento.cartaoId && evento.parcelamento?.numero && evento.parcelamento.compraEm) {
+        indices.push(indice);
+      }
+    });
+
+    const clusters: number[][] = [];
+    for (const indice of indices) {
+      const atual = saida[indice]!;
+      const cluster = clusters.find((grupo) => {
+        const ancora = saida[grupo[0]!]!;
+        if (ancora.cartaoId !== atual.cartaoId) return false;
+        if (ancora.parcelamento?.total !== atual.parcelamento?.total) return false;
+        const compraA = ancora.parcelamento?.compraEm;
+        const compraB = atual.parcelamento?.compraEm;
+        if (!compraA || !compraB || !datas_civis_proximas(compraA, compraB)) return false;
+        return descricoes_da_mesma_serie(ancora.descricaoFonte, atual.descricaoFonte);
+      });
+      if (cluster) cluster.push(indice);
+      else clusters.push([indice]);
+    }
+
+    for (const cluster of clusters) {
+      const datas = garantir_parcelas_subsequentes(
+        cluster.map((indice) => ({
+          numero: saida[indice]!.parcelamento!.numero,
+          dataMovimento: saida[indice]!.ocorridoEm,
+        })),
+      );
+      for (const indice of cluster) {
+        const data = datas.get(saida[indice]!.parcelamento!.numero);
+        if (!data || data === saida[indice]!.ocorridoEm) continue;
+        saida[indice] = {
+          ...saida[indice]!,
+          ocorridoEm: data,
+          ocorridoEmInstante: undefined,
+        };
+      }
+    }
+    return saida;
+  }
+
+  /**
    * Entrada de movimentações vindas de uma Fonte Financeira (ADR-010). O Core
    * não sabe qual fonte é nem o que é "pluggy" — recebe eventos já normalizados
    * e obedece ao `fatoImutavel` que a fonte declarou.
@@ -368,7 +462,7 @@ export class MotorFinanceiro {
    * o Fato depois, quando o idExterno muda (reatachar) — ver `atualizar_fatos_da_fonte`.
    */
   async ingerir_eventos(
-    eventos: EventoFinanceiroNormalizado[],
+    eventosBrutos: EventoFinanceiroNormalizado[],
     contexto: ContextoIngestao,
   ): Promise<ResultadoIngestao> {
     const novosMovimentos: NovoMovimento[] = [];
@@ -378,9 +472,11 @@ export class MotorFinanceiro {
 
     const perfilPorConta = new Map<string, "pf" | "pj">();
     const perfilPorCartao = new Map<string, "pf" | "pj">();
+    const eventos = await this.aplicar_competencia_parcela_cartao(
+      eventosBrutos.map((eventoBruto) => schemaEventoFinanceiroNormalizado.parse(eventoBruto)),
+    );
 
-    for (const eventoBruto of eventos) {
-      const evento = schemaEventoFinanceiroNormalizado.parse(eventoBruto);
+    for (const evento of eventos) {
 
       if (!evento.contaId && !evento.cartaoId) {
         throw new ErroValidacaoFinanceira(
@@ -422,7 +518,7 @@ export class MotorFinanceiro {
         descricaoFonte: evento.descricaoFonte,
         favorecidoFonte: evento.favorecidoFonte,
         statusFonte: evento.statusFonte,
-        descricao: enxugar_descricao_fonte(evento.descricaoFonte),
+        descricao: enxugar_descricao_conhecimento(evento.descricaoFonte),
         valor: paraColuna(evento.valor),
         tipo: evento.tipo,
         status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
@@ -501,7 +597,7 @@ export class MotorFinanceiro {
    * automática da fonte — se a pessoa rebatizou, o banco não sobrescreve.
    */
   async atualizar_fatos_da_fonte(
-    eventos: EventoFinanceiroNormalizado[],
+    eventosBrutos: EventoFinanceiroNormalizado[],
     contexto: ContextoIngestao,
     opcoes: { reidentificarPorFingerprint?: boolean } = {},
   ): Promise<ResultadoAtualizacaoFonte> {
@@ -511,9 +607,11 @@ export class MotorFinanceiro {
     const desconhecidos: EventoFinanceiroNormalizado[] = [];
     const reidentificados = new Set<string>();
     let inalterados = 0;
+    const eventos = await this.aplicar_competencia_parcela_cartao(
+      eventosBrutos.map((eventoBruto) => schemaEventoFinanceiroNormalizado.parse(eventoBruto)),
+    );
 
-    for (const eventoBruto of eventos) {
-      const evento = schemaEventoFinanceiroNormalizado.parse(eventoBruto);
+    for (const evento of eventos) {
 
       if (!evento.idExterno) {
         throw new ErroValidacaoFinanceira(
@@ -703,7 +801,7 @@ export class MotorFinanceiro {
     if (atual.descricaoFonte !== evento.descricaoFonte) {
       campos.descricaoFonte = evento.descricaoFonte;
       if (descricao_ainda_automatica(atual.descricao, atual.descricaoFonte)) {
-        const enxuta = enxugar_descricao_fonte(evento.descricaoFonte);
+        const enxuta = enxugar_descricao_conhecimento(evento.descricaoFonte);
         if (enxuta !== atual.descricao) campos.descricao = enxuta;
       }
     }

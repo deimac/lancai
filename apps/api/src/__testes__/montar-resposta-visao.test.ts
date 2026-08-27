@@ -374,7 +374,7 @@ describe("montar_resposta_visao", () => {
     );
 
     expect(texto).toContain(`Você teve ${formatarMoeda(434.38)} de saídas`);
-    expect(texto).toContain("1/10");
+    expect(texto).toContain("Parcela 1/10");
     expect(texto).toContain(`total ${formatarMoeda(4343.8)}`);
     expect(texto).toContain("cartão Mercado Pago");
     expect(texto).not.toContain(`Receitas ${formatarMoeda(0)}`);

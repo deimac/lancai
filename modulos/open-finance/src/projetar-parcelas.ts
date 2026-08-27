@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import type { EventoFinanceiroNormalizado, TipoFonte } from "@lancai/tipos";
+import {
+  datas_civis_proximas,
+  descricoes_da_mesma_serie,
+  garantir_parcelas_subsequentes,
+} from "@lancai/tipos";
 import { somar_meses } from "./pluggy/traducao";
 
 /** Prefixo de `id_externo` das parcelas que o LançAI completa quando o OF omite. */
@@ -163,6 +168,30 @@ function separar_compras_distintas(grupo: ParcelaSerieEntrada[]): ParcelaSerieEn
   return [grupo];
 }
 
+function mesma_serie_entrada(a: ParcelaSerieEntrada, b: ParcelaSerieEntrada): boolean {
+  return (
+    a.parcelaTotal === b.parcelaTotal &&
+    datas_civis_proximas(a.parcelaCompraEm, b.parcelaCompraEm) &&
+    descricoes_da_mesma_serie(a.descricao, b.descricao)
+  );
+}
+
+function clusterizar_series(parcelas: ParcelaSerieEntrada[]): ParcelaSerieEntrada[][] {
+  const clusters: ParcelaSerieEntrada[][] = [];
+  for (const parcela of parcelas) {
+    const cluster = clusters.find((atual) => atual.some((item) => mesma_serie_entrada(item, parcela)));
+    if (cluster) cluster.push(parcela);
+    else clusters.push([parcela]);
+  }
+  return clusters;
+}
+
+function compra_canonica(grupo: ParcelaSerieEntrada[]): string {
+  const reais = grupo.filter((p) => !eh_id_parcela_projetada(p.idExterno));
+  const origem = reais.length > 0 ? reais : grupo;
+  return [...origem].map((p) => p.parcelaCompraEm).sort()[0]!;
+}
+
 /** Agrupa Fatos ativos de um cartão em séries de parcelamento. */
 export function agrupar_series_parcelamento(parcelas: ParcelaSerieEntrada[]): SerieParcelamento[] {
   const ativas = parcelas.filter(
@@ -174,21 +203,12 @@ export function agrupar_series_parcelamento(parcelas: ParcelaSerieEntrada[]): Se
       /^\d{4}-\d{2}-\d{2}$/.test(p.parcelaCompraEm),
   );
 
-  const porCompraTotal = new Map<string, ParcelaSerieEntrada[]>();
-  for (const p of ativas) {
-    const chave = `${p.parcelaCompraEm}|${p.parcelaTotal}`;
-    const grupo = porCompraTotal.get(chave) ?? [];
-    grupo.push(p);
-    porCompraTotal.set(chave, grupo);
-  }
-
   const series: SerieParcelamento[] = [];
-  for (const grupo of porCompraTotal.values()) {
-    for (const sub of separar_compras_distintas(grupo)) {
+  for (const cluster of clusterizar_series(ativas)) {
+    for (const sub of separar_compras_distintas(cluster)) {
       const total = sub[0]!.parcelaTotal;
-      const compraEm = sub[0]!.parcelaCompraEm;
+      const compraEm = compra_canonica(sub);
       const valorCompra = valor_compra_da_serie(sub, total);
-      // A 1ª parcela costuma absorver o arredondamento (+R$ 0,02); preferimos as demais.
       const referenciaValor = sub.filter((p) => p.parcelaNumero > 1);
       const valorParcela = Number.parseFloat(
         moda_decimal((referenciaValor.length > 0 ? referenciaValor : sub).map((p) => p.valor)),
@@ -198,25 +218,48 @@ export function agrupar_series_parcelamento(parcelas: ParcelaSerieEntrada[]): Se
       let descricao = sub[0]!.descricao;
       for (const p of sub) {
         numerosPresentes.add(p.parcelaNumero);
-        // Prefere data de Fato real (não projetado) quando há colisão de número.
         if (!datasPorNumero.has(p.parcelaNumero) || !eh_id_parcela_projetada(p.idExterno)) {
           datasPorNumero.set(p.parcelaNumero, p.dataMovimento.slice(0, 10));
         }
         if (!eh_id_parcela_projetada(p.idExterno)) descricao = p.descricao;
       }
+      const datasAjustadas = garantir_parcelas_subsequentes(
+        [...datasPorNumero.entries()].map(([numero, dataMovimento]) => ({ numero, dataMovimento })),
+      );
       series.push({
         compraEm,
         total,
         valorCompra,
         descricao,
         valorParcela,
-        datasPorNumero,
+        datasPorNumero: datasAjustadas,
         numerosPresentes,
       });
     }
   }
 
   return series;
+}
+
+/**
+ * Projetadas cuja `compraEm` racha a série (01/06 vs 02/06) quando a série real
+ * já se juntou na data canônica.
+ */
+export function ids_projetadas_orfas_apos_uniao(movimentos: ParcelaSerieEntrada[]): string[] {
+  const series = agrupar_series_parcelamento(movimentos);
+  const orfas: string[] = [];
+  for (const movimento of movimentos) {
+    if (!eh_id_parcela_projetada(movimento.idExterno)) continue;
+    const serie = series.find(
+      (candidata) =>
+        candidata.total === movimento.parcelaTotal &&
+        datas_civis_proximas(candidata.compraEm, movimento.parcelaCompraEm) &&
+        descricoes_da_mesma_serie(candidata.descricao, movimento.descricao),
+    );
+    if (!serie) continue;
+    if (movimento.parcelaCompraEm !== serie.compraEm) orfas.push(movimento.idExterno!);
+  }
+  return orfas;
 }
 
 /**

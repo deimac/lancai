@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { descricao_ainda_automatica, enxugar_descricao_fonte } from "../enxugar-descricao-fonte";
+import {
+  descricao_ainda_automatica,
+  enxugar_descricao_conhecimento,
+  enxugar_descricao_fonte,
+} from "../enxugar-descricao-fonte";
 
 describe("enxugar_descricao_fonte", () => {
   it("tira prefixos conhecidos e deixa o restante", () => {
@@ -54,10 +58,18 @@ describe("enxugar_descricao_fonte", () => {
   });
 });
 
+describe("enxugar_descricao_conhecimento", () => {
+  it("tira o 01/10 que o cartão cola no nome e deixa a fonte intacta", () => {
+    expect(enxugar_descricao_conhecimento("HOTELDOBARUERIBR  01/10")).toBe("HOTELDOBARUERIBR");
+    expect(enxugar_descricao_fonte("HOTELDOBARUERIBR  01/10")).toBe("HOTELDOBARUERIBR 01/10");
+  });
+});
+
 describe("descricao_ainda_automatica", () => {
   it("reconhece cópia bruta e cópia já enxuta", () => {
     expect(descricao_ainda_automatica("Pix recebido Tayna", "Pix recebido Tayna")).toBe(true);
     expect(descricao_ainda_automatica("Tayna", "Pix recebido Tayna")).toBe(true);
     expect(descricao_ainda_automatica("Apelido da Tayna", "Pix recebido Tayna")).toBe(false);
+    expect(descricao_ainda_automatica("HOTELDOBARUERIBR", "HOTELDOBARUERIBR  01/10")).toBe(true);
   });
 });

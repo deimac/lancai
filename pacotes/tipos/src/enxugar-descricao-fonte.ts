@@ -5,6 +5,8 @@
  * Só casa o começo da linha. Não apaga "pix" no meio de um nome.
  */
 
+import { enxugar_indice_parcela } from "./serie-parcelamento";
+
 const PREFIXOS = [
   "Pagamento com QR Pix",
   "Pagamento QR Pix",
@@ -69,10 +71,21 @@ export function enxugar_descricao_fonte(texto: string): string {
   return linha;
 }
 
+/** Conhecimento: prefixos operacionais e o "01/10" que o cartão cola no nome. */
+export function enxugar_descricao_conhecimento(texto: string): string {
+  return enxugar_indice_parcela(enxugar_descricao_fonte(texto));
+}
+
 /**
  * A descrição ainda é a cópia automática da fonte (bruta ou já enxuta), não
  * um nome que a pessoa escolheu.
  */
 export function descricao_ainda_automatica(descricao: string, descricaoFonte: string): boolean {
-  return descricao === descricaoFonte || descricao === enxugar_descricao_fonte(descricaoFonte);
+  const enxuta = enxugar_descricao_conhecimento(descricaoFonte);
+  return (
+    descricao === descricaoFonte ||
+    descricao === enxugar_descricao_fonte(descricaoFonte) ||
+    descricao === enxuta ||
+    descricao === enxugar_indice_parcela(descricaoFonte)
+  );
 }

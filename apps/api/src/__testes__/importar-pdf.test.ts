@@ -527,4 +527,67 @@ describe("importar PDF", () => {
     ]);
     expect(futuros.every((evento) => evento.statusFonte === "pendente")).toBe(true);
   });
+
+  it("linha 1/10 com data impressa 01/06 numa fatura de julho fica em julho", () => {
+    const linhas = extrair_lancamentos_do_texto(
+      [
+        "Fatura Azul Vencimento 06/07/2026",
+        "01/06/2026 HOTELDOBARUERIBR 1/10 R$311,40",
+        "02/06/2026 Padaria R$12,00",
+      ].join("\n"),
+    );
+    const hotel = linhas.find((linha) => /hotel/i.test(linha.descricao));
+    expect(hotel?.ocorridoEm.slice(0, 7)).toBe("2026-07");
+    expect(hotel?.parcelamento).toMatchObject({
+      numero: 1,
+      total: 10,
+      compraEm: "2026-06-01",
+    });
+
+    const workspaceId = randomUUID();
+    const eventos = montar_eventos_pdf({
+      linhas: [
+        {
+          ...hotel!,
+          destino: { tipo: "cartao", id: CARTAO.id, nome: CARTAO.nome },
+        },
+      ],
+      destinos: [
+        {
+          tipo: "cartao",
+          id: CARTAO.id,
+          workspaceId,
+          sincronizada: false,
+          nome: CARTAO.nome,
+          fechamento: 30,
+          vencimento: 6,
+        },
+      ],
+      arquivoHash: "a".repeat(64),
+      provedor: "pdf",
+    });
+    expect(eventos[0]?.ocorridoEm.slice(0, 7)).toBe("2026-07");
+    expect(eventos[0]?.parcelamento?.compraEm).toBe("2026-06-01");
+
+    const futuros = planejar_complemento_parcelas_cartao({
+      workspaceId,
+      cartaoId: CARTAO.id,
+      fonte: "pdf",
+      movimentos: [
+        {
+          parcelaNumero: eventos[0]!.parcelamento!.numero,
+          parcelaTotal: eventos[0]!.parcelamento!.total,
+          parcelaCompraEm: eventos[0]!.parcelamento!.compraEm!,
+          parcelaCompraValor: String(eventos[0]!.parcelamento!.valorTotal),
+          valor: eventos[0]!.valor,
+          dataMovimento: eventos[0]!.ocorridoEm,
+          descricao: eventos[0]!.descricaoFonte,
+          idExterno: eventos[0]!.idExterno ?? null,
+          status: "realizado",
+          statusFonte: "confirmado",
+        },
+      ],
+    });
+    expect(futuros[0]?.ocorridoEm.slice(0, 7)).toBe("2026-08");
+  });
 });

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { ErroValidacaoFinanceira } from "@lancai/financeiro";
 import { estimar_compra_em_parcela } from "@lancai/open-finance";
 import type { EventoFinanceiroNormalizado, ParcelamentoFonte } from "@lancai/tipos";
+import { coerir_data_parcela_cartao, garantir_parcelas_subsequentes } from "@lancai/tipos";
 
 export const MIN_CARACTERES_TEXTO_PDF = 40;
 
@@ -325,11 +326,19 @@ function montar_parcelamento_pdf(
   ocorridoEm: string,
   valor: number,
   atual?: ParcelamentoPdf,
+  competenciaFatura?: string | null,
 ): ParcelamentoPdf {
+  const impressaForaDoMes =
+    Boolean(competenciaFatura) &&
+    /^\d{4}-\d{2}$/.test(competenciaFatura!) &&
+    !ocorridoEm.startsWith(`${competenciaFatura}-`);
+  const compraEm =
+    atual?.compraEm ??
+    (impressaForaDoMes || numero <= 1 ? ocorridoEm : estimar_compra_em_parcela(ocorridoEm, numero));
   return {
     numero,
     total,
-    compraEm: atual?.compraEm ?? estimar_compra_em_parcela(ocorridoEm, numero),
+    compraEm,
     valorTotal: atual?.valorTotal ?? Number((valor * total).toFixed(2)),
   };
 }
@@ -342,6 +351,7 @@ export function detectar_parcelamento_pdf(
   texto: string,
   ocorridoEm: string,
   valor: number,
+  competenciaFatura?: string | null,
 ): ParcelamentoPdf | undefined {
   if (!texto.trim()) return undefined;
 
@@ -380,7 +390,7 @@ export function detectar_parcelamento_pdf(
   if (candidatos.length === 0) return undefined;
   candidatos.sort((a, b) => b.peso - a.peso);
   const escolhido = candidatos[0]!;
-  return montar_parcelamento_pdf(escolhido.numero, escolhido.total, ocorridoEm, valor);
+  return montar_parcelamento_pdf(escolhido.numero, escolhido.total, ocorridoEm, valor, undefined, competenciaFatura);
 }
 
 export function completar_parcelamento_pdf(linha: {
@@ -388,12 +398,20 @@ export function completar_parcelamento_pdf(linha: {
   descricao: string;
   valor: number;
   parcelamento?: ParcelamentoPdf;
+  competenciaFatura?: string | null;
 }): ParcelamentoPdf | undefined {
   const base =
     linha.parcelamento ??
-    detectar_parcelamento_pdf(linha.descricao, linha.ocorridoEm, linha.valor);
+    detectar_parcelamento_pdf(linha.descricao, linha.ocorridoEm, linha.valor, linha.competenciaFatura);
   if (!base) return undefined;
-  return montar_parcelamento_pdf(base.numero, base.total, linha.ocorridoEm, linha.valor, base);
+  return montar_parcelamento_pdf(
+    base.numero,
+    base.total,
+    linha.ocorridoEm,
+    linha.valor,
+    base,
+    linha.competenciaFatura,
+  );
 }
 
 export function enriquecer_linha_pdf(linha: LinhaExtraidaPdf): LinhaExtraidaPdf {
@@ -455,6 +473,19 @@ function data_e_periodo(plano: string, data: { inicio: number; fim: number }): b
   return /^\s*(?:[aá]|até|-|–|—)\s*\d/i.test(depois);
 }
 
+/** Mês da fatura (vencimento/período no cabeçalho), não a data impressa da compra. */
+export function inferir_competencia_fatura_pdf(texto: string): string | null {
+  const plano = texto.replace(/\s+/g, " ").trim();
+  if (!plano) return null;
+  const datas = datas_com_indice(plano);
+  for (const data of datas) {
+    const antes = plano.slice(Math.max(0, data.inicio - 48), data.inicio);
+    if (/\b(vencimento|due date)\b/i.test(antes)) return data.iso.slice(0, 7);
+  }
+  const periodo = datas.find((data) => data_e_periodo(plano, data));
+  return periodo?.iso.slice(0, 7) ?? null;
+}
+
 function data_antes(datas: Array<{ iso: string; inicio: number; fim: number }>, posicao: number): string | null {
   let encontrada: string | null = null;
   for (const data of datas) {
@@ -470,6 +501,7 @@ function emitir_se_valido(
   descricaoBruta: string,
   valor: { valor: number; negativo: boolean; mais: boolean },
   textoParcela?: string,
+  competenciaFatura?: string | null,
 ): void {
   if (!dataIso) return;
   const descricao = limpar_descricao(descricaoBruta).slice(0, 180);
@@ -477,8 +509,8 @@ function emitir_se_valido(
   if (linha_e_lixo(descricao) || desc_e_cabecalho(descricao) || desc_parece_prosa(descricao)) return;
   if (/^(fee|taxa|iof|fx fee|international fee)$/i.test(descricao)) return;
   const parcela =
-    detectar_parcelamento_pdf(textoParcela ?? descricaoBruta, dataIso, valor.valor) ??
-    detectar_parcelamento_pdf(descricao, dataIso, valor.valor);
+    detectar_parcelamento_pdf(textoParcela ?? descricaoBruta, dataIso, valor.valor, competenciaFatura) ??
+    detectar_parcelamento_pdf(descricao, dataIso, valor.valor, competenciaFatura);
   saida.push({
     ocorridoEm: dataIso,
     descricao,
@@ -496,6 +528,7 @@ function emitir_se_valido(
 function extrair_por_tabela(
   plano: string,
   datas: Array<{ iso: string; inicio: number; fim: number }>,
+  competenciaFatura?: string | null,
 ): LinhaExtraidaPdf[] {
   const linhasData = datas.filter((data) => !data_e_periodo(plano, data));
   if (linhasData.length < 2) return [];
@@ -513,7 +546,7 @@ function extrair_por_tabela(
     if (valores.length > 1) chunksComVariosValores += 1;
     const principal = valores[0];
     if (!principal) continue;
-    emitir_se_valido(saida, data.iso, chunk.slice(0, principal.inicio), principal, chunk);
+    emitir_se_valido(saida, data.iso, chunk.slice(0, principal.inicio), principal, chunk, competenciaFatura);
   }
   if (datasPt < 2 && chunksComVariosValores > 0) return [];
   return saida.length >= 2 ? saida : [];
@@ -521,6 +554,7 @@ function extrair_por_tabela(
 function extrair_por_marcas_recorrentes(
   plano: string,
   datas: Array<{ iso: string; inicio: number; fim: number }>,
+  competenciaFatura?: string | null,
 ): LinhaExtraidaPdf[] {
   const marcas = [...plano.matchAll(regex_marcas_lancamento())];
   if (marcas.length < 2) return [];
@@ -542,6 +576,7 @@ function extrair_por_marcas_recorrentes(
       bloco.slice(0, principal.inicio) || bloco,
       principal,
       bloco,
+      competenciaFatura,
     );
   }
   return saida;
@@ -550,6 +585,7 @@ function extrair_por_marcas_recorrentes(
 function extrair_por_data_valor(
   plano: string,
   datas: Array<{ iso: string; inicio: number; fim: number }>,
+  competenciaFatura?: string | null,
 ): LinhaExtraidaPdf[] {
   const saida: LinhaExtraidaPdf[] = [];
   for (let i = 0; i < datas.length; i++) {
@@ -560,7 +596,7 @@ function extrair_por_data_valor(
       const atual = valores[v]!;
       const descInicio = v === 0 ? 0 : valores[v - 1]!.fim;
       const trecho = chunk.slice(descInicio, valores[v + 1]?.inicio ?? chunk.length);
-      emitir_se_valido(saida, data.iso, chunk.slice(descInicio, atual.inicio), atual, trecho);
+      emitir_se_valido(saida, data.iso, chunk.slice(descInicio, atual.inicio), atual, trecho, competenciaFatura);
     }
   }
   return saida;
@@ -575,13 +611,36 @@ export function extrair_lancamentos_do_texto(texto: string): LinhaExtraidaPdf[] 
   if (!plano) return [];
   const datas = datas_com_indice(plano);
   if (datas.length === 0) return [];
+  const competenciaFatura = inferir_competencia_fatura_pdf(texto);
 
-  const porTabela = extrair_por_tabela(plano, datas);
-  if (porTabela.length >= 2) return porTabela;
+  const porTabela = extrair_por_tabela(plano, datas, competenciaFatura);
+  const linhas =
+    porTabela.length >= 2
+      ? porTabela
+      : (() => {
+          const porMarca = extrair_por_marcas_recorrentes(plano, datas, competenciaFatura);
+          return porMarca.length >= 2 ? porMarca : extrair_por_data_valor(plano, datas, competenciaFatura);
+        })();
+  return ajustar_parcelas_ao_mes_fatura(linhas, competenciaFatura);
+}
 
-  const porMarca = extrair_por_marcas_recorrentes(plano, datas);
-  if (porMarca.length >= 2) return porMarca;
-  return extrair_por_data_valor(plano, datas);
+export function ajustar_parcelas_ao_mes_fatura(
+  linhas: LinhaExtraidaPdf[],
+  competenciaFatura: string | null,
+): LinhaExtraidaPdf[] {
+  if (!competenciaFatura || !/^\d{4}-\d{2}$/.test(competenciaFatura)) return linhas;
+  return linhas.map((linha) => {
+    if (!linha.parcelamento) return linha;
+    const compraEm = linha.parcelamento.compraEm ?? linha.ocorridoEm;
+    const ocorridoEm = linha.ocorridoEm.startsWith(`${competenciaFatura}-`)
+      ? linha.ocorridoEm
+      : `${competenciaFatura}-01`;
+    return {
+      ...linha,
+      ocorridoEm,
+      parcelamento: { ...linha.parcelamento, compraEm },
+    };
+  });
 }
 
 export function exigir_destino_manual(destino: {
@@ -760,13 +819,15 @@ export function montar_eventos_pdf(entrada: {
     workspaceId: string;
     sincronizada: boolean;
     nome: string;
+    fechamento?: number;
+    vencimento?: number;
   }>;
   arquivoHash: string;
   provedor: string;
 }): EventoFinanceiroNormalizado[] {
   const porId = new Map(entrada.destinos.map((destino) => [destino.id, destino]));
 
-  return entrada.linhas.map((linha) => {
+  const eventos = entrada.linhas.map((linha) => {
     const destino = porId.get(linha.destino.id);
     if (!destino) {
       throw new ErroValidacaoFinanceira(
@@ -781,19 +842,35 @@ export function montar_eventos_pdf(entrada: {
     }
 
     const parcelamento = completar_parcelamento_pdf(linha);
+    let ocorridoEm = linha.ocorridoEm;
+    if (
+      parcelamento &&
+      destino.tipo === "cartao" &&
+      destino.fechamento != null &&
+      destino.vencimento != null
+    ) {
+      ocorridoEm = coerir_data_parcela_cartao({
+        ocorridoEm,
+        numero: parcelamento.numero,
+        compraEm: parcelamento.compraEm,
+        fechamento: destino.fechamento,
+        vencimento: destino.vencimento,
+      });
+    }
+
     const evento: EventoFinanceiroNormalizado = {
       workspaceId: destino.workspaceId,
       fonte: "pdf",
       provedor: entrada.provedor,
       idExterno: id_externo_pdf({
         arquivoHash: entrada.arquivoHash,
-        ocorridoEm: linha.ocorridoEm,
+        ocorridoEm,
         valor: linha.valor,
         descricao: linha.descricao,
         tipo: linha.tipo,
         destinoId: destino.id,
       }),
-      ocorridoEm: linha.ocorridoEm,
+      ocorridoEm,
       valor: linha.valor,
       tipo: linha.tipo,
       descricaoFonte: linha.descricao,
@@ -804,4 +881,47 @@ export function montar_eventos_pdf(entrada: {
     };
     return evento;
   });
+
+  return espacar_eventos_parcela_pdf(eventos);
+}
+
+function espacar_eventos_parcela_pdf(
+  eventos: EventoFinanceiroNormalizado[],
+): EventoFinanceiroNormalizado[] {
+  const saida = [...eventos];
+  const indices = saida
+    .map((evento, indice) =>
+      evento.cartaoId && evento.parcelamento?.numero && evento.parcelamento.compraEm ? indice : -1,
+    )
+    .filter((indice) => indice >= 0);
+
+  const clusters: number[][] = [];
+  for (const indice of indices) {
+    const atual = saida[indice]!;
+    const cluster = clusters.find((grupo) => {
+      const ancora = saida[grupo[0]!]!;
+      return (
+        ancora.cartaoId === atual.cartaoId &&
+        ancora.parcelamento?.total === atual.parcelamento?.total &&
+        ancora.parcelamento?.compraEm === atual.parcelamento?.compraEm
+      );
+    });
+    if (cluster) cluster.push(indice);
+    else clusters.push([indice]);
+  }
+
+  for (const cluster of clusters) {
+    const datas = garantir_parcelas_subsequentes(
+      cluster.map((indice) => ({
+        numero: saida[indice]!.parcelamento!.numero,
+        dataMovimento: saida[indice]!.ocorridoEm,
+      })),
+    );
+    for (const indice of cluster) {
+      const data = datas.get(saida[indice]!.parcelamento!.numero);
+      if (!data || data === saida[indice]!.ocorridoEm) continue;
+      saida[indice] = { ...saida[indice]!, ocorridoEm: data };
+    }
+  }
+  return saida;
 }

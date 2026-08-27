@@ -1,5 +1,10 @@
 import type { ContextoIngestao, MotorFinanceiro } from "@lancai/financeiro";
-import type { EventoFinanceiroNormalizado } from "@lancai/tipos";
+import {
+  data_iso_parcela,
+  datas_civis_proximas,
+  descricoes_da_mesma_serie,
+  type EventoFinanceiroNormalizado,
+} from "@lancai/tipos";
 import {
   ErroConexaoExternaInexistente,
   ErroConexaoNaoEncontrada,
@@ -15,6 +20,7 @@ import {
   agrupar_series_parcelamento,
   eh_id_parcela_projetada,
   eventos_de_parcelas_projetadas,
+  ids_projetadas_orfas_apos_uniao,
   planejar_parcelas_faltantes,
 } from "./projetar-parcelas";
 import type {
@@ -633,17 +639,17 @@ export class ServicoIngestaoOpenFinance {
       if (eh_id_parcela_projetada(evento.idExterno)) continue;
       const parc = evento.parcelamento;
       if (!evento.cartaoId || !parc?.compraEm || !parc.total || !parc.numero) continue;
+      const compraEvento = parc.compraEm;
 
       const movimentos = await this.motor.listar_movimentos_parcelados_do_cartao(evento.cartaoId);
-      const projetada = movimentos.find(
-        (m) =>
-          eh_id_parcela_projetada(m.idExterno) &&
-          m.status !== "cancelado" &&
-          m.statusFonte !== "removido" &&
-          m.parcelaCompraEm === parc.compraEm &&
-          m.parcelaTotal === parc.total &&
-          m.parcelaNumero === parc.numero,
-      );
+      const projetada = movimentos.find((m) => {
+        if (!eh_id_parcela_projetada(m.idExterno)) return false;
+        if (m.status === "cancelado" || m.statusFonte === "removido") return false;
+        if (m.parcelaTotal !== parc.total || m.parcelaNumero !== parc.numero) return false;
+        const compra = data_iso_parcela(m.parcelaCompraEm);
+        if (!compra || !datas_civis_proximas(compra, compraEvento)) return false;
+        return descricoes_da_mesma_serie(m.descricao, evento.descricaoFonte);
+      });
       if (!projetada?.idExterno || vistos.has(projetada.idExterno)) continue;
       vistos.add(projetada.idExterno);
       remocoes.push({
@@ -688,15 +694,29 @@ export class ServicoIngestaoOpenFinance {
         .map((m) => ({
           parcelaNumero: m.parcelaNumero!,
           parcelaTotal: m.parcelaTotal!,
-          parcelaCompraEm: m.parcelaCompraEm!,
+          parcelaCompraEm: data_iso_parcela(m.parcelaCompraEm)!,
           parcelaCompraValor: m.parcelaCompraValor,
           valor: m.valor,
-          dataMovimento: m.dataMovimento,
+          dataMovimento: data_iso_parcela(m.dataMovimento) ?? String(m.dataMovimento).slice(0, 10),
           descricao: m.descricao,
           idExterno: m.idExterno,
           status: m.status,
           statusFonte: m.statusFonte,
         }));
+
+      const orfas = ids_projetadas_orfas_apos_uniao(entradas);
+      if (orfas.length > 0) {
+        const { removidos } = await this.motor.remover_fatos_da_fonte(
+          orfas.map((idExterno) => ({
+            workspaceId: conexao.workspaceId,
+            fonte: "open_finance" as const,
+            provedor: this.provedor.id,
+            idExterno,
+          })),
+          contexto,
+        );
+        resumo.removidos += removidos.length;
+      }
 
       const series = agrupar_series_parcelamento(entradas);
       const faltantes = planejar_parcelas_faltantes({

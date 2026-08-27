@@ -357,6 +357,8 @@ async function carregar_destinos_confirmacao(
     workspaceId: string;
     sincronizada: boolean;
     nome: string;
+    fechamento?: number;
+    vencimento?: number;
   }>
 > {
   const banco = obter_banco();
@@ -368,6 +370,8 @@ async function carregar_destinos_confirmacao(
     workspaceId: string;
     sincronizada: boolean;
     nome: string;
+    fechamento?: number;
+    vencimento?: number;
   }> = [];
 
   if (contaIds.length > 0) {
@@ -411,6 +415,8 @@ async function carregar_destinos_confirmacao(
         workspaceId: cartao.workspaceId,
         sincronizada: cartao.sincronizada,
         nome: cartao.nome,
+        fechamento: cartao.fechamento,
+        vencimento: cartao.vencimento,
       });
     }
   }

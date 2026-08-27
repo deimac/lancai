@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { formatarDataHoraBrasil, formatarHoraBrasil, formatarQuandoFato, hojeISO } from "../datas";
+import {
+  calcularDataVencimentoFatura,
+  competencia_fatura_da_compra,
+  data_movimento_parcela,
+  datas_civis_proximas,
+  deISOParaData,
+  dia_civil_iso,
+  dia_provedor_iso,
+  formatarDataHoraBrasil,
+  formatarHoraBrasil,
+  formatarQuandoFato,
+  garantir_parcelas_subsequentes,
+  hojeISO,
+  paraDataISO,
+} from "../datas";
 
 describe("hojeISO", () => {
   it("usa o dia civil do fuso, não UTC", () => {
@@ -40,5 +54,71 @@ describe("formatarQuandoFato", () => {
     expect(formatarQuandoFato("2026-08-05", new Date("2026-08-05T17:32:00.000Z"))).toBe(
       "05/08/2026 14:32",
     );
+  });
+});
+
+describe("competência da fatura (parcela conta no vencimento)", () => {
+  it("Azul fecha 30 vence 6: compra 01/06 cai na fatura de julho", () => {
+    expect(competencia_fatura_da_compra("2026-06-01", 30, 6)).toBe("2026-07");
+    expect(paraDataISO(calcularDataVencimentoFatura(deISOParaData("2026-06-01"), 30, 6))).toBe(
+      "2026-07-06",
+    );
+  });
+
+  it("fecha 20 vence 27: compra 15/07 vence em 27/08", () => {
+    expect(paraDataISO(calcularDataVencimentoFatura(deISOParaData("2026-07-15"), 20, 27))).toBe(
+      "2026-08-27",
+    );
+  });
+
+  it("billForecastDate manda no mês da parcela", () => {
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-06-01",
+        billForecastDate: "2026-07",
+        dateProvedor: "2026-06-01",
+      }),
+    ).toBe("2026-07-01");
+  });
+
+  it("sem forecast, 1ª parcela usa o vencimento e as seguintes avançam o ciclo", () => {
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-06-01",
+        fechamento: 30,
+        vencimento: 6,
+      }),
+    ).toBe("2026-07-01");
+    expect(
+      data_movimento_parcela({
+        numero: 2,
+        compraEm: "2026-06-01",
+        fechamento: 30,
+        vencimento: 6,
+      }),
+    ).toBe("2026-08-01");
+  });
+
+  it("na mesma série, número maior não convive no mês da anterior", () => {
+    const datas = garantir_parcelas_subsequentes([
+      { numero: 1, dataMovimento: "2026-06-01" },
+      { numero: 2, dataMovimento: "2026-06-01" },
+    ]);
+    expect(datas.get(1)).toBe("2026-06-01");
+    expect(datas.get(2)).toBe("2026-07-01");
+  });
+
+  it("purchaseDate 22:56 UTC permanece 01/06 no Brasil", () => {
+    expect(dia_civil_iso("2026-06-01T22:56:00.000Z")).toBe("2026-06-01");
+    expect(dia_civil_iso("2026-06-02T01:56:00.000Z")).toBe("2026-06-01");
+    expect(dia_provedor_iso("2026-06-01T22:56:00.000Z")).toBe("2026-06-01");
+    expect(dia_provedor_iso("2026-08-06T00:00:00.000Z")).toBe("2026-08-06");
+  });
+
+  it("datas civis vizinhas (fuso) são a mesma compra", () => {
+    expect(datas_civis_proximas("2026-06-01", "2026-06-02")).toBe(true);
+    expect(datas_civis_proximas("2026-06-01", "2026-06-03")).toBe(false);
   });
 });

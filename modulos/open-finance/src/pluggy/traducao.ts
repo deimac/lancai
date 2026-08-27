@@ -1,4 +1,12 @@
 import type { StatusFonte } from "@lancai/tipos";
+import {
+  data_movimento_parcela,
+  datas_civis_proximas,
+  descricoes_da_mesma_serie,
+  dia_provedor_iso,
+  garantir_parcelas_subsequentes,
+  somar_meses_calendario,
+} from "@lancai/tipos";
 import type {
   ContaExterna,
   MotivoAtencao,
@@ -67,7 +75,7 @@ function dia_do_mes(iso: string | null | undefined): number | undefined {
 export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExterna {
   const favorecido = transacao.merchant?.name ?? transacao.paymentData?.receiver?.name ?? undefined;
   const statusFonte = traduzir_status_transacao(transacao.status);
-  const ocorridoEm = data_do_movimento(transacao, statusFonte);
+  const ocorridoEm = data_do_movimento(transacao);
 
   return {
     idExterno: transacao.id,
@@ -93,25 +101,25 @@ export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExte
 
 /**
  * Mês da fatura (`billForecastDate`) é a verdade para o navegador de competências.
- * Sem ele, parcela PENDING cai em compra + (N−1) meses — o `date` da Pluggy
- * costuma repetir a data da compra em todas as parcelas futuras.
+ * Sem ele, parcela cai em compra+(N−1) — o `date` da Pluggy costuma repetir a
+ * data da compra em todas as parcelas.
  */
-function data_do_movimento(transacao: TransacaoPluggy, status: StatusFonte): string {
+function data_do_movimento(transacao: TransacaoPluggy): string {
   const meta = transacao.creditCardMetadata;
-  const forecast = meta?.billForecastDate;
-  if (forecast && /^\d{4}-\d{2}$/.test(forecast)) {
-    const diaDoProvedor = transacao.date.slice(0, 10);
-    if (diaDoProvedor.startsWith(`${forecast}-`)) return diaDoProvedor;
-    return `${forecast}-01`;
-  }
-
+  const compra = meta?.purchaseDate ? dia_provedor_iso(meta.purchaseDate) : undefined;
+  const dateDia = dia_provedor_iso(transacao.date);
   const numero = meta?.installmentNumber;
-  const compra = meta?.purchaseDate?.slice(0, 10);
-  if (status === "pendente" && numero && numero >= 1 && compra && /^\d{4}-\d{2}-\d{2}$/.test(compra)) {
-    return somar_meses(compra, numero - 1);
+
+  if (numero && numero >= 1) {
+    return data_movimento_parcela({
+      numero,
+      compraEm: compra,
+      billForecastDate: meta?.billForecastDate,
+      dateProvedor: dateDia,
+    });
   }
 
-  return transacao.date.slice(0, 10);
+  return dateDia;
 }
 
 /** Moeda da fatura no cartão brasileiro. `amount` só é BRL quando a Pluggy não diz outra coisa. */
@@ -162,7 +170,65 @@ export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): Movimen
     if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
     traduzidas.push(traduzir_transacao(transacao));
   }
-  return omitir_compras_incompativeis_com_iof(traduzidas);
+  return espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas));
+}
+
+function chave_compra_parcela(movimentacao: MovimentacaoExterna): string | null {
+  const parc = movimentacao.parcelamento;
+  if (!parc?.compraEm || !parc.total || parc.numero < 1) return null;
+  return `${movimentacao.contaExternaId}|${parc.total}`;
+}
+
+/** Na mesma compra, N+1 não fica no mês da N — mesmo se a Pluggy repetir `date`. */
+function espaçar_parcelas_do_lote(movimentacoes: MovimentacaoExterna[]): MovimentacaoExterna[] {
+  const porContaTotal = new Map<string, number[]>();
+  movimentacoes.forEach((movimentacao, indice) => {
+    const chave = chave_compra_parcela(movimentacao);
+    if (!chave) return;
+    const lista = porContaTotal.get(chave) ?? [];
+    lista.push(indice);
+    porContaTotal.set(chave, lista);
+  });
+
+  const saida = [...movimentacoes];
+  for (const indices of porContaTotal.values()) {
+    const clusters: number[][] = [];
+    for (const indice of indices) {
+      const atual = saida[indice]!;
+      const cluster = clusters.find((grupo) => {
+        const ancora = saida[grupo[0]!]!;
+        const compraA = ancora.parcelamento?.compraEm;
+        const compraB = atual.parcelamento?.compraEm;
+        if (!compraA || !compraB) return false;
+        return (
+          datas_civis_proximas(compraA, compraB) &&
+          descricoes_da_mesma_serie(ancora.descricaoFonte, atual.descricaoFonte)
+        );
+      });
+      if (cluster) cluster.push(indice);
+      else clusters.push([indice]);
+    }
+
+    for (const cluster of clusters) {
+      const datas = garantir_parcelas_subsequentes(
+        cluster.map((indice) => ({
+          numero: saida[indice]!.parcelamento!.numero,
+          dataMovimento: saida[indice]!.ocorridoEm,
+        })),
+      );
+      for (const indice of cluster) {
+        const numero = saida[indice]!.parcelamento!.numero;
+        const data = datas.get(numero);
+        if (!data || data === saida[indice]!.ocorridoEm) continue;
+        saida[indice] = {
+          ...saida[indice]!,
+          ocorridoEm: data,
+          ocorridoEmInstante: undefined,
+        };
+      }
+    }
+  }
+  return saida;
 }
 
 function comercio_do_iof(descricao: string): string | null {
@@ -214,26 +280,13 @@ export function instante_do_movimento(dateIso: string, diaMovimento: string): st
   if (!dateIso.includes("T")) return undefined;
   const parsed = new Date(dateIso);
   if (Number.isNaN(parsed.getTime())) return undefined;
-  if (dateIso.slice(0, 10) !== diaMovimento) return undefined;
+  const diaProvedor = dia_provedor_iso(dateIso);
+  if (diaProvedor !== diaMovimento) return undefined;
   return parsed.toISOString();
 }
 
 /** Soma meses calendário preservando o dia (ajusta 31→último dia do mês destino). */
-export function somar_meses(yyyyMmDd: string, meses: number): string {
-  const [anoS, mesS, diaS] = yyyyMmDd.split("-");
-  const ano = Number(anoS);
-  const mes = Number(mesS);
-  const dia = Number(diaS);
-  if (!ano || !mes || !dia) return yyyyMmDd;
-
-  const base = new Date(Date.UTC(ano, mes - 1 + meses, 1));
-  const ultimoDia = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
-  const diaFinal = Math.min(dia, ultimoDia);
-  const y = base.getUTCFullYear();
-  const m = String(base.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(diaFinal).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+export const somar_meses = somar_meses_calendario;
 
 /**
  * Número e total são o que faz o registro valer alguma coisa: sem os dois, não
@@ -252,7 +305,7 @@ function traduzir_parcelamento(
     numero,
     total,
     valorTotal: metadados?.totalAmount ?? undefined,
-    compraEm: metadados?.purchaseDate?.slice(0, 10) ?? undefined,
+    compraEm: metadados?.purchaseDate ? dia_provedor_iso(metadados.purchaseDate) : undefined,
   };
 }
 

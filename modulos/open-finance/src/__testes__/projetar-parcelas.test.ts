@@ -3,6 +3,7 @@ import {
   agrupar_series_parcelamento,
   eh_id_parcela_projetada,
   id_externo_parcela_projetada,
+  ids_projetadas_orfas_apos_uniao,
   planejar_complemento_parcelas_cartao,
   planejar_parcelas_faltantes,
   projetar_data_parcela,
@@ -184,5 +185,76 @@ describe("projetar-parcelas", () => {
     expect(eventos.every((e) => e.statusFonte === "pendente")).toBe(true);
     expect(eventos.every((e) => e.fonte === "pdf")).toBe(true);
     expect(eventos[0]?.valor).toBe(475);
+  });
+
+  it("não racha a série quando purchaseDate UTC vira o dia", () => {
+    const series = agrupar_series_parcelamento([
+      {
+        parcelaNumero: 1,
+        parcelaTotal: 10,
+        parcelaCompraEm: "2026-06-01",
+        parcelaCompraValor: null,
+        valor: "311.40",
+        dataMovimento: "2026-07-01",
+        descricao: "HOTELDOBARUERIBR",
+        idExterno: "real-1",
+        status: "realizado",
+        statusFonte: "confirmado",
+      },
+      {
+        parcelaNumero: 2,
+        parcelaTotal: 10,
+        parcelaCompraEm: "2026-06-02",
+        parcelaCompraValor: null,
+        valor: "311.40",
+        dataMovimento: "2026-08-06",
+        descricao: "HOTELDOBARUERIBR",
+        idExterno: "real-2",
+        status: "realizado",
+        statusFonte: "confirmado",
+      },
+    ]);
+    expect(series).toHaveLength(1);
+    expect(series[0]?.compraEm).toBe("2026-06-01");
+    expect(series[0]?.numerosPresentes.has(1)).toBe(true);
+    expect(series[0]?.numerosPresentes.has(2)).toBe(true);
+  });
+
+  it("cancela projetadas da série rachada quando a compra se junta", () => {
+    const projetada = id_externo_parcela_projetada({
+      workspaceId: "11111111-1111-1111-1111-111111111111",
+      cartaoId: "22222222-2222-2222-2222-222222222222",
+      compraEm: "2026-06-02",
+      total: 10,
+      valorCompra: "3114.00",
+      numero: 3,
+    });
+    const orfas = ids_projetadas_orfas_apos_uniao([
+      {
+        parcelaNumero: 1,
+        parcelaTotal: 10,
+        parcelaCompraEm: "2026-06-01",
+        parcelaCompraValor: "3114.00",
+        valor: "311.40",
+        dataMovimento: "2026-07-01",
+        descricao: "HOTELDOBARUERIBR",
+        idExterno: "real-1",
+        status: "realizado",
+        statusFonte: "confirmado",
+      },
+      {
+        parcelaNumero: 3,
+        parcelaTotal: 10,
+        parcelaCompraEm: "2026-06-02",
+        parcelaCompraValor: "3114.00",
+        valor: "311.40",
+        dataMovimento: "2026-09-01",
+        descricao: "HOTELDOBARUERIBR",
+        idExterno: projetada,
+        status: "previsto",
+        statusFonte: "pendente",
+      },
+    ]);
+    expect(orfas).toEqual([projetada]);
   });
 });

@@ -121,6 +121,44 @@ describe("traduzir_transacao", () => {
     );
     expect(mov.valor).toBe(65.83);
   });
+
+  it("hotel 1/10 POSTED com billForecastDate julho fica em julho; compraEm é 01/06", () => {
+    const mov = traduzir_transacao(
+      tx({
+        id: "9d252479",
+        status: "POSTED",
+        date: "2026-06-01T22:56:00.000Z",
+        amount: -311.4,
+        descriptionRaw: "HOTELDOBARUERIBR  01/10",
+        creditCardMetadata: {
+          installmentNumber: 1,
+          totalInstallments: 10,
+          purchaseDate: "2026-06-01T22:56:00.000Z",
+          billForecastDate: "2026-07",
+        },
+      }),
+    );
+    expect(mov.ocorridoEm).toBe("2026-07-01");
+    expect(mov.parcelamento?.compraEm).toBe("2026-06-01");
+    expect(mov.descricaoFonte).toBe("HOTELDOBARUERIBR  01/10");
+  });
+
+  it("purchaseDate UTC que vira o dia no Brasil permanece 01/06", () => {
+    const mov = traduzir_transacao(
+      tx({
+        status: "PENDING",
+        date: "2026-09-08T00:00:00.000Z",
+        creditCardMetadata: {
+          installmentNumber: 3,
+          totalInstallments: 10,
+          purchaseDate: "2026-06-02T01:56:00.000Z",
+          billForecastDate: "2026-09",
+        },
+      }),
+    );
+    expect(mov.parcelamento?.compraEm).toBe("2026-06-01");
+    expect(mov.ocorridoEm).toBe("2026-09-08");
+  });
 });
 
 describe("traduzir_lote_transacoes", () => {
@@ -137,6 +175,39 @@ describe("traduzir_lote_transacoes", () => {
     ]);
     expect(lote).toHaveLength(1);
     expect(lote[0]?.valor).toBe(224.34);
+  });
+
+  it("1/10 e 2/10 com date 01/06 caem em julho e agosto, não as duas em junho", () => {
+    const lote = traduzir_lote_transacoes([
+      tx({
+        id: "p1",
+        status: "POSTED",
+        date: "2026-06-01T22:56:00.000Z",
+        amount: -311.4,
+        descriptionRaw: "HOTELDOBARUERIBR  01/10",
+        creditCardMetadata: {
+          installmentNumber: 1,
+          totalInstallments: 10,
+          purchaseDate: "2026-06-01T22:56:00.000Z",
+          billForecastDate: "2026-07",
+        },
+      }),
+      tx({
+        id: "p2",
+        status: "POSTED",
+        date: "2026-06-01T22:56:00.000Z",
+        amount: -311.4,
+        descriptionRaw: "HOTELDOBARUERIBR  02/10",
+        creditCardMetadata: {
+          installmentNumber: 2,
+          totalInstallments: 10,
+          purchaseDate: "2026-06-01T22:56:00.000Z",
+        },
+      }),
+    ]);
+    const porNumero = new Map(lote.map((m) => [m.parcelamento?.numero, m.ocorridoEm]));
+    expect(porNumero.get(1)).toBe("2026-07-01");
+    expect(porNumero.get(2)?.startsWith("2026-08")).toBe(true);
   });
 
   it("compra nacional sem amountInAccountCurrency continua usando amount", () => {

@@ -1037,6 +1037,44 @@ describe("MotorFinanceiro", () => {
       expect(repositorio.parcelas.size).toBe(0);
     });
 
+    it("parcela de cartão cai no mês da fatura, não no lançamento", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 30, vencimento: 6 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            idExterno: "p1",
+            cartaoId: cartao.id,
+            contaId: undefined,
+            ocorridoEm: "2026-06-01",
+            valor: 311.4,
+            descricaoFonte: "HOTELDOBARUERIBR  01/10",
+            parcelamento: { numero: 1, total: 10, compraEm: "2026-06-01" },
+          }),
+          evento({
+            idExterno: "p2",
+            cartaoId: cartao.id,
+            contaId: undefined,
+            ocorridoEm: "2026-06-01",
+            valor: 311.4,
+            descricaoFonte: "HOTELDOBARUERIBR  02/10",
+            parcelamento: { numero: 2, total: 10, compraEm: "2026-06-01" },
+          }),
+        ],
+        contexto(),
+      );
+
+      const porNumero = new Map(criados.map((m) => [m.parcelaNumero, m]));
+      expect(porNumero.get(1)?.dataMovimento).toBe("2026-07-01");
+      expect(porNumero.get(2)?.dataMovimento).toBe("2026-08-01");
+      expect(porNumero.get(1)?.parcelaCompraEm).toBe("2026-06-01");
+      expect(porNumero.get(1)?.descricaoFonte).toBe("HOTELDOBARUERIBR  01/10");
+      expect(porNumero.get(1)?.descricao).toBe("HOTELDOBARUERIBR");
+    });
+
     it("deixa as colunas de parcelamento nulas no que não é parcela", async () => {
       const conta = criarConta({ usuarioId });
       repositorio.contas.set(conta.id, conta);
@@ -1243,6 +1281,47 @@ describe("MotorFinanceiro", () => {
       expect(resultado.atualizados).toHaveLength(0);
       expect(repositorio.auditorias).toHaveLength(auditoriasAntes);
       expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
+    });
+
+    it("re-sync desloca data_movimento da parcela para o mês da fatura", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 30, vencimento: 6 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            cartaoId: cartao.id,
+            contaId: undefined,
+            ocorridoEm: "2026-06-01",
+            descricaoFonte: "HOTELDOBARUERIBR  01/10",
+            parcelamento: { numero: 1, total: 10, compraEm: "2026-06-01" },
+          }),
+        ],
+        contexto(),
+      );
+      expect(criados[0]?.dataMovimento).toBe("2026-07-01");
+
+      repositorio.movimentos.set(criados[0]!.id, {
+        ...criados[0]!,
+        dataMovimento: "2026-06-01",
+      });
+
+      const { atualizados } = await motor.atualizar_fatos_da_fonte(
+        [
+          evento({
+            cartaoId: cartao.id,
+            contaId: undefined,
+            ocorridoEm: "2026-06-01",
+            descricaoFonte: "HOTELDOBARUERIBR  01/10",
+            parcelamento: { numero: 1, total: 10, compraEm: "2026-06-01" },
+          }),
+        ],
+        contexto(),
+      );
+
+      expect(atualizados[0]?.dataMovimento).toBe("2026-07-01");
     });
 
     it("devolve como desconhecido o que nunca foi ingerido, sem criar nada", async () => {

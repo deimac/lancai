@@ -109,4 +109,18 @@ describe("série de parcelamento OF", () => {
       "cartao|2026-06-01|3|latam",
     );
   });
+
+  it("não racha a série quando o fuso vira o dia da compra", () => {
+    const grupos = agrupar_series_parcelamento([
+      parcela({ id: "1", parcelaNumero: 1, parcelaCompraEm: "2026-06-01" }),
+      parcela({
+        id: "2",
+        parcelaNumero: 2,
+        parcelaCompraEm: "2026-06-02",
+        dataMovimento: "2026-08-06",
+      }),
+    ]);
+    expect(grupos).toHaveLength(1);
+    expect(grupos[0]?.map((p) => p.id)).toEqual(["1", "2"]);
+  });
 });

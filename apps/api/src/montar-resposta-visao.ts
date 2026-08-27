@@ -457,7 +457,7 @@ function linhaHistorico(item: ItemHistorico): string {
   const parcelaInfo =
     item.parcelaNumero != null && item.parcelaTotal != null && item.parcelaTotal >= 2
       ? [
-          `${item.parcelaNumero}/${item.parcelaTotal}`,
+          `Parcela ${item.parcelaNumero}/${item.parcelaTotal}`,
           ...(item.parcelaCompraValor != null ? [`total ${formatarMoeda(item.parcelaCompraValor)}`] : []),
         ]
       : [];
