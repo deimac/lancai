@@ -59,10 +59,10 @@ vi.mock("drizzle-orm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("drizzle-orm")>();
   return {
     ...actual,
-    inArray: (coluna: unknown, valores: unknown[]) => {
-      estado.inArrayValores.push(valores);
+    inArray: ((coluna: Parameters<typeof actual.inArray>[0], valores: Parameters<typeof actual.inArray>[1]) => {
+      estado.inArrayValores.push(Array.isArray(valores) ? valores : []);
       return actual.inArray(coluna, valores);
-    },
+    }) as typeof actual.inArray,
   };
 });
 
