@@ -64,6 +64,7 @@ import {
   nome_origem_movimento,
   origem_da_query,
   origem_para_query,
+  ordenar_categorias_por_uso,
   paginar,
   papel_da_query,
   papel_para_query,
@@ -390,10 +391,13 @@ export function TelaExtrato() {
 
   const categoriasParaClassificar = useMemo(
     () =>
-      categorias.filter(
-        (c) => !eh_nao_classificado(c.nome) && !eh_categoria_pagamento_fatura(c.nome),
+      ordenar_categorias_por_uso(
+        categorias.filter(
+          (c) => !eh_nao_classificado(c.nome) && !eh_categoria_pagamento_fatura(c.nome),
+        ),
+        movimentos,
       ),
-    [categorias],
+    [categorias, movimentos],
   );
 
   const visiveis = useMemo(
@@ -1014,6 +1018,8 @@ export function TelaExtrato() {
                               icone: Tags,
                               submenu: categoriasParaClassificar.map((categoria) => ({
                                 rotulo: categoria.nome,
+                                iconeCategoria: categoria.icone ?? null,
+                                cor: categoria.cor ?? null,
                                 ativo: categoria.id === movimento.categoriaId,
                                 onClick: () => void classificar(movimento.id, categoria.id),
                               })),

@@ -262,3 +262,21 @@ export function paginar<T>(itens: T[], pagina: number, porPagina: number): Pagin
     porPagina,
   };
 }
+
+/** Ordena categorias pelo uso nos movimentos já carregados (workspace ativo). */
+export function ordenar_categorias_por_uso<T extends { id: string; nome: string }>(
+  categorias: T[],
+  movimentos: Array<Pick<MovimentoResumo, "categoriaId" | "status">>,
+): T[] {
+  const uso = new Map<string, number>();
+  for (const movimento of movimentos) {
+    if (movimento.status === "cancelado") continue;
+    uso.set(movimento.categoriaId, (uso.get(movimento.categoriaId) ?? 0) + 1);
+  }
+  return [...categorias].sort((a, b) => {
+    const da = uso.get(a.id) ?? 0;
+    const db = uso.get(b.id) ?? 0;
+    if (db !== da) return db - da;
+    return a.nome.localeCompare(b.nome, "pt-BR");
+  });
+}

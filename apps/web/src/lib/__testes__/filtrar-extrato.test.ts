@@ -15,6 +15,7 @@ import {
   papel_para_query,
   perfil_de_tipo_gasto,
   quantidade_filtros_drawer,
+  ordenar_categorias_por_uso,
   resumir_extrato,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
@@ -319,6 +320,37 @@ describe("resumir_extrato", () => {
       revisarQuantidade: 1,
       revisarTotal: 15,
     });
+  });
+});
+
+describe("ordenar_categorias_por_uso", () => {
+  const alimentacao = { id: "cat-alimentacao", nome: "Alimentação" };
+  const transporte = { id: "cat-transporte", nome: "Transporte" };
+  const saude = { id: "cat-saude", nome: "Saúde" };
+
+  it("lista as mais usadas primeiro e as nunca usadas no fim, A–Z no empate", () => {
+    const movimentos = [
+      movimento({ id: "a1", categoriaId: "cat-alimentacao" }),
+      movimento({ id: "a2", categoriaId: "cat-alimentacao" }),
+      movimento({ id: "a3", categoriaId: "cat-alimentacao" }),
+      movimento({ id: "t1", categoriaId: "cat-transporte" }),
+    ];
+    expect(
+      ordenar_categorias_por_uso([saude, transporte, alimentacao], movimentos).map((c) => c.nome),
+    ).toEqual(["Alimentação", "Transporte", "Saúde"]);
+  });
+
+  it("não conta movimento cancelado", () => {
+    const movimentos = [
+      movimento({ id: "t1", categoriaId: "cat-transporte" }),
+      movimento({ id: "t2", categoriaId: "cat-transporte", status: "cancelado" }),
+      movimento({ id: "t3", categoriaId: "cat-transporte", status: "cancelado" }),
+      movimento({ id: "a1", categoriaId: "cat-alimentacao" }),
+      movimento({ id: "a2", categoriaId: "cat-alimentacao" }),
+    ];
+    expect(
+      ordenar_categorias_por_uso([transporte, alimentacao, saude], movimentos).map((c) => c.nome),
+    ).toEqual(["Alimentação", "Transporte", "Saúde"]);
   });
 });
 

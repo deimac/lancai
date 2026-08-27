@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, type LucideIcon } from "lucide-react";
+import { IconeCategoria } from "../IconeCategoria";
 import { unir_classes } from "../../lib/unir-classes";
 
 export type ItemSubmenu = {
   rotulo: string;
   onClick: () => void;
   ativo?: boolean;
+  iconeCategoria?: string | null;
+  cor?: string | null;
 };
 
 export type AcaoMenu = {
@@ -26,7 +29,7 @@ type Props = {
 };
 
 const LARGURA_MENU = 208;
-const LARGURA_SUB = 192;
+const LARGURA_SUB = 224;
 
 type Coords = { top: number; left: number; maxH: number };
 
@@ -170,7 +173,7 @@ export function MenuAcoes({ acoes, aoEscolher, alinhar = "direita" }: Props) {
       ref={submenuRef}
       role="menu"
       className={unir_classes(
-        "fixed z-[60] min-w-[12rem] overflow-y-auto rounded-xl border border-borda bg-superficie py-1 shadow-lg",
+        "fixed z-[60] min-w-[14rem] overflow-y-auto rounded-xl border border-borda bg-superficie py-1 shadow-lg",
         coordsSub ? "visible" : "invisible",
       )}
       style={{
@@ -186,7 +189,7 @@ export function MenuAcoes({ acoes, aoEscolher, alinhar = "direita" }: Props) {
           type="button"
           role="menuitem"
           className={unir_classes(
-            "flex w-full items-center px-3 py-2 text-left text-sm hover:bg-fundo",
+            "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-fundo",
             item.ativo ? "text-primaria" : "text-texto",
           )}
           onClick={() => {
@@ -194,7 +197,10 @@ export function MenuAcoes({ acoes, aoEscolher, alinhar = "direita" }: Props) {
             aoEscolher?.();
           }}
         >
-          {item.rotulo}
+          {item.iconeCategoria !== undefined || item.cor != null ? (
+            <IconeCategoria icone={item.iconeCategoria} cor={item.cor} tamanho={14} />
+          ) : null}
+          <span className="min-w-0 flex-1 truncate">{item.rotulo}</span>
         </button>
       ))}
     </div>
