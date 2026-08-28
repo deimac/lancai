@@ -265,6 +265,7 @@ export function TelaDashboard() {
   const gastoCartoesMes =
     dados.resumo.gastoCartoesMes ??
     dados.cartoes.reduce((soma, cartao) => soma + (cartao.gastoMes ?? 0), 0);
+  const gastoCartoesEhFaturaAtual = dados.cartoes.some((cartao) => cartao.gastoEhFaturaAtual);
   const resultadoMes =
     dados.resumo.resultadoMes ?? dados.resumo.receitasMes - dados.resumo.despesasMes;
 
@@ -424,7 +425,9 @@ export function TelaDashboard() {
             <p className="text-2xl font-semibold tracking-tight text-despesa tabular-nums">
               {formatar_oculto(formatar_moeda(gastoCartoesMes), ocultarValores)}
             </p>
-            <p className="mt-1 text-xs text-texto-suave">gasto no mês</p>
+            <p className="mt-1 text-xs text-texto-suave">
+              {gastoCartoesEhFaturaAtual ? "fatura atual" : "gasto no mês"}
+            </p>
             <p className="mt-2 text-sm font-medium text-receita tabular-nums">
               {formatar_oculto(formatar_moeda(cartoesDisponivel), ocultarValores)} disponível
             </p>

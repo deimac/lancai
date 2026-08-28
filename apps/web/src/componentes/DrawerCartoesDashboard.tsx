@@ -94,7 +94,9 @@ function CardCartaoItem({
 
       <p className="mt-3 text-lg font-semibold tabular-nums text-despesa">
         {formatar_moeda(cartao.gastoMes)}{" "}
-        <span className="text-xs font-medium text-texto-suave">gasto em {mesRotulo}</span>
+        <span className="text-xs font-medium text-texto-suave">
+          {cartao.gastoEhFaturaAtual ? "fatura atual" : `gasto em ${mesRotulo}`}
+        </span>
       </p>
       <p className="mt-1 text-sm font-medium tabular-nums text-receita">
         {formatar_moeda(cartao.disponivel)} disponível
@@ -163,11 +165,15 @@ function DetalheCartao({
       </section>
 
       <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">{mesTitulo}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+          {cartao.gastoEhFaturaAtual ? "Fatura atual" : mesTitulo}
+        </p>
         <p className="mt-3 text-2xl font-semibold tabular-nums text-despesa">
           {formatar_moeda(cartao.gastoMes)}
         </p>
-        <p className="mt-1 text-sm text-texto-suave">Gasto no mês ({mesRotulo})</p>
+        <p className="mt-1 text-sm text-texto-suave">
+          {cartao.gastoEhFaturaAtual ? "Fatura atual" : `Gasto no mês (${mesRotulo})`}
+        </p>
         <p className="mt-3 text-sm text-texto">
           {cartao.quantidadeLancamentos === 0
             ? "Nenhum lançamento neste mês"
@@ -225,6 +231,7 @@ export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: 
 
   const mesTitulo = formatar_mes(dados.mes);
   const mesCurto = mesTitulo.split(" ")[0] ?? dados.mes;
+  const gastoEhFaturaAtual = cartoes.some((c) => c.gastoEhFaturaAtual);
   const cartaoSelecionado = cartoes.find((c) => c.id === cartaoId) ?? null;
 
   const subtituloLista =
@@ -267,12 +274,14 @@ export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: 
         <div className="space-y-5">
           <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-              {mesTitulo}
+              {gastoEhFaturaAtual ? "Fatura atual" : mesTitulo}
             </p>
             <p className="mt-2 text-2xl font-semibold tabular-nums text-despesa">
               {formatar_moeda(gastoMes)}
             </p>
-            <p className="mt-1 text-sm text-texto-suave">Gasto no mês</p>
+            <p className="mt-1 text-sm text-texto-suave">
+              {gastoEhFaturaAtual ? "Faturas em aberto" : "Gasto no mês"}
+            </p>
             <p className="mt-2 text-sm text-texto">
               {qtdLanc === 0
                 ? "Nenhum lançamento em cartão"

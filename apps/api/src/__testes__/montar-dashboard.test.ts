@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   agregar_gasto_cartao_por_competencia,
   agregar_totais_por_natureza,
+  cartoes_com_fatura_paga_no_mes,
   filtrar_movimentos_por_natureza,
+  mes_gasto_do_cartao,
   montar_fluxo_caixa,
   montar_proximos_pagamentos,
   perfil_de_tipo_gasto_dashboard,
@@ -601,5 +603,88 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     const setembro = agregar_gasto_cartao_por_competencia(movimentos, fechamento, "2026-09");
     expect(agosto.get("cartao-mp")).toEqual({ gasto: 80, quantidade: 1 });
     expect(setembro.get("cartao-mp")).toEqual({ gasto: 970.76, quantidade: 1 });
+  });
+
+  it("aceita competência por cartão (fatura paga → ciclo aberto)", () => {
+    const fechamento = new Map([["cartao-nu", 2]]);
+    const movimentos = [
+      {
+        tipo: "despesa",
+        valor: "9405.07",
+        dataMovimento: "2026-07-30",
+        cartaoId: "cartao-nu",
+      },
+      {
+        tipo: "despesa",
+        valor: "3939.68",
+        dataMovimento: "2026-08-20",
+        cartaoId: "cartao-nu",
+      },
+    ];
+    const mesPorCartao = new Map([["cartao-nu", "2026-09"]]);
+    const aberto = agregar_gasto_cartao_por_competencia(movimentos, fechamento, mesPorCartao);
+    expect(aberto.get("cartao-nu")).toEqual({ gasto: 3939.68, quantidade: 1 });
+  });
+});
+
+describe("mes_gasto_do_cartao", () => {
+  it("no mês atual, fatura paga e ciclo já fechado aponta para a fatura aberta", () => {
+    expect(
+      mes_gasto_do_cartao({
+        mesSelecionado: "2026-08",
+        hoje: "2026-08-28",
+        fechamento: 2,
+        faturaDoMesPaga: true,
+      }),
+    ).toBe("2026-09");
+  });
+
+  it("sem pagamento mantém o mês selecionado", () => {
+    expect(
+      mes_gasto_do_cartao({
+        mesSelecionado: "2026-08",
+        hoje: "2026-08-28",
+        fechamento: 2,
+        faturaDoMesPaga: false,
+      }),
+    ).toBe("2026-08");
+  });
+
+  it("mês passado não troca mesmo com fatura paga", () => {
+    expect(
+      mes_gasto_do_cartao({
+        mesSelecionado: "2026-07",
+        hoje: "2026-08-28",
+        fechamento: 2,
+        faturaDoMesPaga: true,
+      }),
+    ).toBe("2026-07");
+  });
+});
+
+describe("cartoes_com_fatura_paga_no_mes", () => {
+  it("só conta crédito de quitação da competência", () => {
+    const ids = cartoes_com_fatura_paga_no_mes(
+      [
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          competenciaFatura: "2026-08",
+          cartaoId: "cartao-nu",
+          tipo: "receita",
+          descricao: "Pagamento recebido",
+        },
+        {
+          status: "realizado",
+          papel: "pagamento_fatura",
+          competenciaFatura: "2026-08",
+          cartaoId: null,
+          tipo: "despesa",
+          descricao: "NU PAGAMENTOS SA",
+        },
+      ],
+      "2026-08",
+    );
+    expect([...ids]).toEqual(["cartao-nu"]);
   });
 });

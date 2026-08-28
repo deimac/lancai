@@ -39,6 +39,8 @@ export interface DashboardCartao {
   final4: string | null;
   gastoMes: number;
   quantidadeLancamentos: number;
+  /** True quando o ciclo do mês já foi pago e o número é a fatura em aberto. */
+  gastoEhFaturaAtual?: boolean;
 }
 
 export interface RankingCategoria {
@@ -204,6 +206,40 @@ export function somar_receitas_despesas(
   return { receitas: arredondar(receitas), despesas: arredondar(despesas) };
 }
 
+export function mes_gasto_do_cartao(entrada: {
+  mesSelecionado: string;
+  hoje: string;
+  fechamento: number;
+  faturaDoMesPaga: boolean;
+}): string {
+  if (!entrada.faturaDoMesPaga) return entrada.mesSelecionado;
+  if (entrada.mesSelecionado !== entrada.hoje.slice(0, 7)) return entrada.mesSelecionado;
+  return competencia_ciclo_da_data(entrada.hoje, entrada.fechamento);
+}
+
+export function cartoes_com_fatura_paga_no_mes(
+  pagamentos: Array<{
+    status?: string;
+    papel?: string | null;
+    competenciaFatura?: string | null;
+    cartaoId?: string | null;
+    tipo?: string;
+    contaId?: string | null;
+    descricao?: string;
+  }>,
+  mes: string,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const movimento of pagamentos) {
+    if (movimento.status === "cancelado") continue;
+    if (movimento.papel !== "pagamento_fatura") continue;
+    if (movimento.competenciaFatura !== mes) continue;
+    if (!eh_credito_quitacao_da_fatura(movimento)) continue;
+    if (movimento.cartaoId) ids.add(movimento.cartaoId);
+  }
+  return ids;
+}
+
 export function agregar_gasto_cartao_por_competencia(
   movimentos: Array<{
     tipo: string;
@@ -213,14 +249,16 @@ export function agregar_gasto_cartao_por_competencia(
     papel?: string | null;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
-  mes: string,
+  mes: string | ReadonlyMap<string, string>,
 ): Map<string, { gasto: number; quantidade: number }> {
   const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
   for (const movimento of movimentos) {
     if (!movimento.cartaoId) continue;
     if (movimento.tipo !== "despesa") continue;
     if (movimento.papel === "pagamento_fatura") continue;
-    if (!movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao)) continue;
+    const alvo = typeof mes === "string" ? mes : mes.get(movimento.cartaoId);
+    if (!alvo) continue;
+    if (!movimento_no_resultado_do_mes(movimento, alvo, fechamentoPorCartao)) continue;
     const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
     atual.gasto += Number(movimento.valor);
     atual.quantidade += 1;
@@ -246,7 +284,10 @@ export async function montar_dashboard(
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
   const mesAnterior = periodoAnterior.de.slice(0, 7);
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
-  const periodoPnL = periodo_amplo_do_ciclo(periodo, 2);
+  const periodoPnL = {
+    ...periodo_amplo_do_ciclo(periodo, 2),
+    ate: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), 1))).ate,
+  };
 
   const [
     saldosVisao,
@@ -305,10 +346,22 @@ export async function montar_dashboard(
     movimento_no_resultado_do_mes(movimento, mesAnterior, fechamentoPorCartao),
   );
 
+  const cartoesComFaturaPaga = cartoes_com_fatura_paga_no_mes(movimentosQuitadas, mes);
+  const mesGastoPorCartao = new Map(
+    cartoesDb.map((cartao) => [
+      cartao.id,
+      mes_gasto_do_cartao({
+        mesSelecionado: mes,
+        hoje,
+        fechamento: cartao.fechamento,
+        faturaDoMesPaga: cartoesComFaturaPaga.has(cartao.id),
+      }),
+    ]),
+  );
   const gastoPorCartao = agregar_gasto_cartao_por_competencia(
     movimentosAmplo,
     fechamentoPorCartao,
-    mes,
+    mesGastoPorCartao,
   );
 
   const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
@@ -318,7 +371,8 @@ export async function montar_dashboard(
   );
 
   const cartoesDetalhe: DashboardCartao[] = cartoes.cartoes.map((cartao) => {
-    const mes = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+    const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+    const competenciaGasto = mesGastoPorCartao.get(cartao.id) ?? mes;
     return {
       id: cartao.id,
       nome: cartao.nome,
@@ -331,8 +385,9 @@ export async function montar_dashboard(
       sincronizada: cartao.sincronizada,
       instituicao: origens.get(cartao.id)?.instituicao ?? null,
       final4: mascara_final4_do_payload(plasticoPorId.get(cartao.id)),
-      gastoMes: arredondar(mes.gasto),
-      quantidadeLancamentos: mes.quantidade,
+      gastoMes: arredondar(gasto.gasto),
+      quantidadeLancamentos: gasto.quantidade,
+      gastoEhFaturaAtual: competenciaGasto !== mes,
     };
   });
 

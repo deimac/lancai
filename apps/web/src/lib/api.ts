@@ -404,6 +404,7 @@ export interface DashboardCartao {
   final4: string | null;
   gastoMes: number;
   quantidadeLancamentos: number;
+  gastoEhFaturaAtual?: boolean;
 }
 
 export interface RankingCategoria {
