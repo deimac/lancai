@@ -39,7 +39,7 @@ export interface DashboardCartao {
   final4: string | null;
   gastoMes: number;
   quantidadeLancamentos: number;
-  /** True quando o ciclo do mês já foi pago e o número é a fatura em aberto. */
+  /** True no mês civil atual: o número é a fatura em aberto daquele cartão. */
   gastoEhFaturaAtual?: boolean;
 }
 
@@ -210,34 +210,9 @@ export function mes_gasto_do_cartao(entrada: {
   mesSelecionado: string;
   hoje: string;
   fechamento: number;
-  faturaDoMesPaga: boolean;
 }): string {
-  if (!entrada.faturaDoMesPaga) return entrada.mesSelecionado;
   if (entrada.mesSelecionado !== entrada.hoje.slice(0, 7)) return entrada.mesSelecionado;
   return competencia_ciclo_da_data(entrada.hoje, entrada.fechamento);
-}
-
-export function cartoes_com_fatura_paga_no_mes(
-  pagamentos: Array<{
-    status?: string;
-    papel?: string | null;
-    competenciaFatura?: string | null;
-    cartaoId?: string | null;
-    tipo?: string;
-    contaId?: string | null;
-    descricao?: string;
-  }>,
-  mes: string,
-): Set<string> {
-  const ids = new Set<string>();
-  for (const movimento of pagamentos) {
-    if (movimento.status === "cancelado") continue;
-    if (movimento.papel !== "pagamento_fatura") continue;
-    if (movimento.competenciaFatura !== mes) continue;
-    if (!eh_credito_quitacao_da_fatura(movimento)) continue;
-    if (movimento.cartaoId) ids.add(movimento.cartaoId);
-  }
-  return ids;
 }
 
 export function agregar_gasto_cartao_por_competencia(
@@ -338,7 +313,10 @@ export async function montar_dashboard(
   const saldos = saldosVisao.dados;
   const historico = historicoVisao.dados;
   const cartoes = cartoesVisao.dados;
-  const fechamentoPorCartao = mapa_fechamento_cartoes(cartoesDb);
+  const fechamentoPorCartao = mapa_fechamento_cartoes([
+    ...cartoesDb,
+    ...cartoes.cartoes,
+  ]);
   const movimentosPnL = movimentosAmplo.filter((movimento) =>
     movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao),
   );
@@ -346,15 +324,14 @@ export async function montar_dashboard(
     movimento_no_resultado_do_mes(movimento, mesAnterior, fechamentoPorCartao),
   );
 
-  const cartoesComFaturaPaga = cartoes_com_fatura_paga_no_mes(movimentosQuitadas, mes);
+  const mesCivilHoje = hoje.slice(0, 7);
   const mesGastoPorCartao = new Map(
-    cartoesDb.map((cartao) => [
+    cartoes.cartoes.map((cartao) => [
       cartao.id,
       mes_gasto_do_cartao({
         mesSelecionado: mes,
         hoje,
         fechamento: cartao.fechamento,
-        faturaDoMesPaga: cartoesComFaturaPaga.has(cartao.id),
       }),
     ]),
   );
@@ -372,7 +349,6 @@ export async function montar_dashboard(
 
   const cartoesDetalhe: DashboardCartao[] = cartoes.cartoes.map((cartao) => {
     const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
-    const competenciaGasto = mesGastoPorCartao.get(cartao.id) ?? mes;
     return {
       id: cartao.id,
       nome: cartao.nome,
@@ -387,7 +363,7 @@ export async function montar_dashboard(
       final4: mascara_final4_do_payload(plasticoPorId.get(cartao.id)),
       gastoMes: arredondar(gasto.gasto),
       quantidadeLancamentos: gasto.quantidade,
-      gastoEhFaturaAtual: competenciaGasto !== mes,
+      gastoEhFaturaAtual: mes === mesCivilHoje,
     };
   });
 
