@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Repeat } from "lucide-react";
 import {
   Bar,
@@ -39,22 +39,30 @@ export function TelaRecorrentes() {
   const [erro, setErro] = useState<string | null>(null);
   const deps = chave_dependencia(contexto?.versoes, "extrato", "dashboard", "cartoes");
 
-  const carregar = useCallback(async () => {
+  useEffect(() => {
     if (!usuario) return;
+    let cancelado = false;
     setCarregando(true);
     setErro(null);
-    try {
-      setDados(await clienteApi.listar_parcelamentos(usuario.id, hojeISO()));
-    } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar recorrentes.");
-    } finally {
-      setCarregando(false);
-    }
-  }, [usuario]);
-
-  useEffect(() => {
-    void carregar();
-  }, [carregar, deps]);
+    setDados(null);
+    setMesSelecionado(null);
+    void clienteApi
+      .listar_parcelamentos(usuario.id, hojeISO())
+      .then((proximo) => {
+        if (cancelado) return;
+        setDados(proximo);
+      })
+      .catch((e) => {
+        if (cancelado) return;
+        setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar recorrentes.");
+      })
+      .finally(() => {
+        if (!cancelado) setCarregando(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [usuario, deps]);
 
   const recorrentes = dados?.recorrentes ?? [];
   const compras = dados?.compras ?? [];

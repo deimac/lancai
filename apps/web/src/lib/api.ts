@@ -1024,7 +1024,7 @@ export const clienteApi = {
   }> {
     const query = new URLSearchParams({ usuarioId });
     if (data) query.set("data", data);
-    return requisitar(`/recorrencias/parcelamentos?${query.toString()}`);
+    return requisitar(`/recorrencias/parcelamentos?${query.toString()}`, { cache: "no-store" });
   },
 
   enviar_mensagem_chat(dados: { usuarioId: string; mensagem: string; sessaoId?: string }): Promise<RespostaChat> {
