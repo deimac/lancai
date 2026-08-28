@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
+  CalendarClock,
   CreditCard,
   ListFilter,
   MoreHorizontal,
@@ -176,6 +177,20 @@ function rotulo_tipo_gasto(tipo: Perfil | null | undefined): string {
   if (tipo === "pj") return "Empresa";
   if (tipo === "pf") return "Pessoal";
   return "";
+}
+
+function IconeProximaFatura({ dica, tamanho = 14 }: { dica?: string; tamanho?: number }) {
+  const icone = (
+    <CalendarClock size={tamanho} className="shrink-0 text-aviso" aria-hidden />
+  );
+  if (!dica) return icone;
+  return (
+    <Dica texto={dica}>
+      <span className="inline-flex cursor-default" role="img" aria-label={dica}>
+        {icone}
+      </span>
+    </Dica>
+  );
 }
 
 function ChipFiltro({ rotulo, onLimpar }: { rotulo: string; onLimpar: () => void }) {
@@ -838,7 +853,8 @@ export function TelaExtrato() {
       ) : null}
 
       {resumo.proximaFatura > 0 ? (
-        <p className="text-xs text-aviso">
+        <p className="flex items-center gap-1.5 text-xs text-aviso">
+          <IconeProximaFatura />
           {formatar_moeda(resumo.proximaFatura)} na próxima fatura
         </p>
       ) : null}
@@ -1003,13 +1019,7 @@ export function TelaExtrato() {
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-texto-suave">
                       <span className="inline-flex items-center gap-1.5">
                         {formatar_data(movimento.dataMovimento)}
-                        {seloFatura ? (
-                          <Dica texto={seloFatura.dica}>
-                            <span className="inline-flex cursor-default rounded-md border border-aviso/40 bg-aviso/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-aviso">
-                              {seloFatura.rotulo}
-                            </span>
-                          </Dica>
-                        ) : null}
+                        {seloFatura ? <IconeProximaFatura dica={seloFatura.dica} /> : null}
                       </span>
                     </td>
                     <td
