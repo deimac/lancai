@@ -15,6 +15,7 @@ import {
   deISOParaData,
   normalizar_descricao_parcela,
   paraDataISO,
+  type Perfil,
 } from "@lancai/tipos";
 import { obter_escopo_leitura } from "./escopo-workspace";
 import { listar_recorrencias, padrao_ja_conhecido } from "./recorrencia-servico";
@@ -35,6 +36,8 @@ export type RecorrenteComprometimento = {
   contaNome: string | null;
   cartaoNome: string | null;
   tipo: string;
+  /** Perfil da conta/cartão de destino — a tabela de recorrência não tem tipo_gasto. */
+  tipoGasto: Perfil;
 };
 
 export type ComprometimentoMensal = {
@@ -65,9 +68,36 @@ export function filtrar_compras_do_workspace(
   });
 }
 
+/** Mesma regra de `perfil_do_destino` na geração: cartão, senão conta, senão pf. */
+export function perfil_do_destino_maps(
+  cartaoId: string | null | undefined,
+  contaId: string | null | undefined,
+  cartoes: Map<string, string>,
+  contas: Map<string, string>,
+): Perfil {
+  if (cartaoId) {
+    const perfil = cartoes.get(cartaoId);
+    if (perfil === "pj" || perfil === "pf") return perfil;
+  }
+  if (contaId) {
+    const perfil = contas.get(contaId);
+    if (perfil === "pj") return "pj";
+  }
+  return "pf";
+}
+
+export function recortar_por_tipo_gasto<T extends { tipoGasto?: string | null }>(
+  itens: T[],
+  perfil?: Perfil,
+): T[] {
+  if (!perfil) return itens;
+  return itens.filter((item) => item.tipoGasto === perfil);
+}
+
 export async function montar_comprometimento(
   usuarioId: string,
   dataAtual: string,
+  tipoGasto?: Perfil,
 ): Promise<ComprometimentoMensal> {
   const escopo = await obter_escopo_leitura(usuarioId);
   if (escopo.workspaceIds.length === 0) {
@@ -105,6 +135,11 @@ export async function montar_comprometimento(
   const mapaCat = new Map(categorias.map((item) => [item.id, item]));
   const mapaConta = new Map(contas.map((item) => [item.id, item.nome]));
   const mapaCartao = new Map(cartoes.map((item) => [item.id, item.nome]));
+  const mapaPerfilConta = new Map(contas.map((item) => [item.id, item.perfil]));
+  const mapaPerfilCartao = new Map(cartoes.map((item) => [item.id, item.perfil]));
+  for (const cartao of cartoesEscopo) {
+    if (!mapaPerfilCartao.has(cartao.id)) mapaPerfilCartao.set(cartao.id, cartao.perfil);
+  }
 
   const cadastradas = todasRecorrencias.filter((item) => item.ativa);
   const detectados = detectar_padroes_recorrentes(movimentos, dataAtual).filter(
@@ -126,6 +161,7 @@ export async function montar_comprometimento(
         contaNome: item.contaId ? (mapaConta.get(item.contaId) ?? null) : null,
         cartaoNome: item.cartaoId ? (mapaCartao.get(item.cartaoId) ?? null) : null,
         tipo: item.tipo,
+        tipoGasto: perfil_do_destino_maps(item.cartaoId, item.contaId, mapaPerfilCartao, mapaPerfilConta),
       };
     }),
     ...detectados.map((item) => {
@@ -142,19 +178,23 @@ export async function montar_comprometimento(
         contaNome: item.contaId ? (mapaConta.get(item.contaId) ?? null) : null,
         cartaoNome: item.cartaoId ? (mapaCartao.get(item.cartaoId) ?? null) : null,
         tipo: "despesa",
+        tipoGasto: perfil_do_destino_maps(item.cartaoId, item.contaId, mapaPerfilCartao, mapaPerfilConta),
       };
     }),
   ];
 
+  const comprasRecorte = recortar_por_tipo_gasto(compras, tipoGasto);
+  const recorrentesRecorte = recortar_por_tipo_gasto(recorrentes, tipoGasto);
+
   const inicio = `${dataAtual.slice(0, 7)}-01`;
   const fim = paraDataISO(adicionarMeses(deISOParaData(inicio), MESES_GRAFICO - 1));
   const rotulosMes = listarMesesEntre(inicio, fim);
-  const totalRecorrenteMes = recorrentes
+  const totalRecorrenteMes = recorrentesRecorte
     .filter((item) => item.tipo === "despesa")
     .reduce((soma, item) => soma + item.valor, 0);
 
   const meses = rotulosMes.map((mes) => {
-    const parcelas = compras.reduce((soma, compra) => {
+    const parcelas = comprasRecorte.reduce((soma, compra) => {
       const doMes = compra.parcelasPorMes.find((item) => item.mes === mes);
       return soma + (doMes?.valor ?? 0);
     }, 0);
@@ -163,7 +203,7 @@ export async function montar_comprometimento(
 
   return {
     meses,
-    compras,
-    recorrentes,
+    compras: comprasRecorte,
+    recorrentes: recorrentesRecorte,
   };
 }

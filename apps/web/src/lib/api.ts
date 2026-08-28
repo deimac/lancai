@@ -994,11 +994,13 @@ export const clienteApi = {
   listar_parcelamentos(
     usuarioId: string,
     data?: string,
+    tipoGasto?: "pf" | "pj",
   ): Promise<{
     meses: Array<{ mes: string; parcelas: number; recorrentes: number }>;
     compras: Array<{
       descricao: string;
       cartaoNome: string;
+      tipoGasto?: string | null;
       valorTotal: number;
       valorParcela: number;
       parcelasTotais: number;
@@ -1020,10 +1022,12 @@ export const clienteApi = {
       contaNome: string | null;
       cartaoNome: string | null;
       tipo: string;
+      tipoGasto: "pf" | "pj";
     }>;
   }> {
     const query = new URLSearchParams({ usuarioId });
     if (data) query.set("data", data);
+    if (tipoGasto) query.set("tipoGasto", tipoGasto);
     return requisitar(`/recorrencias/parcelamentos?${query.toString()}`, { cache: "no-store" });
   },
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Repeat } from "lucide-react";
 import {
   Bar,
@@ -15,7 +16,14 @@ import { clienteApi, ErroApi } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { IconeCategoria } from "../componentes/IconeCategoria";
+import { SeletorTipoGasto } from "../componentes/SeletorTipoGasto";
 import { useContextoLayout } from "../layout/useContextoLayout";
+import {
+  perfil_de_tipo_gasto,
+  tipo_gasto_da_query,
+  tipo_gasto_para_query,
+  type TipoGastoExtrato,
+} from "../lib/filtrar-extrato";
 import { unir_classes } from "../lib/unir-classes";
 import { hojeISO } from "@lancai/tipos";
 
@@ -42,18 +50,13 @@ function LegendaComprometimento({
   parcelas,
   recorrentes,
   total,
-  rotulo,
 }: {
   parcelas: number;
   recorrentes: number;
   total: number;
-  rotulo: string | null;
 }) {
   return (
     <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
-      {rotulo ? (
-        <span className="w-full text-center text-[11px] text-texto-suave">{rotulo}</span>
-      ) : null}
       <span className="inline-flex items-center gap-1.5 text-texto-suave">
         <span className="h-2 w-2 rounded-full bg-[#f07178]" />
         Parcelas
@@ -76,6 +79,9 @@ function LegendaComprometimento({
 export function TelaRecorrentes() {
   const { usuario } = useAutenticacao();
   const contexto = useContextoLayout();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tipoGasto = tipo_gasto_da_query(searchParams.get("tipoGasto"));
+  const perfilGasto = perfil_de_tipo_gasto(tipoGasto);
   const [dados, setDados] = useState<Comprometimento | null>(null);
   const [mesSelecionado, setMesSelecionado] = useState<string | null>(null);
   const [pontoHover, setPontoHover] = useState<PontoComprometimento | null>(null);
@@ -92,7 +98,7 @@ export function TelaRecorrentes() {
     setMesSelecionado(null);
     setPontoHover(null);
     void clienteApi
-      .listar_parcelamentos(usuario.id, hojeISO())
+      .listar_parcelamentos(usuario.id, hojeISO(), perfilGasto)
       .then((proximo) => {
         if (cancelado) return;
         setDados(proximo);
@@ -107,7 +113,15 @@ export function TelaRecorrentes() {
     return () => {
       cancelado = true;
     };
-  }, [usuario, deps]);
+  }, [usuario, deps, perfilGasto]);
+
+  function escolher_tipo_gasto(proximo: TipoGastoExtrato) {
+    const params = new URLSearchParams(searchParams);
+    const query = tipo_gasto_para_query(proximo);
+    if (query) params.set("tipoGasto", query);
+    else params.delete("tipoGasto");
+    setSearchParams(params, { replace: true });
+  }
 
   const recorrentes = dados?.recorrentes ?? [];
   const compras = dados?.compras ?? [];
@@ -133,8 +147,8 @@ export function TelaRecorrentes() {
     () => compras.reduce((soma, item) => soma + (item.valorTotal - item.valorRestante), 0),
     [compras],
   );
-  const totalComprometido = totalRecorrente + faltaParcelas;
-  const maxBarra = Math.max(totalRecorrente, faltaParcelas, totalComprometido, 1);
+  const totalDividaParcelada = jaPago + faltaParcelas;
+  const pctPago = totalDividaParcelada > 0 ? (jaPago / totalDividaParcelada) * 100 : 0;
 
   const pontoLegenda =
     pontoHover ?? meses.find((item) => item.mes === mesSelecionado) ?? meses[0] ?? null;
@@ -150,11 +164,14 @@ export function TelaRecorrentes() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-texto">Recorrentes e parcelados</h1>
-        <p className="text-sm text-texto-suave">
-          Comprometimento mensal — assinaturas e o que ainda falta nas compras parceladas
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-texto">Recorrentes e parcelados</h1>
+          <p className="text-sm text-texto-suave">
+            Comprometimento mensal — assinaturas e o que ainda falta nas compras parceladas
+          </p>
+        </div>
+        <SeletorTipoGasto valor={tipoGasto} onChange={escolher_tipo_gasto} />
       </div>
 
       {erro && (
@@ -165,45 +182,27 @@ export function TelaRecorrentes() {
         <p className="text-sm text-texto-suave">Carregando...</p>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
               <p className="text-xs uppercase tracking-wide text-texto-suave">Recorrentes</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums">{formatar_moeda(totalRecorrente)}</p>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda">
-                <div
-                  className="h-full rounded-full bg-primaria"
-                  style={{ width: `${(totalRecorrente / maxBarra) * 100}%` }}
-                />
-              </div>
             </div>
             <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
               <p className="text-xs uppercase tracking-wide text-texto-suave">Falta em parcelas</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-despesa">
                 {formatar_moeda(faltaParcelas)}
               </p>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda">
-                <div
-                  className="h-full rounded-full bg-despesa"
-                  style={{ width: `${(faltaParcelas / maxBarra) * 100}%` }}
-                />
-              </div>
-            </div>
-            <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
-              <p className="text-xs uppercase tracking-wide text-texto-suave">Total comprometido</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-texto">
-                {formatar_moeda(totalComprometido)}
-              </p>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda">
-                <div
-                  className="h-full rounded-full bg-texto"
-                  style={{ width: "100%" }}
-                />
-              </div>
             </div>
             <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
               <p className="text-xs uppercase tracking-wide text-texto-suave">Já pago</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-receita">
                 {formatar_moeda(jaPago)}
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda">
+                <div className="h-full rounded-full bg-receita" style={{ width: `${pctPago}%` }} />
+              </div>
+              <p className="mt-1.5 text-xs text-texto-suave">
+                {Math.round(pctPago)}% das compras
               </p>
             </div>
           </div>
@@ -313,7 +312,6 @@ export function TelaRecorrentes() {
                     parcelas={pontoLegenda.parcelas}
                     recorrentes={pontoLegenda.recorrentes}
                     total={pontoLegenda.total}
-                    rotulo={pontoLegenda.rotulo}
                   />
                 ) : null}
               </div>

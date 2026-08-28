@@ -8,6 +8,7 @@ import {
 } from "@lancai/banco";
 import { listar_recorrencias } from "../servicos/recorrencia-servico";
 import { montar_comprometimento } from "../servicos/comprometimento-servico";
+import { perfil_de_tipo_gasto_dashboard } from "../servicos/montar-dashboard";
 import { hojeISO } from "@lancai/tipos";
 
 export async function registrar_rotas_recorrencia(app: FastifyInstance) {
@@ -66,10 +67,18 @@ export async function registrar_rotas_recorrencia(app: FastifyInstance) {
   });
 
   app.get("/parcelamentos", async (requisicao, resposta) => {
-    const { usuarioId, data } = requisicao.query as { usuarioId?: string; data?: string };
+    const { usuarioId, data, tipoGasto } = requisicao.query as {
+      usuarioId?: string;
+      data?: string;
+      tipoGasto?: string;
+    };
     if (!usuarioId) {
       return resposta.status(400).send({ erro: "usuarioId é obrigatório." });
     }
-    return montar_comprometimento(usuarioId, data ?? hojeISO());
+    return montar_comprometimento(
+      usuarioId,
+      data ?? hojeISO(),
+      perfil_de_tipo_gasto_dashboard(tipoGasto),
+    );
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filtrar_compras_do_workspace } from "../servicos/comprometimento-servico";
+import { filtrar_compras_do_workspace, perfil_do_destino_maps, recortar_por_tipo_gasto } from "../servicos/comprometimento-servico";
 import type { CompraParcelada } from "@lancai/relatorios";
 
 function compra(sobrepor: Partial<CompraParcelada> & Pick<CompraParcelada, "descricao" | "cartaoId" | "tipoGasto">): CompraParcelada {
@@ -63,5 +63,44 @@ describe("filtrar_compras_do_workspace", () => {
       cartoes: [pessoal],
     });
     expect(visiveis.map((item) => item.descricao)).toEqual(["Netflix"]);
+  });
+});
+
+describe("perfil_do_destino_maps", () => {
+  const cartoes = new Map([
+    ["cartao-pf", "pf"],
+    ["cartao-pj", "pj"],
+  ]);
+  const contas = new Map([
+    ["conta-pf", "pf"],
+    ["conta-pj", "pj"],
+  ]);
+
+  it("usa o perfil do cartão quando há cartão", () => {
+    expect(perfil_do_destino_maps("cartao-pj", "conta-pf", cartoes, contas)).toBe("pj");
+  });
+
+  it("cai na conta quando não há cartão", () => {
+    expect(perfil_do_destino_maps(null, "conta-pj", cartoes, contas)).toBe("pj");
+  });
+
+  it("assume pf sem destino", () => {
+    expect(perfil_do_destino_maps(null, null, cartoes, contas)).toBe("pf");
+  });
+});
+
+describe("recortar_por_tipo_gasto", () => {
+  it("sem perfil mantém tudo", () => {
+    const itens = [{ tipoGasto: "pf" }, { tipoGasto: "pj" }];
+    expect(recortar_por_tipo_gasto(itens, undefined)).toEqual(itens);
+  });
+
+  it("recorta compras e recorrentes pela natureza", () => {
+    const compras = [
+      { descricao: "Netflix", tipoGasto: "pf" },
+      { descricao: "Kasmobile", tipoGasto: "pj" },
+    ];
+    expect(recortar_por_tipo_gasto(compras, "pf").map((item) => item.descricao)).toEqual(["Netflix"]);
+    expect(recortar_por_tipo_gasto(compras, "pj").map((item) => item.descricao)).toEqual(["Kasmobile"]);
   });
 });
