@@ -128,6 +128,20 @@ describe("filtrar_extrato", () => {
     expect(ids).toEqual(["1", "2", "3", "4", "6"]);
   });
 
+  it("não lista lançamento cancelado", () => {
+    const comCancelado = [
+      ...lote,
+      movimento({ id: "x", descricao: "PREVER duplicado", status: "cancelado" }),
+    ];
+    expect(filtrar_extrato(comCancelado, contas, cartoes, base).map((m) => m.id)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "6",
+    ]);
+  });
+
   it("busca sem acento nem caixa em descrição, fonte e origem", () => {
     const porDescricao = filtrar_extrato(lote, contas, cartoes, { ...base, busca: "PADARIA" });
     expect(porDescricao.map((m) => m.id)).toEqual(["1"]);

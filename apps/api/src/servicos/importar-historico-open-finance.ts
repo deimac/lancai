@@ -7,6 +7,7 @@ import {
 import { enriquecer_apos_ingestao } from "./pos-ingestao-open-finance";
 import { obter_servico_conexao, obter_servico_ingestao } from "./open-finance";
 import { liberar_lock_sync, tentar_adquirir_lock_sync } from "./lock-sync-conexao";
+import { filtrar_criacao_semantica_of } from "./skip-semantico-of";
 
 export interface ResultadoCronImportarHistorico {
   fonteAtiva: boolean;
@@ -360,7 +361,11 @@ function montar_deps_padrao(): DependenciasImportarHistorico | null {
     listar: (limite) => conexao.listar_conexoes_importaveis(limite),
     verificarItem: (id) => conexao.verificar_item_salvo(id),
     atualizarSaldos: (id) => conexao.atualizar_saldos(id),
-    importar: (id, opcoes) => ingestao.importar_historico(id, opcoes),
+    importar: (id, opcoes) =>
+      ingestao.importar_historico(id, {
+        ...opcoes,
+        filtrarCriacao: filtrar_criacao_semantica_of,
+      }),
     enriquecer: enriquecer_apos_ingestao,
   };
 }

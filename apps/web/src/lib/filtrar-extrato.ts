@@ -152,6 +152,7 @@ export function filtrar_extrato(
 ): MovimentoResumo[] {
   const termo = normalizar_busca(filtros.busca);
   return movimentos.filter((movimento) => {
+    if (movimento.status === "cancelado") return false;
     if (!movimento.dataMovimento.startsWith(`${filtros.mes}-`)) return false;
     if (filtros.fila === "banco" && movimento.fonte !== "open_finance") return false;
     if (filtros.fila === "manual" && movimento.fonte === "open_finance") return false;

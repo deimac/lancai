@@ -401,6 +401,7 @@ export async function registrar_rotas_open_finance(app: FastifyInstance) {
       const ingestao = obter_servico_ingestao();
       if (ingestao) {
         resumoIngestao = await ingestao.importar_historico(id, {
+          filtrarCriacao: filtrar_criacao_semantica_of,
           aoProgresso: (progresso) => {
             escrever({ tipo: "progresso", ...progresso });
           },
