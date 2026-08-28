@@ -23,12 +23,62 @@ export type CategoriaUi = {
   movimentosMes: number;
 };
 
+export type MovimentoTotaisCategoria = {
+  dataMovimento: string;
+  cartaoId?: string | null;
+  categoriaId?: string | null;
+  tipo: string;
+  valor: string | number;
+  status?: string;
+};
+
+const MES_YYYY_MM = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Query `YYYY-MM` → `YYYY-MM-01` para o recorte de competência. */
+export function data_referencia_do_mes(mes: string | undefined, hoje = hojeISO()): string {
+  if (!mes || !MES_YYYY_MM.test(mes)) return hoje;
+  return `${mes}-01`;
+}
+
 function mes_iso(dataAtual: string): { inicio: string; fim: string } {
   const [ano, mes] = dataAtual.split("-");
   const inicio = `${ano}-${mes}-01`;
   const ultimoDia = new Date(Number(ano), Number(mes), 0).getDate();
   const fim = `${ano}-${mes}-${String(ultimoDia).padStart(2, "0")}`;
   return { inicio, fim };
+}
+
+export function agregar_totais_por_categoria(
+  movimentos: MovimentoTotaisCategoria[],
+  mes: string,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+): Map<string, { saidas: number; entradas: number; quantidade: number }> {
+  const mapaTotais = new Map<string, { saidas: number; entradas: number; quantidade: number }>();
+  for (const movimento of movimentos) {
+    if (movimento.status === "cancelado") continue;
+    if (!movimento.categoriaId) continue;
+    if (!movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao)) continue;
+    const atual = mapaTotais.get(movimento.categoriaId) ?? {
+      saidas: 0,
+      entradas: 0,
+      quantidade: 0,
+    };
+    const valor = Number(movimento.valor);
+    const seguro = Number.isFinite(valor) ? valor : 0;
+    if (movimento.tipo === "despesa" || movimento.tipo === "retirada" || movimento.tipo === "emprestimo") {
+      atual.saidas += seguro;
+    } else if (
+      movimento.tipo === "receita" ||
+      movimento.tipo === "reembolso" ||
+      movimento.tipo === "estorno" ||
+      movimento.tipo === "aporte"
+    ) {
+      atual.entradas += seguro;
+    }
+    atual.quantidade += 1;
+    mapaTotais.set(movimento.categoriaId, atual);
+  }
+  return mapaTotais;
 }
 
 export async function montar_categorias_ui(
@@ -71,33 +121,7 @@ export async function montar_categorias_ui(
   ]);
 
   const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
-  const noMes = movimentos.filter((movimento) =>
-    movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao),
-  );
-
-  const mapaTotais = new Map<string, { saidas: number; entradas: number; quantidade: number }>();
-  for (const movimento of noMes) {
-    if (!movimento.categoriaId) continue;
-    const atual = mapaTotais.get(movimento.categoriaId) ?? {
-      saidas: 0,
-      entradas: 0,
-      quantidade: 0,
-    };
-    const valor = Number(movimento.valor);
-    const seguro = Number.isFinite(valor) ? valor : 0;
-    if (movimento.tipo === "despesa" || movimento.tipo === "retirada" || movimento.tipo === "emprestimo") {
-      atual.saidas += seguro;
-    } else if (
-      movimento.tipo === "receita" ||
-      movimento.tipo === "reembolso" ||
-      movimento.tipo === "estorno" ||
-      movimento.tipo === "aporte"
-    ) {
-      atual.entradas += seguro;
-    }
-    atual.quantidade += 1;
-    mapaTotais.set(movimento.categoriaId, atual);
-  }
+  const mapaTotais = agregar_totais_por_categoria(movimentos, mes, fechamentoPorCartao);
 
   let orcamentos: Awaited<ReturnType<typeof listar_status_orcamentos>> = [];
   try {

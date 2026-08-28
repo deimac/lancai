@@ -790,8 +790,10 @@ export const clienteApi = {
     );
   },
 
-  listar_categorias(usuarioId: string): Promise<CategoriaResumo[]> {
-    return requisitar<CategoriaResumo[]>(`/categorias?usuarioId=${usuarioId}`);
+  listar_categorias(usuarioId: string, mes?: string): Promise<CategoriaResumo[]> {
+    const params = new URLSearchParams({ usuarioId });
+    if (mes) params.set("mes", mes);
+    return requisitar<CategoriaResumo[]>(`/categorias?${params}`);
   },
 
   criar_categoria(dados: {

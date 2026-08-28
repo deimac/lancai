@@ -1,10 +1,20 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { categoria, eh_categoria_sistema, obter_banco } from "@lancai/banco";
 import { garantir_categorias_padrao, RepositorioContextoDrizzle } from "@lancai/ia";
 import { schemaAtualizarCategoria, schemaCriarCategoria } from "@lancai/tipos";
 import { definir_limite_categoria } from "../servicos/orcamento-servico";
-import { montar_categorias_ui } from "../servicos/listar-categorias-ui";
+import { data_referencia_do_mes, montar_categorias_ui } from "../servicos/listar-categorias-ui";
+
+const schemaConsulta = z.object({
+  usuarioId: z.string().uuid().optional(),
+  /** Competência YYYY-MM; default = mês de hoje. */
+  mes: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+});
 
 export async function registrar_rotas_categoria(app: FastifyInstance) {
   app.post("/", async (requisicao, resposta) => {
@@ -79,11 +89,11 @@ export async function registrar_rotas_categoria(app: FastifyInstance) {
   });
 
   app.get("/", async (requisicao) => {
-    const { usuarioId } = requisicao.query as { usuarioId?: string };
+    const { usuarioId, mes } = schemaConsulta.parse(requisicao.query);
     if (!usuarioId) {
       return obter_banco().select().from(categoria);
     }
     await garantir_categorias_padrao(usuarioId, new RepositorioContextoDrizzle());
-    return montar_categorias_ui(usuarioId);
+    return montar_categorias_ui(usuarioId, data_referencia_do_mes(mes));
   });
 }

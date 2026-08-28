@@ -955,7 +955,10 @@ export function TelaDashboard() {
         >
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-medium text-texto">Orçamentos</h2>
-            <Link to="/categorias" className="text-xs text-primaria hover:underline">
+            <Link
+              to={mes === mes_de_hoje() ? "/categorias" : `/categorias?mes=${mes}`}
+              className="text-xs text-primaria hover:underline"
+            >
               Categorias
             </Link>
           </div>

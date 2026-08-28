@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { MoreHorizontal, Pencil, Plus, Tags } from "lucide-react";
+import { nome_mes_extenso, rotulo_mes_curto } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
@@ -10,6 +12,7 @@ import {
 } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { formatar_moeda } from "../lib/formatar";
+import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import {
   ICONES_CATEGORIA,
   PALETA_CATEGORIA,
@@ -49,10 +52,20 @@ const FORM_VAZIO: FormCategoria = {
   limite: "",
 };
 
+function rotulo_mes_ano(yyyyMm: string): string {
+  return `${nome_mes_extenso(yyyyMm)}/${yyyyMm.slice(2, 4)}`;
+}
+
+function rotulo_mes_curto_ano(yyyyMm: string): string {
+  return `${rotulo_mes_curto(yyyyMm)}/${yyyyMm.slice(2, 4)}`;
+}
+
 export function TelaCategorias() {
   const { usuario } = useAutenticacao();
   const toast = useToast();
   const contexto = useContextoLayout();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mes = normalizar_mes(searchParams.get("mes"), mes_de_hoje());
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -67,13 +80,13 @@ export function TelaCategorias() {
     setCarregando(true);
     setErro(null);
     try {
-      setCategorias(await clienteApi.listar_categorias(usuario.id));
+      setCategorias(await clienteApi.listar_categorias(usuario.id, mes));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar as categorias.");
     } finally {
       setCarregando(false);
     }
-  }, [usuario]);
+  }, [usuario, mes]);
 
   useEffect(() => {
     void carregar();
@@ -139,6 +152,13 @@ export function TelaCategorias() {
     setForm(proximo);
   }
 
+  function escolher_mes(proximo: string) {
+    const params = new URLSearchParams(searchParams);
+    if (proximo === mes_de_hoje()) params.delete("mes");
+    else params.set("mes", proximo);
+    setSearchParams(params, { replace: true });
+  }
+
   if (!usuario) return null;
 
   return (
@@ -147,13 +167,16 @@ export function TelaCategorias() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Categorias</h1>
           <p className="text-sm text-texto-suave">
-            Ícone, cor e limite mensal — as mesmas categorias nos dois workspaces
+            Gasto de {rotulo_mes_ano(mes)} — o limite vale todo mês; a barra é só deste recorte
           </p>
         </div>
-        <Botao onClick={() => abrirForm({ ...FORM_VAZIO })}>
-          <Plus size={14} />
-          Nova categoria
-        </Botao>
+        <div className="flex flex-wrap items-center gap-2">
+          <SeletorMes mes={mes} onChange={escolher_mes} />
+          <Botao onClick={() => abrirForm({ ...FORM_VAZIO })}>
+            <Plus size={14} />
+            Nova categoria
+          </Botao>
+        </div>
       </div>
 
       {erro && (
@@ -172,9 +195,9 @@ export function TelaCategorias() {
                 <th className="px-4 py-2 font-medium">Tipo</th>
                 <th className="px-4 py-2 font-medium">Categoria</th>
                 <th className="px-4 py-2 font-medium">Limite</th>
-                <th className="px-4 py-2 font-medium">No mês</th>
+                <th className="px-4 py-2 font-medium">Gasto em {rotulo_mes_curto_ano(mes)}</th>
                 <th className="px-4 py-2 font-medium">Orçamento</th>
-                <th className="px-4 py-2 font-medium">Movs.</th>
+                <th className="px-4 py-2 font-medium">Neste mês</th>
                 <th className="w-12 px-2 py-2"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>
@@ -226,7 +249,13 @@ export function TelaCategorias() {
                       )}
                     </td>
                     <td className="px-4 py-3 tabular-nums text-texto-suave">
-                      {categoria.movimentosMes ?? 0}
+                      <Link
+                        to={`/extrato?mes=${mes}&categoria=${categoria.id}`}
+                        className="text-primaria hover:underline"
+                        title={`Ver lançamentos de ${categoria.nome} em ${rotulo_mes_ano(mes)}`}
+                      >
+                        {categoria.movimentosMes ?? 0} neste mês
+                      </Link>
                     </td>
                     <td className="relative px-2 py-3">
                       <button
@@ -304,6 +333,9 @@ export function TelaCategorias() {
                 value={form.limite}
                 onChange={(limite) => setForm({ ...form, limite })}
               />
+              <span className="font-normal text-texto-suave">
+                Vale todo mês; a barra é só o mês selecionado.
+              </span>
             </label>
             <div>
               <p className="mb-2 text-xs text-texto-suave">Cor</p>
