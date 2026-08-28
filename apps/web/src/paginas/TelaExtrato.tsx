@@ -66,6 +66,7 @@ import {
   origem_da_query,
   origem_para_query,
   ordenar_categorias_por_uso,
+  categorias_com_lancamentos,
   paginar,
   papel_da_query,
   papel_para_query,
@@ -430,6 +431,23 @@ export function TelaExtrato() {
     [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem, tipoGasto, papel],
   );
 
+  const categoriasDoFiltro = useMemo(() => {
+    const recorteDoMes = filtrar_extrato(movimentos, contas, cartoes, {
+      mes,
+      fila: "todas",
+      busca: "",
+      categoriaId: null,
+      classificacao: "todas",
+      origem,
+      tipoGasto,
+      papel: "todas",
+    });
+    const usadas = categorias_com_lancamentos(categorias, recorteDoMes);
+    if (!categoriaId || usadas.some((item) => item.id === categoriaId)) return usadas;
+    const selecionada = categorias.find((item) => item.id === categoriaId);
+    return selecionada ? [selecionada, ...usadas] : usadas;
+  }, [movimentos, contas, cartoes, mes, origem, tipoGasto, categorias, categoriaId]);
+
   const paginaAtual = useMemo(
     () => paginar(visiveis, pagina, porPagina),
     [visiveis, pagina, porPagina],
@@ -786,7 +804,7 @@ export function TelaExtrato() {
         aberto={filtrosAbertos}
         aoFechar={() => setFiltrosAbertos(false)}
         quantidade={visiveis.length}
-        categorias={categorias}
+        categorias={categoriasDoFiltro}
         categoriaId={categoriaId}
         classificacao={classificacao}
         papel={papel}

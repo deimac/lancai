@@ -17,6 +17,7 @@ import {
   perfil_de_tipo_gasto,
   quantidade_filtros_drawer,
   ordenar_categorias_por_uso,
+  categorias_com_lancamentos,
   resumir_extrato,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
@@ -447,6 +448,23 @@ describe("ordenar_categorias_por_uso", () => {
     expect(
       ordenar_categorias_por_uso([transporte, alimentacao, saude], movimentos).map((c) => c.nome),
     ).toEqual(["Alimentação", "Transporte", "Saúde"]);
+  });
+});
+
+describe("categorias_com_lancamentos", () => {
+  const alimentacao = { id: "cat-alimentacao", nome: "Alimentação" };
+  const transporte = { id: "cat-transporte", nome: "Transporte" };
+  const saude = { id: "cat-saude", nome: "Saúde" };
+
+  it("omite categorias sem lançamento no recorte", () => {
+    const movimentos = [
+      movimento({ id: "a1", categoriaId: "cat-alimentacao" }),
+      movimento({ id: "t1", categoriaId: "cat-transporte" }),
+      movimento({ id: "s1", categoriaId: "cat-saude", status: "cancelado" }),
+    ];
+    expect(
+      categorias_com_lancamentos([saude, transporte, alimentacao], movimentos).map((c) => c.nome),
+    ).toEqual(["Alimentação", "Transporte"]);
   });
 });
 

@@ -307,3 +307,19 @@ export function ordenar_categorias_por_uso<T extends { id: string; nome: string 
     return a.nome.localeCompare(b.nome, "pt-BR");
   });
 }
+
+/** Categorias que de fato aparecem no recorte — para o filtro do extrato, não o catálogo inteiro. */
+export function categorias_com_lancamentos<T extends { id: string; nome: string }>(
+  categorias: T[],
+  movimentos: Array<Pick<MovimentoResumo, "categoriaId" | "status">>,
+): T[] {
+  const usadas = new Set<string>();
+  for (const movimento of movimentos) {
+    if (movimento.status === "cancelado") continue;
+    if (movimento.categoriaId) usadas.add(movimento.categoriaId);
+  }
+  return ordenar_categorias_por_uso(
+    categorias.filter((categoria) => usadas.has(categoria.id)),
+    movimentos,
+  );
+}
