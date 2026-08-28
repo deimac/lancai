@@ -4,7 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -30,11 +30,55 @@ function rotulo_mes(yyyyMm: string): string {
   return `${ROTULOS_MES[indice] ?? mes}/${ano}`;
 }
 
+type PontoComprometimento = {
+  mes: string;
+  rotulo: string;
+  parcelas: number;
+  recorrentes: number;
+  total: number;
+};
+
+function LegendaComprometimento({
+  parcelas,
+  recorrentes,
+  total,
+  rotulo,
+}: {
+  parcelas: number;
+  recorrentes: number;
+  total: number;
+  rotulo: string | null;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
+      {rotulo ? (
+        <span className="w-full text-center text-[11px] text-texto-suave">{rotulo}</span>
+      ) : null}
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-[#f07178]" />
+        Parcelas
+        <span className="font-medium tabular-nums text-despesa">{formatar_moeda(parcelas)}</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-texto" />
+        Total
+        <span className="font-medium tabular-nums text-texto">{formatar_moeda(total)}</span>
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-texto-suave">
+        <span className="h-2 w-2 rounded-full bg-[#7c6af7]" />
+        Recorrentes
+        <span className="font-medium tabular-nums text-primaria">{formatar_moeda(recorrentes)}</span>
+      </span>
+    </div>
+  );
+}
+
 export function TelaRecorrentes() {
   const { usuario } = useAutenticacao();
   const contexto = useContextoLayout();
   const [dados, setDados] = useState<Comprometimento | null>(null);
   const [mesSelecionado, setMesSelecionado] = useState<string | null>(null);
+  const [pontoHover, setPontoHover] = useState<PontoComprometimento | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const deps = chave_dependencia(contexto?.versoes, "extrato", "dashboard", "cartoes");
@@ -46,6 +90,7 @@ export function TelaRecorrentes() {
     setErro(null);
     setDados(null);
     setMesSelecionado(null);
+    setPontoHover(null);
     void clienteApi
       .listar_parcelamentos(usuario.id, hojeISO())
       .then((proximo) => {
@@ -67,10 +112,11 @@ export function TelaRecorrentes() {
   const recorrentes = dados?.recorrentes ?? [];
   const compras = dados?.compras ?? [];
   const meses = useMemo(
-    () =>
+    (): PontoComprometimento[] =>
       (dados?.meses ?? []).map((item) => ({
         ...item,
         rotulo: rotulo_mes(item.mes),
+        total: item.parcelas + item.recorrentes,
       })),
     [dados?.meses],
   );
@@ -87,7 +133,11 @@ export function TelaRecorrentes() {
     () => compras.reduce((soma, item) => soma + (item.valorTotal - item.valorRestante), 0),
     [compras],
   );
-  const maxBarra = Math.max(totalRecorrente, faltaParcelas, 1);
+  const totalComprometido = totalRecorrente + faltaParcelas;
+  const maxBarra = Math.max(totalRecorrente, faltaParcelas, totalComprometido, 1);
+
+  const pontoLegenda =
+    pontoHover ?? meses.find((item) => item.mes === mesSelecionado) ?? meses[0] ?? null;
 
   const comprasVisiveis = useMemo(() => {
     if (mesSelecionado) {
@@ -115,7 +165,7 @@ export function TelaRecorrentes() {
         <p className="text-sm text-texto-suave">Carregando...</p>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
               <p className="text-xs uppercase tracking-wide text-texto-suave">Recorrentes</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums">{formatar_moeda(totalRecorrente)}</p>
@@ -139,6 +189,18 @@ export function TelaRecorrentes() {
               </div>
             </div>
             <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
+              <p className="text-xs uppercase tracking-wide text-texto-suave">Total comprometido</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-texto">
+                {formatar_moeda(totalComprometido)}
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-borda">
+                <div
+                  className="h-full rounded-full bg-texto"
+                  style={{ width: "100%" }}
+                />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-borda bg-superficie/80 p-4">
               <p className="text-xs uppercase tracking-wide text-texto-suave">Já pago</p>
               <p className="mt-1 text-2xl font-semibold tabular-nums text-receita">
                 {formatar_moeda(jaPago)}
@@ -148,7 +210,12 @@ export function TelaRecorrentes() {
 
           <section className="rounded-2xl border border-borda bg-superficie/80 p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-medium text-texto">Comprometimento mensal</h2>
+              <div>
+                <h2 className="text-sm font-medium text-texto">Comprometimento mensal</h2>
+                <p className="mt-0.5 text-xs text-texto-suave">
+                  Parcelas + recorrentes de cada mês — passe o mouse para o detalhe
+                </p>
+              </div>
               {mesSelecionado ? (
                 <button
                   type="button"
@@ -159,51 +226,96 @@ export function TelaRecorrentes() {
                 </button>
               ) : null}
             </div>
-            {meses.every((item) => item.parcelas === 0 && item.recorrentes === 0) ? (
+            {meses.every((item) => item.total === 0) ? (
               <p className="py-8 text-center text-sm text-texto-suave">
                 Nada comprometido nos próximos meses.
               </p>
             ) : (
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={meses}
-                    onClick={(estado) => {
-                      const clique = estado as {
-                        activePayload?: Array<{ payload?: { mes?: string } }>;
-                      };
-                      const mes = clique.activePayload?.[0]?.payload?.mes;
-                      if (!mes) return;
-                      setMesSelecionado((atual) => (atual === mes ? null : mes));
-                    }}
-                  >
-                    <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      dataKey="rotulo"
-                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
-                      axisLine={false}
-                      tickFormatter={(v: number) =>
-                        v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
-                      }
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--color-superficie)",
-                        border: "1px solid var(--color-borda)",
-                        borderRadius: 12,
-                        color: "var(--color-texto)",
+              <div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={meses}
+                      barCategoryGap="32%"
+                      onMouseMove={(estado) => {
+                        const rotulo = estado.activeLabel;
+                        if (rotulo == null) return;
+                        const ponto = meses.find((item) => item.rotulo === String(rotulo));
+                        if (ponto) setPontoHover(ponto);
                       }}
-                      formatter={(valor, nome) => [formatar_moeda(Number(valor)), String(nome)]}
-                    />
-                    <Legend />
-                    <Bar dataKey="parcelas" name="Parcelas" fill="#f07178" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="recorrentes" name="Recorrentes" fill="#7c6af7" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                      onMouseLeave={() => setPontoHover(null)}
+                      onClick={(estado) => {
+                        const clique = estado as {
+                          activePayload?: Array<{ payload?: { mes?: string } }>;
+                        };
+                        const mes = clique.activePayload?.[0]?.payload?.mes;
+                        if (!mes) return;
+                        setMesSelecionado((atual) => (atual === mes ? null : mes));
+                      }}
+                    >
+                      <defs>
+                        <linearGradient id="recorrentesBar" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#7c6af7" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#7c6af7" stopOpacity={0.72} />
+                        </linearGradient>
+                        <linearGradient id="parcelasBar" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f07178" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#f07178" stopOpacity={0.72} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="rotulo"
+                        tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v: number) =>
+                          v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
+                        }
+                      />
+                      <Tooltip
+                        content={() => null}
+                        cursor={{ fill: "var(--color-texto-suave)", fillOpacity: 0.08 }}
+                      />
+                      <Bar dataKey="recorrentes" name="Recorrentes" stackId="comp" fill="url(#recorrentesBar)" maxBarSize={36}>
+                        {meses.map((item) => (
+                          <Cell
+                            key={`rec-${item.mes}`}
+                            fillOpacity={mesSelecionado && mesSelecionado !== item.mes ? 0.35 : 1}
+                          />
+                        ))}
+                      </Bar>
+                      <Bar
+                        dataKey="parcelas"
+                        name="Parcelas"
+                        stackId="comp"
+                        fill="url(#parcelasBar)"
+                        radius={[6, 6, 0, 0]}
+                        maxBarSize={36}
+                      >
+                        {meses.map((item) => (
+                          <Cell
+                            key={`par-${item.mes}`}
+                            fillOpacity={mesSelecionado && mesSelecionado !== item.mes ? 0.35 : 1}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                {pontoLegenda ? (
+                  <LegendaComprometimento
+                    parcelas={pontoLegenda.parcelas}
+                    recorrentes={pontoLegenda.recorrentes}
+                    total={pontoLegenda.total}
+                    rotulo={pontoLegenda.rotulo}
+                  />
+                ) : null}
               </div>
             )}
           </section>
