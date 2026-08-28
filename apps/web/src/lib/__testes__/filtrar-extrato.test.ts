@@ -308,6 +308,15 @@ describe("resumir_extrato", () => {
         descricao: "Fatura",
       }),
       movimento({
+        id: "credito",
+        tipo: "receita",
+        valor: "9622.31",
+        papel: "pagamento_fatura",
+        descricao: "Pagamento recebido",
+        cartaoId: "cartao-nu",
+        contaId: null,
+      }),
+      movimento({
         id: "r",
         tipo: "despesa",
         valor: "15",
@@ -322,6 +331,37 @@ describe("resumir_extrato", () => {
       resultado: 45,
       revisarQuantidade: 1,
       revisarTotal: 15,
+      proximaFatura: 0,
+    });
+  });
+
+  it("crédito de quitação no cartão não infla entradas nem o resultado", () => {
+    const recorte = [
+      movimento({
+        id: "pix",
+        tipo: "receita",
+        valor: "9622.31",
+        papel: "pagamento_fatura",
+        descricao: "Pagamento recebido",
+        cartaoId: "cartao-nu",
+        contaId: null,
+      }),
+      movimento({
+        id: "estorno",
+        tipo: "receita",
+        valor: "21.13",
+        papel: "gasto",
+        descricao: "CURSOR",
+        cartaoId: "cartao-azul",
+        contaId: null,
+      }),
+    ];
+    expect(resumir_extrato(recorte)).toEqual({
+      entradas: 21.13,
+      saidas: 0,
+      resultado: 21.13,
+      revisarQuantidade: 0,
+      revisarTotal: 0,
       proximaFatura: 0,
     });
   });

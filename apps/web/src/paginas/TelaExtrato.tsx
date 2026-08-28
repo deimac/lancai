@@ -810,7 +810,7 @@ export function TelaExtrato() {
           <PainelResumo
             titulo="Entradas"
             valor={formatar_moeda(resumo.entradas)}
-            detalhe="receitas no recorte"
+            detalhe="sem pagamento de fatura"
             icone={ArrowDownLeft}
             tom="receita"
           />

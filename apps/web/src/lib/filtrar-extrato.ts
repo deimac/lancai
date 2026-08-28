@@ -210,7 +210,7 @@ export type ResumoExtrato = {
 
 export type CartaoCicloExtrato = { id: string; fechamento?: number | null };
 
-/** Totais do recorte já filtrado (exclui cancelados; saídas sem pagamento de fatura). */
+/** Totais do recorte já filtrado (exclui cancelados e pagamento de fatura). */
 export function resumir_extrato(
   movimentos: MovimentoResumo[],
   opcoes?: { mes?: string; cartoes?: CartaoCicloExtrato[] },
@@ -225,14 +225,16 @@ export function resumir_extrato(
     if (movimento.status === "cancelado") continue;
     const valor = Number(movimento.valor);
     const seguro = Number.isFinite(valor) ? valor : 0;
-    if (eh_entrada_extrato(movimento.tipo)) {
-      entradas += seguro;
-    } else if (movimento.papel !== "pagamento_fatura") {
-      const noResultado =
-        !opcoes?.mes ||
-        movimento_no_resultado_do_mes(movimento, opcoes.mes, fechamentoPorCartao);
-      if (noResultado) saidas += seguro;
-      else proximaFatura += seguro;
+    if (movimento.papel !== "pagamento_fatura") {
+      if (eh_entrada_extrato(movimento.tipo)) {
+        entradas += seguro;
+      } else {
+        const noResultado =
+          !opcoes?.mes ||
+          movimento_no_resultado_do_mes(movimento, opcoes.mes, fechamentoPorCartao);
+        if (noResultado) saidas += seguro;
+        else proximaFatura += seguro;
+      }
     }
     if (precisa_revisao(movimento)) {
       revisarQuantidade += 1;
