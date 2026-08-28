@@ -153,9 +153,9 @@ type ParcelasIrmasResposta = Awaited<ReturnType<typeof clienteApi.listar_parcela
 function cor_valor(tipo: string, status: MovimentoResumo["status"]): string {
   if (status === "cancelado") return "text-texto-suave line-through";
   if (tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte") {
-    return "text-primaria";
+    return "text-receita";
   }
-  if (tipo === "despesa" || tipo === "retirada") return "text-texto";
+  if (tipo === "despesa" || tipo === "retirada") return "text-despesa";
   return "text-texto-suave";
 }
 
