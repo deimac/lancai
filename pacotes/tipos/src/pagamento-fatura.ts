@@ -203,6 +203,20 @@ export function data_vencimento_do_ciclo(
 }
 
 /**
+ * Ciclo cuja fatura vence no mês da agenda (Próximos).
+ * Fecha 30 / vence 6: agosto lista o ciclo de julho (vence 06/08).
+ * Fecha 12 / vence 17: agosto lista o ciclo de agosto (vence 17/08).
+ */
+export function competencia_ciclo_vencendo_em(
+  mesAgenda: string,
+  fechamento: number,
+  vencimento: number,
+): string {
+  if (vencimento < fechamento) return mes_anterior_competencia(mesAgenda);
+  return mesAgenda;
+}
+
+/**
  * Competência que o pagamento quita: se cai perto do vencimento do ciclo
  * anterior, é resto/liquidação daquele; senão, a competência informada ou a do ciclo da data.
  */

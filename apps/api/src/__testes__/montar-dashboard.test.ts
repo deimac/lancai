@@ -282,8 +282,15 @@ describe("montar_proximos_pagamentos", () => {
     expect(faturasAgo).toEqual([
       expect.objectContaining({
         data: "2026-08-06",
+        dataPagamento: "2026-07-29",
         valor: 6500.57,
-        pago: false,
+        pago: true,
+      }),
+      expect.objectContaining({
+        data: "2026-08-06",
+        dataPagamento: "2026-08-05",
+        valor: 11.02,
+        pago: true,
       }),
     ]);
 
@@ -355,7 +362,8 @@ describe("montar_proximos_pagamentos", () => {
         expect.objectContaining({
           descricao: "Fatura Azul Itaú Visa Platinum",
           valor: 11.02,
-          pago: false,
+          pago: true,
+          dataPagamento: "2026-08-05",
         }),
         expect.objectContaining({
           descricao: "Fatura Mercado Pago Visa",

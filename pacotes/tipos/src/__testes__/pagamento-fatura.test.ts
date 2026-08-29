@@ -6,6 +6,7 @@ import {
   eh_credito_quitacao_no_cartao,
   intervalo_ciclo_fatura,
   competencia_ciclo_da_data,
+  competencia_ciclo_vencendo_em,
   competencia_quitacao_fatura,
   dia_fechamento_no_mes,
   linha_aceita_pagamento_fatura,
@@ -274,6 +275,9 @@ describe("heurística de pagamento de fatura", () => {
     expect(competencia_quitacao_fatura("2026-07-29", 30, 6, "2026-07")).toBe("2026-07");
     expect(competencia_quitacao_fatura("2026-07-29", 30, 6, "2026-08")).toBe("2026-07");
     expect(competencia_quitacao_fatura("2026-08-10", 10, 17, "2026-08")).toBe("2026-08");
+    expect(competencia_ciclo_vencendo_em("2026-08", 30, 6)).toBe("2026-07");
+    expect(competencia_ciclo_vencendo_em("2026-09", 30, 6)).toBe("2026-08");
+    expect(competencia_ciclo_vencendo_em("2026-08", 12, 17)).toBe("2026-08");
   });
 
   it("sugere pela descrição na conta preferencial, sem aplicar sozinha", () => {

@@ -8,7 +8,9 @@ import {
 import {
   adicionarMeses,
   competencia_ciclo_da_data,
+  competencia_ciclo_vencendo_em,
   competencia_quitacao_fatura,
+  data_vencimento_do_ciclo,
   deISOParaData,
   eh_credito_quitacao_no_cartao,
   eh_movimento_parcelado,
@@ -803,7 +805,14 @@ export function montar_proximos_pagamentos(entrada: {
           movimento.competenciaFatura,
         )
       : movimento.competenciaFatura;
-    if (competencia !== mesAgenda) continue;
+    const cicloAgenda = cartaoQuitacao
+      ? competencia_ciclo_vencendo_em(
+          mesAgenda,
+          cartaoQuitacao.fechamento,
+          cartaoQuitacao.vencimento,
+        )
+      : mesAgenda;
+    if (competencia !== cicloAgenda) continue;
     const lista = creditosPorCartao.get(cartaoId) ?? [];
     lista.push(movimento);
     creditosPorCartao.set(cartaoId, lista);
@@ -860,8 +869,16 @@ export function montar_proximos_pagamentos(entrada: {
   }
 
   for (const cartao of cartoes) {
-    const dia = String(cartao.vencimento).padStart(2, "0");
-    const vencimento = `${mesAgenda}-${dia}`;
+    const cicloAgenda = competencia_ciclo_vencendo_em(
+      mesAgenda,
+      cartao.fechamento,
+      cartao.vencimento,
+    );
+    const vencimento = data_vencimento_do_ciclo(
+      cicloAgenda,
+      cartao.fechamento,
+      cartao.vencimento,
+    );
     const creditos = [...(creditosPorCartao.get(cartao.id) ?? [])].sort((a, b) =>
       String(a.dataMovimento ?? "").localeCompare(String(b.dataMovimento ?? "")),
     );
