@@ -6,6 +6,8 @@ import {
   eh_credito_quitacao_no_cartao,
   intervalo_ciclo_fatura,
   competencia_ciclo_da_data,
+  competencia_quitacao_fatura,
+  dia_fechamento_no_mes,
   linha_aceita_pagamento_fatura,
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
@@ -77,6 +79,13 @@ describe("heurística de pagamento de fatura", () => {
       inicio: "2026-07-11",
       fim: "2026-08-10",
     });
+    expect(intervalo_ciclo_fatura("2026-08", 30)).toEqual({
+      inicio: "2026-07-31",
+      fim: "2026-08-30",
+    });
+    expect(dia_fechamento_no_mes(2026, 2, 30)).toBe(28);
+    expect(competencia_ciclo_da_data("2026-02-28", 30)).toBe("2026-02");
+    expect(competencia_ciclo_da_data("2026-03-01", 30)).toBe("2026-03");
   });
 
   it("acha a competência da fatura a partir da data da compra", () => {
@@ -175,7 +184,13 @@ describe("heurística de pagamento de fatura", () => {
     });
   });
 
-  it("Azul fecha 30 vence 6: parcela prevista no vencimento entra na fatura que ainda não fechou", () => {
+  it("fecha 30 vence 6: 29 e 30 do mês ainda são o ciclo aberto", () => {
+    expect(competencia_ciclo_da_data("2026-08-29", 30)).toBe("2026-08");
+    expect(competencia_ciclo_da_data("2026-08-30", 30)).toBe("2026-08");
+    expect(competencia_ciclo_da_data("2026-08-31", 30)).toBe("2026-09");
+  });
+
+  it("fecha 30 vence 6: parcela prevista no vencimento entra na fatura que ainda não fechou", () => {
     const extra = { vencimento: 6, parcelaNumero: 3, status: "previsto" as const };
     expect(mes_resultado_do_movimento("2026-09-08", "azul", 30, extra)).toBe("2026-08");
     expect(mes_resultado_do_movimento("2026-09-01", "azul", 30, extra)).toBe("2026-08");
@@ -221,6 +236,44 @@ describe("heurística de pagamento de fatura", () => {
       rotulo: "Fatura ago",
       dica: "Em aberto. Entra na fatura de agosto (vence dia 6).",
     });
+  });
+
+  it("fecha 12 vence 17: parcela prevista no vencimento entra na fatura que fechou nesse ciclo", () => {
+    expect(
+      mes_resultado_do_movimento("2026-08-17", "mp", 12, {
+        vencimento: 17,
+        parcelaNumero: 2,
+        status: "previsto",
+      }),
+    ).toBe("2026-08");
+    expect(mes_resultado_do_movimento("2026-08-25", "mp", 12)).toBe("2026-09");
+  });
+
+  it("pagamento antes do fechamento empurra o gasto para o ciclo aberto", () => {
+    const pagamentos = [
+      {
+        cartaoId: "c1",
+        dataMovimento: "2026-07-29",
+        competenciaFatura: "2026-07",
+        papel: "pagamento_fatura" as const,
+      },
+    ];
+    expect(
+      mes_resultado_do_movimento("2026-07-29", "c1", 30, { vencimento: 6, pagamentos }),
+    ).toBe("2026-08");
+    expect(
+      mes_resultado_do_movimento("2026-07-20", "c1", 30, { vencimento: 6, pagamentos }),
+    ).toBe("2026-07");
+    expect(
+      mes_resultado_do_movimento("2026-08-15", "c1", 30, { vencimento: 6, pagamentos }),
+    ).toBe("2026-08");
+  });
+
+  it("Pix perto do vencimento depois do fechamento quita o ciclo anterior, não o aberto", () => {
+    expect(competencia_quitacao_fatura("2026-08-05", 30, 6, "2026-08")).toBe("2026-07");
+    expect(competencia_quitacao_fatura("2026-07-29", 30, 6, "2026-07")).toBe("2026-07");
+    expect(competencia_quitacao_fatura("2026-07-29", 30, 6, "2026-08")).toBe("2026-07");
+    expect(competencia_quitacao_fatura("2026-08-10", 10, 17, "2026-08")).toBe("2026-08");
   });
 
   it("sugere pela descrição na conta preferencial, sem aplicar sozinha", () => {

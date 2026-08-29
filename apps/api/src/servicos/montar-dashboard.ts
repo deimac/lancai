@@ -8,6 +8,7 @@ import {
 import {
   adicionarMeses,
   competencia_ciclo_da_data,
+  competencia_quitacao_fatura,
   deISOParaData,
   eh_credito_quitacao_no_cartao,
   eh_movimento_parcelado,
@@ -15,6 +16,7 @@ import {
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
   movimento_no_resultado_do_mes,
+  type PagamentoCiclo,
   paraDataISO,
   periodo_amplo_do_ciclo,
   type Perfil,
@@ -229,12 +231,19 @@ export function filtrar_movimentos_do_resultado<
   mesConta: string,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+  pagamentos: PagamentoCiclo[] = [],
 ): T[] {
   return movimentos.filter((movimento) => {
     const alvo = movimento.cartaoId
       ? (mesPorCartao.get(movimento.cartaoId) ?? mesConta)
       : mesConta;
-    return movimento_no_resultado_do_mes(movimento, alvo, fechamentoPorCartao, vencimentoPorCartao);
+    return movimento_no_resultado_do_mes(
+      movimento,
+      alvo,
+      fechamentoPorCartao,
+      vencimentoPorCartao,
+      pagamentos,
+    );
   });
 }
 
@@ -251,6 +260,7 @@ export function agregar_gasto_cartao_por_competencia(
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
   vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+  pagamentos: PagamentoCiclo[] = [],
 ): Map<string, { gasto: number; quantidade: number }> {
   const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
   for (const movimento of movimentos) {
@@ -259,7 +269,15 @@ export function agregar_gasto_cartao_por_competencia(
     if (movimento.papel === "pagamento_fatura") continue;
     const alvo = typeof mes === "string" ? mes : mes.get(movimento.cartaoId);
     if (!alvo) continue;
-    if (!movimento_no_resultado_do_mes(movimento, alvo, fechamentoPorCartao, vencimentoPorCartao)) {
+    if (
+      !movimento_no_resultado_do_mes(
+        movimento,
+        alvo,
+        fechamentoPorCartao,
+        vencimentoPorCartao,
+        pagamentos,
+      )
+    ) {
       continue;
     }
     const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
@@ -358,12 +376,21 @@ export async function montar_dashboard(
     );
   const mesGastoPorCartao = porFechamento(mes);
   const mesGastoAnteriorPorCartao = porFechamento(mesAnterior);
+  const pagamentosCiclo: PagamentoCiclo[] = movimentosQuitadas
+    .filter((movimento) => movimento.papel === "pagamento_fatura")
+    .map((movimento) => ({
+      cartaoId: movimento.cartaoId,
+      dataMovimento: String(movimento.dataMovimento).slice(0, 10),
+      competenciaFatura: movimento.competenciaFatura,
+      papel: movimento.papel,
+    }));
   const movimentosPnL = filtrar_movimentos_do_resultado(
     movimentosAmplo,
     mesGastoPorCartao,
     mes,
     fechamentoPorCartao,
     vencimentoPorCartao,
+    pagamentosCiclo,
   );
   const movimentosPnLAnterior = filtrar_movimentos_do_resultado(
     movimentosAmplo,
@@ -371,12 +398,14 @@ export async function montar_dashboard(
     mesAnterior,
     fechamentoPorCartao,
     vencimentoPorCartao,
+    pagamentosCiclo,
   );
   const gastoPorCartao = agregar_gasto_cartao_por_competencia(
     movimentosAmplo,
     fechamentoPorCartao,
     mesGastoPorCartao,
     vencimentoPorCartao,
+    pagamentosCiclo,
   );
 
   const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
@@ -756,14 +785,25 @@ export function montar_proximos_pagamentos(entrada: {
   const cartoes = entrada.tipoGasto
     ? entrada.cartoes.filter((cartao) => cartao.perfil === entrada.tipoGasto)
     : entrada.cartoes;
+  const cartaoPorIdTodos = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
   const creditosPorCartao = new Map<string, NonNullable<typeof entrada.pagamentosFatura>>();
   for (const movimento of entrada.pagamentosFatura ?? []) {
     if (movimento.status === "cancelado") continue;
     if (movimento.papel !== "pagamento_fatura") continue;
-    if (!movimento.competenciaFatura || movimento.competenciaFatura !== mesAgenda) continue;
     if (!eh_credito_quitacao_da_fatura(movimento)) continue;
     const cartaoId = movimento.cartaoId;
     if (!cartaoId) continue;
+    const cartaoQuitacao = cartaoPorIdTodos.get(cartaoId);
+    const dataPag = movimento.dataMovimento ? String(movimento.dataMovimento).slice(0, 10) : "";
+    const competencia = cartaoQuitacao
+      ? competencia_quitacao_fatura(
+          dataPag || `${mesAgenda}-01`,
+          cartaoQuitacao.fechamento,
+          cartaoQuitacao.vencimento,
+          movimento.competenciaFatura,
+        )
+      : movimento.competenciaFatura;
+    if (competencia !== mesAgenda) continue;
     const lista = creditosPorCartao.get(cartaoId) ?? [];
     lista.push(movimento);
     creditosPorCartao.set(cartaoId, lista);

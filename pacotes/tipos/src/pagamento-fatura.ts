@@ -1,4 +1,10 @@
-import { adicionarMeses, deISOParaData, paraDataISO, somar_meses_calendario } from "./datas";
+import {
+  adicionarMeses,
+  deISOParaData,
+  dias_calendario_entre,
+  paraDataISO,
+  somar_meses_calendario,
+} from "./datas";
 
 /**
  * Heurística de sugestão de pagamento de fatura (Conhecimento).
@@ -127,7 +133,25 @@ export function data_proxima_do_vencimento(
   return candidatos.some((candidato) => Math.abs(candidato - data) <= janelaMs);
 }
 
-/** Ciclo cuja fatura vence no mês `competencia` (fechamento do mês até fechamento do anterior + 1). */
+/** Dia de fechamento naquele mês (1…último dia). Fecha 30 em fevereiro vira 28/29. */
+export function dia_fechamento_no_mes(ano: number, mes: number, fechamento: number): number {
+  const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  return Math.min(Math.max(1, fechamento), ultimo);
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function mes_seguinte_competencia(competencia: string): string {
+  return somar_meses_calendario(`${competencia}-01`, 1).slice(0, 7);
+}
+
+function mes_anterior_competencia(competencia: string): string {
+  return somar_meses_calendario(`${competencia}-01`, -1).slice(0, 7);
+}
+
+/** Ciclo cujo fechamento cai no mês `competencia` (dia seguinte ao fecha anterior → fecha). */
 export function intervalo_ciclo_fatura(
   competencia: string,
   fechamento: number,
@@ -135,10 +159,14 @@ export function intervalo_ciclo_fatura(
   const [anoStr, mesStr] = competencia.split("-");
   const ano = Number(anoStr);
   const mes = Number(mesStr);
-  const diaFecha = Math.min(Math.max(1, fechamento), 28);
-  const fim = new Date(Date.UTC(ano, mes - 1, diaFecha));
-  const inicio = new Date(Date.UTC(ano, mes - 2, diaFecha + 1));
-  return { inicio: iso_utc(inicio), fim: iso_utc(fim) };
+  const diaFim = dia_fechamento_no_mes(ano, mes, fechamento);
+  const fim = `${anoStr}-${pad2(mes)}-${pad2(diaFim)}`;
+  const prev = new Date(Date.UTC(ano, mes - 2, 1));
+  const prevAno = prev.getUTCFullYear();
+  const prevMes = prev.getUTCMonth() + 1;
+  const diaFechaPrev = dia_fechamento_no_mes(prevAno, prevMes, fechamento);
+  const inicio = new Date(Date.UTC(prevAno, prevMes - 1, diaFechaPrev + 1));
+  return { inicio: iso_utc(inicio), fim };
 }
 
 /** Competência cuja fatura inclui a compra nesta data (inverso de `intervalo_ciclo_fatura`). */
@@ -148,12 +176,53 @@ export function competencia_ciclo_da_data(dataISO: string, fechamento: number): 
   const mes = Number(mesStr);
   const dia = Number(diaStr);
   if (!ano || !mes || !dia) return dataISO.slice(0, 7);
-  const diaFecha = Math.min(Math.max(1, fechamento), 28);
+  const diaFecha = dia_fechamento_no_mes(ano, mes, fechamento);
   if (dia <= diaFecha) {
-    return `${anoStr}-${String(mes).padStart(2, "0")}`;
+    return `${anoStr}-${pad2(mes)}`;
   }
-  const proximo = new Date(Date.UTC(ano, mes, 1));
-  return `${proximo.getUTCFullYear()}-${String(proximo.getUTCMonth() + 1).padStart(2, "0")}`;
+  return mes_seguinte_competencia(`${anoStr}-${pad2(mes)}`);
+}
+
+/** Vencimento da fatura que fechou no mês `competencia`. */
+export function data_vencimento_do_ciclo(
+  competencia: string,
+  fechamento: number,
+  vencimento: number,
+): string {
+  const [anoStr, mesStr] = competencia.split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  if (vencimento < fechamento) {
+    const proximo = mes_seguinte_competencia(competencia);
+    const [anoP, mesP] = proximo.split("-").map(Number);
+    const dia = dia_fechamento_no_mes(anoP!, mesP!, vencimento);
+    return `${proximo}-${pad2(dia)}`;
+  }
+  const dia = dia_fechamento_no_mes(ano, mes, vencimento);
+  return `${competencia}-${pad2(dia)}`;
+}
+
+/**
+ * Competência que o pagamento quita: se cai perto do vencimento do ciclo
+ * anterior, é resto/liquidação daquele; senão, a competência informada ou a do ciclo da data.
+ */
+export function competencia_quitacao_fatura(
+  dataISO: string,
+  fechamento: number,
+  vencimento: number,
+  competenciaFatura?: string | null,
+): string {
+  const data = dataISO.slice(0, 10);
+  const ciclo = competencia_ciclo_da_data(data, fechamento);
+  const anterior = mes_anterior_competencia(ciclo);
+  const vencAnterior = data_vencimento_do_ciclo(anterior, fechamento, vencimento);
+  if (dias_calendario_entre(data, vencAnterior) <= JANELA_VENCIMENTO_DIAS) {
+    return anterior;
+  }
+  const { fim } = intervalo_ciclo_fatura(ciclo, fechamento);
+  if (data < fim) return ciclo;
+  if (competenciaFatura && /^\d{4}-\d{2}$/.test(competenciaFatura)) return competenciaFatura;
+  return ciclo;
 }
 
 const MESES_CURTOS = [
@@ -199,22 +268,68 @@ export function nome_mes_extenso(competencia: string): string {
   return MESES_EXTENSO[indice_mes(competencia)] ?? competencia;
 }
 
+export type PagamentoCiclo = {
+  cartaoId?: string | null;
+  dataMovimento: string;
+  competenciaFatura?: string | null;
+  papel?: string | null;
+};
+
 export type ExtraCicloMovimento = {
   vencimento?: number | null;
   parcelaNumero?: number | null;
   status?: string | null;
+  pagamentos?: PagamentoCiclo[];
 };
 
-function mes_anterior_competencia(competencia: string): string {
-  return somar_meses_calendario(`${competencia}-01`, -1).slice(0, 7);
+/** Parcela prevista no vencimento desta fatura, mesmo depois do fechamento. */
+function competencia_parcela_prevista(
+  data: string,
+  ciclo: string,
+  fechamento: number,
+  vencimento: number,
+): string {
+  const mesVenc = competencia_vencimento_proximo(data, vencimento);
+  if (vencimento < fechamento) {
+    const mesFecha = mes_anterior_competencia(mesVenc);
+    if (ciclo === mesVenc) return mesFecha;
+    return ciclo;
+  }
+  const seguinte = mes_seguinte_competencia(mesVenc);
+  if (ciclo === seguinte || ciclo === mesVenc) return mesVenc;
+  return ciclo;
+}
+
+function aplicar_antecipacao(
+  data: string,
+  mes: string,
+  cartaoId: string,
+  fechamento: number,
+  vencimento: number | null | undefined,
+  pagamentos: PagamentoCiclo[] | undefined,
+): string {
+  if (!pagamentos?.length || vencimento == null || vencimento < 1) return mes;
+  for (const pag of pagamentos) {
+    if (pag.papel != null && pag.papel !== "pagamento_fatura") continue;
+    if (pag.cartaoId !== cartaoId) continue;
+    const dataPag = pag.dataMovimento.slice(0, 10);
+    const quitacao = competencia_quitacao_fatura(
+      dataPag,
+      fechamento,
+      vencimento,
+      pag.competenciaFatura,
+    );
+    const { fim } = intervalo_ciclo_fatura(quitacao, fechamento);
+    if (dataPag >= fim) continue;
+    if (data >= dataPag && mes === quitacao) return mes_seguinte_competencia(quitacao);
+  }
+  return mes;
 }
 
 /**
  * Mês do P&L: conta = civil; cartão = competência do ciclo de fechamento.
- *
- * Cartão que vence no mês seguinte (Azul fecha 30, vence 6): parcela prevista
- * datada no mês do vencimento ainda é desta fatura — a Open Finance lança no
- * dia do vencimento, depois do fechamento.
+ * Parcela prevista no vencimento entra na fatura que vence nessa data.
+ * Pagamento antecipado (antes do fechamento) empurra o gasto para o ciclo aberto.
  */
 export function mes_resultado_do_movimento(
   dataMovimento: string,
@@ -228,21 +343,18 @@ export function mes_resultado_do_movimento(
   const ciclo = competencia_ciclo_da_data(data, fechamento);
   const vencimento = extra?.vencimento;
   const parcela = extra?.parcelaNumero;
+  let mes = ciclo;
   if (
-    parcela == null ||
-    parcela < 1 ||
-    vencimento == null ||
-    vencimento < 1 ||
-    vencimento >= fechamento ||
-    extra?.status === "realizado" ||
-    extra?.status === "cancelado"
+    parcela != null &&
+    parcela >= 1 &&
+    vencimento != null &&
+    vencimento >= 1 &&
+    extra?.status !== "realizado" &&
+    extra?.status !== "cancelado"
   ) {
-    return ciclo;
+    mes = competencia_parcela_prevista(data, ciclo, fechamento, vencimento);
   }
-  const mesVenc = competencia_vencimento_proximo(data, vencimento);
-  const mesFecha = mes_anterior_competencia(mesVenc);
-  if (ciclo === mesVenc) return mesFecha;
-  return ciclo;
+  return aplicar_antecipacao(data, mes, cartaoId, fechamento, vencimento, extra?.pagamentos);
 }
 
 export function mapa_fechamento_cartoes(
@@ -279,6 +391,7 @@ export function movimento_no_resultado_do_mes(
   mes: string,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+  pagamentos: PagamentoCiclo[] = [],
 ): boolean {
   const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
   const vencimento = movimento.cartaoId ? vencimentoPorCartao.get(movimento.cartaoId) : undefined;
@@ -287,6 +400,7 @@ export function movimento_no_resultado_do_mes(
       vencimento,
       parcelaNumero: movimento.parcelaNumero,
       status: movimento.status,
+      pagamentos,
     }) === mes
   );
 }
