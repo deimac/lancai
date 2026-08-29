@@ -345,10 +345,10 @@ export function TelaDashboard() {
           ) : null}
           <p className="mt-1 text-xs text-texto-suave">
             {tipoGasto === "pessoal"
-              ? "Resultado e categorias: gastos seus em qualquer conta"
+              ? "Resultado, categorias e fatura: lançamentos pessoais em qualquer conta ou cartão"
               : tipoGasto === "empresa"
-                ? "Resultado e categorias: gastos da empresa em qualquer conta"
-                : "Resultado e categorias somam pessoal e empresa — saldo e caixa não mudam"}
+                ? "Resultado, categorias e fatura: lançamentos da empresa em qualquer conta ou cartão"
+                : "Resultado, categorias e fatura somam pessoal e empresa — saldo e caixa não mudam"}
           </p>
         </div>
         <div className="flex items-center gap-2">

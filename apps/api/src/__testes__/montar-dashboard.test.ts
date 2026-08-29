@@ -475,7 +475,7 @@ describe("montar_proximos_pagamentos", () => {
     ).toBe(false);
   });
 
-  it("filtro Pessoal omite cartão Empresa", () => {
+  it("Pessoal soma lançamento pessoal em cartão da empresa e omite fatura zerada", () => {
     const azul: DashboardCartao = {
       ...cartao,
       id: "cartao-azul",
@@ -483,9 +483,17 @@ describe("montar_proximos_pagamentos", () => {
       perfil: "pf",
       gastoMes: 80,
     };
+    const empresaComPessoal: DashboardCartao = {
+      ...cartao,
+      id: "cartao-pj-misto",
+      nome: "Cartão Empresa",
+      perfil: "pj",
+      gastoMes: 150,
+    };
+    const empresaSoEmpresa: DashboardCartao = { ...cartao, gastoMes: 0 };
     const itens = montar_proximos_pagamentos({
       futuro: [],
-      cartoes: [cartao, azul],
+      cartoes: [empresaSoEmpresa, azul, empresaComPessoal],
       movimentos: [],
       tipoGasto: "pf",
       hoje: "2026-08-21",
@@ -493,7 +501,8 @@ describe("montar_proximos_pagamentos", () => {
     });
     const faturas = itens.filter((item) => item.origem === "fatura");
     expect(faturas).toEqual([
-      expect.objectContaining({ descricao: "Fatura Azul Itaú Visa Platinum", pago: false }),
+      expect.objectContaining({ descricao: "Fatura Azul Itaú Visa Platinum", valor: 80 }),
+      expect.objectContaining({ descricao: "Fatura Cartão Empresa", valor: 150 }),
     ]);
   });
 });
@@ -676,6 +685,46 @@ describe("montar_fluxo_caixa", () => {
 });
 
 describe("agregar_gasto_cartao_por_competencia", () => {
+  it("Pessoal/Empresa soma o lançamento, mesmo em cartão do outro perfil", () => {
+    const fechamento = new Map([["cartao-pf", 30]]);
+    const movimentos = [
+      {
+        tipo: "despesa",
+        valor: "80",
+        dataMovimento: "2026-08-10",
+        cartaoId: "cartao-pf",
+        tipoGasto: "pf",
+      },
+      {
+        tipo: "despesa",
+        valor: "2300",
+        dataMovimento: "2026-08-15",
+        cartaoId: "cartao-pf",
+        tipoGasto: "pj",
+      },
+    ];
+    const todos = agregar_gasto_cartao_por_competencia(movimentos, fechamento, "2026-08");
+    const pessoal = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamento,
+      "2026-08",
+      new Map(),
+      [],
+      "pf",
+    );
+    const empresa = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamento,
+      "2026-08",
+      new Map(),
+      [],
+      "pj",
+    );
+    expect(todos.get("cartao-pf")).toEqual({ gasto: 2380, quantidade: 2 });
+    expect(pessoal.get("cartao-pf")).toEqual({ gasto: 80, quantidade: 1 });
+    expect(empresa.get("cartao-pf")).toEqual({ gasto: 2300, quantidade: 1 });
+  });
+
   it("agosto ignora compra pós-fechamento; setembro inclui", () => {
     const fechamento = new Map([["cartao-mp", 12]]);
     const movimentos = [

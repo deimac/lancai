@@ -263,17 +263,20 @@ export function agregar_gasto_cartao_por_competencia(
     papel?: string | null;
     parcelaNumero?: number | null;
     status?: string | null;
+    tipoGasto?: string | null;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
   vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
   pagamentos: PagamentoCiclo[] = [],
+  tipoGasto?: Perfil,
 ): Map<string, { gasto: number; quantidade: number }> {
   const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
   for (const movimento of movimentos) {
     if (!movimento.cartaoId) continue;
     if (movimento.tipo !== "despesa") continue;
     if (movimento.papel === "pagamento_fatura") continue;
+    if (tipoGasto && movimento.tipoGasto !== tipoGasto) continue;
     const alvo = typeof mes === "string" ? mes : mes.get(movimento.cartaoId);
     if (!alvo) continue;
     if (
@@ -297,7 +300,9 @@ export function agregar_gasto_cartao_por_competencia(
 
 /**
  * Agrega o cockpit a partir do ModuloRelatorios — o web só exibe.
- * `tipoGasto` recorta P&L, categorias e orçamentos; caixa e saldos ignoram.
+ * `tipoGasto` recorta P&L, categorias, orçamentos e o gasto do card de cartões
+ * pelo lançamento (não pelo perfil do plástico), em qualquer workspace.
+ * Caixa e saldos ignoram.
  */
 export async function montar_dashboard(
   usuarioId: string,
@@ -413,6 +418,7 @@ export async function montar_dashboard(
     mesGastoPorCartao,
     vencimentoPorCartao,
     pagamentosCiclo,
+    tipoGasto,
   );
 
   const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
@@ -789,9 +795,7 @@ export function montar_proximos_pagamentos(entrada: {
 }): ProximoPagamento[] {
   const itens: ProximoPagamento[] = [];
   const mesAgenda = entrada.periodo.de.slice(0, 7);
-  const cartoes = entrada.tipoGasto
-    ? entrada.cartoes.filter((cartao) => cartao.perfil === entrada.tipoGasto)
-    : entrada.cartoes;
+  const cartoes = entrada.cartoes;
   const cartaoPorIdTodos = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
   const creditosPorCartao = new Map<string, NonNullable<typeof entrada.pagamentosFatura>>();
   const ciclosPagos = new Set<string>();
@@ -901,6 +905,7 @@ export function montar_proximos_pagamentos(entrada: {
     }
 
     if (ciclosPagos.has(`${cartao.id}:${mesAgenda}`)) continue;
+    if (entrada.tipoGasto && cartao.gastoMes === 0) continue;
     const vencimentoAberto = data_vencimento_do_ciclo(
       mesAgenda,
       cartao.fechamento,
