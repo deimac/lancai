@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
+import { rotulo_mes_curto } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta, type ProximoPagamento } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
@@ -58,9 +59,34 @@ function formatar_oculto(valor: string, ocultar: boolean): string {
 }
 
 function selo_pagamento(item: ProximoPagamento): { rotulo: string; classe: string } {
-  if (item.pago) return { rotulo: "Paga", classe: "bg-receita/15 text-receita" };
-  if (item.vencida) return { rotulo: "Vencida", classe: "bg-despesa/15 text-despesa" };
+  if (item.situacao === "paga" || item.pago) {
+    return { rotulo: "Paga", classe: "bg-receita/15 text-receita" };
+  }
+  if (item.situacao === "vencida" || item.vencida) {
+    return { rotulo: "Vencida", classe: "bg-despesa/15 text-despesa" };
+  }
+  if (item.situacao === "a_pagar") {
+    return { rotulo: "A pagar", classe: "bg-despesa/10 text-despesa" };
+  }
   return { rotulo: "Em aberto", classe: "bg-fundo text-texto-suave" };
+}
+
+function titulo_proximo(item: ProximoPagamento): string {
+  if (item.origem !== "fatura" || !item.competenciaCiclo) return item.descricao;
+  const ciclo = rotulo_mes_curto(item.competenciaCiclo);
+  if (item.descricao.includes(` · ${ciclo}`)) return item.descricao;
+  return `${item.descricao} · ${ciclo}`;
+}
+
+function sub_proximo(item: ProximoPagamento): string {
+  if (item.origem === "fatura") {
+    const vence = `vence ${formatar_data_curta(item.data)}`;
+    if (item.dataPagamento) return `${vence} · pago ${formatar_data_curta(item.dataPagamento)}`;
+    return vence;
+  }
+  if (item.origem === "parcela") return `${formatar_data_curta(item.data)} · Parcela`;
+  if (item.origem === "recorrente") return `${formatar_data_curta(item.data)} · Recorrente`;
+  return `${formatar_data_curta(item.data)} · Previsto`;
 }
 
 type PontoResultadoGrafico = {
@@ -910,7 +936,7 @@ export function TelaDashboard() {
                             item.pago ? "text-texto-suave" : "text-texto",
                           )}
                         >
-                          {item.descricao}
+                          {titulo_proximo(item)}
                         </p>
                         <span
                           className={unir_classes(
@@ -921,18 +947,7 @@ export function TelaDashboard() {
                           {selo.rotulo}
                         </span>
                       </div>
-                      <p className="text-xs text-texto-suave">
-                        {formatar_data_curta(item.data)}
-                        {item.origem === "fatura" && item.dataPagamento
-                          ? ` · ${formatar_data_curta(item.dataPagamento)}`
-                          : item.origem === "parcela"
-                            ? " · Parcela"
-                            : item.origem === "recorrente"
-                              ? " · Recorrente"
-                              : item.origem === "fatura"
-                                ? ""
-                                : " · Previsto"}
-                      </p>
+                      <p className="text-xs text-texto-suave">{sub_proximo(item)}</p>
                     </div>
                     <span
                       className={

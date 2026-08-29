@@ -281,18 +281,41 @@ describe("montar_proximos_pagamentos", () => {
     const faturasAgo = agosto.filter((item) => item.origem === "fatura");
     expect(faturasAgo).toEqual([
       expect.objectContaining({
-        data: "2026-08-06",
-        dataPagamento: "2026-07-29",
+        data: "2026-09-06",
+        pago: false,
         valor: 6500.57,
-        pago: true,
+        competenciaCiclo: "2026-08",
+        situacao: "aberta",
       }),
       expect.objectContaining({
         data: "2026-08-06",
         dataPagamento: "2026-08-05",
         valor: 11.02,
         pago: true,
+        competenciaCiclo: "2026-07",
       }),
     ]);
+    expect(faturasAgo.some((item) => item.dataPagamento === "2026-07-29")).toBe(false);
+
+    const julho = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [azul],
+      movimentos: [],
+      pagamentosFatura: pagamentos,
+      hoje: "2026-07-29",
+      periodo: { de: "2026-07-01", ate: "2026-07-31" },
+    });
+    const faturasJul = julho.filter((item) => item.origem === "fatura");
+    expect(faturasJul).toEqual([
+      expect.objectContaining({
+        data: "2026-08-06",
+        dataPagamento: "2026-07-29",
+        valor: 6500.57,
+        pago: true,
+        competenciaCiclo: "2026-07",
+      }),
+    ]);
+    expect(faturasJul.some((item) => item.dataPagamento === "2026-08-05")).toBe(false);
 
     const setembro = montar_proximos_pagamentos({
       futuro: [],
@@ -304,9 +327,54 @@ describe("montar_proximos_pagamentos", () => {
     });
     expect(setembro.filter((item) => item.origem === "fatura")).toEqual([
       expect.objectContaining({
-        data: "2026-09-06",
+        data: "2026-10-06",
         pago: false,
         valor: 80,
+        competenciaCiclo: "2026-09",
+      }),
+    ]);
+  });
+
+  it("depois do fechamento a fatura do mês fica a pagar com o vencimento do ciclo", () => {
+    const azul: DashboardCartao = {
+      ...cartao,
+      id: "cartao-azul",
+      nome: "Azul Itaú Visa Platinum",
+      fechamento: 30,
+      vencimento: 6,
+      gastoMes: 8083,
+    };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [azul],
+      movimentos: [],
+      hoje: "2026-08-31",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.filter((item) => item.origem === "fatura")).toEqual([
+      expect.objectContaining({
+        data: "2026-09-06",
+        pago: false,
+        situacao: "a_pagar",
+        competenciaCiclo: "2026-08",
+      }),
+    ]);
+  });
+
+  it("fecha 12 vence 17: em agosto a fatura aberta vence no mesmo mês", () => {
+    const mp: DashboardCartao = { ...cartao, fechamento: 12, vencimento: 17, gastoMes: 320 };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [mp],
+      movimentos: [],
+      hoje: "2026-08-08",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.filter((item) => item.origem === "fatura")).toEqual([
+      expect.objectContaining({
+        data: "2026-08-17",
+        pago: false,
+        situacao: "aberta",
       }),
     ]);
   });
@@ -373,7 +441,16 @@ describe("montar_proximos_pagamentos", () => {
         }),
       ]),
     );
-    expect(faturas).toHaveLength(2);
+    expect(faturas).toHaveLength(3);
+    expect(faturas).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          descricao: "Fatura Azul Itaú Visa Platinum",
+          data: "2026-09-06",
+          pago: false,
+        }),
+      ]),
+    );
     expect(
       faturas.some((item) => item.descricao === "Fatura Mercado Pago Visa" && item.valor === 11.02),
     ).toBe(false);

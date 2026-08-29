@@ -424,6 +424,8 @@ export interface ProximoPagamento {
   vencida: boolean;
   pago?: boolean;
   dataPagamento?: string | null;
+  competenciaCiclo?: string | null;
+  situacao?: "aberta" | "a_pagar" | "paga" | "vencida";
 }
 
 export interface OrcamentoDashboard {

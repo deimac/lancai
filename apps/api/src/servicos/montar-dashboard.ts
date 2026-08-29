@@ -8,9 +8,9 @@ import {
 import {
   adicionarMeses,
   competencia_ciclo_da_data,
-  competencia_ciclo_vencendo_em,
   competencia_quitacao_fatura,
   data_vencimento_do_ciclo,
+  intervalo_ciclo_fatura,
   deISOParaData,
   eh_credito_quitacao_no_cartao,
   eh_movimento_parcelado,
@@ -67,6 +67,10 @@ export interface ProximoPagamento {
   pago: boolean;
   /** Dia em que o crédito entrou no cartão; só em fatura paga. */
   dataPagamento?: string | null;
+  /** Competência do ciclo (mês do fechamento), para o título Fatura ago / jul. */
+  competenciaCiclo?: string | null;
+  /** Em aberto até o fecha; a pagar depois do fecha; paga no mês do Pix. */
+  situacao?: "aberta" | "a_pagar" | "paga" | "vencida";
 }
 
 export interface OrcamentoDashboard {
@@ -789,6 +793,7 @@ export function montar_proximos_pagamentos(entrada: {
     : entrada.cartoes;
   const cartaoPorIdTodos = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao]));
   const creditosPorCartao = new Map<string, NonNullable<typeof entrada.pagamentosFatura>>();
+  const ciclosPagos = new Set<string>();
   for (const movimento of entrada.pagamentosFatura ?? []) {
     if (movimento.status === "cancelado") continue;
     if (movimento.papel !== "pagamento_fatura") continue;
@@ -805,14 +810,8 @@ export function montar_proximos_pagamentos(entrada: {
           movimento.competenciaFatura,
         )
       : movimento.competenciaFatura;
-    const cicloAgenda = cartaoQuitacao
-      ? competencia_ciclo_vencendo_em(
-          mesAgenda,
-          cartaoQuitacao.fechamento,
-          cartaoQuitacao.vencimento,
-        )
-      : mesAgenda;
-    if (competencia !== cicloAgenda) continue;
+    if (competencia) ciclosPagos.add(`${cartaoId}:${competencia}`);
+    if (!dataPag.startsWith(mesAgenda)) continue;
     const lista = creditosPorCartao.get(cartaoId) ?? [];
     lista.push(movimento);
     creditosPorCartao.set(cartaoId, lista);
@@ -869,46 +868,57 @@ export function montar_proximos_pagamentos(entrada: {
   }
 
   for (const cartao of cartoes) {
-    const cicloAgenda = competencia_ciclo_vencendo_em(
-      mesAgenda,
-      cartao.fechamento,
-      cartao.vencimento,
-    );
-    const vencimento = data_vencimento_do_ciclo(
-      cicloAgenda,
-      cartao.fechamento,
-      cartao.vencimento,
-    );
     const creditos = [...(creditosPorCartao.get(cartao.id) ?? [])].sort((a, b) =>
       String(a.dataMovimento ?? "").localeCompare(String(b.dataMovimento ?? "")),
     );
-    if (creditos.length === 0) {
-      itens.push({
-        id: `fatura-${cartao.id}`,
-        data: vencimento,
-        descricao: `Fatura ${cartao.nome}`,
-        valor: cartao.gastoMes,
-        origem: "fatura",
-        contaNome: cartao.nome,
-        vencida: vencimento < entrada.hoje,
-        pago: false,
-      });
-      continue;
-    }
     for (const credito of creditos) {
-      const pagamento = credito.dataMovimento ? String(credito.dataMovimento).slice(0, 10) : null;
+      const pagamento = credito.dataMovimento ? String(credito.dataMovimento).slice(0, 10) : "";
+      const cicloQuitado = competencia_quitacao_fatura(
+        pagamento || `${mesAgenda}-01`,
+        cartao.fechamento,
+        cartao.vencimento,
+        credito.competenciaFatura,
+      );
+      const vencimentoPago = data_vencimento_do_ciclo(
+        cicloQuitado,
+        cartao.fechamento,
+        cartao.vencimento,
+      );
       itens.push({
-        id: credito.id ?? `fatura-${cartao.id}-${pagamento ?? "pago"}`,
-        data: vencimento,
-        dataPagamento: pagamento,
+        id: credito.id ?? `fatura-${cartao.id}-${pagamento || "pago"}`,
+        data: vencimentoPago,
+        dataPagamento: pagamento || null,
         descricao: `Fatura ${cartao.nome}`,
         valor: credito.valor == null || credito.valor === "" ? cartao.gastoMes : Number(credito.valor),
         origem: "fatura",
         contaNome: cartao.nome,
         vencida: false,
         pago: true,
+        competenciaCiclo: cicloQuitado,
+        situacao: "paga",
       });
     }
+
+    if (ciclosPagos.has(`${cartao.id}:${mesAgenda}`)) continue;
+    const vencimentoAberto = data_vencimento_do_ciclo(
+      mesAgenda,
+      cartao.fechamento,
+      cartao.vencimento,
+    );
+    const { fim } = intervalo_ciclo_fatura(mesAgenda, cartao.fechamento);
+    const situacao = situacao_ciclo_aberto(entrada.hoje, fim, vencimentoAberto);
+    itens.push({
+      id: `fatura-${cartao.id}`,
+      data: vencimentoAberto,
+      descricao: `Fatura ${cartao.nome}`,
+      valor: cartao.gastoMes,
+      origem: "fatura",
+      contaNome: cartao.nome,
+      vencida: situacao === "vencida",
+      pago: false,
+      competenciaCiclo: mesAgenda,
+      situacao,
+    });
   }
 
   const vistos = new Set<string>();
@@ -927,6 +937,16 @@ export function montar_proximos_pagamentos(entrada: {
       return dataA.localeCompare(dataB) || a.descricao.localeCompare(b.descricao, "pt-BR");
     })
     .slice(0, 16);
+}
+
+function situacao_ciclo_aberto(
+  hoje: string,
+  fimCiclo: string,
+  vencimento: string,
+): "aberta" | "a_pagar" | "vencida" {
+  if (hoje <= fimCiclo) return "aberta";
+  if (vencimento < hoje) return "vencida";
+  return "a_pagar";
 }
 
 /** Crédito de quitação no extrato do cartão — o débito na conta não entra nos Próximos. */
