@@ -1,4 +1,4 @@
-import { adicionarMeses, deISOParaData, paraDataISO } from "./datas";
+import { adicionarMeses, deISOParaData, paraDataISO, somar_meses_calendario } from "./datas";
 
 /**
  * Heurística de sugestão de pagamento de fatura (Conhecimento).
@@ -199,16 +199,50 @@ export function nome_mes_extenso(competencia: string): string {
   return MESES_EXTENSO[indice_mes(competencia)] ?? competencia;
 }
 
-/** Mês do P&L: conta = civil; cartão = competência do ciclo de fechamento. */
+export type ExtraCicloMovimento = {
+  vencimento?: number | null;
+  parcelaNumero?: number | null;
+  status?: string | null;
+};
+
+function mes_anterior_competencia(competencia: string): string {
+  return somar_meses_calendario(`${competencia}-01`, -1).slice(0, 7);
+}
+
+/**
+ * Mês do P&L: conta = civil; cartão = competência do ciclo de fechamento.
+ *
+ * Cartão que vence no mês seguinte (Azul fecha 30, vence 6): parcela prevista
+ * datada no mês do vencimento ainda é desta fatura — a Open Finance lança no
+ * dia do vencimento, depois do fechamento.
+ */
 export function mes_resultado_do_movimento(
   dataMovimento: string,
   cartaoId: string | null | undefined,
   fechamento: number | null | undefined,
+  extra?: ExtraCicloMovimento,
 ): string {
   const data = String(dataMovimento).slice(0, 10);
   const mesCivil = data.slice(0, 7);
   if (!cartaoId || fechamento == null || fechamento < 1) return mesCivil;
-  return competencia_ciclo_da_data(data, fechamento);
+  const ciclo = competencia_ciclo_da_data(data, fechamento);
+  const vencimento = extra?.vencimento;
+  const parcela = extra?.parcelaNumero;
+  if (
+    parcela == null ||
+    parcela < 1 ||
+    vencimento == null ||
+    vencimento < 1 ||
+    vencimento >= fechamento ||
+    extra?.status === "realizado" ||
+    extra?.status === "cancelado"
+  ) {
+    return ciclo;
+  }
+  const mesVenc = competencia_vencimento_proximo(data, vencimento);
+  const mesFecha = mes_anterior_competencia(mesVenc);
+  if (ciclo === mesVenc) return mesFecha;
+  return ciclo;
 }
 
 export function mapa_fechamento_cartoes(
@@ -223,23 +257,49 @@ export function mapa_fechamento_cartoes(
   return mapa;
 }
 
-export function movimento_no_resultado_do_mes(
-  movimento: { dataMovimento: string; cartaoId?: string | null },
-  mes: string,
-  fechamentoPorCartao: ReadonlyMap<string, number>,
-): boolean {
-  const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
-  return mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento) === mes;
+export function mapa_vencimento_cartoes(
+  cartoes: Array<{ id: string; vencimento?: number | null }>,
+): Map<string, number> {
+  const mapa = new Map<string, number>();
+  for (const cartao of cartoes) {
+    if (cartao.vencimento != null && cartao.vencimento >= 1) {
+      mapa.set(cartao.id, cartao.vencimento);
+    }
+  }
+  return mapa;
 }
 
-/** Amplia o recorte civil para caber compras do ciclo que caíram no mês anterior. */
+export function movimento_no_resultado_do_mes(
+  movimento: {
+    dataMovimento: string;
+    cartaoId?: string | null;
+    parcelaNumero?: number | null;
+    status?: string | null;
+  },
+  mes: string,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+): boolean {
+  const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
+  const vencimento = movimento.cartaoId ? vencimentoPorCartao.get(movimento.cartaoId) : undefined;
+  return (
+    mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
+      vencimento,
+      parcelaNumero: movimento.parcelaNumero,
+      status: movimento.status,
+    }) === mes
+  );
+}
+
+/** Amplia o recorte civil: mês anterior (pós-fechamento) e o seguinte (parcela no vencimento). */
 export function periodo_amplo_do_ciclo(
   periodo: { de: string; ate: string },
   mesesAnteriores = 1,
+  mesesSeguintes = 1,
 ): { de: string; ate: string } {
   return {
     de: paraDataISO(adicionarMeses(deISOParaData(periodo.de), -mesesAnteriores)),
-    ate: periodo.ate,
+    ate: somar_meses_calendario(periodo.ate, mesesSeguintes),
   };
 }
 
@@ -258,6 +318,7 @@ export function selo_fatura_ciclo(entrada: {
   cartaoId?: string | null;
   fechamento?: number | null;
   vencimento?: number | null;
+  parcelaNumero?: number | null;
   status?: string | null;
   tipo?: string | null;
   papel?: string | null;
@@ -268,7 +329,11 @@ export function selo_fatura_ciclo(entrada: {
   if (entrada.fechamento == null || entrada.fechamento < 1) return null;
   const data = String(entrada.dataMovimento).slice(0, 10);
   const mesCompra = data.slice(0, 7);
-  const competencia = competencia_ciclo_da_data(data, entrada.fechamento);
+  const competencia = mes_resultado_do_movimento(data, entrada.cartaoId, entrada.fechamento, {
+    vencimento: entrada.vencimento,
+    parcelaNumero: entrada.parcelaNumero,
+    status: entrada.status,
+  });
   if (competencia === mesCompra) return null;
 
   const rotulo = `Fatura ${rotulo_mes_curto(competencia)}`;

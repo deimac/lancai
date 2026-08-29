@@ -11,6 +11,7 @@ import {
 import {
   formatarMoeda,
   mapa_fechamento_cartoes,
+  mapa_vencimento_cartoes,
   movimento_no_resultado_do_mes,
   periodo_amplo_do_ciclo,
   type Perfil,
@@ -43,6 +44,7 @@ export type MovimentoGastoOrcamento = {
   valor: string | number;
   tipoGasto: string;
   status: string;
+  parcelaNumero?: number | null;
 };
 
 export function somar_gastos_dos_movimentos(
@@ -50,6 +52,7 @@ export function somar_gastos_dos_movimentos(
   opcoes: {
     mes: string;
     fechamentoPorCartao: ReadonlyMap<string, number>;
+    vencimentoPorCartao?: ReadonlyMap<string, number>;
     categoriaId?: string | null;
     tipoGasto?: Perfil;
   },
@@ -60,7 +63,14 @@ export function somar_gastos_dos_movimentos(
     if (movimento.status === "cancelado") continue;
     if (opcoes.categoriaId && movimento.categoriaId !== opcoes.categoriaId) continue;
     if (opcoes.tipoGasto && movimento.tipoGasto !== opcoes.tipoGasto) continue;
-    if (!movimento_no_resultado_do_mes(movimento, opcoes.mes, opcoes.fechamentoPorCartao)) {
+    if (
+      !movimento_no_resultado_do_mes(
+        movimento,
+        opcoes.mes,
+        opcoes.fechamentoPorCartao,
+        opcoes.vencimentoPorCartao,
+      )
+    ) {
       continue;
     }
     const valor = Number(movimento.valor);
@@ -167,6 +177,7 @@ async function carregar_movimentos_orcamento(
   mes: string;
   movimentos: MovimentoGastoOrcamento[];
   fechamentoPorCartao: Map<string, number>;
+  vencimentoPorCartao: Map<string, number>;
 }> {
   const banco = obter_banco();
   const { inicio, fim, chave } = mes_atual_iso(dataAtual);
@@ -190,11 +201,12 @@ async function carregar_movimentos_orcamento(
         valor: movimentoTabela.valor,
         tipoGasto: movimentoTabela.tipoGasto,
         status: movimentoTabela.status,
+        parcelaNumero: movimentoTabela.parcelaNumero,
       })
       .from(movimentoTabela)
       .where(and(...condicoes)),
     banco
-      .select({ id: cartaoTabela.id, fechamento: cartaoTabela.fechamento })
+      .select({ id: cartaoTabela.id, fechamento: cartaoTabela.fechamento, vencimento: cartaoTabela.vencimento })
       .from(cartaoTabela)
       .where(eq(cartaoTabela.usuarioId, usuarioId)),
   ]);
@@ -202,6 +214,7 @@ async function carregar_movimentos_orcamento(
     mes: chave,
     movimentos,
     fechamentoPorCartao: mapa_fechamento_cartoes(cartoes),
+    vencimentoPorCartao: mapa_vencimento_cartoes(cartoes),
   };
 }
 
@@ -212,7 +225,7 @@ export async function listar_status_orcamentos(
   tipoGasto?: Perfil,
 ): Promise<StatusOrcamento[]> {
   const banco = obter_banco();
-  const { mes, movimentos, fechamentoPorCartao } = await carregar_movimentos_orcamento(
+  const { mes, movimentos, fechamentoPorCartao, vencimentoPorCartao } = await carregar_movimentos_orcamento(
     usuarioId,
     dataAtual,
     tipoGasto,
@@ -244,6 +257,7 @@ export async function listar_status_orcamentos(
     const totais = somar_gastos_dos_movimentos(movimentos, {
       mes,
       fechamentoPorCartao,
+      vencimentoPorCartao,
       categoriaId: orc.categoriaId,
     });
     const gasto = gasto_do_orcamento(tipoCategoria, totais.saidas, totais.entradas);

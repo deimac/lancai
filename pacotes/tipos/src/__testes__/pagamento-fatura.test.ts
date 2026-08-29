@@ -8,6 +8,8 @@ import {
   competencia_ciclo_da_data,
   linha_aceita_pagamento_fatura,
   mapa_fechamento_cartoes,
+  mapa_vencimento_cartoes,
+  mes_resultado_do_movimento,
   movimento_no_resultado_do_mes,
   periodo_amplo_do_ciclo,
   selo_fatura_ciclo,
@@ -169,7 +171,55 @@ describe("heurística de pagamento de fatura", () => {
     ).toBe(true);
     expect(periodo_amplo_do_ciclo({ de: "2026-08-01", ate: "2026-08-31" })).toEqual({
       de: "2026-07-01",
-      ate: "2026-08-31",
+      ate: "2026-09-30",
+    });
+  });
+
+  it("Azul fecha 30 vence 6: parcela prevista no vencimento entra na fatura que ainda não fechou", () => {
+    const extra = { vencimento: 6, parcelaNumero: 3, status: "previsto" as const };
+    expect(mes_resultado_do_movimento("2026-09-08", "azul", 30, extra)).toBe("2026-08");
+    expect(mes_resultado_do_movimento("2026-09-01", "azul", 30, extra)).toBe("2026-08");
+    expect(
+      mes_resultado_do_movimento("2026-08-06", "azul", 30, {
+        vencimento: 6,
+        parcelaNumero: 2,
+        status: "realizado",
+      }),
+    ).toBe("2026-08");
+    expect(mes_resultado_do_movimento("2026-10-06", "azul", 30, extra)).toBe("2026-09");
+    expect(mes_resultado_do_movimento("2026-08-15", "azul", 30)).toBe("2026-08");
+
+    const fechamento = mapa_fechamento_cartoes([{ id: "azul", fechamento: 30 }]);
+    const vencimento = mapa_vencimento_cartoes([{ id: "azul", vencimento: 6 }]);
+    expect(
+      movimento_no_resultado_do_mes(
+        { dataMovimento: "2026-09-08", cartaoId: "azul", parcelaNumero: 8, status: "previsto" },
+        "2026-08",
+        fechamento,
+        vencimento,
+      ),
+    ).toBe(true);
+    expect(
+      movimento_no_resultado_do_mes(
+        { dataMovimento: "2026-10-06", cartaoId: "azul", parcelaNumero: 9, status: "previsto" },
+        "2026-08",
+        fechamento,
+        vencimento,
+      ),
+    ).toBe(false);
+    expect(
+      selo_fatura_ciclo({
+        dataMovimento: "2026-09-08",
+        cartaoId: "azul",
+        fechamento: 30,
+        vencimento: 6,
+        parcelaNumero: 3,
+        status: "previsto",
+        tipo: "despesa",
+      }),
+    ).toEqual({
+      rotulo: "Fatura ago",
+      dica: "Em aberto. Entra na fatura de agosto (vence dia 6).",
     });
   });
 

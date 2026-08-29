@@ -938,6 +938,7 @@ export function TelaExtrato() {
                   cartaoId: movimento.cartaoId,
                   fechamento: cartaoMovimento?.fechamento,
                   vencimento: cartaoMovimento?.vencimento,
+                  parcelaNumero: movimento.parcelaNumero,
                   status: movimento.status,
                   tipo: movimento.tipo,
                   papel: movimento.papel,

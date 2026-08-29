@@ -4,6 +4,7 @@ import {
   agregar_totais_por_natureza,
   filtrar_movimentos_por_natureza,
   mes_gasto_do_cartao,
+  filtrar_movimentos_do_resultado,
   montar_fluxo_caixa,
   montar_proximos_pagamentos,
   perfil_de_tipo_gasto_dashboard,
@@ -643,6 +644,38 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     expect(aberto.get("cartao-nu")).toEqual({ gasto: 3939.68, quantidade: 1 });
     expect(aberto.get("cartao-mp")).toEqual({ gasto: 3609.64, quantidade: 1 });
   });
+
+  it("Azul: parcela prevista de setembro soma na fatura de agosto; outubro não", () => {
+    const fechamento = new Map([["azul", 30]]);
+    const vencimento = new Map([["azul", 6]]);
+    const movimentos = [
+      {
+        tipo: "despesa",
+        valor: "6500",
+        dataMovimento: "2026-08-15",
+        cartaoId: "azul",
+        status: "previsto",
+      },
+      {
+        tipo: "despesa",
+        valor: "300",
+        dataMovimento: "2026-09-08",
+        cartaoId: "azul",
+        parcelaNumero: 3,
+        status: "previsto",
+      },
+      {
+        tipo: "despesa",
+        valor: "300",
+        dataMovimento: "2026-10-06",
+        cartaoId: "azul",
+        parcelaNumero: 4,
+        status: "previsto",
+      },
+    ];
+    const agosto = agregar_gasto_cartao_por_competencia(movimentos, fechamento, "2026-08", vencimento);
+    expect(agosto.get("azul")).toEqual({ gasto: 6800, quantidade: 2 });
+  });
 });
 
 describe("mes_gasto_do_cartao", () => {
@@ -678,5 +711,23 @@ describe("mes_gasto_do_cartao", () => {
         fechamento: 2,
       }),
     ).toBe("2026-07");
+  });
+});
+
+describe("filtrar_movimentos_do_resultado", () => {
+  it("despesa no banco fica no mês civil; cartão segue a fatura aberta", () => {
+    const fechamento = new Map([["cartao-nu", 2]]);
+    const mesPorCartao = new Map([["cartao-nu", "2026-09"]]);
+    const visiveis = filtrar_movimentos_do_resultado(
+      [
+        { dataMovimento: "2026-07-30", cartaoId: "cartao-nu", valor: "9405" },
+        { dataMovimento: "2026-08-20", cartaoId: "cartao-nu", valor: "3939" },
+        { dataMovimento: "2026-08-15", cartaoId: null, valor: "80" },
+      ],
+      mesPorCartao,
+      "2026-08",
+      fechamento,
+    );
+    expect(visiveis.map((item) => item.valor).sort()).toEqual(["3939", "80"]);
   });
 });

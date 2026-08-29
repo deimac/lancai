@@ -1,6 +1,6 @@
 import type { MovimentoResumo } from "./api";
 import { eh_nao_classificado, precisa_revisao } from "./fila-revisao";
-import { mapa_fechamento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
+import { mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
 
 export type FilaExtrato = "todas" | "banco" | "manual" | "revisar";
 
@@ -209,7 +209,7 @@ export type ResumoExtrato = {
   proximaFatura: number;
 };
 
-export type CartaoCicloExtrato = { id: string; fechamento?: number | null };
+export type CartaoCicloExtrato = { id: string; fechamento?: number | null; vencimento?: number | null };
 
 /** Totais do recorte já filtrado (exclui cancelados e pagamento de fatura). */
 export function resumir_extrato(
@@ -217,6 +217,7 @@ export function resumir_extrato(
   opcoes?: { mes?: string; cartoes?: CartaoCicloExtrato[] },
 ): ResumoExtrato {
   const fechamentoPorCartao = mapa_fechamento_cartoes(opcoes?.cartoes ?? []);
+  const vencimentoPorCartao = mapa_vencimento_cartoes(opcoes?.cartoes ?? []);
   let entradas = 0;
   let saidas = 0;
   let revisarQuantidade = 0;
@@ -232,7 +233,7 @@ export function resumir_extrato(
       } else {
         const noResultado =
           !opcoes?.mes ||
-          movimento_no_resultado_do_mes(movimento, opcoes.mes, fechamentoPorCartao);
+          movimento_no_resultado_do_mes(movimento, opcoes.mes, fechamentoPorCartao, vencimentoPorCartao);
         if (noResultado) saidas += seguro;
         else proximaFatura += seguro;
       }

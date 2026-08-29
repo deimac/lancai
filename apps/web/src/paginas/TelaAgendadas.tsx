@@ -9,7 +9,7 @@ import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorM
 import { useContextoLayout } from "../layout/useContextoLayout";
 import { rotulo_natureza } from "../lib/natureza-extrato";
 import { unir_classes } from "../lib/unir-classes";
-import { hojeISO, competencia_ciclo_da_data, mapa_fechamento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
+import { hojeISO, competencia_ciclo_da_data, mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
 
 function dias_do_mes(yyyyMm: string): Date[] {
   const partes = yyyyMm.split("-");
@@ -73,11 +73,12 @@ export function TelaAgendadas() {
 
   const agendados = useMemo(() => {
     const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
+    const vencimentoPorCartao = mapa_vencimento_cartoes(cartoes);
     return movimentos.filter(
       (item) =>
         item.status === "previsto" &&
         item.tipo !== "receita" &&
-        movimento_no_resultado_do_mes(item, mes, fechamentoPorCartao),
+        movimento_no_resultado_do_mes(item, mes, fechamentoPorCartao, vencimentoPorCartao),
     );
   }, [movimentos, mes, cartoes]);
 

@@ -7,6 +7,7 @@ import {
   enxugar_indice_parcela,
   hora_visivel_do_fato,
   mapa_fechamento_cartoes,
+  mapa_vencimento_cartoes,
   mes_resultado_do_movimento,
   movimento_no_resultado_do_mes,
   paraNumero,
@@ -90,9 +91,10 @@ async function recortar_resultado_do_periodo<
   const mes = periodo.de.slice(0, 7);
   const cartoes = await repositorio.listarCartoes(usuarioId);
   const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
+  const vencimentoPorCartao = mapa_vencimento_cartoes(cartoes);
   return movimentos.filter((movimento) => {
     if (movimento.cartaoId) {
-      return movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao);
+      return movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao, vencimentoPorCartao);
     }
     const dia = String(movimento.dataMovimento).slice(0, 10);
     return dia >= periodo.de && dia <= periodo.ate;
@@ -467,11 +469,17 @@ export class ModuloRelatorios {
       this.repositorio.listarCartoes(filtros.usuarioId),
     ]);
     const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
+    const vencimentoPorCartao = mapa_vencimento_cartoes(cartoes);
 
     const totaisPorMes = new Map<string, { receitas: number; despesas: number }>();
     for (const movimento of movimentos) {
       const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
-      const mes = mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento);
+      const vencimento = movimento.cartaoId ? vencimentoPorCartao.get(movimento.cartaoId) : undefined;
+      const mes = mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
+        vencimento,
+        parcelaNumero: movimento.parcelaNumero,
+        status: movimento.status,
+      });
       if (mes < periodo.de.slice(0, 7) || mes > periodo.ate.slice(0, 7)) continue;
       const atual = totaisPorMes.get(mes) ?? { receitas: 0, despesas: 0 };
       if (movimento.tipo === "receita") atual.receitas = somar(atual.receitas, movimento.valor);

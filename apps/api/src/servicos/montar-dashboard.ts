@@ -13,6 +13,7 @@ import {
   eh_movimento_parcelado,
   hojeISO,
   mapa_fechamento_cartoes,
+  mapa_vencimento_cartoes,
   movimento_no_resultado_do_mes,
   paraDataISO,
   periodo_amplo_do_ciclo,
@@ -215,6 +216,28 @@ export function mes_gasto_do_cartao(entrada: {
   return competencia_ciclo_da_data(entrada.hoje, entrada.fechamento);
 }
 
+export function filtrar_movimentos_do_resultado<
+  T extends {
+    dataMovimento: string;
+    cartaoId?: string | null;
+    parcelaNumero?: number | null;
+    status?: string | null;
+  },
+>(
+  movimentos: T[],
+  mesPorCartao: ReadonlyMap<string, string>,
+  mesConta: string,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+): T[] {
+  return movimentos.filter((movimento) => {
+    const alvo = movimento.cartaoId
+      ? (mesPorCartao.get(movimento.cartaoId) ?? mesConta)
+      : mesConta;
+    return movimento_no_resultado_do_mes(movimento, alvo, fechamentoPorCartao, vencimentoPorCartao);
+  });
+}
+
 export function agregar_gasto_cartao_por_competencia(
   movimentos: Array<{
     tipo: string;
@@ -222,9 +245,12 @@ export function agregar_gasto_cartao_por_competencia(
     dataMovimento: string;
     cartaoId?: string | null;
     papel?: string | null;
+    parcelaNumero?: number | null;
+    status?: string | null;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
+  vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
 ): Map<string, { gasto: number; quantidade: number }> {
   const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
   for (const movimento of movimentos) {
@@ -233,7 +259,9 @@ export function agregar_gasto_cartao_por_competencia(
     if (movimento.papel === "pagamento_fatura") continue;
     const alvo = typeof mes === "string" ? mes : mes.get(movimento.cartaoId);
     if (!alvo) continue;
-    if (!movimento_no_resultado_do_mes(movimento, alvo, fechamentoPorCartao)) continue;
+    if (!movimento_no_resultado_do_mes(movimento, alvo, fechamentoPorCartao, vencimentoPorCartao)) {
+      continue;
+    }
     const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
     atual.gasto += Number(movimento.valor);
     atual.quantidade += 1;
@@ -313,32 +341,42 @@ export async function montar_dashboard(
   const saldos = saldosVisao.dados;
   const historico = historicoVisao.dados;
   const cartoes = cartoesVisao.dados;
-  const fechamentoPorCartao = mapa_fechamento_cartoes([
-    ...cartoesDb,
-    ...cartoes.cartoes,
-  ]);
-  const movimentosPnL = movimentosAmplo.filter((movimento) =>
-    movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao),
-  );
-  const movimentosPnLAnterior = movimentosAmplo.filter((movimento) =>
-    movimento_no_resultado_do_mes(movimento, mesAnterior, fechamentoPorCartao),
-  );
-
+  const cartoesCiclo = [...cartoesDb, ...cartoes.cartoes];
+  const fechamentoPorCartao = mapa_fechamento_cartoes(cartoesCiclo);
+  const vencimentoPorCartao = mapa_vencimento_cartoes(cartoesCiclo);
   const mesCivilHoje = hoje.slice(0, 7);
-  const mesGastoPorCartao = new Map(
-    cartoes.cartoes.map((cartao) => [
-      cartao.id,
-      mes_gasto_do_cartao({
-        mesSelecionado: mes,
-        hoje,
-        fechamento: cartao.fechamento,
-      }),
-    ]),
+  const porFechamento = (mesAlvo: string) =>
+    new Map(
+      [...cartoesDb, ...cartoes.cartoes].map((cartao) => [
+        cartao.id,
+        mes_gasto_do_cartao({
+          mesSelecionado: mesAlvo,
+          hoje,
+          fechamento: cartao.fechamento,
+        }),
+      ]),
+    );
+  const mesGastoPorCartao = porFechamento(mes);
+  const mesGastoAnteriorPorCartao = porFechamento(mesAnterior);
+  const movimentosPnL = filtrar_movimentos_do_resultado(
+    movimentosAmplo,
+    mesGastoPorCartao,
+    mes,
+    fechamentoPorCartao,
+    vencimentoPorCartao,
+  );
+  const movimentosPnLAnterior = filtrar_movimentos_do_resultado(
+    movimentosAmplo,
+    mesGastoAnteriorPorCartao,
+    mesAnterior,
+    fechamentoPorCartao,
+    vencimentoPorCartao,
   );
   const gastoPorCartao = agregar_gasto_cartao_por_competencia(
     movimentosAmplo,
     fechamentoPorCartao,
     mesGastoPorCartao,
+    vencimentoPorCartao,
   );
 
   const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);

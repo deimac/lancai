@@ -6,7 +6,7 @@ import {
   movimento as movimentoTabela,
   obter_banco,
 } from "@lancai/banco";
-import { hojeISO, mapa_fechamento_cartoes, movimento_no_resultado_do_mes, periodo_amplo_do_ciclo } from "@lancai/tipos";
+import { hojeISO, mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_resultado_do_mes, periodo_amplo_do_ciclo } from "@lancai/tipos";
 import { gasto_do_orcamento, listar_status_orcamentos } from "./orcamento-servico";
 
 export type CategoriaUi = {
@@ -30,6 +30,7 @@ export type MovimentoTotaisCategoria = {
   tipo: string;
   valor: string | number;
   status?: string;
+  parcelaNumero?: number | null;
 };
 
 const MES_YYYY_MM = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -52,12 +53,13 @@ export function agregar_totais_por_categoria(
   movimentos: MovimentoTotaisCategoria[],
   mes: string,
   fechamentoPorCartao: ReadonlyMap<string, number>,
+  vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
 ): Map<string, { saidas: number; entradas: number; quantidade: number }> {
   const mapaTotais = new Map<string, { saidas: number; entradas: number; quantidade: number }>();
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
     if (!movimento.categoriaId) continue;
-    if (!movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao)) continue;
+    if (!movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao, vencimentoPorCartao)) continue;
     const atual = mapaTotais.get(movimento.categoriaId) ?? {
       saidas: 0,
       entradas: 0,
@@ -104,6 +106,7 @@ export async function montar_categorias_ui(
         valor: movimentoTabela.valor,
         tipoGasto: movimentoTabela.tipoGasto,
         status: movimentoTabela.status,
+        parcelaNumero: movimentoTabela.parcelaNumero,
       })
       .from(movimentoTabela)
       .where(
@@ -115,13 +118,14 @@ export async function montar_categorias_ui(
         ),
       ),
     banco
-      .select({ id: cartaoTabela.id, fechamento: cartaoTabela.fechamento })
+      .select({ id: cartaoTabela.id, fechamento: cartaoTabela.fechamento, vencimento: cartaoTabela.vencimento })
       .from(cartaoTabela)
       .where(eq(cartaoTabela.usuarioId, usuarioId)),
   ]);
 
   const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
-  const mapaTotais = agregar_totais_por_categoria(movimentos, mes, fechamentoPorCartao);
+  const vencimentoPorCartao = mapa_vencimento_cartoes(cartoes);
+  const mapaTotais = agregar_totais_por_categoria(movimentos, mes, fechamentoPorCartao, vencimentoPorCartao);
 
   let orcamentos: Awaited<ReturnType<typeof listar_status_orcamentos>> = [];
   try {
