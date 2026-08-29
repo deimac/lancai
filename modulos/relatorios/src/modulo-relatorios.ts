@@ -8,7 +8,7 @@ import {
   hora_visivel_do_fato,
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
-  mes_resultado_do_movimento,
+  ciclo_do_movimento,
   movimento_no_resultado_do_mes,
   paraNumero,
   periodo_amplo_do_ciclo,
@@ -475,7 +475,7 @@ export class ModuloRelatorios {
     for (const movimento of movimentos) {
       const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
       const vencimento = movimento.cartaoId ? vencimentoPorCartao.get(movimento.cartaoId) : undefined;
-      const mes = mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
+      const mes = ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
         vencimento,
         parcelaNumero: movimento.parcelaNumero,
         status: movimento.status,

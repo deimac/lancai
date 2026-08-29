@@ -7,6 +7,7 @@ import {
 } from "@lancai/relatorios";
 import {
   adicionarMeses,
+  ciclo_aberto_em,
   competencia_ciclo_da_data,
   competencia_quitacao_fatura,
   data_vencimento_do_ciclo,
@@ -221,7 +222,7 @@ export function mes_gasto_do_cartao(entrada: {
   fechamento: number;
 }): string {
   if (entrada.mesSelecionado !== entrada.hoje.slice(0, 7)) return entrada.mesSelecionado;
-  return competencia_ciclo_da_data(entrada.hoje, entrada.fechamento);
+  return ciclo_aberto_em(entrada.hoje, entrada.fechamento);
 }
 
 export function filtrar_movimentos_do_resultado<

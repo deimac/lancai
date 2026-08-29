@@ -81,6 +81,10 @@ export function linha_aceita_pagamento_fatura(movimento: {
   return false;
 }
 
+/**
+ * Heurística do extrato (sugerir pagamento). Não decide ciclo de parcela —
+ * isso é `ciclo_do_movimento` + `data_vencimento_do_ciclo`.
+ */
 export function competencia_vencimento_proximo(dataISO: string, diaVencimento: number): string {
   const partes = dataISO.slice(0, 10).split("-").map(Number);
   const ano = partes[0];
@@ -169,6 +173,11 @@ export function intervalo_ciclo_fatura(
   return { inicio: iso_utc(inicio), fim };
 }
 
+/** Ciclo aberto em `hoje`: se passou o fecha, o seguinte. */
+export function ciclo_aberto_em(hoje: string, fechamento: number): string {
+  return competencia_ciclo_da_data(hoje, fechamento);
+}
+
 /** Competência cuja fatura inclui a compra nesta data (inverso de `intervalo_ciclo_fatura`). */
 export function competencia_ciclo_da_data(dataISO: string, fechamento: number): string {
   const [anoStr, mesStr, diaStr] = dataISO.slice(0, 10).split("-");
@@ -203,9 +212,8 @@ export function data_vencimento_do_ciclo(
 }
 
 /**
- * Ciclo cuja fatura vence no mês da agenda (Próximos).
- * Fecha 30 / vence 6: agosto lista o ciclo de julho (vence 06/08).
- * Fecha 12 / vence 17: agosto lista o ciclo de agosto (vence 17/08).
+ * Ciclo cuja fatura vence no mês civil. Não escolhe a linha aberta dos Próximos
+ * (aberto = ciclo que fecha no mês da tela + `data_vencimento_do_ciclo`).
  */
 export function competencia_ciclo_vencendo_em(
   mesAgenda: string,
@@ -296,21 +304,27 @@ export type ExtraCicloMovimento = {
   pagamentos?: PagamentoCiclo[];
 };
 
-/** Parcela prevista no vencimento desta fatura, mesmo depois do fechamento. */
-function competencia_parcela_prevista(
+/**
+ * Parcela prevista só muda de ciclo se cair na janela do vencimento de C
+ * (`data_vencimento_do_ciclo` ± 7 dias). Dia 1 do mês não é vencimento.
+ */
+function ciclo_da_parcela_prevista(
   data: string,
   ciclo: string,
   fechamento: number,
   vencimento: number,
 ): string {
-  const mesVenc = competencia_vencimento_proximo(data, vencimento);
-  if (vencimento < fechamento) {
-    const mesFecha = mes_anterior_competencia(mesVenc);
-    if (ciclo === mesVenc) return mesFecha;
-    return ciclo;
+  const candidatos = [
+    mes_anterior_competencia(ciclo),
+    ciclo,
+    mes_seguinte_competencia(ciclo),
+  ];
+  for (const competencia of candidatos) {
+    const venc = data_vencimento_do_ciclo(competencia, fechamento, vencimento);
+    if (dias_calendario_entre(data, venc) <= JANELA_VENCIMENTO_DIAS) {
+      return competencia;
+    }
   }
-  const seguinte = mes_seguinte_competencia(mesVenc);
-  if (ciclo === seguinte || ciclo === mesVenc) return mesVenc;
   return ciclo;
 }
 
@@ -341,11 +355,11 @@ function aplicar_antecipacao(
 }
 
 /**
- * Mês do P&L: conta = civil; cartão = competência do ciclo de fechamento.
- * Parcela prevista no vencimento entra na fatura que vence nessa data.
- * Pagamento antecipado (antes do fechamento) empurra o gasto para o ciclo aberto.
+ * Ciclo da linha: intervalo do fechamento; parcela prevista só se a data
+ * está na janela do vencimento desse ciclo; antecipação empurra ao aberto.
+ * Conta (sem cartão) = mês civil.
  */
-export function mes_resultado_do_movimento(
+export function ciclo_do_movimento(
   dataMovimento: string,
   cartaoId: string | null | undefined,
   fechamento: number | null | undefined,
@@ -366,9 +380,19 @@ export function mes_resultado_do_movimento(
     extra?.status !== "realizado" &&
     extra?.status !== "cancelado"
   ) {
-    mes = competencia_parcela_prevista(data, ciclo, fechamento, vencimento);
+    mes = ciclo_da_parcela_prevista(data, ciclo, fechamento, vencimento);
   }
   return aplicar_antecipacao(data, mes, cartaoId, fechamento, vencimento, extra?.pagamentos);
+}
+
+/** @deprecated Use `ciclo_do_movimento`. */
+export function mes_resultado_do_movimento(
+  dataMovimento: string,
+  cartaoId: string | null | undefined,
+  fechamento: number | null | undefined,
+  extra?: ExtraCicloMovimento,
+): string {
+  return ciclo_do_movimento(dataMovimento, cartaoId, fechamento, extra);
 }
 
 export function mapa_fechamento_cartoes(
@@ -410,7 +434,7 @@ export function movimento_no_resultado_do_mes(
   const fechamento = movimento.cartaoId ? fechamentoPorCartao.get(movimento.cartaoId) : undefined;
   const vencimento = movimento.cartaoId ? vencimentoPorCartao.get(movimento.cartaoId) : undefined;
   return (
-    mes_resultado_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
+    ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
       vencimento,
       parcelaNumero: movimento.parcelaNumero,
       status: movimento.status,
@@ -457,7 +481,7 @@ export function selo_fatura_ciclo(entrada: {
   if (entrada.fechamento == null || entrada.fechamento < 1) return null;
   const data = String(entrada.dataMovimento).slice(0, 10);
   const mesCompra = data.slice(0, 7);
-  const competencia = mes_resultado_do_movimento(data, entrada.cartaoId, entrada.fechamento, {
+  const competencia = ciclo_do_movimento(data, entrada.cartaoId, entrada.fechamento, {
     vencimento: entrada.vencimento,
     parcelaNumero: entrada.parcelaNumero,
     status: entrada.status,

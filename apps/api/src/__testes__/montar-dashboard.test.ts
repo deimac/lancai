@@ -361,6 +361,25 @@ describe("montar_proximos_pagamentos", () => {
     ]);
   });
 
+  it("fecha 25 vence 3: em agosto a fatura aberta vence no mês seguinte", () => {
+    const novo: DashboardCartao = { ...cartao, id: "c25", nome: "Cartão 25/3", fechamento: 25, vencimento: 3, gastoMes: 410 };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [novo],
+      movimentos: [],
+      hoje: "2026-08-29",
+      periodo: { de: "2026-08-01", ate: "2026-08-31" },
+    });
+    expect(itens.filter((item) => item.origem === "fatura")).toEqual([
+      expect.objectContaining({
+        data: "2026-09-03",
+        pago: false,
+        situacao: "a_pagar",
+        competenciaCiclo: "2026-08",
+      }),
+    ]);
+  });
+
   it("fecha 12 vence 17: em agosto a fatura aberta vence no mesmo mês", () => {
     const mp: DashboardCartao = { ...cartao, fechamento: 12, vencimento: 17, gastoMes: 320 };
     const itens = montar_proximos_pagamentos({
@@ -719,6 +738,51 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     expect(aberto.get("cartao-mp")).toEqual({ gasto: 3609.64, quantidade: 1 });
   });
 
+  it("fecha 12: parcelas previstas no dia 1 entram no ciclo aberto, não no que já fechou", () => {
+    const fechamento = new Map([["mp", 12]]);
+    const vencimento = new Map([["mp", 17]]);
+    const movimentos = [
+      {
+        tipo: "despesa",
+        valor: "970.76",
+        dataMovimento: "2026-08-25",
+        cartaoId: "mp",
+        status: "previsto",
+      },
+      {
+        tipo: "despesa",
+        valor: "621.43",
+        dataMovimento: "2026-09-01",
+        cartaoId: "mp",
+        parcelaNumero: 2,
+        status: "previsto",
+      },
+      {
+        tipo: "despesa",
+        valor: "2017.45",
+        dataMovimento: "2026-09-01",
+        cartaoId: "mp",
+        parcelaNumero: 4,
+        status: "previsto",
+      },
+    ];
+    const setembro = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamento,
+      "2026-09",
+      vencimento,
+    );
+    expect(setembro.get("mp")?.quantidade).toBe(3);
+    expect(setembro.get("mp")?.gasto).toBeCloseTo(3609.64, 2);
+    const agosto = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamento,
+      "2026-08",
+      vencimento,
+    );
+    expect(agosto.get("mp")).toBeUndefined();
+  });
+
   it("fecha 30: parcela prevista no vencimento soma no ciclo aberto; a do ciclo seguinte não", () => {
     const fechamento = new Map([["azul", 30]]);
     const vencimento = new Map([["azul", 6]]);
@@ -841,6 +905,23 @@ describe("mes_gasto_do_cartao", () => {
         fechamento: 2,
       }),
     ).toBe("2026-07");
+  });
+
+  it("fecha 25: em 29/08 o card já lê o ciclo seguinte", () => {
+    expect(
+      mes_gasto_do_cartao({
+        mesSelecionado: "2026-08",
+        hoje: "2026-08-29",
+        fechamento: 25,
+      }),
+    ).toBe("2026-09");
+    expect(
+      mes_gasto_do_cartao({
+        mesSelecionado: "2026-08",
+        hoje: "2026-08-25",
+        fechamento: 25,
+      }),
+    ).toBe("2026-08");
   });
 });
 

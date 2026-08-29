@@ -5,9 +5,12 @@ import {
   descricao_parece_pagamento_fatura,
   eh_credito_quitacao_no_cartao,
   intervalo_ciclo_fatura,
+  ciclo_aberto_em,
+  ciclo_do_movimento,
   competencia_ciclo_da_data,
   competencia_ciclo_vencendo_em,
   competencia_quitacao_fatura,
+  data_vencimento_do_ciclo,
   dia_fechamento_no_mes,
   linha_aceita_pagamento_fatura,
   mapa_fechamento_cartoes,
@@ -248,6 +251,13 @@ describe("heurística de pagamento de fatura", () => {
       }),
     ).toBe("2026-08");
     expect(mes_resultado_do_movimento("2026-08-25", "mp", 12)).toBe("2026-09");
+    expect(
+      mes_resultado_do_movimento("2026-09-01", "mp", 12, {
+        vencimento: 17,
+        parcelaNumero: 2,
+        status: "previsto",
+      }),
+    ).toBe("2026-09");
   });
 
   it("pagamento antes do fechamento empurra o gasto para o ciclo aberto", () => {
@@ -410,5 +420,81 @@ describe("heurística de pagamento de fatura", () => {
     expect(valores_proximos(100, 102)).toBe(false);
     expect(data_proxima_do_vencimento("2026-08-17", 17)).toBe(true);
     expect(data_proxima_do_vencimento("2026-08-01", 17)).toBe(false);
+  });
+});
+
+describe("contrato único de ciclo", () => {
+  const parcela = { parcelaNumero: 2, status: "previsto" as const };
+
+  it("fecha 30 vence 6: aberto até o fecha; parcela só na janela do vencimento", () => {
+    expect(ciclo_aberto_em("2026-08-29", 30)).toBe("2026-08");
+    expect(ciclo_aberto_em("2026-08-30", 30)).toBe("2026-08");
+    expect(ciclo_aberto_em("2026-08-31", 30)).toBe("2026-09");
+    expect(data_vencimento_do_ciclo("2026-08", 30, 6)).toBe("2026-09-06");
+    expect(ciclo_do_movimento("2026-09-08", "c30", 30, { vencimento: 6, ...parcela })).toBe("2026-08");
+    expect(ciclo_do_movimento("2026-10-06", "c30", 30, { vencimento: 6, ...parcela })).toBe("2026-09");
+    expect(competencia_quitacao_fatura("2026-08-05", 30, 6)).toBe("2026-07");
+    expect(data_vencimento_do_ciclo("2026-07", 30, 6)).toBe("2026-08-06");
+  });
+
+  it("fecha 12 vence 17: 29/08 já é o ciclo seguinte; dia 1 não é vencimento", () => {
+    expect(ciclo_aberto_em("2026-08-29", 12)).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-08-25", "c12", 12)).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-09-01", "c12", 12, { vencimento: 17, ...parcela })).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-08-17", "c12", 12, { vencimento: 17, ...parcela })).toBe("2026-08");
+    expect(data_vencimento_do_ciclo("2026-08", 12, 17)).toBe("2026-08-17");
+    expect(data_vencimento_do_ciclo("2026-09", 12, 17)).toBe("2026-09-17");
+  });
+
+  it("fecha 25 vence 3: mesmo desenho vence no mês seguinte", () => {
+    expect(intervalo_ciclo_fatura("2026-08", 25)).toEqual({
+      inicio: "2026-07-26",
+      fim: "2026-08-25",
+    });
+    expect(data_vencimento_do_ciclo("2026-08", 25, 3)).toBe("2026-09-03");
+    expect(ciclo_aberto_em("2026-08-25", 25)).toBe("2026-08");
+    expect(ciclo_aberto_em("2026-08-29", 25)).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-08-20", "c25", 25)).toBe("2026-08");
+    expect(ciclo_do_movimento("2026-08-26", "c25", 25)).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-09-03", "c25", 25, { vencimento: 3, ...parcela })).toBe("2026-08");
+    expect(ciclo_do_movimento("2026-10-03", "c25", 25, { vencimento: 3, ...parcela })).toBe("2026-09");
+  });
+
+  it("fecha 30 em fevereiro usa o último dia do mês", () => {
+    expect(dia_fechamento_no_mes(2026, 2, 30)).toBe(28);
+    expect(dia_fechamento_no_mes(2028, 2, 30)).toBe(29);
+    expect(intervalo_ciclo_fatura("2026-02", 30)).toEqual({
+      inicio: "2026-01-31",
+      fim: "2026-02-28",
+    });
+    expect(intervalo_ciclo_fatura("2028-02", 30)).toEqual({
+      inicio: "2028-01-31",
+      fim: "2028-02-29",
+    });
+    expect(ciclo_aberto_em("2026-02-28", 30)).toBe("2026-02");
+    expect(ciclo_aberto_em("2026-03-01", 30)).toBe("2026-03");
+  });
+
+  it("antecipação no dia anterior ao fecha empurra; residual depois não paga o aberto", () => {
+    const antecipado = [
+      { cartaoId: "c30", dataMovimento: "2026-07-29", papel: "pagamento_fatura" as const },
+    ];
+    expect(
+      ciclo_do_movimento("2026-07-29", "c30", 30, { vencimento: 6, pagamentos: antecipado }),
+    ).toBe("2026-08");
+    expect(
+      ciclo_do_movimento("2026-07-20", "c30", 30, { vencimento: 6, pagamentos: antecipado }),
+    ).toBe("2026-07");
+
+    const residual = [
+      { cartaoId: "c30", dataMovimento: "2026-08-05", papel: "pagamento_fatura" as const },
+    ];
+    expect(competencia_quitacao_fatura("2026-08-05", 30, 6)).toBe("2026-07");
+    expect(
+      ciclo_do_movimento("2026-08-15", "c30", 30, { vencimento: 6, pagamentos: residual }),
+    ).toBe("2026-08");
+    expect(
+      ciclo_do_movimento("2026-08-31", "c30", 30, { vencimento: 6, pagamentos: residual }),
+    ).toBe("2026-09");
   });
 });
