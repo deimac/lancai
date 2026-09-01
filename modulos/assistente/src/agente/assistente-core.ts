@@ -54,8 +54,8 @@ function hashRequest(request: ResolvedRequest): string {
 
 function interpretConfirmacao(mensagem: string): "sim" | "nao" | "indice" | null {
   const t = mensagem.trim().toLocaleLowerCase("pt-BR");
-  if (/^(sim|s|yes|ok|confirmo)$/.test(t)) return "sim";
-  if (/^(não|nao|n|no)$/.test(t)) return "nao";
+  if (/^(sim|s|yes|ok|confirmo|confirma)\b/.test(t)) return "sim";
+  if (/^(não|nao|n|no)\b/.test(t)) return "nao";
   if (/^\d+$/.test(t)) return "indice";
   return null;
 }

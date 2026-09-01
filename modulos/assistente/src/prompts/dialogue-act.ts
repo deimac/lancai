@@ -79,7 +79,7 @@ Regras:
 - "e agora?" / "quanto ficou" depois de um mutate (result.stale) → refresh.
 - sim/não com pending confirmation → confirm / cancel.
 - Olá sem pedido → greet.
-- Lançar gasto → write. Corrigir → update. Apagar → delete.
+- Lançar gasto → write (papel omitido ou gasto). Quitar fatura do cartão X → write papel=pagamento_fatura; cartaoNome é de quem é a fatura, não o canal da compra. Se disser de onde saiu o dinheiro → contaNome. Sem cartaoNome não chute. descricao é rótulo curto, não amarre à frase "pagamento de fatura". Corrigir → update. Apagar → delete.
 
 new_query.query campos: entityDomain, grain, period, comparison, tipos, tipoGasto, origemPerfil, cruzado, direcao, canal, merchant, descricao, sort, limit.
 grain: summary | list | top | category | month | explain
@@ -107,6 +107,14 @@ U: "e no cartão?"
 → {"act":"patch_query","ops":[{"op":"set","slot":"canal","value":"cartao"}]}
 U: "Gastei 50 no Uber no Nubank"
 → {"act":"write","intent":{"tipo":"despesa","valor":50,"descricao":"Uber","contaNome":"Nubank"}}
+U: "Lance um pagamento de fatura para o cartão Revolut de 1158,55 no dia 17 de agosto"
+→ {"act":"write","intent":{"papel":"pagamento_fatura","valor":1158.55,"cartaoNome":"Revolut","data":"2026-08-17"}}
+U: "Paguei a fatura do Revolut 1158,55 em 17/08"
+→ {"act":"write","intent":{"papel":"pagamento_fatura","valor":1158.55,"cartaoNome":"Revolut","data":"2026-08-17"}}
+U: "Quita o Azul, 2000, ontem, saiu da Nubank" (dataAtual 2026-08-23)
+→ {"act":"write","intent":{"papel":"pagamento_fatura","valor":2000,"cartaoNome":"Azul","contaNome":"Nubank","data":"2026-08-22"}}
+U: "Gastei 50 no Uber no Revolut"
+→ {"act":"write","intent":{"tipo":"despesa","valor":50,"descricao":"Uber","cartaoNome":"Revolut"}}
 U: "cancela o 1"
 → {"act":"delete","target":{"by":"ordinal","n":1}}
 U: "exclua do 2 ao 4"

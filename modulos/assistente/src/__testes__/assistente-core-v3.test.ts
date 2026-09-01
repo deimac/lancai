@@ -37,6 +37,114 @@ describe("AssistenteCoreV3", () => {
     expect(r2.resposta.toLowerCase()).toMatch(/lançad|uber/);
   });
 
+  it("pagamento de fatura no Revolut pede sim e grava crédito no cartão", async () => {
+    const { core } = criarAssistenteCoreV3Teste({
+      acts: {
+        "Lance um pagamento de fatura para o cartao revolut no valor de 1158,55 dia 17 de agosto": {
+          act: "write",
+          intent: {
+            papel: "pagamento_fatura",
+            valor: 1158.55,
+            cartaoNome: "Revolut",
+            data: "2026-08-17",
+          },
+        },
+      },
+    });
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "Lance um pagamento de fatura para o cartao revolut no valor de 1158,55 dia 17 de agosto",
+      canal: "web",
+    });
+    expect(r1.diagnostico?.confirm).toBe(true);
+    expect(r1.resposta.toLowerCase()).toMatch(/ainda não gravei|responda sim/);
+
+    const r2 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "sim, pode",
+      sessaoId: r1.sessaoId,
+      canal: "web",
+    });
+    expect(r2.diagnostico?.executed).toBe(true);
+    expect(r2.resposta.toLowerCase()).toMatch(/lançad/);
+  });
+
+  it("golden Lance pagamento no Revolut manual pede confirmação de criar", async () => {
+    const { core } = criarAssistenteCoreV3Teste();
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "Lance um pagamento de fatura para o cartão Revolut de 1158,55 no dia 17 de agosto",
+      canal: "web",
+    });
+    expect(r1.diagnostico?.confirm).toBe(true);
+    expect(r1.diagnostico?.blocked).toBeFalsy();
+  });
+
+  it("pagamento de fatura no cartão sincronizado recusa criar", async () => {
+    const { core, movimentos } = criarAssistenteCoreV3Teste({
+      acts: {
+        "Quita o Azul, 2000, ontem": {
+          act: "write",
+          intent: {
+            papel: "pagamento_fatura",
+            valor: 2000,
+            cartaoNome: "Azul",
+            data: "2026-08-22",
+          },
+        },
+      },
+    });
+    const antes = movimentos.size;
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "Quita o Azul, 2000, ontem",
+      canal: "web",
+    });
+    expect(r.diagnostico?.blocked).toBe(true);
+    expect(r.diagnostico?.confirm).toBeFalsy();
+    expect(r.resposta).toMatch(/conectada ao banco/i);
+    expect(r.resposta).toMatch(/classifico/i);
+    expect(movimentos.size).toBe(antes);
+  });
+
+  it("pagamento de fatura saindo de conta sincronizada recusa criar", async () => {
+    const { core, movimentos } = criarAssistenteCoreV3Teste({
+      acts: {
+        "Paguei o Revolut 200 saindo da Nubank": {
+          act: "write",
+          intent: {
+            papel: "pagamento_fatura",
+            valor: 200,
+            cartaoNome: "Revolut",
+            contaNome: "Nubank",
+          },
+        },
+      },
+    });
+    const antes = movimentos.size;
+    const r = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "Paguei o Revolut 200 saindo da Nubank",
+      canal: "web",
+    });
+    expect(r.diagnostico?.blocked).toBe(true);
+    expect(r.diagnostico?.confirm).toBeFalsy();
+    expect(r.resposta).toMatch(/Nubank/);
+    expect(r.resposta).toMatch(/conectada ao banco/i);
+    expect(movimentos.size).toBe(antes);
+  });
+
+  it("compra no Revolut não é tratada como pagamento de fatura", async () => {
+    const { core } = criarAssistenteCoreV3Teste();
+    const r1 = await core.processar({
+      usuarioId: IDS.user,
+      mensagem: "Gastei 50 no Uber no Revolut",
+      canal: "web",
+    });
+    expect(r1.diagnostico?.confirm).toBe(true);
+    expect(r1.resposta.toLowerCase()).toMatch(/uber/);
+  });
+
   it("query Uber", async () => {
     const { core } = criarAssistenteCoreV3Teste();
     const r = await core.processar({

@@ -157,6 +157,9 @@ describe("prompt DialogueAct", () => {
     expect(system).toMatch(/e sábado eu tive entradas/i);
     expect(system).toMatch(/forma de pagamento, nunca merchant/i);
     expect(system).toMatch(/estabelecimento é merchant/i);
+    expect(system).toContain("pagamento_fatura");
+    expect(system).toMatch(/Paguei a fatura do Revolut/i);
+    expect(system).toMatch(/Gastei 50 no Uber no Revolut/i);
     expect(system).not.toMatch(/Tayna/i);
   });
 });

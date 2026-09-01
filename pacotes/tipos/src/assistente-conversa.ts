@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import { PeriodSpecSchema, type QuerySpec } from "./assistente-v2";
-import { perfilSchema } from "./cadastro";
+import { papelConhecimentoSchema, perfilSchema } from "./cadastro";
 import { tipoMovimentoSchema } from "./movimento";
 import { canalPagamentoSchema, direcaoFluxoSchema } from "./relatorio";
 
@@ -124,6 +124,8 @@ export const WriteIntentSchema = z.object({
   contaNome: z.string().min(1).optional(),
   cartaoNome: z.string().min(1).optional(),
   categoriaNome: z.string().min(1).optional(),
+  /** gasto = comprou; pagamento_fatura = quitou a fatura daquele cartão. */
+  papel: papelConhecimentoSchema.optional(),
 });
 export type WriteIntent = z.infer<typeof WriteIntentSchema>;
 

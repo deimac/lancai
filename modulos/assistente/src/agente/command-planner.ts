@@ -7,6 +7,7 @@ import {
   type ConversationUnderstanding,
   type DialogueAct,
   type EntityReference,
+  type PeriodSpec,
   type ResolutionResult,
   type SimpleCommand,
 } from "@lancai/tipos";
@@ -78,6 +79,46 @@ function ehRegra(understanding: ConversationUnderstanding): boolean {
   if (!entities?.category || entities.amount != null) return false;
   if (entities.merchant) return true;
   return registro(entities.value).regra === true;
+}
+
+function dataDoPeriodo(period?: PeriodSpec): string | undefined {
+  if (period?.de && /^\d{4}-\d{2}-\d{2}$/.test(period.de)) return period.de;
+  if (period?.ate && /^\d{4}-\d{2}-\d{2}$/.test(period.ate)) return period.ate;
+  return undefined;
+}
+
+function camposCreate(entrada: {
+  descricao?: string;
+  tipo?: Extract<SimpleCommand, { type: "create_transaction" }>["input"]["tipo"];
+  papel?: Extract<SimpleCommand, { type: "create_transaction" }>["input"]["papel"];
+  temCartao: boolean;
+  temConta: boolean;
+}):
+  | {
+      ok: true;
+      campos: Pick<
+        Extract<SimpleCommand, { type: "create_transaction" }>["input"],
+        "descricao" | "tipo" | "papel"
+      >;
+    }
+  | { ok: false; ambiguity: Ambiguity } {
+  if (entrada.papel === "pagamento_fatura") {
+    if (!entrada.temCartao) {
+      return { ok: false, ambiguity: { field: "card", reason: "qual cartão é a fatura" } };
+    }
+    return {
+      ok: true,
+      campos: {
+        descricao: entrada.descricao,
+        tipo: entrada.temConta ? "despesa" : "receita",
+        papel: "pagamento_fatura",
+      },
+    };
+  }
+  return {
+    ok: true,
+    campos: { descricao: entrada.descricao, tipo: entrada.tipo },
+  };
 }
 
 function planoDe(command: SimpleCommand, description: string): CommandPlanResult {
@@ -183,13 +224,23 @@ export function planCommand(
   }
 
   if (intent === "create") {
+    const extraCreate = registro(entities?.value);
+    const mapeado = camposCreate({
+      descricao: entities?.merchant,
+      tipo,
+      papel: understanding.question?.implicit_filters?.papel,
+      temCartao: Boolean(entities?.card || extraCreate.cartaoNome),
+      temConta: Boolean(entities?.account || extraCreate.contaNome),
+    });
+    if (!mapeado.ok) return { kind: "clarify", ambiguity: [mapeado.ambiguity] };
+    const dataISO = dataDoPeriodo(entities?.period);
     return planoDe(
       {
         type: "create_transaction",
         input: {
-          descricao: entities?.merchant,
           valor: entities?.amount,
-          tipo,
+          ...(dataISO ? { dataMovimento: dataISO } : {}),
+          ...mapeado.campos,
         },
       },
       `Lançar ${entities?.merchant ?? "movimento"}`,
@@ -290,14 +341,21 @@ export function planCommandFromAct(
         ? intent.data
         : dataDeRelative(intent.data, dataAtual)
       : undefined;
+    const mapeado = camposCreate({
+      descricao: intent.descricao,
+      tipo: intent.tipo,
+      papel: intent.papel,
+      temCartao: Boolean(intent.cartaoNome),
+      temConta: Boolean(intent.contaNome),
+    });
+    if (!mapeado.ok) return { kind: "clarify", ambiguity: [mapeado.ambiguity] };
     return planoDe(
       {
         type: "create_transaction",
         input: {
-          descricao: intent.descricao,
           valor: intent.valor,
-          tipo: intent.tipo,
-          dataMovimento: dataISO,
+          ...(dataISO ? { dataMovimento: dataISO } : {}),
+          ...mapeado.campos,
         },
       },
       `Lançar ${intent.descricao ?? "movimento"}`,

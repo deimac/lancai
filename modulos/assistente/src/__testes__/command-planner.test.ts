@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ConversationUnderstandingSchema, type ResolutionResult } from "@lancai/tipos";
+import { ConversationUnderstandingSchema, estadoInicialConversacaoV3, type ResolutionResult } from "@lancai/tipos";
 import { planCommand, planCommandFromAct, planCancelarLancamentos } from "../agente/command-planner";
-import { CASOS_UNDERSTANDING, DATA_ATUAL, MOVIMENTO_UBER, MOVIMENTO_UBER_B } from "./casos-understanding";
+import { understandingToDialogueAct } from "../agente/understanding-to-dialogue-act";
+import { AGORA, CASOS_UNDERSTANDING, DATA_ATUAL, MOVIMENTO_UBER, MOVIMENTO_UBER_B } from "./casos-understanding";
 
 function caso(id: string) {
   const c = CASOS_UNDERSTANDING.find((x) => x.id === id);
@@ -141,6 +142,72 @@ describe("planCommand", () => {
   it("greet → null", () => {
     expect(planCommand(caso("greet").understanding)).toBeNull();
   });
+
+  it("golden pagamento de fatura no Revolut usa o slot, não a descrição", () => {
+    const r = planCommand(caso("create-pagamento-fatura-revolut").understanding);
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: {
+        valor: 1158.55,
+        tipo: "receita",
+        papel: "pagamento_fatura",
+        dataMovimento: "2026-08-17",
+      },
+    });
+  });
+
+  it("golden paguei a fatura tem os mesmos slots", () => {
+    const r = planCommand(caso("create-paguei-fatura-revolut").understanding);
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toMatchObject({
+      type: "create_transaction",
+      input: { papel: "pagamento_fatura", tipo: "receita", valor: 1158.55, dataMovimento: "2026-08-17" },
+    });
+  });
+
+  it("golden quita o Azul pela Nubank vira despesa", () => {
+    const r = planCommand(caso("create-quita-azul-nubank").understanding);
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: {
+        valor: 2000,
+        tipo: "despesa",
+        papel: "pagamento_fatura",
+        dataMovimento: "2026-08-22",
+      },
+    });
+  });
+
+  it("golden Uber no Revolut não vira pagamento de fatura", () => {
+    const r = planCommand(caso("create-gasto-uber-revolut").understanding);
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+    });
+  });
+
+  it("adapter copia implicit_filters.papel para WriteIntent", () => {
+    const act = understandingToDialogueAct(
+      caso("create-pagamento-fatura-revolut").understanding,
+      estadoInicialConversacaoV3(AGORA),
+    );
+    expect(act).toMatchObject({
+      act: "write",
+      intent: {
+        papel: "pagamento_fatura",
+        cartaoNome: "Revolut",
+        valor: 1158.55,
+        data: "2026-08-17",
+      },
+    });
+  });
 });
 
 describe("planCommandFromAct", () => {
@@ -148,6 +215,101 @@ describe("planCommandFromAct", () => {
     const r = planCommandFromAct({
       act: "write",
       intent: { tipo: "despesa", valor: 50, descricao: "Uber", contaNome: "Nubank" },
+    });
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+    });
+  });
+
+  it("pagamento de fatura no cartão vira crédito de quitação pelo slot papel", () => {
+    const r = planCommandFromAct({
+      act: "write",
+      intent: {
+        papel: "pagamento_fatura",
+        valor: 1158.55,
+        descricao: "quitação",
+        cartaoNome: "Revolut",
+        data: "2026-08-17",
+      },
+    });
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: {
+        descricao: "quitação",
+        valor: 1158.55,
+        tipo: "receita",
+        papel: "pagamento_fatura",
+        dataMovimento: "2026-08-17",
+      },
+    });
+  });
+
+  it("descrição com fatura sem slot papel não vira pagamento de fatura", () => {
+    const r = planCommandFromAct({
+      act: "write",
+      intent: {
+        tipo: "despesa",
+        valor: 1158.55,
+        descricao: "pagamento de fatura",
+        cartaoNome: "Revolut",
+        data: "2026-08-17",
+      },
+    });
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: {
+        descricao: "pagamento de fatura",
+        valor: 1158.55,
+        tipo: "despesa",
+        dataMovimento: "2026-08-17",
+      },
+    });
+  });
+
+  it("pagamento de fatura com conta vira despesa na conta", () => {
+    const r = planCommandFromAct({
+      act: "write",
+      intent: {
+        papel: "pagamento_fatura",
+        valor: 2000,
+        cartaoNome: "Azul",
+        contaNome: "Nubank",
+        data: "2026-08-22",
+      },
+    });
+    expect(r?.kind).toBe("plan");
+    if (r?.kind !== "plan") return;
+    expect(r.plan.steps[0]?.command).toEqual({
+      type: "create_transaction",
+      input: {
+        valor: 2000,
+        tipo: "despesa",
+        papel: "pagamento_fatura",
+        dataMovimento: "2026-08-22",
+      },
+    });
+  });
+
+  it("pagamento de fatura sem cartão pede esclarecimento", () => {
+    const r = planCommandFromAct({
+      act: "write",
+      intent: { papel: "pagamento_fatura", valor: 200, descricao: "quitação" },
+    });
+    expect(r?.kind).toBe("clarify");
+    if (r?.kind === "clarify") expect(r.ambiguity[0]?.field).toBe("card");
+  });
+
+  it("compra no cartão não vira pagamento de fatura", () => {
+    const r = planCommandFromAct({
+      act: "write",
+      intent: { tipo: "despesa", valor: 50, descricao: "Uber", cartaoNome: "Revolut" },
     });
     expect(r?.kind).toBe("plan");
     if (r?.kind !== "plan") return;

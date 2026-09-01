@@ -47,6 +47,9 @@ export const TransactionParamsSchema = z.object({
   pessoaId: z.string().uuid().optional(),
   perfil: z.enum(["pf", "pj"]).optional(),
   formaPagamento: z.enum(["pix", "credito", "debito", "dinheiro", "transferencia", "boleto", "ted", "doc", "outro"]).optional(),
+  papel: z.enum(["gasto", "pagamento_fatura"]).optional(),
+  cartaoFaturaId: z.string().uuid().optional(),
+  competenciaFatura: z.string().regex(/^\d{4}-\d{2}$/).optional(),
   parcelamento: z.object({
     numero: z.number().int().positive(),
     total: z.number().int().positive(),

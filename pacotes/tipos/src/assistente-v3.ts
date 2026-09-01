@@ -22,7 +22,7 @@ import {
   type ConversationState,
   type QuerySpec,
 } from "./assistente-v2";
-import { perfilSchema } from "./cadastro";
+import { papelConhecimentoSchema, perfilSchema } from "./cadastro";
 import { tipoMovimentoSchema } from "./movimento";
 import { direcaoFluxoSchema } from "./relatorio";
 import {
@@ -159,6 +159,8 @@ export const ConversationUnderstandingSchema = z.object({
           tipoGasto: perfilSchema.optional(),
           /** Perfil da conta/cartão que pagou. "conta da empresa" → pj, não entities.account. */
           origemPerfil: perfilSchema.optional(),
+          /** gasto = comprou; pagamento_fatura = quitou a fatura (cartão em entities.card). */
+          papel: papelConhecimentoSchema.optional(),
         })
         .optional(),
       ambiguity: z.array(AmbiguitySchema).optional(),

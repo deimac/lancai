@@ -52,9 +52,11 @@ export type ExtractorTurnoV3 = {
   extract(input: EntradaDialogueActExtractor): Promise<ExtracaoTurnoV3>;
 };
 
+export type OrigemCatalogoAssistente = { id: string; nome: string; sincronizada: boolean };
+
 export type CatalogoNomesAssistente = {
-  buscarContaPorNome(usuarioId: string, nome: string): Promise<{ id: string; nome: string } | null>;
-  buscarCartaoPorNome(usuarioId: string, nome: string): Promise<{ id: string; nome: string } | null>;
+  buscarContaPorNome(usuarioId: string, nome: string): Promise<OrigemCatalogoAssistente | null>;
+  buscarCartaoPorNome(usuarioId: string, nome: string): Promise<OrigemCatalogoAssistente | null>;
 };
 
 export type AssistenteCoreV3Opcoes = {
@@ -272,8 +274,8 @@ function resultContextDe(
 
 function interpretConfirmacao(mensagem: string): "sim" | "nao" | "indice" | null {
   const t = mensagem.trim().toLocaleLowerCase("pt-BR");
-  if (/^(sim|s|yes|ok|confirmo)$/.test(t)) return "sim";
-  if (/^(não|nao|n|no)$/.test(t)) return "nao";
+  if (/^(sim|s|yes|ok|confirmo|confirma)\b/.test(t)) return "sim";
+  if (/^(não|nao|n|no)\b/.test(t)) return "nao";
   if (/^\d+$/.test(t)) return "indice";
   return null;
 }
@@ -331,7 +333,8 @@ function parsePendenciaExecucao(payload: unknown): { plan: ExecutionPlan; alvo?:
 
 type ResultadoNomes =
   | { kind: "ok"; plan: ExecutionPlan }
-  | { kind: "slot"; field: string; message: string };
+  | { kind: "slot"; field: string; message: string }
+  | { kind: "blocked"; message: string };
 
 /**
  * Orquestra DialogueAct → QueryState → Relatórios (leitura) e Policy → Motor (escrita).
@@ -750,6 +753,9 @@ export class AssistenteCoreV3 {
       if (nomes.kind === "slot") {
         return this.responderSlot(session.id, ctx, nomes, traceId, somenteLeitura);
       }
+      if (nomes.kind === "blocked") {
+        return this.responderBloqueio(session.id, ctx, nomes.message, traceId, somenteLeitura);
+      }
 
       return this.seguirPlano(
         nomes.plan,
@@ -895,6 +901,9 @@ export class AssistenteCoreV3 {
     if (nomes.kind === "slot") {
       return this.responderSlot(sessionId, ctx, nomes, traceId, somenteLeitura);
     }
+    if (nomes.kind === "blocked") {
+      return this.responderBloqueio(sessionId, ctx, nomes.message, traceId, somenteLeitura);
+    }
 
     return this.seguirPlano(
       nomes.plan,
@@ -992,7 +1001,7 @@ export class AssistenteCoreV3 {
         stateVersion: ctx.version,
         message: policy.message ?? "Confirmar?",
         options: ["sim", "não"],
-        expiresAt: this.agoraMs() + 5 * 60 * 1000,
+        expiresAt: this.agoraMs() + 15 * 60 * 1000,
         payload: { plan, alvo },
       };
       const novo: ConversationContext = {
@@ -1154,6 +1163,22 @@ export class AssistenteCoreV3 {
     );
   }
 
+  private async responderBloqueio(
+    sessionId: string,
+    ctx: ConversationContext,
+    message: string,
+    traceId: string,
+    somenteLeitura: boolean,
+  ): Promise<AssistenteOutput> {
+    await this.persistir(sessionId, ctx, somenteLeitura);
+    return {
+      resposta: message,
+      sessaoId: sessionId,
+      traceId,
+      diagnostico: { blocked: true, reason: "of_synced" },
+    };
+  }
+
   private async responderSlot(
     sessionId: string,
     ctx: ConversationContext,
@@ -1199,7 +1224,7 @@ export class AssistenteCoreV3 {
       const command = structuredClone(step.command);
       if (command.type === "create_transaction" || command.type === "create_recurrence") {
         const preenchido = await this.resolverContaCartao(command, understanding, ctx, usuarioId, nomesWrite);
-        if (preenchido.kind === "slot") return preenchido;
+        if (preenchido.kind === "slot" || preenchido.kind === "blocked") return preenchido;
         steps.push({ ...step, command: preenchido.command });
       } else {
         steps.push({ ...step, command });
@@ -1214,13 +1239,23 @@ export class AssistenteCoreV3 {
     ctx: ConversationContext,
     usuarioId: string,
     nomesWrite?: { contaNome?: string; cartaoNome?: string },
-  ): Promise<{ kind: "ok"; command: SimpleCommand } | Extract<ResultadoNomes, { kind: "slot" }>> {
+  ): Promise<
+    | { kind: "ok"; command: SimpleCommand }
+    | Extract<ResultadoNomes, { kind: "slot" }>
+    | Extract<ResultadoNomes, { kind: "blocked" }>
+  > {
+    const nomeCartao = nomesWrite?.cartaoNome ?? understanding?.question?.entities?.card;
+    const nomeConta = nomesWrite?.contaNome ?? understanding?.question?.entities?.account;
+    const ehPagamentoFatura =
+      command.type === "create_transaction" && command.input.papel === "pagamento_fatura";
+
+    if (ehPagamentoFatura) {
+      return this.resolverPagamentoFatura(command, usuarioId, nomeCartao, nomeConta);
+    }
+
     if (command.input.contaId || command.input.cartaoId) {
       return { kind: "ok", command };
     }
-
-    const nomeCartao = nomesWrite?.cartaoNome ?? understanding?.question?.entities?.card;
-    const nomeConta = nomesWrite?.contaNome ?? understanding?.question?.entities?.account;
 
     if (nomeCartao) {
       const cartao = await this.catalogo.buscarCartaoPorNome(usuarioId, nomeCartao);
@@ -1264,5 +1299,59 @@ export class AssistenteCoreV3 {
       field: "account",
       message: "Qual conta usar para este lançamento?",
     };
+  }
+
+  private async resolverPagamentoFatura(
+    command: Extract<SimpleCommand, { type: "create_transaction" }>,
+    usuarioId: string,
+    nomeCartao: string | undefined,
+    nomeConta: string | undefined,
+  ): Promise<
+    | { kind: "ok"; command: SimpleCommand }
+    | Extract<ResultadoNomes, { kind: "slot" }>
+    | Extract<ResultadoNomes, { kind: "blocked" }>
+  > {
+    if (!nomeCartao) {
+      return { kind: "slot", field: "card", message: "Qual cartão é a fatura?" };
+    }
+
+    const cartao = await this.catalogo.buscarCartaoPorNome(usuarioId, nomeCartao);
+    if (!cartao) {
+      return {
+        kind: "slot",
+        field: "card",
+        message: `Não encontrei o cartão ${nomeCartao}. Qual cartão usar?`,
+      };
+    }
+
+    let conta: OrigemCatalogoAssistente | null = null;
+    if (nomeConta) {
+      conta = await this.catalogo.buscarContaPorNome(usuarioId, nomeConta);
+      if (!conta) {
+        return {
+          kind: "slot",
+          field: "account",
+          message: `Não encontrei a conta ${nomeConta}. Qual conta usar?`,
+        };
+      }
+    }
+
+    const origemSync = cartao.sincronizada ? cartao : conta?.sincronizada ? conta : null;
+    if (origemSync) {
+      return {
+        kind: "blocked",
+        message: `"${origemSync.nome}" está conectada ao banco, então o lançamento vem de lá. Quando cair no extrato, me chame que eu classifico.`,
+      };
+    }
+
+    if (conta) {
+      command.input.contaId = conta.id;
+      command.input.cartaoFaturaId = cartao.id;
+      delete command.input.cartaoId;
+    } else {
+      command.input.cartaoId = cartao.id;
+      command.input.cartaoFaturaId = cartao.id;
+    }
+    return { kind: "ok", command };
   }
 }

@@ -416,6 +416,29 @@ describe("MotorFinanceiro", () => {
       );
       expect(canceladas).toHaveLength(10);
     });
+
+    it("crédito no cartão (pagamento de fatura) não consome limite nem gera parcela", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, limite: "100.00", modalidade: "credito" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const resultado = await criar_movimento({
+        descricao: "pagamento de fatura",
+        valor: 1158.55,
+        tipo: "receita",
+        status: "realizado",
+        tipoGasto: "pf",
+        dataMovimento: "2026-08-17",
+        cartaoId: cartao.id,
+        categoriaId: categoria.id,
+        usuarioId,
+        criadoPor: usuarioId,
+      });
+
+      expect(resultado.movimentos[0]?.tipo).toBe("receita");
+      expect(resultado.parcelas).toHaveLength(0);
+    });
   });
 
   describe("receita em conta", () => {

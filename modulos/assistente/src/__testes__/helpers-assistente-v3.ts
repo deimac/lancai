@@ -27,6 +27,7 @@ export const IDS_V3 = {
   ...IDS,
   itau: "00000000-0000-4000-8000-000000000203",
   cartao: "00000000-0000-4000-8000-000000000204",
+  azul: "00000000-0000-4000-8000-000000000205",
 };
 
 export function casoUnderstanding(id: string) {
@@ -178,15 +179,17 @@ export function criarAssistenteCoreV3Teste(opcoes: {
     {
       buscarContaPorNome: async (_usuarioId, nome) => {
         const n = nome.toLocaleLowerCase("pt-BR");
-        if (n.includes("nubank")) return { id: IDS_V3.conta, nome: "Nubank" };
-        if (n.includes("ita")) return { id: IDS_V3.itau, nome: "Itaú" };
-        if (n.includes("mercado")) return { id: IDS_V3.conta, nome: "Mercado Pago" };
+        if (n.includes("nubank")) return { id: IDS_V3.conta, nome: "Nubank", sincronizada: true };
+        if (n.includes("ita")) return { id: IDS_V3.itau, nome: "Itaú", sincronizada: false };
+        if (n.includes("mercado")) return { id: IDS_V3.conta, nome: "Mercado Pago", sincronizada: true };
         return null;
       },
       buscarCartaoPorNome: async (_usuarioId, nome) => {
         const n = nome.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/\p{M}/gu, "");
-        if (n.includes("cartao") || n.includes("revolut") || n.includes("nubank")) {
-          return { id: IDS_V3.cartao, nome: "Nubank" };
+        if (n.includes("azul")) return { id: IDS_V3.azul, nome: "Azul", sincronizada: true };
+        if (n.includes("revolut")) return { id: IDS_V3.cartao, nome: "Revolut", sincronizada: false };
+        if (n.includes("cartao") || n.includes("nubank")) {
+          return { id: IDS_V3.cartao, nome: "Nubank", sincronizada: false };
         }
         return null;
       },

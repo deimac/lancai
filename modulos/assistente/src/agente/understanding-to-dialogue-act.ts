@@ -144,15 +144,25 @@ function opsDeParcial(parcial: Partial<QueryState>): SlotOp[] {
   return ops;
 }
 
+function dataDoCreate(period?: PeriodSpec): string | undefined {
+  if (period?.de && /^\d{4}-\d{2}-\d{2}$/.test(period.de)) return period.de;
+  if (period?.ate && /^\d{4}-\d{2}-\d{2}$/.test(period.ate)) return period.ate;
+  return undefined;
+}
+
 function intentWrite(understanding: ConversationUnderstanding): WriteIntent {
   const entities = understanding.question?.entities;
+  const implicit = understanding.question?.implicit_filters;
+  const data = dataDoCreate(entities?.period);
   return {
-    tipo: understanding.question?.implicit_filters?.tipo,
+    tipo: implicit?.tipo,
     valor: entities?.amount,
     descricao: entities?.merchant,
     contaNome: entities?.account,
     cartaoNome: entities?.card,
     categoriaNome: entities?.category,
+    papel: implicit?.papel,
+    ...(data ? { data } : {}),
   };
 }
 

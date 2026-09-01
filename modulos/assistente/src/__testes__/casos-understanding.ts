@@ -297,6 +297,83 @@ export const CASOS_UNDERSTANDING: CasoUnderstanding[] = [
     need: null,
   },
   {
+    id: "create-pagamento-fatura-revolut",
+    mensagem: "Lance um pagamento de fatura para o cartão Revolut de 1158,55 no dia 17 de agosto",
+    context: vazio(),
+    understanding: und({
+      goal: "execute",
+      question: {
+        intent: "create",
+        entities: {
+          card: "Revolut",
+          amount: 1158.55,
+          period: { tipo: "personalizado", de: "2026-08-17", ate: "2026-08-17" },
+        },
+        implicit_filters: { papel: "pagamento_fatura" },
+      },
+      confidence: 0.93,
+      required_sources: ["transactions", "cards"],
+    }),
+    need: null,
+  },
+  {
+    id: "create-paguei-fatura-revolut",
+    mensagem: "Paguei a fatura do Revolut 1158,55 em 17/08",
+    context: vazio(),
+    understanding: und({
+      goal: "execute",
+      question: {
+        intent: "create",
+        entities: {
+          card: "Revolut",
+          amount: 1158.55,
+          period: { tipo: "personalizado", de: "2026-08-17", ate: "2026-08-17" },
+        },
+        implicit_filters: { papel: "pagamento_fatura" },
+      },
+      confidence: 0.92,
+      required_sources: ["transactions", "cards"],
+    }),
+    need: null,
+  },
+  {
+    id: "create-quita-azul-nubank",
+    mensagem: "Quita o Azul, 2000, ontem, saiu da Nubank",
+    context: vazio(),
+    understanding: und({
+      goal: "execute",
+      question: {
+        intent: "create",
+        entities: {
+          card: "Azul",
+          account: "Nubank",
+          amount: 2000,
+          period: { tipo: "personalizado", de: "2026-08-22", ate: "2026-08-22" },
+        },
+        implicit_filters: { papel: "pagamento_fatura" },
+      },
+      confidence: 0.91,
+      required_sources: ["transactions", "cards", "accounts"],
+    }),
+    need: null,
+  },
+  {
+    id: "create-gasto-uber-revolut",
+    mensagem: "Gastei 50 no Uber no Revolut",
+    context: vazio(),
+    understanding: und({
+      goal: "execute",
+      question: {
+        intent: "create",
+        entities: { merchant: "Uber", amount: 50, card: "Revolut" },
+        implicit_filters: { tipo: "despesa" },
+      },
+      confidence: 0.92,
+      required_sources: ["transactions", "cards"],
+    }),
+    need: null,
+  },
+  {
     id: "consulta-total-uber",
     mensagem: "Quanto gastei com Uber?",
     context: vazio(),

@@ -102,6 +102,7 @@ implicit_filters.tipo: receita | despesa | transferencia
 implicit_filters.fonte: transacoes | recorrencias
 implicit_filters.tipoGasto: pf | pj — natureza do lançamento (pessoal vs empresa), NÃO o nome da conta
 implicit_filters.origemPerfil: pf | pj — perfil da conta/cartão que pagou. "conta da empresa"/PJ como origem = pj.
+implicit_filters.papel: gasto | pagamento_fatura — só em create. gasto = comprou no cartão/saiu da conta. pagamento_fatura = quitou a fatura daquele cartão (entities.card = de quem é a fatura). Se disser de onde saiu o dinheiro → entities.account. Sem cartão num pagamento de fatura, não chute o cartão.
 
 Referências (continuation.reference e explicit_references):
 - positional { type:"positional", index } — "o segundo" → index 2
@@ -114,6 +115,7 @@ Referências (continuation.reference e explicit_references):
 Regras:
 - Pergunta nova de gasto/receita/saldo/lista → goal answer + question.
 - Lançar/criar/transferir/parcelar → goal execute, intent create. NÃO peça agregação.
+- Quitar fatura / pagar o cartão / Pix da fatura → intent create, implicit_filters.papel=pagamento_fatura, entities.card = de quem é a fatura. Merchant é rótulo curto, não amarre à frase "pagamento de fatura". Compra no cartão ("gastei no Uber no Revolut") → papel omitido ou gasto, tipo despesa.
 - Corrigir/apagar/classificar → goal execute, intent update ou delete.
 - "e mês passado?" / "e ontem?" / "e domingo?" / "e sábado?" / "e no sábado?" com consulta anterior → goal continue, continuation.type period_shift, inherits_from_previous true. Dia da semana é período, mesmo depois de um detalhe. NÃO use detail_request nem correction. "Foi sábado" (sem "e") é que corrige a data do lançamento em foco.
 - "e no cartão?" com consulta anterior → goal continue, continuation.type filter_add, inherits_from_previous true.
@@ -140,6 +142,16 @@ Regras:
 Few-shot 1 — create:
 U: "Gastei 50 no Uber no Nubank"
 → {"goal":"execute","question":{"intent":"create","entities":{"merchant":"Uber","amount":50,"account":"Nubank"},"implicit_filters":{"tipo":"despesa"}},"confidence":0.93,"required_sources":["transactions","accounts"]}
+U: "Gastei 50 no Uber no Revolut"
+→ {"goal":"execute","question":{"intent":"create","entities":{"merchant":"Uber","amount":50,"card":"Revolut"},"implicit_filters":{"tipo":"despesa"}},"confidence":0.92,"required_sources":["transactions","cards"]}
+
+Few-shot 1b — pagamento de fatura (mesmos slots, redações diferentes):
+U: "Lance um pagamento de fatura para o cartão Revolut de 1158,55 no dia 17 de agosto"
+→ {"goal":"execute","question":{"intent":"create","entities":{"card":"Revolut","amount":1158.55,"period":{"tipo":"personalizado","de":"2026-08-17","ate":"2026-08-17"}},"implicit_filters":{"papel":"pagamento_fatura"}},"confidence":0.93,"required_sources":["transactions","cards"]}
+U: "Paguei a fatura do Revolut 1158,55 em 17/08"
+→ {"goal":"execute","question":{"intent":"create","entities":{"card":"Revolut","amount":1158.55,"period":{"tipo":"personalizado","de":"2026-08-17","ate":"2026-08-17"}},"implicit_filters":{"papel":"pagamento_fatura"}},"confidence":0.92,"required_sources":["transactions","cards"]}
+U: "Quita o Azul, 2000, ontem, saiu da Nubank" (dataAtual 2026-08-23)
+→ {"goal":"execute","question":{"intent":"create","entities":{"card":"Azul","account":"Nubank","amount":2000,"period":{"tipo":"personalizado","de":"2026-08-22","ate":"2026-08-22"}},"implicit_filters":{"papel":"pagamento_fatura"}},"confidence":0.91,"required_sources":["transactions","cards","accounts"]}
 
 Few-shot 2 — consulta + continuação:
 U: "Quanto gastei com Uber?"

@@ -66,6 +66,73 @@ describe("ApplicationService", () => {
     expect(result.entityRef?.type).toBe("transaction");
   });
 
+  it("pagamento de fatura no cartão marca o papel depois de criar", async () => {
+    const visto: Record<string, unknown>[] = [];
+    const app = montar({
+      criarMovimento: async (entrada) => {
+        visto.push({ etapa: "criar", ...entrada });
+        return { id: MOV, descricao: String(entrada.descricao), valor: entrada.valor };
+      },
+      atualizarConhecimento: async (entrada) => {
+        visto.push({ etapa: "conhecimento", ...entrada });
+        return { id: MOV, descricao: "pagamento de fatura" };
+      },
+    });
+    const result = await app.executeCommand(
+      {
+        type: "create_transaction",
+        input: {
+          tipo: "despesa",
+          valor: 1158.55,
+          dataMovimento: "2026-08-17",
+          descricao: "pagamento de fatura",
+          cartaoId: "00000000-0000-4000-8000-000000000204",
+          papel: "pagamento_fatura",
+        },
+      },
+      ctx("33333333-3333-4333-8333-333333333333"),
+    );
+    expect(result.success).toBe(true);
+    expect(visto[0]?.tipo).toBe("receita");
+    expect(visto[1]?.conhecimento).toEqual(
+      expect.objectContaining({
+        papel: "pagamento_fatura",
+        cartaoFaturaId: "00000000-0000-4000-8000-000000000204",
+        competenciaFatura: "2026-08",
+      }),
+    );
+  });
+
+  it("descrição com fatura sem slot papel não marca conhecimento", async () => {
+    const visto: Record<string, unknown>[] = [];
+    const app = montar({
+      criarMovimento: async (entrada) => {
+        visto.push({ etapa: "criar", ...entrada });
+        return { id: MOV, descricao: String(entrada.descricao), valor: entrada.valor };
+      },
+      atualizarConhecimento: async (entrada) => {
+        visto.push({ etapa: "conhecimento", ...entrada });
+        return { id: MOV, descricao: "pagamento de fatura" };
+      },
+    });
+    const result = await app.executeCommand(
+      {
+        type: "create_transaction",
+        input: {
+          tipo: "despesa",
+          valor: 1158.55,
+          dataMovimento: "2026-08-17",
+          descricao: "pagamento de fatura",
+          cartaoId: "00000000-0000-4000-8000-000000000204",
+        },
+      },
+      ctx("44444444-4444-4444-8444-444444444444"),
+    );
+    expect(result.success).toBe(true);
+    expect(visto[0]?.tipo).toBe("despesa");
+    expect(visto.some((v) => v.etapa === "conhecimento")).toBe(false);
+  });
+
   it("idempotência: mesma key retorna cached", async () => {
     const app = montar();
     const key = "22222222-2222-4222-8222-222222222222";

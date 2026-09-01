@@ -1232,6 +1232,10 @@ export class MotorFinanceiro {
     }
     this.garantir_nao_sincronizada(cartao, "criar");
 
+    if (entrada.tipo === "receita" || entrada.tipo === "estorno" || entrada.tipo === "reembolso") {
+      return this.criar_credito_no_cartao(entrada, classificadoPor, cartao);
+    }
+
     const quantidadeParcelas = entrada.parcelamento?.quantidadeParcelas ?? 1;
 
     const comprometidoAtual = arredondar(
@@ -1293,6 +1297,52 @@ export class MotorFinanceiro {
     return this.repositorio.persistirOperacao({
       movimentos: [novoMovimento],
       parcelas: novasParcelas,
+      atualizacoesSaldoConta: [],
+      auditorias: [auditoria],
+    });
+  }
+
+  /** Crédito no cartão (pagamento de fatura, estorno): não consome limite nem gera parcela. */
+  private async criar_credito_no_cartao(
+    entrada: EntradaCriarMovimento,
+    classificadoPor: Movimento["classificadoPor"],
+    cartao: Cartao,
+  ): Promise<ResultadoCriarMovimento> {
+    if (entrada.parcelamento) {
+      throw new ErroValidacaoFinanceira("Parcelamento só é suportado em compras no crédito.");
+    }
+    const movimentoId = randomUUID();
+    const novoMovimento: NovoMovimento = {
+      id: movimentoId,
+      descricao: entrada.descricao,
+      valor: paraColuna(entrada.valor),
+      tipo: entrada.tipo,
+      status: entrada.status,
+      tipoGasto: entrada.tipoGasto,
+      formaPagamento: entrada.formaPagamento === "pix" ? "pix" : "credito",
+      dataMovimento: entrada.dataMovimento,
+      cartaoId: cartao.id,
+      categoriaId: entrada.categoriaId,
+      pessoaId: entrada.pessoaId,
+      classificadoPor,
+      usuarioId: entrada.usuarioId,
+      criadoPor: entrada.criadoPor,
+      ...this.campos_de_fato(entrada, entrada.descricao),
+    };
+    const auditoria: NovaAuditoria = {
+      tabela: "movimento",
+      registroId: movimentoId,
+      acao: "INSERCAO",
+      estadoAnterior: null,
+      estadoAtual: {
+        ...novoMovimento,
+        fluxoCruzado: eh_fluxo_cruzado(entrada.tipoGasto, cartao.perfil),
+      },
+      alteradoPor: entrada.criadoPor,
+    };
+    return this.repositorio.persistirOperacao({
+      movimentos: [novoMovimento],
+      parcelas: [],
       atualizacoesSaldoConta: [],
       auditorias: [auditoria],
     });

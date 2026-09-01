@@ -147,13 +147,18 @@ export class ApplicationService {
     const workspaceId = await this.deps.catalogo.workspaceId(context.authenticatedUserId);
     const categoriaId =
       input.categoriaId ?? (await this.deps.catalogo.categoriaNaoClassificado(context.authenticatedUserId));
+    const descricao = input.descricao ?? "Lançamento";
+    const pagamento = input.papel === "pagamento_fatura";
+    const soNoCartao = Boolean(input.cartaoId) && !input.contaId;
+    const tipo = pagamento && soNoCartao ? "receita" : input.tipo ?? "despesa";
+    const dataMovimento = input.dataMovimento ?? hojeISO();
     const criado = await this.deps.financeiro.criarMovimento({
       workspaceId,
-      descricao: input.descricao ?? "Lançamento",
+      descricao,
       valor: input.valor,
-      tipo: input.tipo ?? "despesa",
+      tipo,
       tipoGasto: input.perfil ?? "pf",
-      dataMovimento: input.dataMovimento ?? hojeISO(),
+      dataMovimento,
       contaId: input.contaId,
       cartaoId: input.cartaoId,
       contaDestinoId: input.contaDestinoId,
@@ -164,6 +169,17 @@ export class ApplicationService {
       criadoPor: context.authenticatedUserId,
       fonte: "manual",
     });
+    if (pagamento) {
+      await this.deps.financeiro.atualizarConhecimento({
+        movimentoId: criado.id,
+        alteradoPor: context.authenticatedUserId,
+        conhecimento: {
+          papel: "pagamento_fatura",
+          cartaoFaturaId: input.cartaoFaturaId ?? input.cartaoId ?? null,
+          competenciaFatura: input.competenciaFatura ?? dataMovimento.slice(0, 7),
+        },
+      });
+    }
     return {
       success: true,
       data: criado,

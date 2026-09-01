@@ -10,6 +10,7 @@ export {
   AssistenteCoreV3,
   type AssistenteCoreV3Opcoes,
   type CatalogoNomesAssistente,
+  type OrigemCatalogoAssistente,
   type ExtractorTurnoV3,
   type ExtracaoTurnoV3,
 } from "./agente/assistente-core-v3";

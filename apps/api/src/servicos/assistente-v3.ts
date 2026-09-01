@@ -106,11 +106,11 @@ export function criarAssistenteCoreV3(): AssistenteCoreV3 {
     {
       buscarContaPorNome: async (usuarioId, nome) => {
         const conta = await contextoRepo.buscarContaPorNome(usuarioId, nome);
-        return conta ? { id: conta.id, nome: conta.nome } : null;
+        return conta ? { id: conta.id, nome: conta.nome, sincronizada: conta.sincronizada } : null;
       },
       buscarCartaoPorNome: async (usuarioId, nome) => {
         const cartao = await contextoRepo.buscarCartaoPorNome(usuarioId, nome);
-        return cartao ? { id: cartao.id, nome: cartao.nome } : null;
+        return cartao ? { id: cartao.id, nome: cartao.nome, sincronizada: cartao.sincronizada } : null;
       },
     },
     { carregarHistorico: carregarHistoricoUnderstanding },

@@ -68,6 +68,20 @@ describe("ConversationUnderstandingSchema", () => {
     expect(lido.question?.entities).not.toHaveProperty("contaId");
   });
 
+  it("aceita papel pagamento_fatura no implicit_filters", () => {
+    const lido = ConversationUnderstandingSchema.parse({
+      goal: "execute",
+      question: {
+        intent: "create",
+        entities: { card: "Revolut", amount: 1158.55 },
+        implicit_filters: { papel: "pagamento_fatura" },
+      },
+      confidence: 0.9,
+      required_sources: ["transactions", "cards"],
+    });
+    expect(lido.question?.implicit_filters?.papel).toBe("pagamento_fatura");
+  });
+
   it("aceita continuação period_shift", () => {
     const lido = ConversationUnderstandingSchema.parse({
       goal: "continue",

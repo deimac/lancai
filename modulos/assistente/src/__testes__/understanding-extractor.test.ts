@@ -37,6 +37,9 @@ describe("prompt understanding", () => {
     expect(system).toMatch(/fluxo cruzado/i);
     expect(system).toContain("tipoGasto");
     expect(system).toContain("origemPerfil");
+    expect(system).toContain("pagamento_fatura");
+    expect(system).toMatch(/Paguei a fatura do Revolut/i);
+    expect(system).toMatch(/Gastei 50 no Uber no Revolut/i);
     expect(system).toContain("detail_request");
     expect(system).toMatch(/me detalhe os gastos/i);
     expect(system).toMatch(/e domingo/i);

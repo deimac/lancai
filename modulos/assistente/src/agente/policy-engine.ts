@@ -163,10 +163,10 @@ export class PolicyEngine {
     const label = alvo?.label || "lançamento";
     switch (command.type) {
       case "create_transaction":
-        return `Confirmar: ${formatarTransacao({
+        return `Ainda não gravei. Confirmar lançamento: ${formatarTransacao({
           descricao: command.input.descricao,
           valor: command.input.valor,
-        })}?`;
+        })}${command.input.dataMovimento ? ` em ${command.input.dataMovimento}` : ""}? Responda sim.`;
       case "create_recurrence":
         return `Criar recorrência: ${formatarTransacao({
           descricao: command.input.descricao,

@@ -53,6 +53,15 @@ describe("DialogueActSchema", () => {
     expect(DialogueActSchema.safeParse({ act: "chat" }).success).toBe(false);
   });
 
+  it("aceita write com papel pagamento_fatura", () => {
+    const act = DialogueActSchema.parse({
+      act: "write",
+      intent: { papel: "pagamento_fatura", valor: 1158.55, cartaoNome: "Revolut", data: "2026-08-17" },
+    });
+    expect(act.act).toBe("write");
+    if (act.act === "write") expect(act.intent.papel).toBe("pagamento_fatura");
+  });
+
   it("aceita delete por ordinal e faixa", () => {
     expect(
       DialogueActSchema.parse({ act: "delete", target: { by: "ordinal", n: 2 } }),
