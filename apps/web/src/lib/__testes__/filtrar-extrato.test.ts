@@ -19,6 +19,8 @@ import {
   ordenar_categorias_por_uso,
   categorias_com_lancamentos,
   resumir_extrato,
+  visao_da_query,
+  visao_para_query,
   TAMANHO_PAGINA_PADRAO,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
@@ -259,6 +261,62 @@ describe("filtrar_extrato", () => {
       ),
     ).toEqual(["f"]);
   });
+
+  it("visão Faturas recorta pelo ciclo; Movimentações pelo calendário", () => {
+    const compraPosFecha = movimento({
+      id: "agencias",
+      cartaoId: "cartao-mp",
+      contaId: null,
+      dataMovimento: "2026-08-25",
+    });
+    const compraCicloFechado = movimento({
+      id: "pizza",
+      cartaoId: "cartao-itau",
+      contaId: null,
+      dataMovimento: "2026-08-18",
+    });
+    const compraCicloAberto = movimento({
+      id: "hotel",
+      cartaoId: "cartao-itau",
+      contaId: null,
+      dataMovimento: "2026-08-31",
+    });
+    const pixConta = movimento({
+      id: "pix",
+      contaId: "conta-itau",
+      dataMovimento: "2026-08-10",
+    });
+    const loteCiclo = [compraPosFecha, compraCicloFechado, compraCicloAberto, pixConta];
+    const cartoesCiclo = [
+      { id: "cartao-mp", fechamento: 12 },
+      { id: "cartao-itau", fechamento: 30 },
+    ];
+
+    expect(
+      filtrar_extrato(loteCiclo, contas, cartoes, {
+        ...base,
+        visao: "movimentacoes",
+      }).map((m) => m.id),
+    ).toEqual(["agencias", "pizza", "hotel", "pix"]);
+
+    expect(
+      filtrar_extrato(loteCiclo, contas, cartoes, {
+        ...base,
+        visao: "faturas",
+        cartoesCiclo,
+        hoje: "2026-08-31",
+      }).map((m) => m.id),
+    ).toEqual(["agencias", "hotel"]);
+
+    expect(
+      filtrar_extrato(loteCiclo, contas, cartoes, {
+        ...base,
+        visao: "faturas",
+        cartoesCiclo,
+        hoje: "2026-10-15",
+      }).map((m) => m.id),
+    ).toEqual(["pizza"]);
+  });
 });
 
 describe("paginar", () => {
@@ -319,6 +377,14 @@ describe("parsers da URL", () => {
     expect(perfil_de_tipo_gasto("todas")).toBeUndefined();
     expect(search_sem_tipo_gasto("?tipoGasto=pessoal&mes=2026-07")).toBe("?mes=2026-07");
     expect(search_sem_tipo_gasto("?tipoGasto=pessoal")).toBe("");
+  });
+
+  it("lê visão movimentações/faturas", () => {
+    expect(visao_da_query("faturas")).toBe("faturas");
+    expect(visao_da_query(null)).toBe("movimentacoes");
+    expect(visao_da_query("x")).toBe("movimentacoes");
+    expect(visao_para_query("faturas")).toBe("faturas");
+    expect(visao_para_query("movimentacoes")).toBeNull();
   });
 
   it("lê papel gastos/pagamentos de fatura", () => {
@@ -401,7 +467,7 @@ describe("resumir_extrato", () => {
     });
   });
 
-  it("compra de cartão depois do fechamento não entra nas saídas do mês da compra", () => {
+  it("soma o recorte já filtrado, sem separar próxima fatura", () => {
     const recorte = [
       movimento({
         id: "agencias",
@@ -421,21 +487,13 @@ describe("resumir_extrato", () => {
         dataMovimento: "2026-08-18",
       }),
     ];
-    expect(
-      resumir_extrato(recorte, {
-        mes: "2026-08",
-        cartoes: [
-          { id: "cartao-mp", fechamento: 12 },
-          { id: "cartao-itau", fechamento: 30 },
-        ],
-      }),
-    ).toEqual({
+    expect(resumir_extrato(recorte)).toEqual({
       entradas: 0,
-      saidas: 80,
-      resultado: -80,
+      saidas: 1050.76,
+      resultado: -1050.76,
       revisarQuantidade: 0,
       revisarTotal: 0,
-      proximaFatura: 970.76,
+      proximaFatura: 0,
     });
   });
 });

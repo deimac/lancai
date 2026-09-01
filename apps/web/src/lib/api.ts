@@ -405,6 +405,9 @@ export interface DashboardCartao {
   gastoMes: number;
   quantidadeLancamentos: number;
   gastoEhFaturaAtual?: boolean;
+  competenciaCiclo?: string;
+  cicloInicio?: string;
+  cicloFim?: string;
 }
 
 export interface RankingCategoria {

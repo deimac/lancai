@@ -212,7 +212,7 @@ export function TelaRecorrentes() {
               <div>
                 <h2 className="text-sm font-medium text-texto">Comprometimento mensal</h2>
                 <p className="mt-0.5 text-xs text-texto-suave">
-                  Parcelas + recorrentes de cada mês — passe o mouse para o detalhe
+                  Parcelas + recorrentes — compromissos futuros
                 </p>
               </div>
               {mesSelecionado ? (

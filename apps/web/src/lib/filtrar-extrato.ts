@@ -1,6 +1,14 @@
 import type { MovimentoResumo } from "./api";
 import { eh_nao_classificado, precisa_revisao } from "./fila-revisao";
-import { mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
+import {
+  hojeISO,
+  intervalo_ciclo_fatura,
+  mapa_fechamento_cartoes,
+  mapa_vencimento_cartoes,
+  mes_gasto_do_cartao,
+  movimento_no_recorte_do_cockpit,
+} from "@lancai/tipos";
+import { formatar_intervalo_ciclo } from "./formatar";
 
 export type FilaExtrato = "todas" | "banco" | "manual" | "revisar";
 
@@ -22,6 +30,18 @@ export type TipoGastoExtrato = "todas" | "pessoal" | "empresa";
 
 export type PapelExtrato = "todas" | "gastos" | "pagamentos_fatura";
 
+export type CartaoCicloExtrato = { id: string; fechamento?: number | null; vencimento?: number | null };
+
+export type VisaoExtrato = "movimentacoes" | "faturas";
+
+export function visao_da_query(valor: string | null): VisaoExtrato {
+  return valor === "faturas" ? "faturas" : "movimentacoes";
+}
+
+export function visao_para_query(visao: VisaoExtrato): string | null {
+  return visao === "faturas" ? "faturas" : null;
+}
+
 export const TAMANHOS_PAGINA = [10, 25, 50, 100] as const;
 export const TAMANHO_PAGINA_PADRAO = 10;
 
@@ -34,6 +54,9 @@ export type FiltrosExtrato = {
   origem: OrigemExtrato;
   tipoGasto: TipoGastoExtrato;
   papel: PapelExtrato;
+  visao?: VisaoExtrato;
+  cartoesCiclo?: CartaoCicloExtrato[];
+  hoje?: string;
 };
 
 type OrigemNomeada = { id: string; nome: string };
@@ -151,10 +174,28 @@ export function filtrar_extrato(
   filtros: FiltrosExtrato,
 ): MovimentoResumo[] {
   const termo = normalizar_busca(filtros.busca);
+  const fechamentoPorCartao = mapa_fechamento_cartoes(filtros.cartoesCiclo ?? []);
+  const vencimentoPorCartao = mapa_vencimento_cartoes(filtros.cartoesCiclo ?? []);
+  const hoje = filtros.hoje ?? hojeISO();
   return movimentos.filter((movimento) => {
     if (movimento.status === "cancelado") return false;
     if (movimento.possivelRepetido && movimento.ignoradoEmRelatorio) return false;
-    if (!movimento.dataMovimento.startsWith(`${filtros.mes}-`)) return false;
+    if (filtros.visao === "faturas") {
+      if (!movimento.cartaoId) return false;
+      if (
+        !movimento_no_recorte_do_cockpit(
+          movimento,
+          filtros.mes,
+          hoje,
+          fechamentoPorCartao,
+          vencimentoPorCartao,
+        )
+      ) {
+        return false;
+      }
+    } else if (!movimento.dataMovimento.startsWith(`${filtros.mes}-`)) {
+      return false;
+    }
     if (filtros.fila === "banco" && movimento.fonte !== "open_finance") return false;
     if (filtros.fila === "manual" && movimento.fonte === "open_finance") return false;
     if (filtros.fila === "revisar" && !precisa_revisao(movimento)) return false;
@@ -210,20 +251,12 @@ export type ResumoExtrato = {
   proximaFatura: number;
 };
 
-export type CartaoCicloExtrato = { id: string; fechamento?: number | null; vencimento?: number | null };
-
 /** Totais do recorte já filtrado (exclui cancelados e pagamento de fatura). */
-export function resumir_extrato(
-  movimentos: MovimentoResumo[],
-  opcoes?: { mes?: string; cartoes?: CartaoCicloExtrato[] },
-): ResumoExtrato {
-  const fechamentoPorCartao = mapa_fechamento_cartoes(opcoes?.cartoes ?? []);
-  const vencimentoPorCartao = mapa_vencimento_cartoes(opcoes?.cartoes ?? []);
+export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
   let entradas = 0;
   let saidas = 0;
   let revisarQuantidade = 0;
   let revisarTotal = 0;
-  let proximaFatura = 0;
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
     const valor = Number(movimento.valor);
@@ -232,11 +265,7 @@ export function resumir_extrato(
       if (eh_entrada_extrato(movimento.tipo)) {
         entradas += seguro;
       } else {
-        const noResultado =
-          !opcoes?.mes ||
-          movimento_no_resultado_do_mes(movimento, opcoes.mes, fechamentoPorCartao, vencimentoPorCartao);
-        if (noResultado) saidas += seguro;
-        else proximaFatura += seguro;
+        saidas += seguro;
       }
     }
     if (precisa_revisao(movimento)) {
@@ -250,8 +279,55 @@ export function resumir_extrato(
     resultado: entradas - saidas,
     revisarQuantidade,
     revisarTotal,
-    proximaFatura,
+    proximaFatura: 0,
   };
+}
+
+export type GrupoFaturaExtrato = {
+  cartaoId: string;
+  cartaoNome: string;
+  intervalo: string;
+  total: number;
+  movimentos: MovimentoResumo[];
+};
+
+function intervalo_grupo_cartao(
+  fechamento: number | null | undefined,
+  mes: string,
+  hoje: string,
+): string {
+  if (fechamento == null) return "";
+  const ciclo = intervalo_ciclo_fatura(
+    mes_gasto_do_cartao({ mesSelecionado: mes, hoje, fechamento }),
+    fechamento,
+  );
+  return formatar_intervalo_ciclo(ciclo.inicio, ciclo.fim);
+}
+
+export function agrupar_faturas_por_cartao(
+  movimentos: MovimentoResumo[],
+  cartoes: Array<{ id: string; nome: string; fechamento?: number | null }>,
+  mes: string,
+  hoje = hojeISO(),
+): GrupoFaturaExtrato[] {
+  const mapa = new Map<string, GrupoFaturaExtrato>();
+  for (const movimento of movimentos) {
+    if (!movimento.cartaoId) continue;
+    const cartao = cartoes.find((item) => item.id === movimento.cartaoId);
+    const grupo = mapa.get(movimento.cartaoId) ?? {
+      cartaoId: movimento.cartaoId,
+      cartaoNome: cartao?.nome ?? "Cartão",
+      intervalo: intervalo_grupo_cartao(cartao?.fechamento, mes, hoje),
+      total: 0,
+      movimentos: [],
+    };
+    grupo.movimentos.push(movimento);
+    if (movimento.papel !== "pagamento_fatura") {
+      grupo.total += Number(movimento.valor) || 0;
+    }
+    mapa.set(movimento.cartaoId, grupo);
+  }
+  return [...mapa.values()].sort((a, b) => a.cartaoNome.localeCompare(b.cartaoNome, "pt-BR"));
 }
 
 export function quantidade_filtros_drawer(

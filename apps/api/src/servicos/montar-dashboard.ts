@@ -7,11 +7,11 @@ import {
 } from "@lancai/relatorios";
 import {
   adicionarMeses,
-  ciclo_aberto_em,
   competencia_ciclo_da_data,
   competencia_quitacao_fatura,
   data_vencimento_do_ciclo,
   intervalo_ciclo_fatura,
+  mes_gasto_do_cartao,
   deISOParaData,
   eh_credito_quitacao_no_cartao,
   eh_movimento_parcelado,
@@ -47,6 +47,10 @@ export interface DashboardCartao {
   quantidadeLancamentos: number;
   /** True no mês civil atual: o número é a fatura em aberto daquele cartão. */
   gastoEhFaturaAtual?: boolean;
+  /** Competência do ciclo somado neste recorte. */
+  competenciaCiclo?: string;
+  cicloInicio?: string;
+  cicloFim?: string;
 }
 
 export interface RankingCategoria {
@@ -216,14 +220,7 @@ export function somar_receitas_despesas(
   return { receitas: arredondar(receitas), despesas: arredondar(despesas) };
 }
 
-export function mes_gasto_do_cartao(entrada: {
-  mesSelecionado: string;
-  hoje: string;
-  fechamento: number;
-}): string {
-  if (entrada.mesSelecionado !== entrada.hoje.slice(0, 7)) return entrada.mesSelecionado;
-  return ciclo_aberto_em(entrada.hoje, entrada.fechamento);
-}
+export { mes_gasto_do_cartao } from "@lancai/tipos";
 
 export function filtrar_movimentos_do_resultado<
   T extends {
@@ -429,6 +426,8 @@ export async function montar_dashboard(
 
   const cartoesDetalhe: DashboardCartao[] = cartoes.cartoes.map((cartao) => {
     const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+    const competenciaCiclo = mesGastoPorCartao.get(cartao.id) ?? mes;
+    const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
     return {
       id: cartao.id,
       nome: cartao.nome,
@@ -444,6 +443,9 @@ export async function montar_dashboard(
       gastoMes: arredondar(gasto.gasto),
       quantidadeLancamentos: gasto.quantidade,
       gastoEhFaturaAtual: mes === mesCivilHoje,
+      competenciaCiclo,
+      cicloInicio: ciclo.inicio,
+      cicloFim: ciclo.fim,
     };
   });
 

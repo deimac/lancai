@@ -1,6 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Eye, EyeOff, Lock, X } from "lucide-react";
-import type { Perfil } from "@lancai/tipos";
+import {
+  ciclo_aberto_em,
+  data_vencimento_do_ciclo,
+  hojeISO,
+  intervalo_ciclo_fatura,
+  type Perfil,
+} from "@lancai/tipos";
+import { formatar_data_curta, formatar_intervalo_ciclo } from "../lib/formatar";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { useToast } from "../contexto/ContextoToast";
 import { clienteApi, ErroApi, type CartaoResumo, type ContaResumo } from "../lib/api";
@@ -90,6 +97,17 @@ export function ModalContaCartao({
   const [erro, setErro] = useState<string | null>(null);
 
   const tipoEfetivo = tipoFixo ?? tipo;
+  const diaFechaPreview = dia_valido(fechamento);
+  const diaVencePreview = dia_valido(vencimento);
+  const previewCiclo =
+    diaFechaPreview && diaVencePreview
+      ? (() => {
+          const competencia = ciclo_aberto_em(hojeISO(), diaFechaPreview);
+          const ciclo = intervalo_ciclo_fatura(competencia, diaFechaPreview);
+          const vence = data_vencimento_do_ciclo(competencia, diaFechaPreview, diaVencePreview);
+          return `Ciclo atual: ${formatar_intervalo_ciclo(ciclo.inicio, ciclo.fim)} · vence ${formatar_data_curta(vence)}`;
+        })()
+      : null;
   const sincronizada = Boolean(alvo?.sincronizada);
   const temPlasticoSalvo =
     eh_cartao(alvo) && Boolean(alvo.temPlastico || alvo.final4);
@@ -377,6 +395,7 @@ export function ModalContaCartao({
                   />
                 </label>
               </div>
+              {previewCiclo ? <p className="text-[11px] text-texto-suave">{previewCiclo}</p> : null}
 
               <fieldset className="flex flex-col gap-3 rounded-xl border border-borda p-3">
                 <legend className="flex items-center gap-2 px-1 text-xs text-texto-suave">

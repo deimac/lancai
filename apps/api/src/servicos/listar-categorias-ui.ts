@@ -6,7 +6,7 @@ import {
   movimento as movimentoTabela,
   obter_banco,
 } from "@lancai/banco";
-import { hojeISO, mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_resultado_do_mes, periodo_amplo_do_ciclo } from "@lancai/tipos";
+import { hojeISO, mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_recorte_do_cockpit, periodo_amplo_do_ciclo } from "@lancai/tipos";
 import { gasto_do_orcamento, listar_status_orcamentos } from "./orcamento-servico";
 
 export type CategoriaUi = {
@@ -54,12 +54,23 @@ export function agregar_totais_por_categoria(
   mes: string,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+  hoje = hojeISO(),
 ): Map<string, { saidas: number; entradas: number; quantidade: number }> {
   const mapaTotais = new Map<string, { saidas: number; entradas: number; quantidade: number }>();
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
     if (!movimento.categoriaId) continue;
-    if (!movimento_no_resultado_do_mes(movimento, mes, fechamentoPorCartao, vencimentoPorCartao)) continue;
+    if (
+      !movimento_no_recorte_do_cockpit(
+        movimento,
+        mes,
+        hoje,
+        fechamentoPorCartao,
+        vencimentoPorCartao,
+      )
+    ) {
+      continue;
+    }
     const atual = mapaTotais.get(movimento.categoriaId) ?? {
       saidas: 0,
       entradas: 0,
@@ -125,7 +136,13 @@ export async function montar_categorias_ui(
 
   const fechamentoPorCartao = mapa_fechamento_cartoes(cartoes);
   const vencimentoPorCartao = mapa_vencimento_cartoes(cartoes);
-  const mapaTotais = agregar_totais_por_categoria(movimentos, mes, fechamentoPorCartao, vencimentoPorCartao);
+  const mapaTotais = agregar_totais_por_categoria(
+    movimentos,
+    mes,
+    fechamentoPorCartao,
+    vencimentoPorCartao,
+    hojeISO(),
+  );
 
   let orcamentos: Awaited<ReturnType<typeof listar_status_orcamentos>> = [];
   try {

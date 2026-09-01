@@ -11,7 +11,7 @@ import {
   type TipoCategoria,
 } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
-import { formatar_moeda } from "../lib/formatar";
+import { formatar_moeda, rotulo_legenda_periodos } from "../lib/formatar";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import {
   ICONES_CATEGORIA,
@@ -167,7 +167,7 @@ export function TelaCategorias() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Categorias</h1>
           <p className="text-sm text-texto-suave">
-            Gasto de {rotulo_mes_ano(mes)} — o limite vale todo mês; a barra é só deste recorte
+            {rotulo_legenda_periodos(mes)} — o limite vale todo mês; a barra é só deste recorte
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -254,7 +254,7 @@ export function TelaCategorias() {
                         className="text-primaria hover:underline"
                         title={`Ver lançamentos de ${categoria.nome} em ${rotulo_mes_ano(mes)}`}
                       >
-                        {categoria.movimentosMes ?? 0} neste mês
+                        {categoria.movimentosMes ?? 0} neste recorte
                       </Link>
                     </td>
                     <td className="relative px-2 py-3">

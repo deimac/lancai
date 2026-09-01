@@ -178,6 +178,19 @@ export function ciclo_aberto_em(hoje: string, fechamento: number): string {
   return competencia_ciclo_da_data(hoje, fechamento);
 }
 
+/**
+ * Competência que o Cockpit usa no cartão: no mês civil de hoje, a fatura
+ * aberta; em mês passado/futuro, o ciclo que fecha naquele mês.
+ */
+export function mes_gasto_do_cartao(entrada: {
+  mesSelecionado: string;
+  hoje: string;
+  fechamento: number;
+}): string {
+  if (entrada.mesSelecionado !== entrada.hoje.slice(0, 7)) return entrada.mesSelecionado;
+  return ciclo_aberto_em(entrada.hoje, entrada.fechamento);
+}
+
 /** Competência cuja fatura inclui a compra nesta data (inverso de `intervalo_ciclo_fatura`). */
 export function competencia_ciclo_da_data(dataISO: string, fechamento: number): string {
   const [anoStr, mesStr, diaStr] = dataISO.slice(0, 10).split("-");
@@ -417,6 +430,44 @@ export function mapa_vencimento_cartoes(
     }
   }
   return mapa;
+}
+
+/**
+ * Mesma competência do Cockpit: conta no calendário; cartão no ciclo aberto
+ * (mês atual) ou no ciclo que fecha no mês da tela (histórico).
+ */
+export function movimento_no_recorte_do_cockpit(
+  movimento: {
+    dataMovimento: string;
+    cartaoId?: string | null;
+    parcelaNumero?: number | null;
+    status?: string | null;
+  },
+  mesSelecionado: string,
+  hoje: string,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
+  pagamentos: PagamentoCiclo[] = [],
+): boolean {
+  if (!movimento.cartaoId) {
+    return String(movimento.dataMovimento).startsWith(`${mesSelecionado}-`);
+  }
+  const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
+  if (fechamento == null || fechamento < 1) {
+    return String(movimento.dataMovimento).startsWith(`${mesSelecionado}-`);
+  }
+  const alvo = mes_gasto_do_cartao({
+    mesSelecionado,
+    hoje,
+    fechamento,
+  });
+  return movimento_no_resultado_do_mes(
+    movimento,
+    alvo,
+    fechamentoPorCartao,
+    vencimentoPorCartao,
+    pagamentos,
+  );
 }
 
 export function movimento_no_resultado_do_mes(

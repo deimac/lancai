@@ -29,7 +29,13 @@ import {
 import { rotulo_mes_curto } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type DashboardResposta, type ProximoPagamento } from "../lib/api";
-import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
+import {
+  formatar_data_curta,
+  formatar_moeda,
+  nome_mes_curto,
+  rotulo_faturas_recorte,
+  rotulo_legenda_periodos,
+} from "../lib/formatar";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import {
   perfil_de_tipo_gasto,
@@ -329,6 +335,13 @@ export function TelaDashboard() {
   const mostrarSplit = tipoGasto === "todas" && natureza;
   const tipoExtratoQuery = tipo_gasto_para_query(tipoGasto);
   const hrefExtrato = tipoExtratoQuery ? `/extrato?tipoGasto=${tipoExtratoQuery}` : "/extrato";
+  const paramsFaturas = new URLSearchParams();
+  paramsFaturas.set("visao", "faturas");
+  if (tipoExtratoQuery) paramsFaturas.set("tipoGasto", tipoExtratoQuery);
+  if (mes !== mes_de_hoje()) paramsFaturas.set("mes", mes);
+  const hrefFaturas = `/extrato?${paramsFaturas.toString()}`;
+  const faturasRotulo = rotulo_faturas_recorte(gastoCartoesEhFaturaAtual);
+  const mesNome = nome_mes_curto(dados.mes);
   const cruzamento = dados.cruzamento;
   const mostrarCruzamento =
     !visaoGeral &&
@@ -343,13 +356,7 @@ export function TelaDashboard() {
           {visaoGeral ? (
             <p className="text-sm text-texto-suave">Todos os workspaces</p>
           ) : null}
-          <p className="mt-1 text-xs text-texto-suave">
-            {tipoGasto === "pessoal"
-              ? "Resultado, categorias e fatura: lançamentos pessoais em qualquer conta ou cartão"
-              : tipoGasto === "empresa"
-                ? "Resultado, categorias e fatura: lançamentos da empresa em qualquer conta ou cartão"
-                : "Resultado, categorias e fatura somam pessoal e empresa — saldo e caixa não mudam"}
-          </p>
+          <p className="mt-1 text-xs text-texto-suave">{rotulo_legenda_periodos(dados.mes)}</p>
         </div>
         <div className="flex items-center gap-2">
           <SeletorTipoGasto valor={tipoGasto} onChange={escolher_tipo_gasto} />
@@ -452,7 +459,7 @@ export function TelaDashboard() {
               {formatar_oculto(formatar_moeda(gastoCartoesMes), ocultarValores)}
             </p>
             <p className="mt-1 text-xs text-texto-suave">
-              {gastoCartoesEhFaturaAtual ? "fatura atual" : "gasto no mês"}
+              {faturasRotulo} · cada um no seu ciclo
             </p>
             <p className="mt-2 text-sm font-medium text-receita tabular-nums">
               {formatar_oculto(formatar_moeda(cartoesDisponivel), ocultarValores)} disponível
@@ -460,7 +467,7 @@ export function TelaDashboard() {
             <p className="mt-3 flex items-center gap-1 text-xs font-medium text-primaria">
               {quantidadeCartoes === 1 ? "1 cartão" : `${quantidadeCartoes} cartões`}
               <span className="text-texto-suave">·</span>
-              Ver cartões
+              Ver faturas
               <ChevronRight size={14} />
             </p>
           </motion.button>
@@ -473,7 +480,7 @@ export function TelaDashboard() {
         >
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-              Receitas do mês
+              Receitas
             </span>
             <TrendingUp size={16} className="text-receita" />
           </div>
@@ -481,6 +488,9 @@ export function TelaDashboard() {
             {formatar_oculto(formatar_moeda(dados.resumo.receitasMes), ocultarValores)}
           </p>
           <Variacao valor={dados.resumo.variacaoReceitas} />
+          <p className="mt-2 text-xs text-texto-suave">
+            Contas no calendário + cartões nos ciclos
+          </p>
           {mostrarSplit && natureza ? (
             <p className="mt-2 text-xs text-texto-suave">
               Pessoal {formatar_oculto(formatar_moeda(natureza.pessoal.receitas), ocultarValores)}
@@ -497,7 +507,7 @@ export function TelaDashboard() {
         >
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-              Despesas do mês
+              Despesas
             </span>
             <TrendingDown size={16} className="text-despesa" />
           </div>
@@ -505,6 +515,9 @@ export function TelaDashboard() {
             {formatar_oculto(formatar_moeda(dados.resumo.despesasMes), ocultarValores)}
           </p>
           <Variacao valor={dados.resumo.variacaoDespesas} />
+          <p className="mt-2 text-xs text-texto-suave">
+            Contas no calendário + cartões nos ciclos
+          </p>
           {mostrarSplit && natureza ? (
             <p className="mt-2 text-xs text-texto-suave">
               Pessoal {formatar_oculto(formatar_moeda(natureza.pessoal.despesas), ocultarValores)}
@@ -534,14 +547,10 @@ export function TelaDashboard() {
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-              Resultado do mês
+              Resultado
             </p>
             <p className="text-sm text-texto-suave">
-              {tipoGasto === "pessoal"
-                ? "Receitas − despesas pessoais"
-                : tipoGasto === "empresa"
-                  ? "Receitas − despesas da empresa"
-                  : "Receitas − despesas"}
+              Contas: {mesNome} · Cartões: ciclos
             </p>
             <Variacao valor={dados.resumo.variacaoResultado} />
           </div>
@@ -1024,6 +1033,9 @@ export function TelaDashboard() {
         aoFechar={() => setDrawerCartoesAberto(false)}
         dados={dados}
         visaoGeral={visaoGeral}
+        usuarioId={usuario.id}
+        tipoGasto={tipoGasto}
+        hrefFaturas={hrefFaturas}
       />
     </div>
   );

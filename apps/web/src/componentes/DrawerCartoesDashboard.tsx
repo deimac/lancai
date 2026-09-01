@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Calendar,
   ChevronLeft,
@@ -6,8 +7,14 @@ import {
   CreditCard,
   Wallet,
 } from "lucide-react";
-import type { DashboardCartao, DashboardResposta } from "../lib/api";
-import { formatar_mes, formatar_moeda } from "../lib/formatar";
+import { ciclo_do_movimento, intervalo_ciclo_fatura } from "@lancai/tipos";
+import { clienteApi, type DashboardCartao, type DashboardResposta, type MovimentoResumo } from "../lib/api";
+import type { TipoGastoExtrato } from "../lib/filtrar-extrato";
+import {
+  formatar_intervalo_ciclo,
+  formatar_moeda,
+  rotulo_faturas_recorte,
+} from "../lib/formatar";
 import { unir_classes } from "../lib/unir-classes";
 import { Drawer } from "./ui/Drawer";
 
@@ -16,6 +23,9 @@ type Props = {
   aoFechar: () => void;
   dados: DashboardResposta;
   visaoGeral: boolean;
+  usuarioId: string;
+  tipoGasto: TipoGastoExtrato;
+  hrefFaturas: string;
 };
 
 function percentual_uso(comprometido: number, limite: number): number | null {
@@ -52,16 +62,34 @@ function BarraUtilizacao({ percentual }: { percentual: number | null }) {
   );
 }
 
+function intervalo_do_cartao(cartao: DashboardCartao): string {
+  if (cartao.cicloInicio && cartao.cicloFim) {
+    return formatar_intervalo_ciclo(cartao.cicloInicio, cartao.cicloFim);
+  }
+  const competencia = cartao.competenciaCiclo;
+  if (!competencia || !cartao.fechamento) return "";
+  const ciclo = intervalo_ciclo_fatura(competencia, cartao.fechamento);
+  return formatar_intervalo_ciclo(ciclo.inicio, ciclo.fim);
+}
+
+function href_fatura_cartao(base: string, cartaoId: string): string {
+  const params = new URLSearchParams(base.startsWith("/extrato?") ? base.slice("/extrato?".length) : "");
+  params.set("visao", "faturas");
+  params.set("origem", `cartao:${cartaoId}`);
+  return `/extrato?${params.toString()}`;
+}
+
 function CardCartaoItem({
   cartao,
-  mesRotulo,
+  rotuloFaturas,
   aoDetalhar,
 }: {
   cartao: DashboardCartao;
-  mesRotulo: string;
+  rotuloFaturas: string;
   aoDetalhar: () => void;
 }) {
   const pct = percentual_uso(cartao.comprometido, cartao.limite);
+  const intervalo = intervalo_do_cartao(cartao);
   return (
     <button
       type="button"
@@ -93,10 +121,10 @@ function CardCartaoItem({
       </div>
 
       <p className="mt-3 text-lg font-semibold tabular-nums text-despesa">
-        {formatar_moeda(cartao.gastoMes)}{" "}
-        <span className="text-xs font-medium text-texto-suave">
-          {cartao.gastoEhFaturaAtual ? "fatura atual" : `gasto em ${mesRotulo}`}
-        </span>
+        {formatar_moeda(cartao.gastoMes)}
+      </p>
+      <p className="mt-0.5 text-xs text-texto-suave">
+        {intervalo ? `${rotuloFaturas} · ${intervalo}` : rotuloFaturas}
       </p>
       <p className="mt-1 text-sm font-medium tabular-nums text-receita">
         {formatar_moeda(cartao.disponivel)} disponível
@@ -115,14 +143,22 @@ function CardCartaoItem({
 
 function DetalheCartao({
   cartao,
-  mesRotulo,
-  mesTitulo,
+  rotuloFaturas,
+  hrefFaturas,
+  lancamentos,
+  carregando,
 }: {
   cartao: DashboardCartao;
-  mesRotulo: string;
-  mesTitulo: string;
+  rotuloFaturas: string;
+  hrefFaturas: string;
+  lancamentos: MovimentoResumo[];
+  carregando: boolean;
 }) {
   const pct = percentual_uso(cartao.comprometido, cartao.limite);
+  const intervalo = intervalo_do_cartao(cartao);
+  const href = href_fatura_cartao(hrefFaturas, cartao.id);
+  const soma = lancamentos.reduce((acc, item) => acc + (Number(item.valor) || 0), 0);
+
   return (
     <div className="space-y-5">
       <div>
@@ -139,7 +175,60 @@ function DetalheCartao({
 
       <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
         <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-          Posição atual
+          {rotuloFaturas}
+        </p>
+        <p className="mt-3 text-2xl font-semibold tabular-nums text-despesa">
+          {formatar_moeda(cartao.gastoMes)}
+        </p>
+        {intervalo ? (
+          <p className="mt-1 flex items-center gap-1.5 text-sm text-texto-suave">
+            <Calendar size={14} />
+            {intervalo}
+          </p>
+        ) : null}
+        <p className="mt-3 text-sm text-texto">
+          {cartao.quantidadeLancamentos === 0
+            ? "Nenhum lançamento neste ciclo"
+            : cartao.quantidadeLancamentos === 1
+              ? "1 lançamento"
+              : `${cartao.quantidadeLancamentos} lançamentos`}
+        </p>
+        {carregando ? (
+          <p className="mt-3 text-xs text-texto-suave">Carregando lançamentos…</p>
+        ) : lancamentos.length > 0 ? (
+          <ul className="mt-3 flex flex-col gap-1.5 border-t border-borda/70 pt-3">
+            {lancamentos.slice(0, 8).map((item) => (
+              <li key={item.id} className="flex justify-between gap-2 text-[12px]">
+                <span className="truncate text-texto">{item.descricao}</span>
+                <span className="shrink-0 tabular-nums text-despesa">
+                  {formatar_moeda(Number(item.valor) || 0)}
+                </span>
+              </li>
+            ))}
+            {lancamentos.length > 8 ? (
+              <li className="text-[11px] text-texto-suave">
+                +{lancamentos.length - 8} neste ciclo
+              </li>
+            ) : null}
+            {Math.abs(soma - cartao.gastoMes) < 0.02 ? null : (
+              <li className="text-[11px] text-texto-suave">
+                Soma desta lista {formatar_moeda(soma)}
+              </li>
+            )}
+          </ul>
+        ) : null}
+        <Link
+          to={href}
+          className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primaria hover:underline"
+        >
+          Ver lançamentos
+          <ChevronRight size={14} />
+        </Link>
+      </section>
+
+      <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
+          Limite dos cartões
         </p>
         <dl className="mt-3 space-y-3">
           <div className="flex justify-between gap-3 text-sm">
@@ -163,52 +252,73 @@ function DetalheCartao({
         </dl>
         <BarraUtilizacao percentual={pct} />
       </section>
-
-      <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-          {cartao.gastoEhFaturaAtual ? "Fatura atual" : mesTitulo}
-        </p>
-        <p className="mt-3 text-2xl font-semibold tabular-nums text-despesa">
-          {formatar_moeda(cartao.gastoMes)}
-        </p>
-        <p className="mt-1 text-sm text-texto-suave">
-          {cartao.gastoEhFaturaAtual ? "Fatura atual" : `Gasto no mês (${mesRotulo})`}
-        </p>
-        <p className="mt-3 text-sm text-texto">
-          {cartao.quantidadeLancamentos === 0
-            ? "Nenhum lançamento neste mês"
-            : cartao.quantidadeLancamentos === 1
-              ? "1 lançamento"
-              : `${cartao.quantidadeLancamentos} lançamentos`}
-        </p>
-      </section>
-
-      <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">Ciclo</p>
-        <div className="mt-3 flex flex-wrap gap-4 text-sm">
-          <p className="flex items-center gap-1.5 text-texto">
-            <Calendar size={14} className="text-texto-suave" />
-            Fecha dia {cartao.fechamento}
-          </p>
-          <p className="flex items-center gap-1.5 text-texto">
-            <Calendar size={14} className="text-texto-suave" />
-            Vence dia {cartao.vencimento}
-          </p>
-        </div>
-        <p className="mt-2 text-xs text-texto-suave">
-          Valor da fatura do período não disponível neste painel.
-        </p>
-      </section>
     </div>
   );
 }
 
-export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: Props) {
+function perfil_do_tipo_gasto(tipo: TipoGastoExtrato): "pf" | "pj" | null {
+  if (tipo === "pessoal") return "pf";
+  if (tipo === "empresa") return "pj";
+  return null;
+}
+
+function no_ciclo_do_cartao(movimento: MovimentoResumo, cartao: DashboardCartao): boolean {
+  if (movimento.cartaoId !== cartao.id) return false;
+  if (movimento.status === "cancelado") return false;
+  if (movimento.papel === "pagamento_fatura") return false;
+  if (movimento.possivelRepetido && movimento.ignoradoEmRelatorio) return false;
+  const competencia =
+    cartao.competenciaCiclo ??
+    ciclo_do_movimento(movimento.dataMovimento, cartao.id, cartao.fechamento, {
+      vencimento: cartao.vencimento,
+      parcelaNumero: movimento.parcelaNumero,
+      status: movimento.status,
+    });
+  return (
+    ciclo_do_movimento(movimento.dataMovimento, cartao.id, cartao.fechamento, {
+      vencimento: cartao.vencimento,
+      parcelaNumero: movimento.parcelaNumero,
+      status: movimento.status,
+    }) === competencia
+  );
+}
+
+export function DrawerCartoesDashboard({
+  aberto,
+  aoFechar,
+  dados,
+  visaoGeral,
+  usuarioId,
+  tipoGasto,
+  hrefFaturas,
+}: Props) {
   const [cartaoId, setCartaoId] = useState<string | null>(null);
+  const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
+  const [carregandoMov, setCarregandoMov] = useState(false);
 
   useEffect(() => {
     if (!aberto) setCartaoId(null);
   }, [aberto]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    let cancelado = false;
+    setCarregandoMov(true);
+    clienteApi
+      .listar_movimentos(usuarioId)
+      .then((lista) => {
+        if (!cancelado) setMovimentos(lista);
+      })
+      .catch(() => {
+        if (!cancelado) setMovimentos([]);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoMov(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [aberto, usuarioId]);
 
   const cartoes = dados.cartoes;
   const n = dados.resumo.quantidadeCartoes ?? cartoes.length;
@@ -229,10 +339,20 @@ export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: 
   const pctGlobal =
     dados.resumo.percentualUtilizadoCartoes ?? percentual_uso(usado, limite);
 
-  const mesTitulo = formatar_mes(dados.mes);
-  const mesCurto = mesTitulo.split(" ")[0] ?? dados.mes;
   const gastoEhFaturaAtual = cartoes.some((c) => c.gastoEhFaturaAtual);
+  const rotuloFaturas = rotulo_faturas_recorte(gastoEhFaturaAtual);
   const cartaoSelecionado = cartoes.find((c) => c.id === cartaoId) ?? null;
+  const perfil = perfil_do_tipo_gasto(tipoGasto);
+
+  const lancamentosDetalhe = useMemo(() => {
+    if (!cartaoSelecionado) return [];
+    return movimentos
+      .filter((item) => {
+        if (perfil && item.tipoGasto !== perfil) return false;
+        return no_ciclo_do_cartao(item, cartaoSelecionado);
+      })
+      .sort((a, b) => String(b.dataMovimento).localeCompare(String(a.dataMovimento)));
+  }, [movimentos, cartaoSelecionado, perfil]);
 
   const subtituloLista =
     n === 0
@@ -267,21 +387,21 @@ export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: 
       {cartaoSelecionado ? (
         <DetalheCartao
           cartao={cartaoSelecionado}
-          mesRotulo={mesCurto}
-          mesTitulo={mesTitulo}
+          rotuloFaturas={rotuloFaturas}
+          hrefFaturas={hrefFaturas}
+          lancamentos={lancamentosDetalhe}
+          carregando={carregandoMov}
         />
       ) : (
         <div className="space-y-5">
           <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-              {gastoEhFaturaAtual ? "Fatura atual" : mesTitulo}
+              {rotuloFaturas}
             </p>
             <p className="mt-2 text-2xl font-semibold tabular-nums text-despesa">
               {formatar_moeda(gastoMes)}
             </p>
-            <p className="mt-1 text-sm text-texto-suave">
-              {gastoEhFaturaAtual ? "Faturas em aberto" : "Gasto no mês"}
-            </p>
+            <p className="mt-1 text-sm text-texto-suave">cada um no seu ciclo</p>
             <p className="mt-2 text-sm text-texto">
               {qtdLanc === 0
                 ? "Nenhum lançamento em cartão"
@@ -289,11 +409,18 @@ export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: 
                   ? "1 lançamento"
                   : `${qtdLanc} lançamentos`}
             </p>
+            <Link
+              to={hrefFaturas}
+              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primaria hover:underline"
+            >
+              Ver lançamentos
+              <ChevronRight size={14} />
+            </Link>
           </section>
 
           <section className="rounded-2xl border border-borda bg-fundo/40 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-              Posição atual
+              Limite dos cartões
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div>
@@ -327,7 +454,7 @@ export function DrawerCartoesDashboard({ aberto, aoFechar, dados, visaoGeral }: 
                   <li key={cartao.id}>
                     <CardCartaoItem
                       cartao={cartao}
-                      mesRotulo={mesCurto}
+                      rotuloFaturas={rotuloFaturas}
                       aoDetalhar={() => setCartaoId(cartao.id)}
                     />
                   </li>

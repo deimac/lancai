@@ -27,7 +27,7 @@ import {
   type ContaResumo,
   type MovimentoResumo,
 } from "../lib/api";
-import { sugerir_pagamento_fatura, selo_fatura_ciclo, type Perfil, hora_visivel_do_fato } from "@lancai/tipos";
+import { sugerir_pagamento_fatura, selo_fatura_ciclo, hojeISO, type Perfil, hora_visivel_do_fato } from "@lancai/tipos";
 import { chave_dependencia } from "../lib/invalidacao-dados";
 import { Campo } from "../componentes/ui/Campo";
 import { Cartao } from "../componentes/ui/Cartao";
@@ -57,8 +57,9 @@ import {
   dispensar_convite_fatura,
   ler_faturas_dispensadas,
 } from "../lib/preferencias-fatura-dispensada";
-import { formatar_moeda } from "../lib/formatar";
+import { formatar_moeda, rotulo_faturas_recorte, rotulo_legenda_periodos } from "../lib/formatar";
 import {
+  agrupar_faturas_por_cartao,
   classificacao_da_query,
   fila_da_query,
   filtrar_extrato,
@@ -75,12 +76,15 @@ import {
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
   tipo_gasto_para_query,
+  visao_da_query,
+  visao_para_query,
   TAMANHO_PAGINA_PADRAO,
   type ClassificacaoExtrato,
   type FilaExtrato,
   type OrigemExtrato,
   type PapelExtrato,
   type TipoGastoExtrato,
+  type VisaoExtrato,
 } from "../lib/filtrar-extrato";
 import {
   pode_excluir_movimento,
@@ -256,6 +260,7 @@ export function TelaExtrato() {
   const origem = origem_da_query(searchParams.get("origem"));
   const tipoGasto = tipo_gasto_da_query(searchParams.get("tipoGasto"));
   const papel = papel_da_query(searchParams.get("papel"));
+  const visao = visao_da_query(searchParams.get("visao"));
   const porPagina = tamanho_pagina_da_query(searchParams.get("porPagina"));
   const [pagina, setPagina] = useState(1);
   const [movimentos, setMovimentos] = useState<MovimentoResumo[]>([]);
@@ -346,6 +351,7 @@ export function TelaExtrato() {
     origem?: OrigemExtrato;
     tipoGasto?: TipoGastoExtrato;
     papel?: PapelExtrato;
+    visao?: VisaoExtrato;
     porPagina?: number;
   }) {
     const proximoFiltro = entrada.filtro ?? filtro;
@@ -357,6 +363,7 @@ export function TelaExtrato() {
     const proximaOrigem = entrada.origem ?? origem;
     const proximoTipoGasto = entrada.tipoGasto ?? tipoGasto;
     const proximoPapel = entrada.papel ?? papel;
+    const proximaVisao = entrada.visao ?? visao;
     const proximoPorPagina = entrada.porPagina ?? porPagina;
     const params = new URLSearchParams();
     if (proximoFiltro !== "todas") params.set("fila", proximoFiltro);
@@ -370,6 +377,8 @@ export function TelaExtrato() {
     if (tipoGastoQuery) params.set("tipoGasto", tipoGastoQuery);
     const papelQuery = papel_para_query(proximoPapel);
     if (papelQuery) params.set("papel", papelQuery);
+    const visaoQuery = visao_para_query(proximaVisao);
+    if (visaoQuery) params.set("visao", visaoQuery);
     if (proximoPorPagina !== TAMANHO_PAGINA_PADRAO) {
       params.set("porPagina", String(proximoPorPagina));
     }
@@ -383,6 +392,14 @@ export function TelaExtrato() {
 
   function escolher_mes(proximo: string) {
     sincronizar_params({ mes: proximo });
+  }
+
+  function escolher_visao(proxima: VisaoExtrato) {
+    const origemAjustada =
+      proxima === "faturas" && (origem.tipo === "contas" || origem.tipo === "conta")
+        ? ({ tipo: "todas" } as const)
+        : origem;
+    sincronizar_params({ visao: proxima, origem: origemAjustada });
   }
 
   async function alternar_parcelas(movimentoId: string) {
@@ -427,8 +444,19 @@ export function TelaExtrato() {
         origem,
         tipoGasto,
         papel,
+        visao,
+        cartoesCiclo: cartoesTodos,
+        hoje: hojeISO(),
       }),
-    [movimentos, contas, cartoes, mes, filtro, busca, categoriaId, classificacao, origem, tipoGasto, papel],
+    [movimentos, contas, cartoes, cartoesTodos, mes, filtro, busca, categoriaId, classificacao, origem, tipoGasto, papel, visao],
+  );
+
+  const gruposFatura = useMemo(
+    () =>
+      visao === "faturas"
+        ? agrupar_faturas_por_cartao(visiveis, cartoesTodos, mes, hojeISO())
+        : [],
+    [visao, visiveis, cartoesTodos, mes],
   );
 
   const categoriasDoFiltro = useMemo(() => {
@@ -441,22 +469,32 @@ export function TelaExtrato() {
       origem,
       tipoGasto,
       papel: "todas",
+      visao,
+      cartoesCiclo: cartoesTodos,
+      hoje: hojeISO(),
     });
     const usadas = categorias_com_lancamentos(categorias, recorteDoMes);
     if (!categoriaId || usadas.some((item) => item.id === categoriaId)) return usadas;
     const selecionada = categorias.find((item) => item.id === categoriaId);
     return selecionada ? [selecionada, ...usadas] : usadas;
-  }, [movimentos, contas, cartoes, mes, origem, tipoGasto, categorias, categoriaId]);
+  }, [movimentos, contas, cartoes, cartoesTodos, mes, origem, tipoGasto, visao, categorias, categoriaId]);
 
   const paginaAtual = useMemo(
     () => paginar(visiveis, pagina, porPagina),
     [visiveis, pagina, porPagina],
   );
 
-  const resumo = useMemo(
-    () => resumir_extrato(visiveis, { mes, cartoes: cartoesTodos }),
-    [visiveis, mes, cartoesTodos],
-  );
+  const linhasTabela = useMemo(() => {
+    if (visao !== "faturas") {
+      return paginaAtual.itens.map((movimento) => ({ tipo: "item" as const, movimento }));
+    }
+    return gruposFatura.flatMap((grupo) => [
+      { tipo: "grupo" as const, grupo },
+      ...grupo.movimentos.map((movimento) => ({ tipo: "item" as const, movimento })),
+    ]);
+  }, [visao, paginaAtual.itens, gruposFatura]);
+
+  const resumo = useMemo(() => resumir_extrato(visiveis), [visiveis]);
 
   const filtrosDrawer = quantidade_filtros_drawer({
     categoriaId,
@@ -716,12 +754,38 @@ export function TelaExtrato() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Transações</h1>
           <p className="text-sm text-texto-suave">
-            {visaoGeral
-              ? "Todos os workspaces — classifique e revise o que veio do banco ou do assistente"
-              : "Classifique e revise o que veio do banco ou do assistente"}
+            {visao === "faturas"
+              ? `${rotulo_faturas_recorte(mes === mes_de_hoje())} · cada cartão no seu ciclo`
+              : visaoGeral
+                ? `Todos os workspaces — ${rotulo_legenda_periodos(mes)}`
+                : rotulo_legenda_periodos(mes)}
           </p>
         </div>
-        <SeletorMes mes={mes} onChange={escolher_mes} />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 rounded-lg border border-borda p-0.5 text-xs">
+            {(
+              [
+                { valor: "movimentacoes" as const, rotulo: "Movimentações" },
+                { valor: "faturas" as const, rotulo: "Faturas" },
+              ] as const
+            ).map((opcao) => (
+              <button
+                key={opcao.valor}
+                type="button"
+                onClick={() => escolher_visao(opcao.valor)}
+                className={unir_classes(
+                  "rounded-md px-2.5 py-1 font-medium transition",
+                  visao === opcao.valor
+                    ? "bg-primaria/15 text-primaria"
+                    : "text-texto-suave hover:text-texto",
+                )}
+              >
+                {opcao.rotulo}
+              </button>
+            ))}
+          </div>
+          <SeletorMes mes={mes} onChange={escolher_mes} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -853,14 +917,14 @@ export function TelaExtrato() {
           <PainelResumo
             titulo="Entradas"
             valor={formatar_moeda(resumo.entradas)}
-            detalhe="sem pagamento de fatura"
+            detalhe={visao === "faturas" ? "só cartões no ciclo" : "sem pagamento de fatura"}
             icone={ArrowDownLeft}
             tom="receita"
           />
           <PainelResumo
             titulo="Saídas"
             valor={formatar_moeda(resumo.saidas)}
-            detalhe="sem pagamento de fatura"
+            detalhe={visao === "faturas" ? "só cartões no ciclo" : "sem pagamento de fatura"}
             icone={ArrowUpRight}
             tom="despesa"
           />
@@ -893,13 +957,6 @@ export function TelaExtrato() {
             </p>
           </button>
         </div>
-      ) : null}
-
-      {resumo.proximaFatura > 0 ? (
-        <p className="flex items-center gap-1.5 text-xs text-aviso">
-          <IconeProximaFatura />
-          {formatar_moeda(resumo.proximaFatura)} na próxima fatura
-        </p>
       ) : null}
 
       {erro && (
@@ -949,7 +1006,29 @@ export function TelaExtrato() {
               </tr>
             </thead>
             <tbody>
-              {paginaAtual.itens.map((movimento) => {
+              {linhasTabela.map((linha) => {
+                if (linha.tipo === "grupo") {
+                  return (
+                    <tr key={`grupo-${linha.grupo.cartaoId}`} className="border-b border-borda bg-fundo/50">
+                      <td colSpan={8} className="px-3 py-2">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="text-sm font-medium text-texto">
+                            {linha.grupo.cartaoNome}
+                            {linha.grupo.intervalo ? (
+                              <span className="ml-2 text-xs font-normal text-texto-suave">
+                                {linha.grupo.intervalo}
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="text-sm font-semibold tabular-nums text-despesa">
+                            {formatar_moeda(linha.grupo.total)}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                const movimento = linha.movimento;
                 const revisao = precisa_revisao(movimento);
                 const entrada = ["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo);
                 const origemPerfil = perfil_origem_movimento(movimento, contas, cartoes);
@@ -958,16 +1037,19 @@ export function TelaExtrato() {
                 const cartaoMovimento = movimento.cartaoId
                   ? cartoesTodos.find((item) => item.id === movimento.cartaoId)
                   : undefined;
-                const seloFatura = selo_fatura_ciclo({
-                  dataMovimento: movimento.dataMovimento,
-                  cartaoId: movimento.cartaoId,
-                  fechamento: cartaoMovimento?.fechamento,
-                  vencimento: cartaoMovimento?.vencimento,
-                  parcelaNumero: movimento.parcelaNumero,
-                  status: movimento.status,
-                  tipo: movimento.tipo,
-                  papel: movimento.papel,
-                });
+                const seloFatura =
+                  visao === "movimentacoes"
+                    ? selo_fatura_ciclo({
+                        dataMovimento: movimento.dataMovimento,
+                        cartaoId: movimento.cartaoId,
+                        fechamento: cartaoMovimento?.fechamento,
+                        vencimento: cartaoMovimento?.vencimento,
+                        parcelaNumero: movimento.parcelaNumero,
+                        status: movimento.status,
+                        tipo: movimento.tipo,
+                        papel: movimento.papel,
+                      })
+                    : null;
                 return (
                   <tr
                     key={movimento.id}
@@ -1193,16 +1275,18 @@ export function TelaExtrato() {
             </tbody>
           </table>
         </div>
-        <Paginador
-          pagina={paginaAtual.pagina}
-          paginas={paginaAtual.paginas}
-          total={paginaAtual.total}
-          porPagina={paginaAtual.porPagina}
-          de={paginaAtual.de}
-          ate={paginaAtual.ate}
-          onPagina={setPagina}
-          onPorPagina={(n) => sincronizar_params({ porPagina: n })}
-        />
+        {visao === "movimentacoes" ? (
+          <Paginador
+            pagina={paginaAtual.pagina}
+            paginas={paginaAtual.paginas}
+            total={paginaAtual.total}
+            porPagina={paginaAtual.porPagina}
+            de={paginaAtual.de}
+            ate={paginaAtual.ate}
+            onPagina={setPagina}
+            onPorPagina={(n) => sincronizar_params({ porPagina: n })}
+          />
+        ) : null}
         </>
       )}
 

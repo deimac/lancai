@@ -4,12 +4,12 @@ import { CalendarDays } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
 import { clienteApi, ErroApi, type CartaoResumo, type MovimentoResumo } from "../lib/api";
 import { chave_dependencia } from "../lib/invalidacao-dados";
-import { formatar_moeda } from "../lib/formatar";
+import { formatar_moeda, rotulo_legenda_periodos } from "../lib/formatar";
 import { mes_de_hoje, normalizar_mes, SeletorMes } from "../componentes/SeletorMes";
 import { useContextoLayout } from "../layout/useContextoLayout";
 import { rotulo_natureza } from "../lib/natureza-extrato";
 import { unir_classes } from "../lib/unir-classes";
-import { hojeISO, competencia_ciclo_da_data, mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_resultado_do_mes } from "@lancai/tipos";
+import { hojeISO, competencia_ciclo_da_data, mapa_fechamento_cartoes, mapa_vencimento_cartoes, movimento_no_recorte_do_cockpit } from "@lancai/tipos";
 
 function dias_do_mes(yyyyMm: string): Date[] {
   const partes = yyyyMm.split("-");
@@ -78,9 +78,9 @@ export function TelaAgendadas() {
       (item) =>
         item.status === "previsto" &&
         item.tipo !== "receita" &&
-        movimento_no_resultado_do_mes(item, mes, fechamentoPorCartao, vencimentoPorCartao),
+        movimento_no_recorte_do_cockpit(item, mes, hoje, fechamentoPorCartao, vencimentoPorCartao),
     );
-  }, [movimentos, mes, cartoes]);
+  }, [movimentos, mes, cartoes, hoje]);
 
   const vencidos = agendados.filter((item) => data_na_agenda(item, cartoes) < hoje);
   const futuros = agendados.filter((item) => data_na_agenda(item, cartoes) >= hoje);
@@ -106,7 +106,7 @@ export function TelaAgendadas() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-texto">Agendadas</h1>
           <p className="text-sm text-texto-suave">
-            Previstos, faturas e parcelas do mês — o que ainda vai sair
+            {rotulo_legenda_periodos(mes)} — o dia no grid é o vencimento
           </p>
         </div>
         <SeletorMes
