@@ -521,6 +521,7 @@ export interface MovimentoResumo {
   /** Total informativo da compra (string decimal), quando parcelado. */
   parcelaCompraValor?: string | null;
   ignoradoEmRelatorio: boolean;
+  possivelRepetido: boolean;
   categoriaId: string;
   categoriaNome: string;
   classificadoPor: ClassificadoPor;
@@ -927,6 +928,7 @@ export const clienteApi = {
     categoriaId?: string;
     tipoGasto?: Perfil;
     ignoradoEmRelatorio?: boolean;
+    possivelRepetido?: boolean;
     papel?: "gasto" | "pagamento_fatura";
     cartaoFaturaId?: string | null;
     competenciaFatura?: string | null;
@@ -941,6 +943,7 @@ export const clienteApi = {
     confiancaIa: number | null;
     tipoGasto: Perfil | null;
     ignoradoEmRelatorio: boolean;
+    possivelRepetido: boolean;
     papel: "gasto" | "pagamento_fatura";
     cartaoFaturaId: string | null;
     competenciaFatura: string | null;

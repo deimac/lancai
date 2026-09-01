@@ -22,6 +22,7 @@ const schemaAtualizar = z
     categoriaId: z.string().uuid().optional(),
     tipoGasto: perfilSchema.optional(),
     ignoradoEmRelatorio: z.boolean().optional(),
+    possivelRepetido: z.boolean().optional(),
     papel: papelConhecimentoSchema.optional(),
     cartaoFaturaId: z.string().uuid().nullable().optional(),
     competenciaFatura: competenciaFaturaSchema.nullable().optional(),
@@ -31,6 +32,7 @@ const schemaAtualizar = z
       dados.categoriaId !== undefined ||
       dados.tipoGasto !== undefined ||
       dados.ignoradoEmRelatorio !== undefined ||
+      dados.possivelRepetido !== undefined ||
       dados.papel !== undefined ||
       dados.cartaoFaturaId !== undefined ||
       dados.competenciaFatura !== undefined,
@@ -52,6 +54,7 @@ async function serializar_conhecimento(atualizado: {
   confiancaIa: string | null;
   tipoGasto: "pf" | "pj";
   ignoradoEmRelatorio: boolean;
+  possivelRepetido: boolean;
   papel: "gasto" | "pagamento_fatura";
   cartaoFaturaId: string | null;
   competenciaFatura: string | null;
@@ -72,6 +75,7 @@ async function serializar_conhecimento(atualizado: {
     confiancaIa: atualizado.confiancaIa === null ? null : Number(atualizado.confiancaIa),
     tipoGasto: atualizado.tipoGasto,
     ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+    possivelRepetido: atualizado.possivelRepetido,
     papel: atualizado.papel,
     cartaoFaturaId: atualizado.cartaoFaturaId,
     competenciaFatura: atualizado.competenciaFatura,
@@ -102,6 +106,9 @@ export async function registrar_rotas_conhecimento(app: FastifyInstance) {
           ...(dados.tipoGasto !== undefined ? { tipoGasto: dados.tipoGasto } : {}),
           ...(dados.ignoradoEmRelatorio !== undefined
             ? { ignoradoEmRelatorio: dados.ignoradoEmRelatorio }
+            : {}),
+          ...(dados.possivelRepetido !== undefined
+            ? { possivelRepetido: dados.possivelRepetido }
             : {}),
           ...(dados.papel !== undefined ? { papel: dados.papel } : {}),
           ...(dados.cartaoFaturaId !== undefined ? { cartaoFaturaId: dados.cartaoFaturaId } : {}),

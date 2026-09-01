@@ -104,6 +104,9 @@ export class ServicoConhecimento {
     if (dados.ignoradoEmRelatorio !== undefined && dados.papel === undefined) {
       campos.ignoradoEmRelatorio = dados.ignoradoEmRelatorio;
     }
+    if (dados.possivelRepetido !== undefined) {
+      campos.possivelRepetido = dados.possivelRepetido;
+    }
 
     if (dados.classificadoPor !== undefined) {
       campos.classificadoPor = dados.classificadoPor;

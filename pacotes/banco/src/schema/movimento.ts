@@ -129,6 +129,12 @@ export const movimento = pgTable(
     /** Esconde das agregações sem tocar no Fato. É a saída para "apagar" algo vindo do banco. */
     ignoradoEmRelatorio: boolean("ignorado_em_relatorio").notNull().default(false),
     /**
+     * Par no mesmo minuto (conta, valor, tipo, descrição). O Extrato pergunta
+     * se é repetido. `true` + `ignorado_em_relatorio` = a pessoa disse que não
+     * mantém; a linha some sem apagar o Fato.
+     */
+    possivelRepetido: boolean("possivel_repetido").notNull().default(false),
+    /**
      * Interpretação do lançamento. `pagamento_fatura` some dos totais (via
      * `ignorado_em_relatorio`) sem mudar o Fato — o dinheiro saiu da conta.
      */

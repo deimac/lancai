@@ -8,6 +8,7 @@ import {
 import type { ResumoIngestao } from "@lancai/open-finance";
 import { avisar_orcamentos_apos_movimentos } from "./alerta-orcamento-open-finance";
 import { conciliar_manuais_com_fatos_criados } from "./conciliar-manual-com-fonte";
+import { marcar_possiveis_repetidos_criados } from "./skip-semantico-of";
 
 const orquestradorClassificacao = new OrquestradorIA();
 const classificadorCategoria = new ClassificadorCategoria(orquestradorClassificacao);
@@ -30,6 +31,15 @@ export async function enriquecer_apos_ingestao(entrada: {
   let porRegra = 0;
   let porIa = 0;
   const fatosCasados = new Set<string>();
+
+  try {
+    const marcados = await marcar_possiveis_repetidos_criados(resumo.movimentoIdsCriados);
+    if (marcados > 0) {
+      log.info({ eventoId, marcados }, "[open-finance] possíveis repetidos no mesmo minuto");
+    }
+  } catch (erroMarca) {
+    log.warn({ err: erroMarca, eventoId }, "[open-finance] falha ao marcar possíveis repetidos");
+  }
 
   try {
     const conciliacao = await conciliar_manuais_com_fatos_criados({

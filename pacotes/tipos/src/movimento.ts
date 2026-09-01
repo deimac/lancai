@@ -137,6 +137,7 @@ export const schemaConhecimentoMovimento = z.object({
   regraId: z.string().uuid().nullable().optional(),
   confiancaIa: z.number().min(0).max(1).nullable().optional(),
   ignoradoEmRelatorio: z.boolean().optional(),
+  possivelRepetido: z.boolean().optional(),
   papel: papelConhecimentoSchema.optional(),
   cartaoFaturaId: z.string().uuid().nullable().optional(),
   competenciaFatura: competenciaFaturaSchema.nullable().optional(),

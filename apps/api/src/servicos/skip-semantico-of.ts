@@ -1,13 +1,14 @@
 import { and, eq, inArray, ne, or, isNull } from "drizzle-orm";
 import { movimento, obter_banco } from "@lancai/banco";
 import type { EventoFinanceiroNormalizado } from "@lancai/tipos";
-import { paraNumero } from "@lancai/tipos";
+import { hora_visivel_do_fato, paraNumero } from "@lancai/tipos";
 import { score_descricao_conciliacao } from "./conciliar-manual-com-fonte";
 
-/** Limiar alto: só pula quando a descrição é claramente a mesma tx. */
+/** Limiar alto: só sinaliza quando a descrição é claramente a mesma tx. */
 const LIMIAR_SEMANTICO = 0.7;
 
-type AlvoSemantico = {
+export type AlvoSemantico = {
+  id?: string;
   contaId?: string | null;
   cartaoId?: string | null;
   tipo: string;
@@ -15,76 +16,175 @@ type AlvoSemantico = {
   data: string;
   descricaoFonte?: string | null;
   favorecidoFonte?: string | null;
+  ocorridoEmInstante?: Date | string | null;
+  ignoradoEmRelatorio?: boolean;
+  dataCriacao?: Date | string | null;
 };
 
-function casam_semanticos(evento: EventoFinanceiroNormalizado, alvo: AlvoSemantico): boolean {
-  if ((alvo.contaId ?? null) !== (evento.contaId ?? null)) return false;
-  if ((alvo.cartaoId ?? null) !== (evento.cartaoId ?? null)) return false;
-  if (alvo.tipo !== evento.tipo) return false;
-  if (String(alvo.data).slice(0, 10) !== String(evento.ocorridoEm).slice(0, 10)) return false;
-  if (paraNumero(alvo.valor) !== paraNumero(evento.valor)) return false;
+function casam_identidade(evento: EventoFinanceiroNormalizado | AlvoSemantico, alvo: AlvoSemantico): boolean {
+  const contaEvento = "contaId" in evento ? (evento.contaId ?? null) : null;
+  const cartaoEvento = "cartaoId" in evento ? (evento.cartaoId ?? null) : null;
+  const tipoEvento = evento.tipo;
+  const dataEvento =
+    "ocorridoEm" in evento && typeof evento.ocorridoEm === "string"
+      ? evento.ocorridoEm
+      : "data" in evento
+        ? String(evento.data)
+        : "";
+  const valorEvento = evento.valor;
+  const descEvento =
+    "descricaoFonte" in evento ? (evento.descricaoFonte ?? null) : null;
+  const favEvento =
+    "favorecidoFonte" in evento ? (evento.favorecidoFonte ?? null) : null;
+
+  if ((alvo.contaId ?? null) !== contaEvento) return false;
+  if ((alvo.cartaoId ?? null) !== cartaoEvento) return false;
+  if (alvo.tipo !== tipoEvento) return false;
+  if (String(alvo.data).slice(0, 10) !== String(dataEvento).slice(0, 10)) return false;
+  if (paraNumero(alvo.valor) !== paraNumero(valorEvento)) return false;
   const score = score_descricao_conciliacao(
     [alvo.descricaoFonte, alvo.favorecidoFonte].filter(Boolean).join(" "),
-    evento.descricaoFonte ?? "",
-    evento.favorecidoFonte,
+    descEvento ?? "",
+    favEvento,
   );
   return score >= LIMIAR_SEMANTICO;
 }
 
-/**
- * Dois idExterno no mesmo lote (Pix PREVER duas vezes no dump da Pluggy)
- * não podem virar dois Fatos.
- */
-export function colapsar_lote_semantico(
-  eventos: EventoFinanceiroNormalizado[],
-): { aceitos: EventoFinanceiroNormalizado[]; pulados: number } {
-  const aceitos: EventoFinanceiroNormalizado[] = [];
-  let pulados = 0;
-  for (const evento of eventos) {
-    const duplicado = aceitos.some((ja) =>
-      casam_semanticos(evento, {
-        contaId: ja.contaId,
-        cartaoId: ja.cartaoId,
-        tipo: ja.tipo,
-        valor: ja.valor,
-        data: ja.ocorridoEm,
-        descricaoFonte: ja.descricaoFonte,
-        favorecidoFonte: ja.favorecidoFonte,
-      }),
-    );
-    if (duplicado) {
-      pulados += 1;
-      continue;
-    }
-    aceitos.push(evento);
-  }
-  return { aceitos, pulados };
+/** Relógio que o Extrato mostra. Sem instante (ou carimbo de dia) → não pergunta. */
+export function minuto_visivel_do_fato(
+  data: string,
+  instante?: Date | string | null,
+): string | null {
+  const hora = hora_visivel_do_fato(data, instante);
+  return hora || null;
+}
+
+export function casam_mesmo_minuto(
+  evento: EventoFinanceiroNormalizado | AlvoSemantico,
+  alvo: AlvoSemantico,
+): boolean {
+  if (!casam_identidade(evento, alvo)) return false;
+  const dataEvento =
+    "ocorridoEm" in evento && typeof evento.ocorridoEm === "string"
+      ? evento.ocorridoEm
+      : "data" in evento
+        ? String(evento.data)
+        : "";
+  const instanteEvento =
+    "ocorridoEmInstante" in evento ? evento.ocorridoEmInstante : undefined;
+  const a = minuto_visivel_do_fato(dataEvento, instanteEvento);
+  const b = minuto_visivel_do_fato(alvo.data, alvo.ocorridoEmInstante);
+  if (!a || !b) return false;
+  return a === b;
+}
+
+function chave_item(item: EventoFinanceiroNormalizado | AlvoSemantico, indice: number): string {
+  if ("id" in item && item.id) return item.id;
+  if ("idExterno" in item && item.idExterno) return String(item.idExterno);
+  return `idx:${indice}`;
+}
+
+function alvo_de_evento(evento: EventoFinanceiroNormalizado, indice: number): AlvoSemantico {
+  return {
+    id: chave_item(evento, indice),
+    contaId: evento.contaId,
+    cartaoId: evento.cartaoId,
+    tipo: evento.tipo,
+    valor: evento.valor,
+    data: evento.ocorridoEm,
+    descricaoFonte: evento.descricaoFonte,
+    favorecidoFonte: evento.favorecidoFonte,
+    ocorridoEmInstante: evento.ocorridoEmInstante,
+  };
 }
 
 /**
- * No reatachar (novo itemId Pluggy), txs podem chegar com id_externo novo mas
- * serem as mesmas do histórico local. Se data + valor + tipo + descrição batem
- * com Fato OF já existente no mesmo destino, não cria — preserva categorias.
- * Também colapsa o próprio lote (dois IDs Pluggy da mesma tx).
+ * Entre itens iguais no mesmo HH:mm, o primeiro (já visto / mais antigo) fica
+ * quieto; os extras são suspeitos. Sem relógio → ninguém é suspeito.
+ */
+export function ids_suspeitos_mesmo_minuto(itens: AlvoSemantico[]): string[] {
+  const ordenados = [...itens].sort((a, b) => {
+    const ignA = Boolean(a.ignoradoEmRelatorio);
+    const ignB = Boolean(b.ignoradoEmRelatorio);
+    if (ignA !== ignB) return ignA ? 1 : -1;
+    const ta = a.dataCriacao ? new Date(a.dataCriacao).getTime() : 0;
+    const tb = b.dataCriacao ? new Date(b.dataCriacao).getTime() : 0;
+    if (ta !== tb) return ta - tb;
+    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+  });
+
+  const vistos: AlvoSemantico[] = [];
+  const suspeitos: string[] = [];
+  for (const item of ordenados) {
+    if (!item.id) {
+      vistos.push(item);
+      continue;
+    }
+    const par = vistos.find((ja) => casam_mesmo_minuto(item, ja));
+    if (par) suspeitos.push(item.id);
+    vistos.push(item);
+  }
+  return suspeitos;
+}
+
+/**
+ * Não colapsa mais pelo dia. Grava todos; só sinaliza par com o mesmo HH:mm.
+ */
+export function colapsar_lote_semantico(
+  eventos: EventoFinanceiroNormalizado[],
+): { aceitos: EventoFinanceiroNormalizado[]; pulados: number; suspeitos: string[] } {
+  const alvos = eventos.map((evento, indice) => alvo_de_evento(evento, indice));
+  const suspeitos = ids_suspeitos_mesmo_minuto(alvos);
+  return { aceitos: eventos, pulados: 0, suspeitos };
+}
+
+/**
+ * idExterno novo sempre cria. O skip pelo dia comia Pix reais iguais
+ * (quatro PROTECH de R$ 15.000 no mesmo dia). A pergunta fica no Extrato.
  */
 export async function filtrar_criacao_semantica_of(
   eventos: EventoFinanceiroNormalizado[],
-): Promise<{ aceitos: EventoFinanceiroNormalizado[]; pulados: number }> {
-  const lote = colapsar_lote_semantico(eventos);
-  if (lote.aceitos.length === 0) return lote;
+): Promise<{ aceitos: EventoFinanceiroNormalizado[]; pulados: number; suspeitos: string[] }> {
+  return colapsar_lote_semantico(eventos);
+}
 
-  const contaIds = [
-    ...new Set(lote.aceitos.map((e) => e.contaId).filter((id): id is string => Boolean(id))),
-  ];
-  const cartaoIds = [
-    ...new Set(lote.aceitos.map((e) => e.cartaoId).filter((id): id is string => Boolean(id))),
-  ];
-
-  if (contaIds.length === 0 && cartaoIds.length === 0) {
-    return lote;
-  }
+/**
+ * Depois de gravar, marca só os Fatos novos que caíram no mesmo minuto que
+ * outro já existente (ou outro do próprio lote).
+ */
+export async function marcar_possiveis_repetidos_criados(
+  movimentoIdsCriados: string[],
+): Promise<number> {
+  if (movimentoIdsCriados.length === 0) return 0;
 
   const banco = obter_banco();
+  const criados = await banco
+    .select({
+      id: movimento.id,
+      contaId: movimento.contaId,
+      cartaoId: movimento.cartaoId,
+      tipo: movimento.tipo,
+      valor: movimento.valor,
+      dataMovimento: movimento.dataMovimento,
+      descricaoFonte: movimento.descricaoFonte,
+      favorecidoFonte: movimento.favorecidoFonte,
+      ocorridoEmInstante: movimento.ocorridoEmInstante,
+      ignoradoEmRelatorio: movimento.ignoradoEmRelatorio,
+      dataCriacao: movimento.dataCriacao,
+    })
+    .from(movimento)
+    .where(inArray(movimento.id, movimentoIdsCriados));
+
+  if (criados.length === 0) return 0;
+
+  const contaIds = [
+    ...new Set(criados.map((e) => e.contaId).filter((id): id is string => Boolean(id))),
+  ];
+  const cartaoIds = [
+    ...new Set(criados.map((e) => e.cartaoId).filter((id): id is string => Boolean(id))),
+  ];
+  if (contaIds.length === 0 && cartaoIds.length === 0) return 0;
+
   const filtroDestino = [
     ...(contaIds.length > 0 ? [inArray(movimento.contaId, contaIds)] : []),
     ...(cartaoIds.length > 0 ? [inArray(movimento.cartaoId, cartaoIds)] : []),
@@ -100,6 +200,9 @@ export async function filtrar_criacao_semantica_of(
       dataMovimento: movimento.dataMovimento,
       descricaoFonte: movimento.descricaoFonte,
       favorecidoFonte: movimento.favorecidoFonte,
+      ocorridoEmInstante: movimento.ocorridoEmInstante,
+      ignoradoEmRelatorio: movimento.ignoradoEmRelatorio,
+      dataCriacao: movimento.dataCriacao,
     })
     .from(movimento)
     .where(
@@ -111,31 +214,28 @@ export async function filtrar_criacao_semantica_of(
       ),
     );
 
-  const usados = new Set<string>();
-  const aceitos: EventoFinanceiroNormalizado[] = [];
-  let pulados = lote.pulados;
+  const alvos: AlvoSemantico[] = existentes.map((ex) => ({
+    id: ex.id,
+    contaId: ex.contaId,
+    cartaoId: ex.cartaoId,
+    tipo: ex.tipo,
+    valor: ex.valor,
+    data: String(ex.dataMovimento),
+    descricaoFonte: ex.descricaoFonte,
+    favorecidoFonte: ex.favorecidoFonte,
+    ocorridoEmInstante: ex.ocorridoEmInstante,
+    ignoradoEmRelatorio: ex.ignoradoEmRelatorio,
+    dataCriacao: ex.dataCriacao,
+  }));
 
-  for (const evento of lote.aceitos) {
-    const match = existentes.find((ex) => {
-      if (usados.has(ex.id)) return false;
-      return casam_semanticos(evento, {
-        contaId: ex.contaId,
-        cartaoId: ex.cartaoId,
-        tipo: ex.tipo,
-        valor: ex.valor,
-        data: String(ex.dataMovimento),
-        descricaoFonte: ex.descricaoFonte,
-        favorecidoFonte: ex.favorecidoFonte,
-      });
-    });
+  const suspeitos = new Set(ids_suspeitos_mesmo_minuto(alvos));
+  const marcar = movimentoIdsCriados.filter((id) => suspeitos.has(id));
+  if (marcar.length === 0) return 0;
 
-    if (match) {
-      usados.add(match.id);
-      pulados += 1;
-      continue;
-    }
-    aceitos.push(evento);
-  }
+  await banco
+    .update(movimento)
+    .set({ possivelRepetido: true, dataAtualizacao: new Date() })
+    .where(inArray(movimento.id, marcar));
 
-  return { aceitos, pulados };
+  return marcar.length;
 }

@@ -114,6 +114,7 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     classificadoEm: null,
     confiancaIa: null,
     ignoradoEmRelatorio: false,
+    possivelRepetido: false,
     papel: "gasto" as const,
     cartaoFaturaId: null,
     competenciaFatura: null,

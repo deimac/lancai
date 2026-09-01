@@ -160,6 +160,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         classificadoEm: novoMovimento.classificadoEm ?? null,
         confiancaIa: novoMovimento.confiancaIa ?? null,
         ignoradoEmRelatorio: novoMovimento.ignoradoEmRelatorio ?? false,
+        possivelRepetido: novoMovimento.possivelRepetido ?? false,
         papel: novoMovimento.papel ?? "gasto",
         cartaoFaturaId: novoMovimento.cartaoFaturaId ?? null,
         competenciaFatura: novoMovimento.competenciaFatura ?? null,

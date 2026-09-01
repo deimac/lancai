@@ -25,6 +25,7 @@ function base(parcial: Partial<MovimentoResumo> = {}): MovimentoResumo {
     parcelaNumero: null,
     parcelaTotal: null,
     ignoradoEmRelatorio: false,
+    possivelRepetido: false,
     categoriaId: "cat",
     categoriaNome: "Alimentação",
     classificadoPor: "usuario",

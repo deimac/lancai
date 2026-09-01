@@ -157,6 +157,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         parcelaCompraEm: movimento.parcelaCompraEm,
         parcelaCompraValor: movimento.parcelaCompraValor,
         ignoradoEmRelatorio: movimento.ignoradoEmRelatorio,
+        possivelRepetido: movimento.possivelRepetido,
         papel: movimento.papel,
         cartaoFaturaId: movimento.cartaoFaturaId,
         competenciaFatura: movimento.competenciaFatura,

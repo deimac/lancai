@@ -497,6 +497,7 @@ export function TelaExtrato() {
                 confiancaIa: atualizado.confiancaIa,
                 tipoGasto: atualizado.tipoGasto,
                 ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+                possivelRepetido: atualizado.possivelRepetido,
                 papel: atualizado.papel,
                 cartaoFaturaId: atualizado.cartaoFaturaId,
                 competenciaFatura: atualizado.competenciaFatura,
@@ -556,6 +557,7 @@ export function TelaExtrato() {
               confiancaIa: atualizado.confiancaIa,
               tipoGasto: atualizado.tipoGasto,
               ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+              possivelRepetido: atualizado.possivelRepetido,
               papel: atualizado.papel,
               cartaoFaturaId: atualizado.cartaoFaturaId,
               competenciaFatura: atualizado.competenciaFatura,
@@ -563,6 +565,29 @@ export function TelaExtrato() {
           : item,
       ),
     );
+  }
+
+  async function decidir_repetido(movimento: MovimentoResumo, manter: boolean) {
+    if (!usuario) return;
+    setSalvandoId(movimento.id);
+    setErro(null);
+    try {
+      const atualizado = await clienteApi.atualizar_conhecimento({
+        usuarioId: usuario.id,
+        movimentoId: movimento.id,
+        possivelRepetido: manter ? false : true,
+        ignoradoEmRelatorio: manter ? false : true,
+      });
+      aplicar_conhecimento_local(movimento.id, atualizado);
+      contexto?.invalidar("extrato", "dashboard");
+      toast.sucesso(manter ? "Lançamento mantido." : "Lançamento removido do extrato.");
+    } catch (e) {
+      toast.erro(
+        e instanceof ErroApi ? e.message : "Não foi possível registrar a decisão.",
+      );
+    } finally {
+      setSalvandoId(null);
+    }
   }
 
   async function marcar_pagamento_fatura(
@@ -972,6 +997,13 @@ export function TelaExtrato() {
                           ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
                           : ""}
                       </p>
+                      {movimento.possivelRepetido && !movimento.ignoradoEmRelatorio ? (
+                        <BannerRepetido
+                          salvando={salvandoId === movimento.id}
+                          onManter={() => void decidir_repetido(movimento, true)}
+                          onNaoManter={() => void decidir_repetido(movimento, false)}
+                        />
+                      ) : null}
                       {mostra_check_pagamento_fatura(movimento) && (
                         <BannerFatura
                           movimento={movimento}
@@ -1198,6 +1230,40 @@ export function TelaExtrato() {
           });
         }}
       />
+    </div>
+  );
+}
+
+function BannerRepetido({
+  salvando,
+  onManter,
+  onNaoManter,
+}: {
+  salvando: boolean;
+  onManter: () => void;
+  onNaoManter: () => void;
+}) {
+  return (
+    <div className="mt-1 rounded-lg border border-aviso/30 bg-aviso/5 px-2 py-1.5">
+      <p className="text-[11px] text-texto">Este lançamento é repetido?</p>
+      <div className="mt-0.5 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={salvando}
+          onClick={onManter}
+          className="text-[11px] font-medium text-primaria hover:underline"
+        >
+          Manter
+        </button>
+        <button
+          type="button"
+          disabled={salvando}
+          onClick={onNaoManter}
+          className="text-[11px] text-texto-suave hover:text-texto"
+        >
+          Não manter
+        </button>
+      </div>
     </div>
   );
 }

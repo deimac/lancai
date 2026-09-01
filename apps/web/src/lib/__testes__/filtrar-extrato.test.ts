@@ -40,6 +40,7 @@ function movimento(parcial: Partial<MovimentoResumo> & Pick<MovimentoResumo, "id
     parcelaNumero: null,
     parcelaTotal: null,
     ignoradoEmRelatorio: false,
+    possivelRepetido: false,
     categoriaId: "cat-alimentacao",
     categoriaNome: "Alimentação",
     classificadoPor: "usuario",
@@ -127,6 +128,25 @@ describe("filtrar_extrato", () => {
   it("corta pelo mês", () => {
     const ids = filtrar_extrato(lote, contas, cartoes, base).map((m) => m.id);
     expect(ids).toEqual(["1", "2", "3", "4", "6"]);
+  });
+
+  it("não lista possível repetido que a pessoa não manteve", () => {
+    const comRepetido = [
+      ...lote,
+      movimento({
+        id: "rep",
+        descricao: "PROTECH extra",
+        possivelRepetido: true,
+        ignoradoEmRelatorio: true,
+      }),
+    ];
+    expect(filtrar_extrato(comRepetido, contas, cartoes, base).map((m) => m.id)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "6",
+    ]);
   });
 
   it("não lista lançamento cancelado", () => {

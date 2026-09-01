@@ -66,6 +66,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     classificadoEm: null,
     confiancaIa: null,
     ignoradoEmRelatorio: false,
+    possivelRepetido: false,
     papel: "gasto" as const,
     cartaoFaturaId: null,
     competenciaFatura: null,
