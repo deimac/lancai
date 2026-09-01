@@ -17,8 +17,11 @@ import {
   mapa_vencimento_cartoes,
   mes_resultado_do_movimento,
   movimento_no_resultado_do_mes,
+  eh_linha_da_fatura,
+  aplicar_total_oficial,
   na_fatura_do_recorte,
   pagamentos_ciclo_de,
+  valor_na_fatura,
   periodo_amplo_do_ciclo,
   selo_fatura_ciclo,
   sugerir_pagamento_fatura,
@@ -578,5 +581,121 @@ describe("na_fatura_do_recorte", () => {
     expect(naFatura.map((item) => item.cartaoId).sort()).toEqual([nu.id, revolut.id]);
     const total = naFatura.reduce((soma, item) => soma + Number(item.valor), 0);
     expect(total).toBeCloseTo(4715.09, 2);
+  });
+
+  it("crédito de atraso e estorno abatem; Pagamento recebido não", () => {
+    const nu = { id: "nu", fechamento: 2, vencimento: 10 };
+    const hoje = "2026-08-01";
+    const mes = "2026-07";
+    const movimentos = [
+      {
+        dataMovimento: "2026-06-12",
+        cartaoId: nu.id,
+        tipo: "despesa",
+        valor: "9033.49",
+        descricao: "Compras",
+      },
+      {
+        dataMovimento: "2026-06-11",
+        cartaoId: nu.id,
+        tipo: "despesa",
+        valor: "2954.05",
+        descricao: "Saldo em atraso",
+      },
+      {
+        dataMovimento: "2026-06-11",
+        cartaoId: nu.id,
+        tipo: "receita",
+        valor: "2954.05",
+        descricao: "Crédito de atraso",
+      },
+      {
+        dataMovimento: "2026-06-11",
+        cartaoId: nu.id,
+        tipo: "despesa",
+        valor: "70.82",
+        descricao: "Juros de dívida encerrada",
+      },
+      {
+        dataMovimento: "2026-06-11",
+        cartaoId: nu.id,
+        tipo: "receita",
+        valor: "70.82",
+        descricao: "Encerramento de dívida",
+      },
+      {
+        dataMovimento: "2026-06-10",
+        cartaoId: nu.id,
+        tipo: "receita",
+        valor: "2954.05",
+        descricao: "Pagamento recebido",
+      },
+    ];
+    const naFatura = movimentos.filter((movimento) =>
+      na_fatura_do_recorte(movimento, {
+        mes,
+        hoje,
+        fechamento: nu.fechamento,
+        vencimento: nu.vencimento,
+      }),
+    );
+    expect(naFatura.map((item) => item.descricao)).toEqual([
+      "Compras",
+      "Saldo em atraso",
+      "Crédito de atraso",
+      "Juros de dívida encerrada",
+      "Encerramento de dívida",
+    ]);
+    expect(naFatura.reduce((soma, item) => soma + valor_na_fatura(item), 0)).toBeCloseTo(
+      9033.49,
+      2,
+    );
+  });
+});
+
+describe("eh_linha_da_fatura", () => {
+  it("abate crédito do cartão e ignora quitação", () => {
+    expect(
+      eh_linha_da_fatura({
+        cartaoId: "nu",
+        tipo: "receita",
+        descricao: "Crédito de atraso",
+      }),
+    ).toBe(true);
+    expect(
+      eh_linha_da_fatura({
+        cartaoId: "nu",
+        tipo: "receita",
+        descricao: "Pagamento recebido",
+      }),
+    ).toBe(false);
+    expect(
+      eh_linha_da_fatura({
+        cartaoId: "nu",
+        tipo: "receita",
+        papel: "pagamento_fatura",
+        descricao: "Pix",
+      }),
+    ).toBe(false);
+    expect(valor_na_fatura({ tipo: "receita", valor: "70.82" })).toBe(-70.82);
+    expect(valor_na_fatura({ tipo: "despesa", valor: "70.82" })).toBe(70.82);
+  });
+});
+
+describe("aplicar_total_oficial", () => {
+  it("fatura fechada usa o total do banco e expõe o residual", () => {
+    expect(aplicar_total_oficial(9405.07, 9622.31)).toEqual({
+      total: 9622.31,
+      totalOficial: 9622.31,
+      ajuste: 217.24,
+    });
+  });
+
+  it("fatura aberta (sem oficial) fica na soma das linhas", () => {
+    expect(aplicar_total_oficial(1893.4, null)).toEqual({
+      total: 1893.4,
+      totalOficial: null,
+      ajuste: null,
+    });
   });
 });

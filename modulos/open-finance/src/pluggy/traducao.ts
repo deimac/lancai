@@ -14,12 +14,13 @@ import {
 } from "@lancai/tipos";
 import type {
   ContaExterna,
+  FaturaExterna,
   MotivoAtencao,
   MovimentacaoExterna,
   StatusConexao,
 } from "../provedor";
 import type { ParcelamentoFonte } from "@lancai/tipos";
-import type { ContaPluggy, ItemPluggy, TransacaoPluggy } from "./tipos";
+import type { ContaPluggy, FaturaPluggy, ItemPluggy, TransacaoPluggy } from "./tipos";
 
 /**
  * Onde o vocabulário da Pluggy morre. Tudo aqui é função pura, sem I/O, para que
@@ -46,6 +47,18 @@ export function traduzir_conta(conta: ContaPluggy): ContaExterna {
     limite: numero_finito(credito?.creditLimit),
     fechamento: dia_do_mes(credito?.balanceCloseDate),
     vencimento: dia_do_mes(credito?.balanceDueDate),
+  };
+}
+
+export function traduzir_fatura(fatura: FaturaPluggy, contaExternaId: string): FaturaExterna | null {
+  const total = numero_finito(fatura.totalAmount);
+  if (total == null) return null;
+  return {
+    idExterno: fatura.id,
+    contaExternaId,
+    total,
+    fechamentoEm: fatura.billClosingDate ? dia_provedor_iso(fatura.billClosingDate) : undefined,
+    vencimentoEm: fatura.dueDate ? dia_provedor_iso(fatura.dueDate) : undefined,
   };
 }
 
@@ -167,8 +180,8 @@ export function transacao_tem_valor_na_moeda_da_conta(transacao: TransacaoPluggy
 
 /**
  * Tradução de um lote: descarta internacional sem conversão, omite compra cujo
- * IOF denuncia valor ainda estrangeiro, incorpora IOF de compra (~3,5%) no
- * valor da compra e some o segundo "Pagamento recebido" da fatura.
+ * IOF denuncia valor ainda estrangeiro e some o segundo "Pagamento recebido".
+ * IOF de compra fica linha própria — a fatura soma as duas.
  */
 export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): MovimentacaoExterna[] {
   const traduzidas: MovimentacaoExterna[] = [];
@@ -177,9 +190,7 @@ export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): Movimen
     traduzidas.push(traduzir_transacao(transacao));
   }
   return absorver_creditos_de_fatura_duplicados(
-    incorporar_iof_nas_compras(
-      espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas)),
-    ),
+    espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas)),
   );
 }
 

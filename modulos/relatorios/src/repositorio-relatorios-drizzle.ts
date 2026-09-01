@@ -3,6 +3,7 @@ import {
   cartao as cartaoTabela,
   categoria as categoriaTabela,
   conta as contaTabela,
+  faturaOficial as faturaOficialTabela,
   movimento as movimentoTabela,
   obter_banco,
   parcela as parcelaTabela,
@@ -10,6 +11,7 @@ import {
 } from "@lancai/banco";
 import type { Perfil } from "@lancai/tipos";
 import type {
+  FaturaOficialResumo,
   FiltroMovimentos,
   FiltroParcelas,
   ParcelaComMovimento,
@@ -146,5 +148,32 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
       .where(and(...condicoes));
 
     return linhas.map((linha) => ({ ...linha.parcela, movimento: linha.movimento }));
+  }
+
+  async listarFaturasOficiais(usuarioId: string): Promise<FaturaOficialResumo[]> {
+    const escopo = await resolver_escopo_leitura(this.banco, usuarioId);
+    if (escopo.workspaceIds.length === 0) return [];
+    const linhas = await this.banco
+      .select({
+        cartaoId: faturaOficialTabela.cartaoId,
+        competencia: faturaOficialTabela.competencia,
+        total: faturaOficialTabela.total,
+        dataFechamento: faturaOficialTabela.dataFechamento,
+      })
+      .from(faturaOficialTabela)
+      .innerJoin(cartaoTabela, eq(faturaOficialTabela.cartaoId, cartaoTabela.id))
+      .where(
+        and(
+          eq(cartaoTabela.usuarioId, usuarioId),
+          inArray(faturaOficialTabela.workspaceId, escopo.workspaceIds),
+          eq(cartaoTabela.ativo, true),
+        ),
+      );
+    return linhas.map((linha) => ({
+      cartaoId: linha.cartaoId,
+      competencia: linha.competencia,
+      total: Number(linha.total),
+      dataFechamento: linha.dataFechamento,
+    }));
   }
 }

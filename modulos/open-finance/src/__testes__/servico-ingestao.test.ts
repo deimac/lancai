@@ -362,32 +362,31 @@ describe("ServicoIngestaoOpenFinance", () => {
       expect(resumo?.criados).toBe(0);
     });
 
-    it("não cria linha de IOF absorvido — só a compra entra", async () => {
+    it("cria compra e IOF como duas despesas", async () => {
       provedor.semear(CONEXAO_EXTERNA, [
         movimentacao({
           idExterno: "compra",
-          valor: 263.65,
+          valor: 254.73,
           descricaoFonte: "Finnair O9nvosh",
         }),
         movimentacao({
           idExterno: "iof",
           valor: 8.92,
           descricaoFonte: "IOF de compra internacional",
-          statusFonte: "removido",
         }),
       ]);
 
       const { resumo } = await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-iof"));
 
-      expect(resumo?.criados).toBe(1);
-      expect(resumo?.removidos).toBe(0);
+      expect(resumo?.criados).toBe(2);
       const movimentos = [...financeiro.movimentos.values()];
-      expect(movimentos).toHaveLength(1);
-      expect(movimentos[0]?.idExterno).toBe("compra");
-      expect(movimentos[0]?.valor).toBe("263.65");
+      expect(movimentos).toHaveLength(2);
+      expect(movimentos.find((m) => m.idExterno === "compra")?.valor).toBe("254.73");
+      expect(movimentos.find((m) => m.idExterno === "iof")?.valor).toBe("8.92");
+      expect(movimentos.find((m) => m.idExterno === "iof")?.statusFonte).not.toBe("removido");
     });
 
-    it("cancela IOF já ingerido quando a compra passa a carregar o total", async () => {
+    it("mantém o IOF se a compra mudar de valor no sync seguinte", async () => {
       provedor.semear(CONEXAO_EXTERNA, [
         movimentacao({ idExterno: "compra", valor: 254.73, descricaoFonte: "Finnair O9nvosh" }),
         movimentacao({
@@ -399,24 +398,56 @@ describe("ServicoIngestaoOpenFinance", () => {
       await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-1"));
 
       provedor.semear(CONEXAO_EXTERNA, [
-        movimentacao({ idExterno: "compra", valor: 263.65, descricaoFonte: "Finnair O9nvosh" }),
+        movimentacao({ idExterno: "compra", valor: 254.73, descricaoFonte: "Finnair O9nvosh" }),
         movimentacao({
           idExterno: "iof",
           valor: 8.92,
           descricaoFonte: "IOF de compra internacional",
-          statusFonte: "removido",
         }),
       ]);
-      const { resumo } = await entregar(
-        provedor.anunciar_alteracao(CONEXAO_EXTERNA, "ev-2", ["compra", "iof"]),
-      );
+      await entregar(provedor.anunciar_alteracao(CONEXAO_EXTERNA, "ev-2", ["compra", "iof"]));
 
-      expect(resumo?.removidos).toBe(1);
       const compra = [...financeiro.movimentos.values()].find((m) => m.idExterno === "compra");
       const iof = [...financeiro.movimentos.values()].find((m) => m.idExterno === "iof");
-      expect(compra?.valor).toBe("263.65");
-      expect(iof?.status).toBe("cancelado");
-      expect(iof?.statusFonte).toBe("removido");
+      expect(compra?.valor).toBe("254.73");
+      expect(iof?.status).not.toBe("cancelado");
+      expect(iof?.valor).toBe("8.92");
+    });
+
+    it("grava a fatura oficial do cartão depois do lote", async () => {
+      const cartao = criarCartao(usuarioId);
+      financeiro.cartoes.set(cartao.id, cartao);
+      repositorio.associar(conexaoId, [
+        {
+          contaExternaId: CONTA_EXTERNA,
+          nome: "Nu Mastercard Platinum",
+          tipo: "CREDIT_CARD",
+          contaId: null,
+          cartaoId: cartao.id,
+        },
+      ]);
+      provedor.semear(CONEXAO_EXTERNA, [movimentacao()]);
+      provedor.semear_faturas(CONTA_EXTERNA, [
+        {
+          idExterno: "bill-ago",
+          contaExternaId: CONTA_EXTERNA,
+          total: 9622.31,
+          fechamentoEm: "2026-08-02",
+          vencimentoEm: "2026-08-10",
+        },
+      ]);
+
+      await entregar(provedor.anunciar_lote(CONEXAO_EXTERNA, "ev-bill"));
+
+      expect(provedor.faturasColetadas).toContain(CONTA_EXTERNA);
+      expect(repositorio.faturasOficiais).toEqual([
+        expect.objectContaining({
+          cartaoId: cartao.id,
+          competencia: "2026-08",
+          total: 9622.31,
+          idExterno: "bill-ago",
+        }),
+      ]);
     });
 
     it("cancela Pagamento recebido pendente quando chega o POSTED da fatura", async () => {

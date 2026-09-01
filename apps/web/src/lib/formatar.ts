@@ -34,7 +34,7 @@ export function nome_mes_curto(yyyyMm: string): string {
 }
 
 export function rotulo_faturas_recorte(mesAtual: boolean): string {
-  return mesAtual ? "Faturas abertas" : "Faturas do período";
+  return mesAtual ? "Compras neste ciclo" : "Compras do ciclo";
 }
 
 export function rotulo_legenda_periodos(yyyyMm: string): string {

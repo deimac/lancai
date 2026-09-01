@@ -6,6 +6,7 @@ import type {
   ContaExternaRegistrada,
   EstadoConexaoParaGravar,
   EventoOpenFinanceComErro,
+  FaturaOficialParaGravar,
   RepositorioOpenFinance,
 } from "./repositorio";
 
@@ -43,6 +44,7 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
   readonly conexoes = new Map<string, ConexaoDetalhada>();
   readonly contasExternas = new Map<string, ContaExternaRegistrada[]>();
   readonly categoriasPorUsuario = new Map<string, string>();
+  readonly faturasOficiais: FaturaOficialParaGravar[] = [];
 
   /** Histórico de escritas de estado, para o teste afirmar o que foi gravado. */
   readonly estadosGravados: Array<{ conexaoId: string; estado: EstadoConexaoParaGravar }> = [];
@@ -279,6 +281,16 @@ export class RepositorioOpenFinanceMemoria implements RepositorioOpenFinance {
     }
 
     this.estadosGravados.push({ conexaoId, estado });
+  }
+
+  async gravarFaturasOficiais(faturas: FaturaOficialParaGravar[]): Promise<void> {
+    for (const fatura of faturas) {
+      const indice = this.faturasOficiais.findIndex(
+        (atual) => atual.cartaoId === fatura.cartaoId && atual.competencia === fatura.competencia,
+      );
+      if (indice >= 0) this.faturasOficiais[indice] = fatura;
+      else this.faturasOficiais.push(fatura);
+    }
   }
 
   async garantirCategoriaNaoClassificado(usuarioId: string): Promise<string> {

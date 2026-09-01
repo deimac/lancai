@@ -342,6 +342,32 @@ describe("AdaptadorPluggy", () => {
       expect(lote.proxima).toBeNull();
     });
 
+    it("traduz faturas fechadas da conta", async () => {
+      rede.responder("/bills", {
+        results: [
+          {
+            id: "bill-1",
+            totalAmount: 9622.31,
+            billClosingDate: "2026-08-02",
+            dueDate: "2026-08-10",
+          },
+        ],
+      });
+
+      const faturas = await adaptador.coletar_faturas(CONTA);
+
+      expect(faturas).toEqual([
+        {
+          idExterno: "bill-1",
+          contaExternaId: CONTA,
+          total: 9622.31,
+          fechamentoEm: "2026-08-02",
+          vencimentoEm: "2026-08-10",
+        },
+      ]);
+      expect(rede.chamadas.some((chamada) => chamada.url.includes("/bills"))).toBe(true);
+    });
+
     it("não grava compra internacional sem valor na moeda da conta", async () => {
       rede.responder("/v2/transactions", {
         results: [

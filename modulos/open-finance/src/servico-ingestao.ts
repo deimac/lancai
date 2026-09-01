@@ -471,6 +471,7 @@ export class ServicoIngestaoOpenFinance {
     }
 
     await this.completar_parcelas_projetadas(conexao, mapa, contexto, resumo);
+    await this.ingerir_faturas_oficiais(conexao, mapa);
 
     await this.repositorio.atualizarEstadoConexao(conexao.id, {
       status: "ativa",
@@ -572,6 +573,53 @@ export class ServicoIngestaoOpenFinance {
       ultimoSyncEm: new Date(),
       ultimoResumoIngestao: resumo_persistido(resumo),
     });
+  }
+
+  /**
+   * Fatura fechada que o provedor já publicou. Falha aqui não desfaz o lote:
+   * as linhas já estão gravadas e o Cockpit continua na soma líquida.
+   */
+  private async ingerir_faturas_oficiais(
+    conexao: ConexaoRegistrada,
+    mapa: Map<string, ContaExternaRegistrada>,
+  ): Promise<void> {
+    if (!this.provedor.coletar_faturas) return;
+    const gravar: Array<{
+      workspaceId: string;
+      cartaoId: string;
+      idExterno: string;
+      competencia: string;
+      total: number;
+      dataFechamento: string | null;
+      dataVencimento: string | null;
+    }> = [];
+
+    for (const conta of mapa.values()) {
+      if (!conta.cartaoId) continue;
+      let faturas;
+      try {
+        faturas = await this.provedor.coletar_faturas(conta.contaExternaId);
+      } catch {
+        continue;
+      }
+      for (const fatura of faturas) {
+        const competencia = fatura.fechamentoEm?.slice(0, 7);
+        if (!competencia || !/^\d{4}-\d{2}$/.test(competencia)) continue;
+        gravar.push({
+          workspaceId: conexao.workspaceId,
+          cartaoId: conta.cartaoId,
+          idExterno: fatura.idExterno,
+          competencia,
+          total: fatura.total,
+          dataFechamento: fatura.fechamentoEm?.slice(0, 10) ?? null,
+          dataVencimento: fatura.vencimentoEm?.slice(0, 10) ?? null,
+        });
+      }
+    }
+
+    if (gravar.length > 0) {
+      await this.repositorio.gravarFaturasOficiais(gravar);
+    }
   }
 
   private async mapa_de_contas(conexaoId: string): Promise<Map<string, ContaExternaRegistrada>> {

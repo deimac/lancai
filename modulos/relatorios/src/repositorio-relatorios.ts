@@ -43,6 +43,13 @@ export interface ParcelaComMovimento extends Parcela {
  * `RepositorioFinanceiroDrizzle.obterTotalComprometidoCartao`), nunca com
  * `DELETE`/mutação.
  */
+export interface FaturaOficialResumo {
+  cartaoId: string;
+  competencia: string;
+  total: number;
+  dataFechamento: string | null;
+}
+
 export interface RepositorioRelatorios {
   listarContas(usuarioId: string, perfil?: Perfil): Promise<Conta[]>;
   listarCartoes(usuarioId: string, perfil?: Perfil): Promise<Cartao[]>;
@@ -51,4 +58,6 @@ export interface RepositorioRelatorios {
   listarMovimentos(usuarioId: string, filtro: FiltroMovimentos): Promise<Movimento[]>;
   /** Parcelas com o `movimento` (compra original) já embutido — evita N+1 ao agrupar por compra. */
   listarParcelas(usuarioId: string, filtro: FiltroParcelas): Promise<ParcelaComMovimento[]>;
+  /** Totais oficiais das faturas fechadas (Open Finance). */
+  listarFaturasOficiais(usuarioId: string): Promise<FaturaOficialResumo[]>;
 }

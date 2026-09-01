@@ -1,6 +1,7 @@
 import type { MovimentoResumo } from "./api";
 import { eh_nao_classificado, precisa_revisao } from "./fila-revisao";
 import {
+  aplicar_total_oficial,
   hojeISO,
   intervalo_ciclo_fatura,
   mapa_fechamento_cartoes,
@@ -8,6 +9,7 @@ import {
   mes_gasto_do_cartao,
   na_fatura_do_recorte,
   pagamentos_ciclo_de,
+  valor_na_fatura,
 } from "@lancai/tipos";
 import { formatar_intervalo_ciclo } from "./formatar";
 
@@ -298,7 +300,11 @@ export type GrupoFaturaExtrato = {
   intervalo: string;
   total: number;
   movimentos: MovimentoResumo[];
+  totalOficial?: number | null;
+  ajuste?: number | null;
 };
+
+export type FaturaOficialExtrato = { cartaoId: string; competencia: string; total: number };
 
 function intervalo_grupo_cartao(
   fechamento: number | null | undefined,
@@ -318,6 +324,7 @@ export function agrupar_faturas_por_cartao(
   cartoes: Array<{ id: string; nome: string; fechamento?: number | null }>,
   mes: string,
   hoje = hojeISO(),
+  oficiais: FaturaOficialExtrato[] = [],
 ): GrupoFaturaExtrato[] {
   const mapa = new Map<string, GrupoFaturaExtrato>();
   for (const movimento of movimentos) {
@@ -331,10 +338,22 @@ export function agrupar_faturas_por_cartao(
       movimentos: [],
     };
     grupo.movimentos.push(movimento);
-    if (movimento.tipo === "despesa" && movimento.papel !== "pagamento_fatura") {
-      grupo.total += Number(movimento.valor) || 0;
-    }
+    grupo.total += valor_na_fatura(movimento);
     mapa.set(movimento.cartaoId, grupo);
+  }
+  for (const grupo of mapa.values()) {
+    const cartao = cartoes.find((item) => item.id === grupo.cartaoId);
+    const competencia =
+      cartao?.fechamento != null && cartao.fechamento >= 1
+        ? mes_gasto_do_cartao({ mesSelecionado: mes, hoje, fechamento: cartao.fechamento })
+        : mes;
+    const oficial = oficiais.find(
+      (item) => item.cartaoId === grupo.cartaoId && item.competencia === competencia,
+    );
+    const aplicado = aplicar_total_oficial(grupo.total, oficial?.total);
+    grupo.total = aplicado.total;
+    grupo.totalOficial = aplicado.totalOficial;
+    grupo.ajuste = aplicado.ajuste;
   }
   return [...mapa.values()].sort((a, b) => a.cartaoNome.localeCompare(b.cartaoNome, "pt-BR"));
 }

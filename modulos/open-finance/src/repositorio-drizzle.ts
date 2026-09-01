@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-o
 import {
   CATEGORIA_NAO_CLASSIFICADO,
   categoria as categoriaTabela,
+  faturaOficial as faturaOficialTabela,
   obter_banco,
   openFinanceConexao as conexaoTabela,
   openFinanceContaExterna as contaExternaTabela,
@@ -14,6 +15,7 @@ import type {
   ContaExternaRegistrada,
   EstadoConexaoParaGravar,
   EventoOpenFinanceComErro,
+  FaturaOficialParaGravar,
   RepositorioOpenFinance,
 } from "./repositorio";
 
@@ -398,5 +400,34 @@ export class RepositorioOpenFinanceDrizzle implements RepositorioOpenFinance {
     const criada = criadas[0];
     if (!criada) throw new Error("Não foi possível criar a categoria de não classificado.");
     return criada.id;
+  }
+
+  async gravarFaturasOficiais(faturas: FaturaOficialParaGravar[]): Promise<void> {
+    if (faturas.length === 0) return;
+    const agora = new Date();
+    await this.banco
+      .insert(faturaOficialTabela)
+      .values(
+        faturas.map((fatura) => ({
+          workspaceId: fatura.workspaceId,
+          cartaoId: fatura.cartaoId,
+          idExterno: fatura.idExterno,
+          competencia: fatura.competencia,
+          total: fatura.total.toFixed(2),
+          dataFechamento: fatura.dataFechamento ?? null,
+          dataVencimento: fatura.dataVencimento ?? null,
+          dataAtualizacao: agora,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [faturaOficialTabela.cartaoId, faturaOficialTabela.competencia],
+        set: {
+          idExterno: sql`excluded.id_externo`,
+          total: sql`excluded.total`,
+          dataFechamento: sql`excluded.data_fechamento`,
+          dataVencimento: sql`excluded.data_vencimento`,
+          dataAtualizacao: agora,
+        },
+      });
   }
 }

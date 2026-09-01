@@ -7,6 +7,7 @@ import {
 } from "@lancai/relatorios";
 import {
   adicionarMeses,
+  aplicar_total_oficial,
   competencia_ciclo_da_data,
   competencia_quitacao_fatura,
   data_vencimento_do_ciclo,
@@ -14,7 +15,8 @@ import {
   mes_gasto_do_cartao,
   deISOParaData,
   eh_credito_quitacao_no_cartao,
-  eh_gasto_da_fatura,
+  eh_linha_da_fatura,
+  valor_na_fatura,
   eh_movimento_parcelado,
   hojeISO,
   mapa_fechamento_cartoes,
@@ -53,6 +55,10 @@ export interface DashboardCartao {
   competenciaCiclo?: string;
   cicloInicio?: string;
   cicloFim?: string;
+  /** Total que o banco publicou para este ciclo. Ausente na fatura aberta. */
+  totalOficial?: number | null;
+  /** Oficial − soma líquida das linhas. Null se não há total do banco. */
+  ajusteFatura?: number | null;
 }
 
 export interface RankingCategoria {
@@ -264,6 +270,8 @@ export function agregar_gasto_cartao_por_competencia(
     status?: string | null;
     tipoGasto?: string | null;
     ignoradoEmRelatorio?: boolean;
+    descricao?: string | null;
+    descricaoFonte?: string | null;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
@@ -273,7 +281,7 @@ export function agregar_gasto_cartao_por_competencia(
 ): Map<string, { gasto: number; quantidade: number }> {
   const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
   for (const movimento of movimentos) {
-    if (!eh_gasto_da_fatura(movimento)) continue;
+    if (!eh_linha_da_fatura(movimento)) continue;
     const cartaoId = movimento.cartaoId;
     if (!cartaoId) continue;
     if (tipoGasto && movimento.tipoGasto !== tipoGasto) continue;
@@ -291,7 +299,7 @@ export function agregar_gasto_cartao_por_competencia(
       continue;
     }
     const atual = gastoPorCartao.get(cartaoId) ?? { gasto: 0, quantidade: 0 };
-    atual.gasto += Number(movimento.valor);
+    atual.gasto += valor_na_fatura(movimento);
     atual.quantidade += 1;
     gastoPorCartao.set(cartaoId, atual);
   }
@@ -334,6 +342,7 @@ export async function montar_dashboard(
     movimentosCaixa,
     escopo,
     fluxoVisao,
+    oficiais,
   ] =
     await Promise.all([
       relatorios.consultar_visao("saldos", { usuarioId }, dataAtual),
@@ -356,6 +365,7 @@ export async function montar_dashboard(
       }),
       obter_escopo_leitura(usuarioId),
       relatorios.consultar_visao("fluxo", { usuarioId, periodo }, dataAtual),
+      repositorio.listarFaturasOficiais(usuarioId),
     ]);
 
   if (
@@ -413,6 +423,9 @@ export async function montar_dashboard(
     pagamentosCiclo,
     tipoGasto,
   );
+  const oficialPorChave = new Map(
+    oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura.total] as const),
+  );
 
   const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
   const origens = await mapear_origem_cartoes(idsCartoes);
@@ -424,6 +437,10 @@ export async function montar_dashboard(
     const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
     const competenciaCiclo = mesGastoPorCartao.get(cartao.id) ?? mes;
     const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
+    const aplicado = aplicar_total_oficial(
+      gasto.gasto,
+      oficialPorChave.get(`${cartao.id}:${competenciaCiclo}`),
+    );
     return {
       id: cartao.id,
       nome: cartao.nome,
@@ -436,12 +453,14 @@ export async function montar_dashboard(
       sincronizada: cartao.sincronizada,
       instituicao: origens.get(cartao.id)?.instituicao ?? null,
       final4: mascara_final4_do_payload(plasticoPorId.get(cartao.id)),
-      gastoMes: arredondar(gasto.gasto),
+      gastoMes: aplicado.total,
       quantidadeLancamentos: gasto.quantidade,
       gastoEhFaturaAtual: mes === mesCivilHoje,
       competenciaCiclo,
       cicloInicio: ciclo.inicio,
       cicloFim: ciclo.fim,
+      totalOficial: aplicado.totalOficial,
+      ajusteFatura: aplicado.ajuste,
     };
   });
 

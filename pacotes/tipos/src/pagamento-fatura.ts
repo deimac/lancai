@@ -5,6 +5,7 @@ import {
   paraDataISO,
   somar_meses_calendario,
 } from "./datas";
+import { arredondar } from "./dinheiro";
 
 /**
  * Heurística de sugestão de pagamento de fatura (Conhecimento).
@@ -432,6 +433,48 @@ export function mapa_vencimento_cartoes(
   return mapa;
 }
 
+const CREDITOS_DA_FATURA = new Set(["receita", "reembolso", "estorno"]);
+
+function textos_do_movimento(movimento: {
+  descricao?: string | null;
+  descricaoFonte?: string | null;
+}): string[] {
+  return [movimento.descricao, movimento.descricaoFonte].filter(
+    (texto): texto is string => Boolean(texto && texto.trim()),
+  );
+}
+
+/** Quitação no extrato do cartão — não é gasto nem abatimento do ciclo. */
+function eh_quitacao_da_fatura(movimento: {
+  papel?: string | null;
+  descricao?: string | null;
+  descricaoFonte?: string | null;
+}): boolean {
+  if (movimento.papel === "pagamento_fatura") return true;
+  return textos_do_movimento(movimento).some((texto) => eh_credito_quitacao_no_cartao(texto));
+}
+
+/**
+ * Linha que a fatura lista: despesa ou crédito no cartão.
+ * `Pagamento recebido` / `pagamento_fatura` ficam de fora.
+ */
+export function eh_linha_da_fatura(movimento: {
+  cartaoId?: string | null;
+  tipo?: string | null;
+  papel?: string | null;
+  status?: string | null;
+  ignoradoEmRelatorio?: boolean;
+  descricao?: string | null;
+  descricaoFonte?: string | null;
+}): boolean {
+  if (!movimento.cartaoId) return false;
+  if (movimento.status === "cancelado") return false;
+  if (movimento.ignoradoEmRelatorio) return false;
+  if (eh_quitacao_da_fatura(movimento)) return false;
+  if (movimento.tipo == null || movimento.tipo === "despesa") return true;
+  return CREDITOS_DA_FATURA.has(movimento.tipo);
+}
+
 /** Compra que o card de cartões soma: despesa no cartão, não quitação, não ignorada. */
 export function eh_gasto_da_fatura(movimento: {
   cartaoId?: string | null;
@@ -439,13 +482,38 @@ export function eh_gasto_da_fatura(movimento: {
   papel?: string | null;
   status?: string | null;
   ignoradoEmRelatorio?: boolean;
+  descricao?: string | null;
+  descricaoFonte?: string | null;
 }): boolean {
-  if (!movimento.cartaoId) return false;
-  if (movimento.status === "cancelado") return false;
-  if (movimento.ignoradoEmRelatorio) return false;
   if (movimento.tipo != null && movimento.tipo !== "despesa") return false;
-  if (movimento.papel === "pagamento_fatura") return false;
-  return true;
+  return eh_linha_da_fatura(movimento);
+}
+
+/** Despesa soma; crédito do cartão (estorno, atraso) abate. */
+export function valor_na_fatura(movimento: {
+  tipo?: string | null;
+  valor: string | number;
+}): number {
+  const valor = Number(movimento.valor);
+  const seguro = Number.isFinite(valor) ? valor : 0;
+  if (movimento.tipo != null && CREDITOS_DA_FATURA.has(movimento.tipo)) return -seguro;
+  return seguro;
+}
+
+/**
+ * Fatura fechada: o total do banco prevalece. Aberto (sem oficial) fica no líquido.
+ * `ajuste` = oficial − líquido — residual que as linhas ainda não explicam.
+ */
+export function aplicar_total_oficial(
+  liquido: number,
+  oficial?: number | null,
+): { total: number; totalOficial: number | null; ajuste: number | null } {
+  const soma = arredondar(liquido);
+  if (oficial == null || !Number.isFinite(oficial)) {
+    return { total: soma, totalOficial: null, ajuste: null };
+  }
+  const banco = arredondar(oficial);
+  return { total: banco, totalOficial: banco, ajuste: arredondar(banco - soma) };
 }
 
 export function pagamentos_ciclo_de(
@@ -479,6 +547,8 @@ export function na_fatura_do_recorte(
     tipo?: string | null;
     papel?: string | null;
     ignoradoEmRelatorio?: boolean;
+    descricao?: string | null;
+    descricaoFonte?: string | null;
   },
   entrada: {
     mes: string;
@@ -488,7 +558,7 @@ export function na_fatura_do_recorte(
     pagamentos?: PagamentoCiclo[];
   },
 ): boolean {
-  if (!eh_gasto_da_fatura(movimento)) return false;
+  if (!eh_linha_da_fatura(movimento)) return false;
   const fechamento = entrada.fechamento;
   if (fechamento == null || fechamento < 1) {
     return String(movimento.dataMovimento).startsWith(`${entrada.mes}-`);

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   cartao,
+  faturaOficial,
   mapear_nomes_workspaces,
   movimento,
   obter_banco,
@@ -137,7 +138,27 @@ export async function registrar_rotas_cartao(app: FastifyInstance) {
       banco,
       linhas.map((item) => item.workspaceId),
     );
-    return linhas.map((linha) => cartao_publico(linha, origem.get(linha.id), nomes));
+    const oficiais =
+      linhas.length === 0
+        ? []
+        : await banco
+            .select({
+              cartaoId: faturaOficial.cartaoId,
+              competencia: faturaOficial.competencia,
+              total: faturaOficial.total,
+            })
+            .from(faturaOficial)
+            .where(inArray(faturaOficial.cartaoId, linhas.map((item) => item.id)));
+    const oficiaisPorCartao = new Map<string, Array<{ competencia: string; total: number }>>();
+    for (const fatura of oficiais) {
+      const lista = oficiaisPorCartao.get(fatura.cartaoId) ?? [];
+      lista.push({ competencia: fatura.competencia, total: Number(fatura.total) });
+      oficiaisPorCartao.set(fatura.cartaoId, lista);
+    }
+    return linhas.map((linha) => ({
+      ...cartao_publico(linha, origem.get(linha.id), nomes),
+      faturasOficiais: oficiaisPorCartao.get(linha.id) ?? [],
+    }));
   });
 
   /** Registrar antes de `/:id` para evitar ambiguidade de rota. */

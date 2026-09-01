@@ -6,6 +6,7 @@ import {
 import type {
   ContaExterna,
   EstadoConexao,
+  FaturaExterna,
   LoteMovimentacoes,
   MotivoAtencao,
   MovimentacaoExterna,
@@ -40,9 +41,13 @@ export class ProvedorDuble implements ProvedorOpenFinance {
   private readonly movimentacoes = new Map<string, MovimentacaoExterna[]>();
   private readonly contas = new Map<string, ContaExterna[]>();
   private readonly estados = new Map<string, EstadoConexao>();
+  private readonly faturas = new Map<string, FaturaExterna[]>();
 
   /** Chamadas registradas, para o teste afirmar que a paginação parou onde devia. */
   readonly lotesColetados: string[] = [];
+
+  /** Contas de cartão das quais pediram faturas fechadas. */
+  readonly faturasColetadas: string[] = [];
 
   /** Conexões para as quais pediram “atualizar agora”. */
   readonly atualizacoesPedidas: string[] = [];
@@ -75,6 +80,10 @@ export class ProvedorDuble implements ProvedorOpenFinance {
 
   registrarContas(conexaoExterna: string, contas: ContaExterna[]): void {
     this.contas.set(conexaoExterna, contas);
+  }
+
+  semear_faturas(contaExternaId: string, faturas: FaturaExterna[]): void {
+    this.faturas.set(contaExternaId, faturas);
   }
 
   /** O corpo que o provedor mandaria ao anunciar movimentações novas. */
@@ -213,6 +222,11 @@ export class ProvedorDuble implements ProvedorOpenFinance {
       movimentacoes: todas.slice(inicio, fim),
       proxima: fim < todas.length ? `${conexaoExterna}#${fim}` : null,
     };
+  }
+
+  async coletar_faturas(contaExternaId: string): Promise<FaturaExterna[]> {
+    this.faturasColetadas.push(contaExternaId);
+    return this.faturas.get(contaExternaId) ?? [];
   }
 
   async coletar_por_ids(

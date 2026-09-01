@@ -52,6 +52,17 @@ export interface ContaExternaDescoberta {
   tipo: string;
 }
 
+/** Fatura fechada que o provedor publicou, pronta para upsert. */
+export interface FaturaOficialParaGravar {
+  workspaceId: string;
+  cartaoId: string;
+  idExterno: string;
+  competencia: string;
+  total: number;
+  dataFechamento?: string | null;
+  dataVencimento?: string | null;
+}
+
 export interface EstadoConexaoParaGravar {
   status?: StatusConexao;
   motivoAtencao?: MotivoAtencao | null;
@@ -177,6 +188,9 @@ export interface RepositorioOpenFinance {
   ): Promise<void>;
 
   atualizarEstadoConexao(conexaoId: string, estado: EstadoConexaoParaGravar): Promise<void>;
+
+  /** Upsert por (cartão, competência): um total oficial por ciclo. */
+  gravarFaturasOficiais(faturas: FaturaOficialParaGravar[]): Promise<void>;
 
   /**
    * Categoria onde a movimentação pousa até o Conhecimento classificá-la. Cria se

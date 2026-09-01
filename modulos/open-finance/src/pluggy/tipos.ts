@@ -30,6 +30,13 @@ export interface ContaPluggy {
   } | null;
 }
 
+export interface FaturaPluggy {
+  id: string;
+  dueDate?: string | null;
+  billClosingDate?: string | null;
+  totalAmount?: number | null;
+}
+
 export interface TransacaoPluggy {
   id: string;
   accountId: string;

@@ -454,7 +454,19 @@ export function TelaExtrato() {
   const gruposFatura = useMemo(
     () =>
       visao === "faturas"
-        ? agrupar_faturas_por_cartao(visiveis, cartoesTodos, mes, hojeISO())
+        ? agrupar_faturas_por_cartao(
+            visiveis,
+            cartoesTodos,
+            mes,
+            hojeISO(),
+            cartoesTodos.flatMap((cartao) =>
+              (cartao.faturasOficiais ?? []).map((fatura) => ({
+                cartaoId: cartao.id,
+                competencia: fatura.competencia,
+                total: fatura.total,
+              })),
+            ),
+          )
         : [],
     [visao, visiveis, cartoesTodos, mes],
   );
@@ -1020,9 +1032,16 @@ export function TelaExtrato() {
                               </span>
                             ) : null}
                           </p>
-                          <p className="text-sm font-semibold tabular-nums text-despesa">
-                            {formatar_moeda(linha.grupo.total)}
-                          </p>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold tabular-nums text-despesa">
+                              {formatar_moeda(linha.grupo.total)}
+                            </p>
+                            {linha.grupo.ajuste != null && Math.abs(linha.grupo.ajuste) >= 0.01 ? (
+                              <p className="text-[11px] text-texto-suave">
+                                ajuste {formatar_moeda(linha.grupo.ajuste)}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       </td>
                     </tr>

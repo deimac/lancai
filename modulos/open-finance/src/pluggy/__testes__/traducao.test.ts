@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { somar_meses, traduzir_lote_transacoes, traduzir_transacao } from "../traducao";
+import { somar_meses, traduzir_fatura, traduzir_lote_transacoes, traduzir_transacao } from "../traducao";
 import type { TransacaoPluggy } from "../tipos";
 
 function tx(sobrepor: Partial<TransacaoPluggy> = {}): TransacaoPluggy {
@@ -329,9 +329,8 @@ describe("traduzir_lote_transacoes", () => {
     const compra = lote.find((m) => m.idExterno === "compra");
     const iof = lote.find((m) => m.idExterno === "iof");
     expect(iof?.valor).toBe(7.57);
-    expect(compra?.valor).toBe(224.34 + 7.57);
-    expect(compra?.valor).not.toBe(Number((224.34 * 1.035).toFixed(2)));
-    expect(iof?.statusFonte).toBe("removido");
+    expect(compra?.valor).toBe(224.34);
+    expect(iof?.statusFonte).not.toBe("removido");
   });
 
   it("IOF genérico do Nubank casa pela alíquota mesmo em dia vizinho", () => {
@@ -353,8 +352,9 @@ describe("traduzir_lote_transacoes", () => {
         creditCardMetadata: { feeTypeAdditionalInfo: "IOF_COMPRA_INTERNACIONAL" },
       }),
     ]);
-    expect(lote.find((m) => m.idExterno === "wizz")?.valor).toBe(2519.99);
-    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).toBe("removido");
+    expect(lote.find((m) => m.idExterno === "wizz")?.valor).toBe(2434.77);
+    expect(lote.find((m) => m.idExterno === "iof")?.valor).toBe(85.22);
+    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).not.toBe("removido");
   });
 
   it("USD com amountInAccountCurrency some o IOF nomeado no real", () => {
@@ -376,8 +376,9 @@ describe("traduzir_lote_transacoes", () => {
         creditCardMetadata: null,
       }),
     ]);
-    expect(lote.find((m) => m.idExterno === "github")?.valor).toBe(56.92);
-    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).toBe("removido");
+    expect(lote.find((m) => m.idExterno === "github")?.valor).toBe(55);
+    expect(lote.find((m) => m.idExterno === "iof")?.valor).toBe(1.92);
+    expect(lote.find((m) => m.idExterno === "iof")?.statusFonte).not.toBe("removido");
   });
 
   it("não mistura IOF de atraso com compra", () => {
@@ -478,6 +479,32 @@ describe("traduzir_lote_transacoes", () => {
     ]);
     expect(lote.find((m) => m.idExterno === "a")?.statusFonte).not.toBe("removido");
     expect(lote.find((m) => m.idExterno === "b")?.statusFonte).not.toBe("removido");
+  });
+});
+
+describe("traduzir_fatura", () => {
+  it("usa o total e a data de fechamento da fatura fechada", () => {
+    expect(
+      traduzir_fatura(
+        {
+          id: "bill-1",
+          totalAmount: 9622.31,
+          billClosingDate: "2026-08-02",
+          dueDate: "2026-08-10",
+        },
+        "acc-cartao",
+      ),
+    ).toEqual({
+      idExterno: "bill-1",
+      contaExternaId: "acc-cartao",
+      total: 9622.31,
+      fechamentoEm: "2026-08-02",
+      vencimentoEm: "2026-08-10",
+    });
+  });
+
+  it("descarta fatura sem total", () => {
+    expect(traduzir_fatura({ id: "bill-2", totalAmount: null }, "acc-cartao")).toBeNull();
   });
 });
 

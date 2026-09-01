@@ -3,6 +3,7 @@ import { ErroProvedorIndisponivel, ErroWebhookInvalido } from "../erros";
 import type {
   ContaExterna,
   EstadoConexao,
+  FaturaExterna,
   LoteMovimentacoes,
   MovimentacaoExterna,
   NotificacaoFonte,
@@ -15,6 +16,7 @@ import { ClientePluggy, type ConfigPluggy } from "./cliente";
 import { ids_conectores_para_widget } from "./conectores-widget";
 import type {
   ContaPluggy,
+  FaturaPluggy,
   ItemPluggy,
   RespostaPaginada,
   TransacaoPluggy,
@@ -24,6 +26,7 @@ import {
   transacao_eh_iof_compra,
   traduzir_conta,
   traduzir_data,
+  traduzir_fatura,
   traduzir_lote_transacoes,
   traduzir_motivo,
   traduzir_status_item,
@@ -136,6 +139,24 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
       movimentacoes: traduzir_lote_transacoes(corpo.results ?? []),
       proxima: this.resolver_proxima(corpo.next),
     };
+  }
+
+  async coletar_faturas(contaExternaId: string): Promise<FaturaExterna[]> {
+    const faturas: FaturaExterna[] = [];
+    const vistas = new Set<string>();
+    let caminho: string | null = `/v2/bills?accountId=${encodeURIComponent(contaExternaId)}`;
+
+    while (caminho && !vistas.has(caminho)) {
+      vistas.add(caminho);
+      const corpo = await this.cliente.obter<RespostaPaginada<FaturaPluggy>>(caminho);
+      for (const bruta of corpo.results ?? []) {
+        const traduzida = traduzir_fatura(bruta, contaExternaId);
+        if (traduzida) faturas.push(traduzida);
+      }
+      caminho = this.resolver_proxima(corpo.next, "/v2/bills");
+    }
+
+    return faturas;
   }
 
   /**
@@ -327,10 +348,13 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
    * para caminho completo aqui deixa `coletar_lote` indiferente a de onde veio a
    * referência — link do webhook ou página seguinte.
    */
-  private resolver_proxima(proxima: string | null | undefined): string | null {
+  private resolver_proxima(
+    proxima: string | null | undefined,
+    base = "/v2/transactions",
+  ): string | null {
     if (!proxima) return null;
     if (proxima.startsWith("http")) return proxima;
-    return proxima.startsWith("?") ? `/v2/transactions${proxima}` : proxima;
+    return proxima.startsWith("?") ? `${base}${proxima}` : proxima;
   }
 
   /**

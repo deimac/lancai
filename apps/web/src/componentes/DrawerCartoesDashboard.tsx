@@ -7,7 +7,13 @@ import {
   CreditCard,
   Wallet,
 } from "lucide-react";
-import { hojeISO, intervalo_ciclo_fatura, na_fatura_do_recorte, pagamentos_ciclo_de } from "@lancai/tipos";
+import {
+  hojeISO,
+  intervalo_ciclo_fatura,
+  na_fatura_do_recorte,
+  pagamentos_ciclo_de,
+  valor_na_fatura,
+} from "@lancai/tipos";
 import { clienteApi, type DashboardCartao, type DashboardResposta, type MovimentoResumo } from "../lib/api";
 import type { TipoGastoExtrato } from "../lib/filtrar-extrato";
 import {
@@ -130,7 +136,7 @@ function CardCartaoItem({
         {formatar_moeda(cartao.disponivel)} disponível
       </p>
       <p className="mt-1 text-xs text-texto-suave">
-        Limite {formatar_moeda(cartao.limite)} · usado {formatar_moeda(cartao.comprometido)}
+        Limite {formatar_moeda(cartao.limite)} · utilizado agora {formatar_moeda(cartao.comprometido)}
       </p>
       <BarraUtilizacao percentual={pct} />
       <p className="mt-3 flex items-center gap-1 text-sm font-medium text-primaria">
@@ -157,7 +163,7 @@ function DetalheCartao({
   const pct = percentual_uso(cartao.comprometido, cartao.limite);
   const intervalo = intervalo_do_cartao(cartao);
   const href = href_fatura_cartao(hrefFaturas, cartao.id);
-  const soma = lancamentos.reduce((acc, item) => acc + (Number(item.valor) || 0), 0);
+  const soma = lancamentos.reduce((acc, item) => acc + valor_na_fatura(item), 0);
 
   return (
     <div className="space-y-5">
@@ -193,6 +199,16 @@ function DetalheCartao({
               ? "1 lançamento"
               : `${cartao.quantidadeLancamentos} lançamentos`}
         </p>
+        {cartao.totalOficial != null &&
+        cartao.ajusteFatura != null &&
+        Math.abs(cartao.ajusteFatura) >= 0.01 ? (
+          <p className="mt-1 text-xs text-texto-suave">
+            Soma das linhas {formatar_moeda(cartao.gastoMes - cartao.ajusteFatura)} · ajuste{" "}
+            {formatar_moeda(cartao.ajusteFatura)}
+          </p>
+        ) : cartao.totalOficial != null ? (
+          <p className="mt-1 text-xs text-texto-suave">Confere com o valor do banco</p>
+        ) : null}
         {carregando ? (
           <p className="mt-3 text-xs text-texto-suave">Carregando lançamentos…</p>
         ) : lancamentos.length > 0 ? (
@@ -200,8 +216,14 @@ function DetalheCartao({
             {lancamentos.slice(0, 8).map((item) => (
               <li key={item.id} className="flex justify-between gap-2 text-[12px]">
                 <span className="truncate text-texto">{item.descricao}</span>
-                <span className="shrink-0 tabular-nums text-despesa">
-                  {formatar_moeda(Number(item.valor) || 0)}
+                <span
+                  className={
+                    valor_na_fatura(item) < 0
+                      ? "shrink-0 tabular-nums text-receita"
+                      : "shrink-0 tabular-nums text-despesa"
+                  }
+                >
+                  {formatar_moeda(valor_na_fatura(item))}
                 </span>
               </li>
             ))}
@@ -236,7 +258,7 @@ function DetalheCartao({
             <dd className="font-medium tabular-nums text-texto">{formatar_moeda(cartao.limite)}</dd>
           </div>
           <div className="flex justify-between gap-3 text-sm">
-            <dt className="text-texto-suave">Utilizado</dt>
+            <dt className="text-texto-suave">Utilizado agora</dt>
             <dd className="font-medium tabular-nums text-despesa">
               {formatar_moeda(cartao.comprometido)}
             </dd>
@@ -399,7 +421,7 @@ export function DrawerCartoesDashboard({
             <p className="mt-2 text-2xl font-semibold tabular-nums text-despesa">
               {formatar_moeda(gastoMes)}
             </p>
-            <p className="mt-1 text-sm text-texto-suave">cada um no seu ciclo</p>
+            <p className="mt-1 text-sm text-texto-suave">compras do ciclo · diferente do utilizado agora</p>
             <p className="mt-2 text-sm text-texto">
               {qtdLanc === 0
                 ? "Nenhum lançamento em cartão"
@@ -422,7 +444,7 @@ export function DrawerCartoesDashboard({
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-texto-suave">Utilizado</p>
+                <p className="text-xs text-texto-suave">Utilizado agora</p>
                 <p className="text-base font-semibold tabular-nums text-despesa">
                   {formatar_moeda(usado)}
                 </p>

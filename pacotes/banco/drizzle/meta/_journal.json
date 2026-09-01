@@ -246,6 +246,13 @@
       "when": 1786202700000,
       "tag": "0035_possivel_repetido",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1786202800000,
+      "tag": "0036_fatura_oficial",
+      "breakpoints": true
     }
   ]
 }

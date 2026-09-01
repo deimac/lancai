@@ -55,6 +55,15 @@ export interface LoteMovimentacoes {
   proxima: ReferenciaLote | null;
 }
 
+/** Fatura fechada que o provedor publicou. Aberto em geral não vem. */
+export interface FaturaExterna {
+  idExterno: string;
+  contaExternaId: string;
+  total: number;
+  fechamentoEm?: string;
+  vencimentoEm?: string;
+}
+
 /** Conta ou cartão encontrado numa conexão, para o usuário associar ao que é local. */
 export interface ContaExterna {
   idExterno: string;
@@ -161,6 +170,9 @@ export interface ProvedorOpenFinance {
 
   /** Traduz a página que o webhook anunciou. O cursor vem do provedor. */
   coletar_lote(referencia: ReferenciaLote): Promise<LoteMovimentacoes>;
+
+  /** Faturas fechadas da conta no provedor. Sem implementação = []. */
+  coletar_faturas?(contaExternaId: string): Promise<FaturaExterna[]>;
 
   /** Busca movimentações específicas, para o caso de alteração na instituição. */
   coletar_por_ids(conexaoExterna: string, idsExternos: string[]): Promise<MovimentacaoExterna[]>;

@@ -16,4 +16,5 @@ export * from "./chat";
 export * from "./evolution-evento";
 export * from "./orcamento";
 export * from "./open-finance";
+export * from "./fatura-oficial";
 export * from "./regra";

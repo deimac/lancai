@@ -459,7 +459,7 @@ export function TelaDashboard() {
               {formatar_oculto(formatar_moeda(gastoCartoesMes), ocultarValores)}
             </p>
             <p className="mt-1 text-xs text-texto-suave">
-              {faturasRotulo} · cada um no seu ciclo
+              {faturasRotulo} · diferente do utilizado do limite
             </p>
             <p className="mt-2 text-sm font-medium text-receita tabular-nums">
               {formatar_oculto(formatar_moeda(cartoesDisponivel), ocultarValores)} disponível

@@ -1,6 +1,7 @@
 import type { Cartao, Categoria, Conta, Movimento, Parcela } from "@lancai/banco";
 import type { Perfil } from "@lancai/tipos";
 import type {
+  FaturaOficialResumo,
   FiltroMovimentos,
   FiltroParcelas,
   ParcelaComMovimento,
@@ -14,6 +15,7 @@ export class RepositorioRelatoriosMemoria implements RepositorioRelatorios {
   readonly categorias = new Map<string, Categoria>();
   readonly movimentos = new Map<string, Movimento>();
   readonly parcelas = new Map<string, Parcela>();
+  readonly faturasOficiais: FaturaOficialResumo[] = [];
 
   async listarContas(usuarioId: string, perfil?: Perfil) {
     return [...this.contas.values()].filter(
@@ -80,5 +82,10 @@ export class RepositorioRelatoriosMemoria implements RepositorioRelatorios {
     }
 
     return resultado;
+  }
+
+  async listarFaturasOficiais(usuarioId: string): Promise<FaturaOficialResumo[]> {
+    const ids = new Set((await this.listarCartoes(usuarioId)).map((cartao) => cartao.id));
+    return this.faturasOficiais.filter((fatura) => ids.has(fatura.cartaoId));
   }
 }

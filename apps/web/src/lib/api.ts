@@ -74,6 +74,7 @@ export interface CartaoResumo {
   temPlastico?: boolean;
   /** Últimos 4 dígitos derivados na leitura (decifragem do blob); não é coluna. */
   final4?: string | null;
+  faturasOficiais?: Array<{ competencia: string; total: number }>;
 }
 
 export type TipoDestinoPdf = "conta" | "cartao";
@@ -408,6 +409,8 @@ export interface DashboardCartao {
   competenciaCiclo?: string;
   cicloInicio?: string;
   cicloFim?: string;
+  totalOficial?: number | null;
+  ajusteFatura?: number | null;
 }
 
 export interface RankingCategoria {

@@ -387,6 +387,27 @@ describe("filtrar_extrato", () => {
       ], "2026-08", "2026-08-31").reduce((soma, grupo) => soma + grupo.total, 0),
     ).toBeCloseTo(4715.09, 2);
   });
+
+  it("usa o total oficial do banco quando a fatura já fechou", () => {
+    const nu = "cartao-nu";
+    const grupos = agrupar_faturas_por_cartao(
+      [
+        movimento({
+          id: "compra",
+          cartaoId: nu,
+          contaId: null,
+          dataMovimento: "2026-07-20",
+          valor: "9405.07",
+        }),
+      ],
+      [{ id: nu, nome: "Nu", fechamento: 2 }],
+      "2026-08",
+      "2026-09-01",
+      [{ cartaoId: nu, competencia: "2026-08", total: 9622.31 }],
+    );
+    expect(grupos[0]?.total).toBeCloseTo(9622.31, 2);
+    expect(grupos[0]?.ajuste).toBeCloseTo(217.24, 2);
+  });
 });
 
 describe("paginar", () => {
