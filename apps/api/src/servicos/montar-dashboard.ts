@@ -14,11 +14,13 @@ import {
   mes_gasto_do_cartao,
   deISOParaData,
   eh_credito_quitacao_no_cartao,
+  eh_gasto_da_fatura,
   eh_movimento_parcelado,
   hojeISO,
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
   movimento_no_resultado_do_mes,
+  pagamentos_ciclo_de,
   type PagamentoCiclo,
   paraDataISO,
   periodo_amplo_do_ciclo,
@@ -261,6 +263,7 @@ export function agregar_gasto_cartao_por_competencia(
     parcelaNumero?: number | null;
     status?: string | null;
     tipoGasto?: string | null;
+    ignoradoEmRelatorio?: boolean;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
@@ -270,11 +273,11 @@ export function agregar_gasto_cartao_por_competencia(
 ): Map<string, { gasto: number; quantidade: number }> {
   const gastoPorCartao = new Map<string, { gasto: number; quantidade: number }>();
   for (const movimento of movimentos) {
-    if (!movimento.cartaoId) continue;
-    if (movimento.tipo !== "despesa") continue;
-    if (movimento.papel === "pagamento_fatura") continue;
+    if (!eh_gasto_da_fatura(movimento)) continue;
+    const cartaoId = movimento.cartaoId;
+    if (!cartaoId) continue;
     if (tipoGasto && movimento.tipoGasto !== tipoGasto) continue;
-    const alvo = typeof mes === "string" ? mes : mes.get(movimento.cartaoId);
+    const alvo = typeof mes === "string" ? mes : mes.get(cartaoId);
     if (!alvo) continue;
     if (
       !movimento_no_resultado_do_mes(
@@ -287,10 +290,10 @@ export function agregar_gasto_cartao_por_competencia(
     ) {
       continue;
     }
-    const atual = gastoPorCartao.get(movimento.cartaoId) ?? { gasto: 0, quantidade: 0 };
+    const atual = gastoPorCartao.get(cartaoId) ?? { gasto: 0, quantidade: 0 };
     atual.gasto += Number(movimento.valor);
     atual.quantidade += 1;
-    gastoPorCartao.set(movimento.cartaoId, atual);
+    gastoPorCartao.set(cartaoId, atual);
   }
   return gastoPorCartao;
 }
@@ -385,14 +388,7 @@ export async function montar_dashboard(
     );
   const mesGastoPorCartao = porFechamento(mes);
   const mesGastoAnteriorPorCartao = porFechamento(mesAnterior);
-  const pagamentosCiclo: PagamentoCiclo[] = movimentosQuitadas
-    .filter((movimento) => movimento.papel === "pagamento_fatura")
-    .map((movimento) => ({
-      cartaoId: movimento.cartaoId,
-      dataMovimento: String(movimento.dataMovimento).slice(0, 10),
-      competenciaFatura: movimento.competenciaFatura,
-      papel: movimento.papel,
-    }));
+  const pagamentosCiclo: PagamentoCiclo[] = pagamentos_ciclo_de(movimentosQuitadas);
   const movimentosPnL = filtrar_movimentos_do_resultado(
     movimentosAmplo,
     mesGastoPorCartao,

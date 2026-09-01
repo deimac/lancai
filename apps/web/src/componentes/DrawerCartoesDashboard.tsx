@@ -7,7 +7,7 @@ import {
   CreditCard,
   Wallet,
 } from "lucide-react";
-import { ciclo_do_movimento, intervalo_ciclo_fatura } from "@lancai/tipos";
+import { hojeISO, intervalo_ciclo_fatura, na_fatura_do_recorte, pagamentos_ciclo_de } from "@lancai/tipos";
 import { clienteApi, type DashboardCartao, type DashboardResposta, type MovimentoResumo } from "../lib/api";
 import type { TipoGastoExtrato } from "../lib/filtrar-extrato";
 import {
@@ -262,25 +262,21 @@ function perfil_do_tipo_gasto(tipo: TipoGastoExtrato): "pf" | "pj" | null {
   return null;
 }
 
-function no_ciclo_do_cartao(movimento: MovimentoResumo, cartao: DashboardCartao): boolean {
+function no_ciclo_do_cartao(
+  movimento: MovimentoResumo,
+  cartao: DashboardCartao,
+  pagamentos: ReturnType<typeof pagamentos_ciclo_de>,
+  mes: string,
+  hoje: string,
+): boolean {
   if (movimento.cartaoId !== cartao.id) return false;
-  if (movimento.status === "cancelado") return false;
-  if (movimento.papel === "pagamento_fatura") return false;
-  if (movimento.possivelRepetido && movimento.ignoradoEmRelatorio) return false;
-  const competencia =
-    cartao.competenciaCiclo ??
-    ciclo_do_movimento(movimento.dataMovimento, cartao.id, cartao.fechamento, {
-      vencimento: cartao.vencimento,
-      parcelaNumero: movimento.parcelaNumero,
-      status: movimento.status,
-    });
-  return (
-    ciclo_do_movimento(movimento.dataMovimento, cartao.id, cartao.fechamento, {
-      vencimento: cartao.vencimento,
-      parcelaNumero: movimento.parcelaNumero,
-      status: movimento.status,
-    }) === competencia
-  );
+  return na_fatura_do_recorte(movimento, {
+    mes,
+    hoje,
+    fechamento: cartao.fechamento,
+    vencimento: cartao.vencimento,
+    pagamentos,
+  });
 }
 
 export function DrawerCartoesDashboard({
@@ -346,13 +342,15 @@ export function DrawerCartoesDashboard({
 
   const lancamentosDetalhe = useMemo(() => {
     if (!cartaoSelecionado) return [];
+    const pagamentos = pagamentos_ciclo_de(movimentos);
+    const hoje = hojeISO();
     return movimentos
       .filter((item) => {
         if (perfil && item.tipoGasto !== perfil) return false;
-        return no_ciclo_do_cartao(item, cartaoSelecionado);
+        return no_ciclo_do_cartao(item, cartaoSelecionado, pagamentos, dados.mes, hoje);
       })
       .sort((a, b) => String(b.dataMovimento).localeCompare(String(a.dataMovimento)));
-  }, [movimentos, cartaoSelecionado, perfil]);
+  }, [movimentos, cartaoSelecionado, perfil, dados.mes]);
 
   const subtituloLista =
     n === 0

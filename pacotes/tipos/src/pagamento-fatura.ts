@@ -432,9 +432,85 @@ export function mapa_vencimento_cartoes(
   return mapa;
 }
 
+/** Compra que o card de cartões soma: despesa no cartão, não quitação, não ignorada. */
+export function eh_gasto_da_fatura(movimento: {
+  cartaoId?: string | null;
+  tipo?: string | null;
+  papel?: string | null;
+  status?: string | null;
+  ignoradoEmRelatorio?: boolean;
+}): boolean {
+  if (!movimento.cartaoId) return false;
+  if (movimento.status === "cancelado") return false;
+  if (movimento.ignoradoEmRelatorio) return false;
+  if (movimento.tipo != null && movimento.tipo !== "despesa") return false;
+  if (movimento.papel === "pagamento_fatura") return false;
+  return true;
+}
+
+export function pagamentos_ciclo_de(
+  movimentos: Array<{
+    cartaoId?: string | null;
+    dataMovimento: string;
+    competenciaFatura?: string | null;
+    papel?: string | null;
+  }>,
+): PagamentoCiclo[] {
+  return movimentos
+    .filter((movimento) => movimento.papel === "pagamento_fatura")
+    .map((movimento) => ({
+      cartaoId: movimento.cartaoId,
+      dataMovimento: String(movimento.dataMovimento).slice(0, 10),
+      competenciaFatura: movimento.competenciaFatura,
+      papel: movimento.papel,
+    }));
+}
+
+/**
+ * Compra na fatura do recorte (card Cartões / Extrato Faturas / drawer).
+ * Mês atual = ciclo aberto; histórico = ciclo que fecha naquele mês.
+ */
+export function na_fatura_do_recorte(
+  movimento: {
+    dataMovimento: string;
+    cartaoId?: string | null;
+    parcelaNumero?: number | null;
+    status?: string | null;
+    tipo?: string | null;
+    papel?: string | null;
+    ignoradoEmRelatorio?: boolean;
+  },
+  entrada: {
+    mes: string;
+    hoje: string;
+    fechamento?: number | null;
+    vencimento?: number | null;
+    pagamentos?: PagamentoCiclo[];
+  },
+): boolean {
+  if (!eh_gasto_da_fatura(movimento)) return false;
+  const fechamento = entrada.fechamento;
+  if (fechamento == null || fechamento < 1) {
+    return String(movimento.dataMovimento).startsWith(`${entrada.mes}-`);
+  }
+  const alvo = mes_gasto_do_cartao({
+    mesSelecionado: entrada.mes,
+    hoje: entrada.hoje,
+    fechamento,
+  });
+  return (
+    ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
+      vencimento: entrada.vencimento,
+      parcelaNumero: movimento.parcelaNumero,
+      status: movimento.status,
+      pagamentos: entrada.pagamentos,
+    }) === alvo
+  );
+}
+
 /**
  * Mesma competência do Cockpit: conta no calendário; cartão no ciclo aberto
- * (mês atual) ou no ciclo que fecha no mês da tela (histórico).
+ * (mês atual) ou o ciclo que fecha no mês da tela (histórico).
  */
 export function movimento_no_recorte_do_cockpit(
   movimento: {

@@ -898,6 +898,57 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     );
     expect(agosto.get("c1")).toEqual({ gasto: 800, quantidade: 1 });
   });
+
+  it("em 31/08 o ciclo aberto soma Nu+Revolut; parcela Itaú no vencimento e a quitação ficam de fora", () => {
+    const fechamento = new Map([
+      ["itau", 30],
+      ["nu", 2],
+      ["revolut", 9],
+    ]);
+    const vencimento = new Map([
+      ["itau", 6],
+      ["nu", 10],
+      ["revolut", 15],
+    ]);
+    const mesAberto = new Map([
+      ["itau", "2026-09"],
+      ["nu", "2026-09"],
+      ["revolut", "2026-09"],
+    ]);
+    const pagamentos = [
+      {
+        cartaoId: "itau",
+        dataMovimento: "2026-08-30",
+        competenciaFatura: "2026-09",
+        papel: "pagamento_fatura" as const,
+      },
+    ];
+    const movimentos = [
+      { tipo: "despesa", valor: "4220.10", dataMovimento: "2026-08-20", cartaoId: "nu" },
+      { tipo: "despesa", valor: "494.99", dataMovimento: "2026-08-15", cartaoId: "revolut" },
+      {
+        tipo: "despesa",
+        valor: "1582.79",
+        dataMovimento: "2026-09-08",
+        cartaoId: "itau",
+        parcelaNumero: 3,
+        status: "previsto",
+      },
+      { tipo: "despesa", valor: "100", dataMovimento: "2026-08-31", cartaoId: "itau" },
+    ];
+    const aberto = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamento,
+      mesAberto,
+      vencimento,
+      pagamentos,
+    );
+    expect(aberto.get("nu")).toEqual({ gasto: 4220.1, quantidade: 1 });
+    expect(aberto.get("revolut")).toEqual({ gasto: 494.99, quantidade: 1 });
+    expect(aberto.get("itau")).toBeUndefined();
+    const total = [...aberto.values()].reduce((soma, item) => soma + item.gasto, 0);
+    expect(total).toBeCloseTo(4715.09, 2);
+  });
 });
 
 describe("mes_gasto_do_cartao", () => {

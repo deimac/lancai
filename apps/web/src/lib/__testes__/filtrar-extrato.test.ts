@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MovimentoResumo } from "../api";
 import {
+  agrupar_faturas_por_cartao,
   classificacao_da_query,
   filtrar_extrato,
   origem_da_query,
@@ -316,6 +317,75 @@ describe("filtrar_extrato", () => {
         hoje: "2026-10-15",
       }).map((m) => m.id),
     ).toEqual(["pizza"]);
+  });
+
+  it("visão Faturas no mês atual bate com o card: Itaú fechado fica de fora; Nu+Revolut = 4715,09", () => {
+    const itau = "cartao-itau";
+    const nu = "cartao-nu";
+    const revolut = "cartao-revolut";
+    const cartoesCiclo = [
+      { id: itau, fechamento: 30, vencimento: 6 },
+      { id: nu, fechamento: 2, vencimento: 10 },
+      { id: revolut, fechamento: 9, vencimento: 15 },
+    ];
+    const lote = [
+      movimento({
+        id: "nu",
+        cartaoId: nu,
+        contaId: null,
+        dataMovimento: "2026-08-20",
+        valor: "4220.10",
+      }),
+      movimento({
+        id: "rev",
+        cartaoId: revolut,
+        contaId: null,
+        dataMovimento: "2026-08-15",
+        valor: "494.99",
+      }),
+      movimento({
+        id: "parcela-itau",
+        cartaoId: itau,
+        contaId: null,
+        dataMovimento: "2026-09-08",
+        valor: "1582.79",
+        parcelaNumero: 3,
+        status: "previsto",
+      }),
+      movimento({
+        id: "pag-itau",
+        cartaoId: itau,
+        contaId: null,
+        dataMovimento: "2026-08-30",
+        valor: "8290.62",
+        tipo: "receita",
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-09",
+        ignoradoEmRelatorio: true,
+      }),
+      movimento({
+        id: "compra-itau-aberta",
+        cartaoId: itau,
+        contaId: null,
+        dataMovimento: "2026-08-31",
+        valor: "100",
+      }),
+    ];
+    const visiveis = filtrar_extrato(lote, contas, cartoes, {
+      ...base,
+      visao: "faturas",
+      cartoesCiclo,
+      hoje: "2026-08-31",
+    });
+    expect(visiveis.map((m) => m.id).sort()).toEqual(["nu", "rev"]);
+    expect(resumir_extrato(visiveis).saidas).toBeCloseTo(4715.09, 2);
+    expect(
+      agrupar_faturas_por_cartao(visiveis, [
+        { id: nu, nome: "Nu", fechamento: 2 },
+        { id: revolut, nome: "Revolut", fechamento: 9 },
+        { id: itau, nome: "Itaú", fechamento: 30 },
+      ], "2026-08", "2026-08-31").reduce((soma, grupo) => soma + grupo.total, 0),
+    ).toBeCloseTo(4715.09, 2);
   });
 });
 

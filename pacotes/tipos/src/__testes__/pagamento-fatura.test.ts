@@ -17,6 +17,8 @@ import {
   mapa_vencimento_cartoes,
   mes_resultado_do_movimento,
   movimento_no_resultado_do_mes,
+  na_fatura_do_recorte,
+  pagamentos_ciclo_de,
   periodo_amplo_do_ciclo,
   selo_fatura_ciclo,
   sugerir_pagamento_fatura,
@@ -496,5 +498,85 @@ describe("contrato único de ciclo", () => {
     expect(
       ciclo_do_movimento("2026-08-31", "c30", 30, { vencimento: 6, pagamentos: residual }),
     ).toBe("2026-09");
+  });
+});
+
+describe("na_fatura_do_recorte", () => {
+  const itau = { id: "itau", fechamento: 30, vencimento: 6 };
+  const nu = { id: "nu", fechamento: 2, vencimento: 10 };
+  const revolut = { id: "revolut", fechamento: 9, vencimento: 15 };
+  const hoje = "2026-08-31";
+  const mes = "2026-08";
+
+  it("em 31/08 a fatura aberta ignora parcela no vencimento e a quitação do Itaú; Nu+Revolut somam 4715,09", () => {
+    const movimentos = [
+      {
+        dataMovimento: "2026-08-20",
+        cartaoId: nu.id,
+        tipo: "despesa",
+        valor: "4220.10",
+        papel: "gasto",
+      },
+      {
+        dataMovimento: "2026-08-15",
+        cartaoId: revolut.id,
+        tipo: "despesa",
+        valor: "494.99",
+        papel: "gasto",
+      },
+      {
+        dataMovimento: "2026-09-08",
+        cartaoId: itau.id,
+        tipo: "despesa",
+        valor: "1582.79",
+        papel: "gasto",
+        parcelaNumero: 3,
+        status: "previsto",
+      },
+      {
+        dataMovimento: "2026-09-01",
+        cartaoId: itau.id,
+        tipo: "despesa",
+        valor: "91.78",
+        papel: "gasto",
+        parcelaNumero: 1,
+        status: "previsto",
+      },
+      {
+        dataMovimento: "2026-08-31",
+        cartaoId: itau.id,
+        tipo: "despesa",
+        valor: "100",
+        papel: "gasto",
+      },
+      {
+        dataMovimento: "2026-08-30",
+        cartaoId: itau.id,
+        tipo: "receita",
+        valor: "8290.62",
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-09",
+        ignoradoEmRelatorio: true,
+      },
+    ];
+    const pagamentos = pagamentos_ciclo_de(movimentos);
+    const porCartao = new Map([
+      [itau.id, itau],
+      [nu.id, nu],
+      [revolut.id, revolut],
+    ]);
+    const naFatura = movimentos.filter((movimento) => {
+      const cartao = movimento.cartaoId ? porCartao.get(movimento.cartaoId) : undefined;
+      return na_fatura_do_recorte(movimento, {
+        mes,
+        hoje,
+        fechamento: cartao?.fechamento,
+        vencimento: cartao?.vencimento,
+        pagamentos,
+      });
+    });
+    expect(naFatura.map((item) => item.cartaoId).sort()).toEqual([nu.id, revolut.id]);
+    const total = naFatura.reduce((soma, item) => soma + Number(item.valor), 0);
+    expect(total).toBeCloseTo(4715.09, 2);
   });
 });

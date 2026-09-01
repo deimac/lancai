@@ -6,7 +6,8 @@ import {
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
   mes_gasto_do_cartao,
-  movimento_no_recorte_do_cockpit,
+  na_fatura_do_recorte,
+  pagamentos_ciclo_de,
 } from "@lancai/tipos";
 import { formatar_intervalo_ciclo } from "./formatar";
 
@@ -177,19 +178,27 @@ export function filtrar_extrato(
   const fechamentoPorCartao = mapa_fechamento_cartoes(filtros.cartoesCiclo ?? []);
   const vencimentoPorCartao = mapa_vencimento_cartoes(filtros.cartoesCiclo ?? []);
   const hoje = filtros.hoje ?? hojeISO();
+  const pagamentos = pagamentos_ciclo_de(movimentos);
   return movimentos.filter((movimento) => {
     if (movimento.status === "cancelado") return false;
-    if (movimento.possivelRepetido && movimento.ignoradoEmRelatorio) return false;
+    if (movimento.ignoradoEmRelatorio) {
+      if (filtros.visao === "faturas" || movimento.possivelRepetido) return false;
+    }
     if (filtros.visao === "faturas") {
-      if (!movimento.cartaoId) return false;
+      const fechamento = movimento.cartaoId
+        ? fechamentoPorCartao.get(movimento.cartaoId)
+        : undefined;
+      const vencimento = movimento.cartaoId
+        ? vencimentoPorCartao.get(movimento.cartaoId)
+        : undefined;
       if (
-        !movimento_no_recorte_do_cockpit(
-          movimento,
-          filtros.mes,
+        !na_fatura_do_recorte(movimento, {
+          mes: filtros.mes,
           hoje,
-          fechamentoPorCartao,
-          vencimentoPorCartao,
-        )
+          fechamento,
+          vencimento,
+          pagamentos,
+        })
       ) {
         return false;
       }
@@ -322,7 +331,7 @@ export function agrupar_faturas_por_cartao(
       movimentos: [],
     };
     grupo.movimentos.push(movimento);
-    if (movimento.papel !== "pagamento_fatura") {
+    if (movimento.tipo === "despesa" && movimento.papel !== "pagamento_fatura") {
       grupo.total += Number(movimento.valor) || 0;
     }
     mapa.set(movimento.cartaoId, grupo);
