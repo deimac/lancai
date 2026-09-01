@@ -44,7 +44,7 @@ describe("PolicyEngine", () => {
 
   it("Create transaction", () => {
     const result = engine.evaluate(rr({ op: "create", resource: "transaction", params: { valor: 50 } }), state);
-    expect(result).toMatchObject({ allowed: true, confirm: true, reason: "risk" });
+    expect(result).toMatchObject({ allowed: true, confirm: false, reason: "auto" });
   });
 
   it("Update conhecimento (categoria)", () => {
@@ -135,12 +135,12 @@ describe("PolicyEngine", () => {
     expect(result).toMatchObject({ allowed: true, confirm: false, reason: "auto" });
   });
 
-  it("evaluateCommand: create confirma", () => {
+  it("evaluateCommand: create lança sem confirmação", () => {
     const result = engine.evaluateCommand({
       type: "create_transaction",
       input: { valor: 50, descricao: "Uber", contaId: CONTA },
     });
-    expect(result).toMatchObject({ allowed: true, confirm: true, reason: "risk" });
+    expect(result).toMatchObject({ allowed: true, confirm: false, reason: "auto" });
   });
 
   it("evaluateCommand: delete OF blocked", () => {

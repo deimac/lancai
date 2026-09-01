@@ -1,10 +1,36 @@
-import type {
-  CommandResult,
-  ConversationState,
-  ExecutionPlan,
-  ResolvedRequest,
-  SimpleCommand,
+import { formatar_data_iso_br } from "@lancai/ia";
+import {
+  formatarMoeda,
+  type CommandResult,
+  type ConversationState,
+  type ExecutionPlan,
+  type ResolvedRequest,
+  type SimpleCommand,
 } from "@lancai/tipos";
+
+function textoLancamento(entrada: {
+  descricao?: string;
+  papel?: "gasto" | "pagamento_fatura";
+  valor?: number;
+  dataMovimento?: string;
+  contaNome?: string;
+  cartaoNome?: string;
+}): string {
+  const titulo =
+    entrada.papel === "pagamento_fatura"
+      ? "Pagamento de fatura"
+      : entrada.descricao && !/^lançamento$/i.test(entrada.descricao.trim())
+        ? entrada.descricao
+        : "Lançamento";
+  const origem =
+    entrada.cartaoNome && entrada.contaNome
+      ? `${entrada.contaNome} → ${entrada.cartaoNome}`
+      : entrada.cartaoNome ?? entrada.contaNome;
+  const valor = entrada.valor != null ? formatarMoeda(entrada.valor) : undefined;
+  const data = entrada.dataMovimento ? formatar_data_iso_br(entrada.dataMovimento) : undefined;
+  const detalhe = [origem, valor, data].filter(Boolean).join(" · ");
+  return detalhe ? `${titulo} lançado\n${detalhe}` : `${titulo} lançado.`;
+}
 
 /**
  * Texto curto para o usuário a partir do resultado do comando.
@@ -34,7 +60,10 @@ export class ResponseGenerator {
   private formatCreate(data: unknown, resource: string): string {
     const d = (data ?? {}) as Record<string, unknown>;
     if (resource === "transaction") {
-      return `Lançado: ${String(d.descricao ?? "lançamento")}.`;
+      return textoLancamento({
+        descricao: typeof d.descricao === "string" ? d.descricao : undefined,
+        valor: typeof d.valor === "number" ? d.valor : undefined,
+      });
     }
     if (resource === "recurrence") {
       return `Recorrência criada: ${String(d.descricao ?? "")} todo dia ${String(d.diaDoMes ?? "")}.`;
@@ -63,7 +92,14 @@ export class ResponseGenerator {
     const d = (result.data ?? {}) as Record<string, unknown>;
     switch (comando.type) {
       case "create_transaction":
-        return `Lançado: ${String(d.descricao ?? comando.input.descricao ?? "lançamento")}.`;
+        return textoLancamento({
+          descricao: typeof d.descricao === "string" ? d.descricao : comando.input.descricao,
+          papel: comando.input.papel,
+          valor: comando.input.valor ?? (typeof d.valor === "number" ? d.valor : undefined),
+          dataMovimento: comando.input.dataMovimento,
+          contaNome: comando.input.contaNome,
+          cartaoNome: comando.input.cartaoNome,
+        });
       case "create_recurrence":
         return `Recorrência criada: ${String(d.descricao ?? comando.input.descricao ?? "")} todo dia ${String(d.diaDoMes ?? comando.input.diaDoMes ?? "")}.`;
       case "create_rule":

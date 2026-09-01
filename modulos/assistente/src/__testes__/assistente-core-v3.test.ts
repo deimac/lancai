@@ -12,32 +12,25 @@ import { criarAssistenteCoreV3Teste } from "./helpers-assistente-v3";
 import { IDS } from "./helpers-assistente";
 
 describe("AssistenteCoreV3", () => {
-  it("create resolve conta por nome, pede confirmação e executa no sim", async () => {
+  it("create resolve conta por nome e lança na hora", async () => {
     const { core, repo } = criarAssistenteCoreV3Teste();
     const r1 = await core.processar({
       usuarioId: IDS.user,
       mensagem: "Gastei 50 no Uber no Nubank",
       canal: "web",
     });
-    expect(r1.diagnostico?.confirm).toBe(true);
-    expect(r1.resposta.toLowerCase()).toMatch(/confirmar|uber/);
+    expect(r1.diagnostico?.executed).toBe(true);
+    expect(r1.diagnostico?.confirm).toBeFalsy();
+    expect(r1.resposta).toMatch(/Uber lançado/i);
+    expect(r1.resposta).toMatch(/Nubank/);
+    expect(r1.resposta).toMatch(/R\$\s*50/);
 
     const bruto = await repo.getDocumento(r1.sessaoId);
     expect(bruto?.documento.schemaVersion).toBe(1);
-    expect((bruto?.documento.pending_action as { type?: string } | null)?.type).toBe("confirmation");
-
-    const r2 = await core.processar({
-      usuarioId: IDS.user,
-      mensagem: "sim",
-      sessaoId: r1.sessaoId,
-      canal: "web",
-    });
-    expect(r2.diagnostico?.executed).toBe(true);
-    expect(r2.diagnostico?.war).toBeNull();
-    expect(r2.resposta.toLowerCase()).toMatch(/lançad|uber/);
+    expect((bruto?.documento.pending_action as { type?: string } | null)?.type).not.toBe("confirmation");
   });
 
-  it("pagamento de fatura no Revolut pede sim e grava crédito no cartão", async () => {
+  it("pagamento de fatura no Revolut lança crédito e mostra o lançamento", async () => {
     const { core } = criarAssistenteCoreV3Teste({
       acts: {
         "Lance um pagamento de fatura para o cartao revolut no valor de 1158,55 dia 17 de agosto": {
@@ -56,28 +49,26 @@ describe("AssistenteCoreV3", () => {
       mensagem: "Lance um pagamento de fatura para o cartao revolut no valor de 1158,55 dia 17 de agosto",
       canal: "web",
     });
-    expect(r1.diagnostico?.confirm).toBe(true);
-    expect(r1.resposta.toLowerCase()).toMatch(/ainda não gravei|responda sim/);
-
-    const r2 = await core.processar({
-      usuarioId: IDS.user,
-      mensagem: "sim, pode",
-      sessaoId: r1.sessaoId,
-      canal: "web",
-    });
-    expect(r2.diagnostico?.executed).toBe(true);
-    expect(r2.resposta.toLowerCase()).toMatch(/lançad/);
+    expect(r1.diagnostico?.executed).toBe(true);
+    expect(r1.diagnostico?.confirm).toBeFalsy();
+    expect(r1.resposta).toMatch(/Pagamento de fatura lançado/);
+    expect(r1.resposta).toMatch(/Revolut/);
+    expect(r1.resposta).toMatch(/1\.158,55/);
+    expect(r1.resposta).toMatch(/17\/08\/2026/);
   });
 
-  it("golden Lance pagamento no Revolut manual pede confirmação de criar", async () => {
+  it("golden Lance pagamento no Revolut manual lança na hora", async () => {
     const { core } = criarAssistenteCoreV3Teste();
     const r1 = await core.processar({
       usuarioId: IDS.user,
       mensagem: "Lance um pagamento de fatura para o cartão Revolut de 1158,55 no dia 17 de agosto",
       canal: "web",
     });
-    expect(r1.diagnostico?.confirm).toBe(true);
+    expect(r1.diagnostico?.executed).toBe(true);
     expect(r1.diagnostico?.blocked).toBeFalsy();
+    expect(r1.diagnostico?.confirm).toBeFalsy();
+    expect(r1.resposta).toMatch(/Pagamento de fatura lançado/);
+    expect(r1.resposta).toMatch(/Revolut/);
   });
 
   it("pagamento de fatura no cartão sincronizado recusa criar", async () => {
@@ -141,7 +132,7 @@ describe("AssistenteCoreV3", () => {
       mensagem: "Gastei 50 no Uber no Revolut",
       canal: "web",
     });
-    expect(r1.diagnostico?.confirm).toBe(true);
+    expect(r1.diagnostico?.executed).toBe(true);
     expect(r1.resposta.toLowerCase()).toMatch(/uber/);
   });
 
@@ -689,14 +680,13 @@ describe("AssistenteCoreV3", () => {
     });
   });
 
-  it("write só com DialogueAct pede confirmação e executa no sim", async () => {
+  it("write só com DialogueAct lança na hora", async () => {
     const { core } = criarAssistenteCoreV3Teste({
       acts: {
         "Gastei 50 no Uber no Nubank": {
           act: "write",
           intent: { tipo: "despesa", valor: 50, descricao: "Uber", contaNome: "Nubank" },
         },
-        sim: { act: "confirm" },
       },
     });
     const r1 = await core.processar({
@@ -704,15 +694,10 @@ describe("AssistenteCoreV3", () => {
       mensagem: "Gastei 50 no Uber no Nubank",
       canal: "web",
     });
-    expect(r1.diagnostico?.confirm).toBe(true);
-    const r2 = await core.processar({
-      usuarioId: IDS.user,
-      mensagem: "sim",
-      sessaoId: r1.sessaoId,
-      canal: "web",
-    });
-    expect(r2.diagnostico?.executed).toBe(true);
-    expect(r2.resposta.toLowerCase()).toMatch(/lançad|uber/);
+    expect(r1.diagnostico?.executed).toBe(true);
+    expect(r1.diagnostico?.confirm).toBeFalsy();
+    expect(r1.resposta).toMatch(/Uber lançado/i);
+    expect(r1.resposta).toMatch(/Nubank/);
   });
 
   it("update só com DialogueAct corrige valor do foco", async () => {

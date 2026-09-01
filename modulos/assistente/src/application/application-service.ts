@@ -147,8 +147,9 @@ export class ApplicationService {
     const workspaceId = await this.deps.catalogo.workspaceId(context.authenticatedUserId);
     const categoriaId =
       input.categoriaId ?? (await this.deps.catalogo.categoriaNaoClassificado(context.authenticatedUserId));
-    const descricao = input.descricao ?? "Lançamento";
     const pagamento = input.papel === "pagamento_fatura";
+    const descricao =
+      input.descricao ?? (pagamento ? "Pagamento de fatura" : "Lançamento");
     const soNoCartao = Boolean(input.cartaoId) && !input.contaId;
     const tipo = pagamento && soNoCartao ? "receita" : input.tipo ?? "despesa";
     const dataMovimento = input.dataMovimento ?? hojeISO();

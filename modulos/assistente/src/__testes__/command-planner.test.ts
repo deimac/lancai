@@ -26,7 +26,7 @@ describe("planCommand", () => {
     if (r?.kind !== "plan") return;
     expect(r.plan.steps[0]?.command).toEqual({
       type: "create_transaction",
-      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+      input: { descricao: "Uber", valor: 50, tipo: "despesa", contaNome: "Nubank" },
     });
   });
 
@@ -154,6 +154,7 @@ describe("planCommand", () => {
         tipo: "receita",
         papel: "pagamento_fatura",
         dataMovimento: "2026-08-17",
+        cartaoNome: "Revolut",
       },
     });
   });
@@ -179,6 +180,8 @@ describe("planCommand", () => {
         tipo: "despesa",
         papel: "pagamento_fatura",
         dataMovimento: "2026-08-22",
+        contaNome: "Nubank",
+        cartaoNome: "Azul",
       },
     });
   });
@@ -189,7 +192,7 @@ describe("planCommand", () => {
     if (r?.kind !== "plan") return;
     expect(r.plan.steps[0]?.command).toEqual({
       type: "create_transaction",
-      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+      input: { descricao: "Uber", valor: 50, tipo: "despesa", cartaoNome: "Revolut" },
     });
   });
 
@@ -220,7 +223,7 @@ describe("planCommandFromAct", () => {
     if (r?.kind !== "plan") return;
     expect(r.plan.steps[0]?.command).toEqual({
       type: "create_transaction",
-      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+      input: { descricao: "Uber", valor: 50, tipo: "despesa", contaNome: "Nubank" },
     });
   });
 
@@ -245,6 +248,7 @@ describe("planCommandFromAct", () => {
         tipo: "receita",
         papel: "pagamento_fatura",
         dataMovimento: "2026-08-17",
+        cartaoNome: "Revolut",
       },
     });
   });
@@ -269,6 +273,7 @@ describe("planCommandFromAct", () => {
         valor: 1158.55,
         tipo: "despesa",
         dataMovimento: "2026-08-17",
+        cartaoNome: "Revolut",
       },
     });
   });
@@ -293,6 +298,8 @@ describe("planCommandFromAct", () => {
         tipo: "despesa",
         papel: "pagamento_fatura",
         dataMovimento: "2026-08-22",
+        contaNome: "Nubank",
+        cartaoNome: "Azul",
       },
     });
   });
@@ -315,7 +322,7 @@ describe("planCommandFromAct", () => {
     if (r?.kind !== "plan") return;
     expect(r.plan.steps[0]?.command).toEqual({
       type: "create_transaction",
-      input: { descricao: "Uber", valor: 50, tipo: "despesa" },
+      input: { descricao: "Uber", valor: 50, tipo: "despesa", cartaoNome: "Revolut" },
     });
   });
 

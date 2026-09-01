@@ -11,30 +11,17 @@ describe("Critical Conversations E2E", () => {
       sessaoId: s.id,
       canal: "web",
     });
-    expect(r1.diagnostico?.confirm).toBe(true);
-    const r2 = await core.processar({
-      usuarioId: IDS.user,
-      mensagem: "sim",
-      sessaoId: s.id,
-      canal: "web",
-    });
-    expect(r2.diagnostico?.executed).toBe(true);
-    expect(r2.diagnostico?.war).toBeNull();
-    expect(r2.resposta.toLowerCase()).toMatch(/lançad|uber/i);
+    expect(r1.diagnostico?.executed).toBe(true);
+    expect(r1.diagnostico?.war).toBeNull();
+    expect(r1.resposta.toLowerCase()).toMatch(/lançad|uber/i);
   });
 
   it("Criar + corrigir data (foi ontem)", async () => {
     const { core, repo } = criarAssistenteTeste();
     const s = await repo.create(IDS.user, estadoComDefaults());
-    await core.processar({
-      usuarioId: IDS.user,
-      mensagem: "Gastei 50 no Uber no Nubank",
-      sessaoId: s.id,
-      canal: "web",
-    });
     const criado = await core.processar({
       usuarioId: IDS.user,
-      mensagem: "sim",
+      mensagem: "Gastei 50 no Uber no Nubank",
       sessaoId: s.id,
       canal: "web",
     });
@@ -156,34 +143,30 @@ describe("Critical Conversations E2E", () => {
 });
 
 describe("Wrong Action Rate", () => {
-  it("WAR = 0 em confirmação: não executa create sem sim", async () => {
+  it("WAR = 0: create lança na hora sem sim", async () => {
     const { core, repo, movimentos } = criarAssistenteTeste();
     const s = await repo.create(IDS.user, estadoComDefaults());
-    await core.processar({
+    const r = await core.processar({
       usuarioId: IDS.user,
       mensagem: "Gastei 50 no Uber no Nubank",
       sessaoId: s.id,
       canal: "web",
     });
-    expect(movimentos.size).toBe(0);
+    expect(r.diagnostico?.executed).toBe(true);
+    expect(r.diagnostico?.war).toBeNull();
+    expect(movimentos.size).toBeGreaterThan(0);
   });
 
-  it("WAR = 0 depois do sim: write confirmado não é flagged", async () => {
+  it("WAR = 0 depois do create: write não é flagged", async () => {
     const { core, repo } = criarAssistenteTeste();
     const s = await repo.create(IDS.user, estadoComDefaults());
-    await core.processar({
+    const r = await core.processar({
       usuarioId: IDS.user,
       mensagem: "Gastei 50 no Uber no Nubank",
       sessaoId: s.id,
       canal: "web",
     });
-    const r2 = await core.processar({
-      usuarioId: IDS.user,
-      mensagem: "sim",
-      sessaoId: s.id,
-      canal: "web",
-    });
-    expect(r2.diagnostico?.executed).toBe(true);
-    expect(r2.diagnostico?.war).toBeNull();
+    expect(r.diagnostico?.executed).toBe(true);
+    expect(r.diagnostico?.war).toBeNull();
   });
 });

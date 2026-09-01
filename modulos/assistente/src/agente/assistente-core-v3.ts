@@ -1090,7 +1090,7 @@ export class AssistenteCoreV3 {
     const war = detectWrongAction({
       op: opDePlan(plan),
       executed: result.success,
-      confirmRequired: confirmacao.confirmRequired || ["create", "update", "delete"].includes(opDePlan(plan)),
+      confirmRequired: confirmacao.confirmRequired || ["update", "delete"].includes(opDePlan(plan)),
       confirmed: confirmacao.confirmed,
       targetFonte: typeof alvo?.metadata?.fonte === "string" ? alvo.metadata.fonte : undefined,
       fatoImutavel: alvo?.metadata?.fatoImutavel === true,
@@ -1267,6 +1267,7 @@ export class AssistenteCoreV3 {
         };
       }
       command.input.cartaoId = cartao.id;
+      if (command.type === "create_transaction") command.input.cartaoNome = cartao.nome;
       return { kind: "ok", command };
     }
 
@@ -1280,6 +1281,7 @@ export class AssistenteCoreV3 {
         };
       }
       command.input.contaId = conta.id;
+      if (command.type === "create_transaction") command.input.contaNome = conta.nome;
       return { kind: "ok", command };
     }
 
@@ -1346,11 +1348,14 @@ export class AssistenteCoreV3 {
 
     if (conta) {
       command.input.contaId = conta.id;
+      command.input.contaNome = conta.nome;
       command.input.cartaoFaturaId = cartao.id;
+      command.input.cartaoNome = cartao.nome;
       delete command.input.cartaoId;
     } else {
       command.input.cartaoId = cartao.id;
       command.input.cartaoFaturaId = cartao.id;
+      command.input.cartaoNome = cartao.nome;
     }
     return { kind: "ok", command };
   }

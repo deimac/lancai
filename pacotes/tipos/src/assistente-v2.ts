@@ -290,7 +290,8 @@ export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
 // ============================================
 
 export const CreateTransactionInputSchema = TransactionParamsSchema.extend({
-  // Validação conta XOR cartão feita no handler
+  contaNome: z.string().min(1).optional(),
+  cartaoNome: z.string().min(1).optional(),
 });
 
 export const UpdateTransactionInputSchema = z.object({

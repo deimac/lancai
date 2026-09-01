@@ -34,13 +34,24 @@ describe("Wrong Action Rate detector", () => {
     ).toBe("wrong_entity");
   });
 
-  it("turno saudável", () => {
+  it("turno saudável com confirmação", () => {
     expect(
       detectWrongAction({
         op: "create",
         executed: true,
         confirmRequired: true,
         confirmed: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("create automático sem confirmação exigida", () => {
+    expect(
+      detectWrongAction({
+        op: "create",
+        executed: true,
+        confirmRequired: false,
+        confirmed: false,
       }),
     ).toBeNull();
   });

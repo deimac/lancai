@@ -277,7 +277,7 @@ export class AssistenteCore {
     const war = detectWrongAction({
       op: resolved.request.op,
       executed: result.success,
-      confirmRequired: confirmacao.confirmRequired || ["create", "update", "delete"].includes(resolved.request.op),
+      confirmRequired: confirmacao.confirmRequired || ["update", "delete"].includes(resolved.request.op),
       confirmed: confirmacao.confirmed,
       targetFonte: typeof resolved.resolved.target?.metadata?.fonte === "string"
         ? resolved.resolved.target.metadata.fonte

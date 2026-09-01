@@ -240,6 +240,8 @@ export function planCommand(
         input: {
           valor: entities?.amount,
           ...(dataISO ? { dataMovimento: dataISO } : {}),
+          ...(entities?.account ? { contaNome: entities.account } : {}),
+          ...(entities?.card ? { cartaoNome: entities.card } : {}),
           ...mapeado.campos,
         },
       },
@@ -355,6 +357,8 @@ export function planCommandFromAct(
         input: {
           valor: intent.valor,
           ...(dataISO ? { dataMovimento: dataISO } : {}),
+          ...(intent.contaNome ? { contaNome: intent.contaNome } : {}),
+          ...(intent.cartaoNome ? { cartaoNome: intent.cartaoNome } : {}),
           ...mapeado.campos,
         },
       },

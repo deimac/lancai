@@ -20,10 +20,10 @@ type Esperado = {
 };
 
 const SUITE: Array<{ categoria: string; id: string; esperado: Esperado }> = [
-  { categoria: "criação", id: "create-uber-nubank", esperado: { op: "create", confirm: true } },
-  { categoria: "criação", id: "create-salario", esperado: { op: "create", confirm: true } },
-  { categoria: "criação", id: "create-transferencia", esperado: { op: "create", confirm: true } },
-  { categoria: "criação", id: "create-parcelado", esperado: { op: "create", confirm: true } },
+  { categoria: "criação", id: "create-uber-nubank", esperado: { op: "create", executed: true } },
+  { categoria: "criação", id: "create-salario", esperado: { op: "create", executed: true } },
+  { categoria: "criação", id: "create-transferencia", esperado: { op: "create", executed: true } },
+  { categoria: "criação", id: "create-parcelado", esperado: { op: "create", executed: true } },
   { categoria: "criação", id: "clarify-sem-conta", esperado: { clarification: true } },
   { categoria: "consulta", id: "consulta-total-uber", esperado: { op: "query", executed: true } },
   { categoria: "consulta", id: "consulta-lista-uber", esperado: { op: "query", executed: true } },

@@ -97,7 +97,7 @@ export class PolicyEngine {
    * Query: risk none. Writes: confirmam. OF fato/delete: blocked.
    */
   evaluateCommand(command: SimpleCommand, alvo?: EntityRef): PolicyDecision {
-    if (command.type === "query_transactions") {
+    if (command.type === "query_transactions" || command.type === "create_transaction") {
       return { allowed: true, risk: "none", confirm: false, reason: "auto" };
     }
 
@@ -136,6 +136,7 @@ export class PolicyEngine {
 
   private classifyRisk(request: UserRequest): PolicyDecision["risk"] {
     if (request.op === "query" || request.op === "classify") return "none";
+    if (request.op === "create" && request.resource === "transaction") return "none";
     return "confirmation_required";
   }
 
