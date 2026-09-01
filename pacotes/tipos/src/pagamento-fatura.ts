@@ -240,7 +240,8 @@ export function competencia_ciclo_vencendo_em(
 
 /**
  * Competência que o pagamento quita: se cai perto do vencimento do ciclo
- * anterior, é resto/liquidação daquele; senão, a competência informada ou a do ciclo da data.
+ * anterior, é resto/liquidação daquele; no dia do fecha, quita o ciclo que
+ * fechou (ignora tag do ciclo recém-aberto); tag de ciclo anterior prevalece.
  */
 export function competencia_quitacao_fatura(
   dataISO: string,
@@ -256,7 +257,12 @@ export function competencia_quitacao_fatura(
     return anterior;
   }
   const { fim } = intervalo_ciclo_fatura(ciclo, fechamento);
-  if (data < fim) return ciclo;
+  if (data <= fim) {
+    if (competenciaFatura && /^\d{4}-\d{2}$/.test(competenciaFatura) && competenciaFatura < ciclo) {
+      return competenciaFatura;
+    }
+    return ciclo;
+  }
   if (competenciaFatura && /^\d{4}-\d{2}$/.test(competenciaFatura)) return competenciaFatura;
   return ciclo;
 }
@@ -319,8 +325,10 @@ export type ExtraCicloMovimento = {
 };
 
 /**
- * Parcela prevista só muda de ciclo se cair na janela do vencimento de C
- * (`data_vencimento_do_ciclo` ± 7 dias). Dia 1 do mês não é vencimento.
+ * Parcela prevista datada no vencimento depois do fecha *no mesmo mês*
+ * (vence > fecha) volta ao ciclo que acabou de fechar.
+ * Se o vencimento é no mês seguinte (vence < fecha), a data já cai no
+ * ciclo aberto — puxar para o fechado empilha duas parcelas na mesma fatura.
  */
 function ciclo_da_parcela_prevista(
   data: string,
@@ -328,6 +336,7 @@ function ciclo_da_parcela_prevista(
   fechamento: number,
   vencimento: number,
 ): string {
+  if (vencimento < fechamento) return ciclo;
   const candidatos = [
     mes_anterior_competencia(ciclo),
     ciclo,
@@ -369,8 +378,9 @@ function aplicar_antecipacao(
 }
 
 /**
- * Ciclo da linha: intervalo do fechamento; parcela prevista só se a data
- * está na janela do vencimento desse ciclo; antecipação empurra ao aberto.
+ * Ciclo da linha: intervalo do fechamento. Parcela prevista no vencimento
+ * depois do fecha no mesmo mês volta ao ciclo que fechou; se o vence é no
+ * mês seguinte, fica no ciclo aberto. Antecipação empurra ao aberto.
  * Conta (sem cartão) = mês civil.
  */
 export function ciclo_do_movimento(

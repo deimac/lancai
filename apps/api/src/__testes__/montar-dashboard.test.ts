@@ -335,6 +335,48 @@ describe("montar_proximos_pagamentos", () => {
     ]);
   });
 
+  it("Pix no dia do fecha não esconde a fatura aberta de setembro", () => {
+    const azul: DashboardCartao = {
+      ...cartao,
+      id: "cartao-azul",
+      nome: "Azul Itaú Visa Platinum",
+      perfil: "pf",
+      fechamento: 30,
+      vencimento: 6,
+      gastoMes: 1491,
+    };
+    const itens = montar_proximos_pagamentos({
+      futuro: [],
+      cartoes: [azul],
+      movimentos: [],
+      pagamentosFatura: [
+        credito_quitacao({
+          id: "pix-fecha",
+          cartaoId: "cartao-azul",
+          dataMovimento: "2026-08-30",
+          valor: 8290.62,
+          competenciaFatura: "2026-09",
+          descricao: "Pagamento PIX",
+          status: "previsto",
+        }),
+      ],
+      hoje: "2026-09-01",
+      periodo: { de: "2026-09-01", ate: "2026-09-30" },
+    });
+    const faturas = itens.filter((item) => item.origem === "fatura");
+    expect(faturas).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          descricao: "Fatura Azul Itaú Visa Platinum",
+          data: "2026-10-06",
+          pago: false,
+          competenciaCiclo: "2026-09",
+        }),
+      ]),
+    );
+    expect(faturas.some((item) => item.pago && item.competenciaCiclo === "2026-09")).toBe(false);
+  });
+
   it("depois do fechamento a fatura do mês fica a pagar com o vencimento do ciclo", () => {
     const azul: DashboardCartao = {
       ...cartao,
@@ -832,7 +874,7 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     expect(agosto.get("mp")).toBeUndefined();
   });
 
-  it("fecha 30: parcela prevista no vencimento soma no ciclo aberto; a do ciclo seguinte não", () => {
+  it("fecha 30: parcela prevista em setembro soma na fatura de setembro, não na de agosto", () => {
     const fechamento = new Map([["azul", 30]]);
     const vencimento = new Map([["azul", 6]]);
     const movimentos = [
@@ -861,7 +903,14 @@ describe("agregar_gasto_cartao_por_competencia", () => {
       },
     ];
     const agosto = agregar_gasto_cartao_por_competencia(movimentos, fechamento, "2026-08", vencimento);
-    expect(agosto.get("azul")).toEqual({ gasto: 6800, quantidade: 2 });
+    expect(agosto.get("azul")).toEqual({ gasto: 6500, quantidade: 1 });
+    const setembro = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamento,
+      "2026-09",
+      vencimento,
+    );
+    expect(setembro.get("azul")).toEqual({ gasto: 300, quantidade: 1 });
   });
 
   it("pagamento antecipado inclui compra do dia no ciclo aberto", () => {
@@ -899,7 +948,7 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     expect(agosto.get("c1")).toEqual({ gasto: 800, quantidade: 1 });
   });
 
-  it("em 31/08 o ciclo aberto soma Nu+Revolut; parcela Itaú no vencimento e a quitação ficam de fora", () => {
+  it("em 31/08 o ciclo aberto do Itaú já é setembro: parcela e compra pós-fecha somam", () => {
     const fechamento = new Map([
       ["itau", 30],
       ["nu", 2],
@@ -945,9 +994,9 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     );
     expect(aberto.get("nu")).toEqual({ gasto: 4220.1, quantidade: 1 });
     expect(aberto.get("revolut")).toEqual({ gasto: 494.99, quantidade: 1 });
-    expect(aberto.get("itau")).toBeUndefined();
+    expect(aberto.get("itau")).toEqual({ gasto: 1682.79, quantidade: 2 });
     const total = [...aberto.values()].reduce((soma, item) => soma + item.gasto, 0);
-    expect(total).toBeCloseTo(4715.09, 2);
+    expect(total).toBeCloseTo(6397.88, 2);
   });
 });
 

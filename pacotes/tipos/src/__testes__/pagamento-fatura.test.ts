@@ -199,10 +199,10 @@ describe("heurística de pagamento de fatura", () => {
     expect(competencia_ciclo_da_data("2026-08-31", 30)).toBe("2026-09");
   });
 
-  it("fecha 30 vence 6: parcela prevista no vencimento entra na fatura que ainda não fechou", () => {
+  it("fecha 30 vence 6: parcela prevista em setembro entra na fatura aberta de setembro", () => {
     const extra = { vencimento: 6, parcelaNumero: 3, status: "previsto" as const };
-    expect(mes_resultado_do_movimento("2026-09-08", "azul", 30, extra)).toBe("2026-08");
-    expect(mes_resultado_do_movimento("2026-09-01", "azul", 30, extra)).toBe("2026-08");
+    expect(mes_resultado_do_movimento("2026-09-08", "azul", 30, extra)).toBe("2026-09");
+    expect(mes_resultado_do_movimento("2026-09-01", "azul", 30, extra)).toBe("2026-09");
     expect(
       mes_resultado_do_movimento("2026-08-06", "azul", 30, {
         vencimento: 6,
@@ -210,7 +210,7 @@ describe("heurística de pagamento de fatura", () => {
         status: "realizado",
       }),
     ).toBe("2026-08");
-    expect(mes_resultado_do_movimento("2026-10-06", "azul", 30, extra)).toBe("2026-09");
+    expect(mes_resultado_do_movimento("2026-10-06", "azul", 30, extra)).toBe("2026-10");
     expect(mes_resultado_do_movimento("2026-08-15", "azul", 30)).toBe("2026-08");
 
     const fechamento = mapa_fechamento_cartoes([{ id: "azul", fechamento: 30 }]);
@@ -218,14 +218,14 @@ describe("heurística de pagamento de fatura", () => {
     expect(
       movimento_no_resultado_do_mes(
         { dataMovimento: "2026-09-08", cartaoId: "azul", parcelaNumero: 8, status: "previsto" },
-        "2026-08",
+        "2026-09",
         fechamento,
         vencimento,
       ),
     ).toBe(true);
     expect(
       movimento_no_resultado_do_mes(
-        { dataMovimento: "2026-10-06", cartaoId: "azul", parcelaNumero: 9, status: "previsto" },
+        { dataMovimento: "2026-09-08", cartaoId: "azul", parcelaNumero: 8, status: "previsto" },
         "2026-08",
         fechamento,
         vencimento,
@@ -241,10 +241,7 @@ describe("heurística de pagamento de fatura", () => {
         status: "previsto",
         tipo: "despesa",
       }),
-    ).toEqual({
-      rotulo: "Fatura ago",
-      dica: "Em aberto. Entra na fatura de agosto (vence dia 6).",
-    });
+    ).toBeNull();
   });
 
   it("fecha 12 vence 17: parcela prevista no vencimento entra na fatura que fechou nesse ciclo", () => {
@@ -290,6 +287,8 @@ describe("heurística de pagamento de fatura", () => {
     expect(competencia_quitacao_fatura("2026-07-29", 30, 6, "2026-07")).toBe("2026-07");
     expect(competencia_quitacao_fatura("2026-07-29", 30, 6, "2026-08")).toBe("2026-07");
     expect(competencia_quitacao_fatura("2026-08-10", 10, 17, "2026-08")).toBe("2026-08");
+    expect(competencia_quitacao_fatura("2026-08-10", 10, 17, "2026-07")).toBe("2026-07");
+    expect(competencia_quitacao_fatura("2026-08-30", 30, 6, "2026-09")).toBe("2026-08");
     expect(competencia_ciclo_vencendo_em("2026-08", 30, 6)).toBe("2026-07");
     expect(competencia_ciclo_vencendo_em("2026-09", 30, 6)).toBe("2026-08");
     expect(competencia_ciclo_vencendo_em("2026-08", 12, 17)).toBe("2026-08");
@@ -431,14 +430,15 @@ describe("heurística de pagamento de fatura", () => {
 describe("contrato único de ciclo", () => {
   const parcela = { parcelaNumero: 2, status: "previsto" as const };
 
-  it("fecha 30 vence 6: aberto até o fecha; parcela só na janela do vencimento", () => {
+  it("fecha 30 vence 6: aberto até o fecha; parcela de setembro fica em setembro", () => {
     expect(ciclo_aberto_em("2026-08-29", 30)).toBe("2026-08");
     expect(ciclo_aberto_em("2026-08-30", 30)).toBe("2026-08");
     expect(ciclo_aberto_em("2026-08-31", 30)).toBe("2026-09");
     expect(data_vencimento_do_ciclo("2026-08", 30, 6)).toBe("2026-09-06");
-    expect(ciclo_do_movimento("2026-09-08", "c30", 30, { vencimento: 6, ...parcela })).toBe("2026-08");
-    expect(ciclo_do_movimento("2026-10-06", "c30", 30, { vencimento: 6, ...parcela })).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-09-08", "c30", 30, { vencimento: 6, ...parcela })).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-10-06", "c30", 30, { vencimento: 6, ...parcela })).toBe("2026-10");
     expect(competencia_quitacao_fatura("2026-08-05", 30, 6)).toBe("2026-07");
+    expect(competencia_quitacao_fatura("2026-08-30", 30, 6, "2026-09")).toBe("2026-08");
     expect(data_vencimento_do_ciclo("2026-07", 30, 6)).toBe("2026-08-06");
   });
 
@@ -461,8 +461,8 @@ describe("contrato único de ciclo", () => {
     expect(ciclo_aberto_em("2026-08-29", 25)).toBe("2026-09");
     expect(ciclo_do_movimento("2026-08-20", "c25", 25)).toBe("2026-08");
     expect(ciclo_do_movimento("2026-08-26", "c25", 25)).toBe("2026-09");
-    expect(ciclo_do_movimento("2026-09-03", "c25", 25, { vencimento: 3, ...parcela })).toBe("2026-08");
-    expect(ciclo_do_movimento("2026-10-03", "c25", 25, { vencimento: 3, ...parcela })).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-09-03", "c25", 25, { vencimento: 3, ...parcela })).toBe("2026-09");
+    expect(ciclo_do_movimento("2026-10-03", "c25", 25, { vencimento: 3, ...parcela })).toBe("2026-10");
   });
 
   it("fecha 30 em fevereiro usa o último dia do mês", () => {
@@ -511,7 +511,7 @@ describe("na_fatura_do_recorte", () => {
   const hoje = "2026-08-31";
   const mes = "2026-08";
 
-  it("em 31/08 a fatura aberta ignora parcela no vencimento e a quitação do Itaú; Nu+Revolut somam 4715,09", () => {
+  it("em 31/08 o ciclo aberto do Itaú já é setembro: parcelas e compra pós-fecha entram; a quitação não", () => {
     const movimentos = [
       {
         dataMovimento: "2026-08-20",
@@ -578,9 +578,15 @@ describe("na_fatura_do_recorte", () => {
         pagamentos,
       });
     });
-    expect(naFatura.map((item) => item.cartaoId).sort()).toEqual([nu.id, revolut.id]);
+    expect(naFatura.map((item) => item.cartaoId).sort()).toEqual([
+      itau.id,
+      itau.id,
+      itau.id,
+      nu.id,
+      revolut.id,
+    ]);
     const total = naFatura.reduce((soma, item) => soma + Number(item.valor), 0);
-    expect(total).toBeCloseTo(4715.09, 2);
+    expect(total).toBeCloseTo(6489.66, 2);
   });
 
   it("crédito de atraso e estorno abatem; Pagamento recebido não", () => {

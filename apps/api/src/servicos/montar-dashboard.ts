@@ -953,6 +953,9 @@ export function montar_proximos_pagamentos(entrada: {
       return true;
     })
     .sort((a, b) => {
+      const faturaAbertaA = a.origem === "fatura" && !a.pago ? 1 : 0;
+      const faturaAbertaB = b.origem === "fatura" && !b.pago ? 1 : 0;
+      if (faturaAbertaA !== faturaAbertaB) return faturaAbertaB - faturaAbertaA;
       if (a.pago !== b.pago) return Number(a.pago) - Number(b.pago);
       if (a.vencida !== b.vencida) return Number(b.vencida) - Number(a.vencida);
       const dataA = a.dataPagamento ?? a.data;

@@ -319,7 +319,7 @@ describe("filtrar_extrato", () => {
     ).toEqual(["pizza"]);
   });
 
-  it("visão Faturas no mês atual bate com o card: Itaú fechado fica de fora; Nu+Revolut = 4715,09", () => {
+  it("visão Faturas no mês atual: após o fecha o Itaú já mostra o ciclo de setembro", () => {
     const itau = "cartao-itau";
     const nu = "cartao-nu";
     const revolut = "cartao-revolut";
@@ -377,15 +377,20 @@ describe("filtrar_extrato", () => {
       cartoesCiclo,
       hoje: "2026-08-31",
     });
-    expect(visiveis.map((m) => m.id).sort()).toEqual(["nu", "rev"]);
-    expect(resumir_extrato(visiveis).saidas).toBeCloseTo(4715.09, 2);
+    expect(visiveis.map((m) => m.id).sort()).toEqual([
+      "compra-itau-aberta",
+      "nu",
+      "parcela-itau",
+      "rev",
+    ]);
+    expect(resumir_extrato(visiveis).saidas).toBeCloseTo(6397.88, 2);
     expect(
       agrupar_faturas_por_cartao(visiveis, [
         { id: nu, nome: "Nu", fechamento: 2 },
         { id: revolut, nome: "Revolut", fechamento: 9 },
         { id: itau, nome: "Itaú", fechamento: 30 },
       ], "2026-08", "2026-08-31").reduce((soma, grupo) => soma + grupo.total, 0),
-    ).toBeCloseTo(4715.09, 2);
+    ).toBeCloseTo(6397.88, 2);
   });
 
   it("usa o total oficial do banco quando a fatura já fechou", () => {
