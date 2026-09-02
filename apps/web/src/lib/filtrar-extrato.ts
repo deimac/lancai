@@ -220,6 +220,7 @@ export function linhas_apresentacao_parcelamento(
       ...ancora,
       id: `${PREFIXO_APRESENTACAO_PARCELA}${ancora.id}`,
       valor: valor_compra_da_serie(irmas).toFixed(2),
+      valorParcela: ancora.valor,
       dataMovimento: compra,
       ocorridoEmInstante: null,
       parcelaNumero: null,
@@ -227,6 +228,16 @@ export function linhas_apresentacao_parcelamento(
     });
   }
   return linhas;
+}
+
+export function valor_parcela_da_apresentacao(movimento: MovimentoResumo): number | null {
+  if (!movimento.apresentacao) return null;
+  const informado = Number(movimento.valorParcela);
+  if (Number.isFinite(informado) && informado > 0) return arredondar(informado);
+  const vezes = movimento.parcelaTotal;
+  const total = Number(movimento.valor);
+  if (!vezes || vezes < 2 || !Number.isFinite(total) || total <= 0) return null;
+  return arredondar(total / vezes);
 }
 
 function parcela_no_dia_da_compra(movimento: MovimentoResumo): boolean {

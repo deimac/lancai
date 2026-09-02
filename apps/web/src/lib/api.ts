@@ -547,6 +547,8 @@ export interface MovimentoResumo {
    * Não é Fato — não soma em totais nem vai para a fatura.
    */
   apresentacao?: boolean;
+  /** Valor de uma parcela, só na linha de apresentação. */
+  valorParcela?: string | null;
 }
 
 class ErroApi extends Error {

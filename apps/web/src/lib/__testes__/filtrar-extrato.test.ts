@@ -26,6 +26,7 @@ import {
   visao_para_query,
   TAMANHO_PAGINA_PADRAO,
   parcelas_irmas_no_extrato,
+  valor_parcela_da_apresentacao,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
 
@@ -295,6 +296,8 @@ describe("filtrar_extrato", () => {
     expect(agosto).toHaveLength(1);
     expect(agosto[0]?.apresentacao).toBe(true);
     expect(agosto[0]?.valor).toBe("1037.68");
+    expect(agosto[0]?.valorParcela).toBe("259.42");
+    expect(valor_parcela_da_apresentacao(agosto[0]!)).toBe(259.42);
     expect(agosto[0]?.dataMovimento).toBe("2026-08-26");
     expect(agosto[0]?.id).toBe("apresentacao:p1");
     expect(resumir_extrato(agosto).saidas).toBe(0);
@@ -318,6 +321,20 @@ describe("filtrar_extrato", () => {
     expect(faturas.map((m) => m.id)).toEqual(["p1"]);
     expect(faturas.some((m) => m.apresentacao)).toBe(false);
     expect(resumir_extrato(faturas).saidas).toBeCloseTo(259.42, 2);
+  });
+
+  it("estima valor da parcela pela divisão quando a âncora não veio", () => {
+    expect(
+      valor_parcela_da_apresentacao(
+        movimento({
+          id: "apresentacao:x",
+          apresentacao: true,
+          valor: "1037.68",
+          parcelaTotal: 4,
+        }),
+      ),
+    ).toBe(259.42);
+    expect(valor_parcela_da_apresentacao(movimento({ id: "p1", valor: "259.42" }))).toBeNull();
   });
 
   it("vale para qualquer cartão: cada série com data da compra ganha a linha no dia", () => {
