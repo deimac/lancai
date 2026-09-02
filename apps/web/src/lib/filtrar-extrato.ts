@@ -194,7 +194,10 @@ function valor_compra_da_serie(irmas: MovimentoResumo[]): number {
   return arredondar(soma);
 }
 
-/** Compra cheia no dia da autorização — não é Fato, não soma. */
+/** Compra cheia no dia da autorização — não é Fato, não soma.
+ * Vale para qualquer cartão. Cada série com `parcelaCompraEm` (Pluggy: `purchaseDate`)
+ * vira uma linha; parcela nova do Open Finance entra no próximo carregamento do Extrato.
+ */
 export function linhas_apresentacao_parcelamento(
   movimentos: MovimentoResumo[],
 ): MovimentoResumo[] {

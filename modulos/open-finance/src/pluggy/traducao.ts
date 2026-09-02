@@ -472,6 +472,11 @@ function traduzir_parcelamento(
     numero,
     total,
     valorTotal: metadados?.totalAmount ?? undefined,
+    /**
+     * Data da autorização. O Extrato usa isto para a linha de apresentação
+     * (valor cheio no dia da compra, sem somar). Sem `purchaseDate` a linha
+     * não aparece — não chutamos o dia da fatura.
+     */
     compraEm: metadados?.purchaseDate ? dia_provedor_iso(metadados.purchaseDate) : undefined,
   };
 }

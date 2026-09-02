@@ -317,6 +317,45 @@ describe("filtrar_extrato", () => {
     expect(resumir_extrato(faturas).saidas).toBeCloseTo(259.42, 2);
   });
 
+  it("vale para qualquer cartão: cada série com data da compra ganha a linha no dia", () => {
+    const azul = movimento({
+      id: "azul-1",
+      descricao: "GOL LINHAS",
+      cartaoId: "cartao-azul",
+      contaId: null,
+      valor: "158.00",
+      parcelaNumero: 1,
+      parcelaTotal: 3,
+      parcelaCompraEm: "2026-08-10",
+      parcelaCompraValor: "474.00",
+      dataMovimento: "2026-09-06",
+    });
+    const nu = movimento({
+      id: "nu-1",
+      descricao: "IFOOD",
+      cartaoId: "cartao-nu",
+      contaId: null,
+      valor: "79.18",
+      parcelaNumero: 2,
+      parcelaTotal: 4,
+      parcelaCompraEm: "2026-08-18",
+      parcelaCompraValor: "316.72",
+      dataMovimento: "2026-09-10",
+    });
+    const nomes = [
+      ...cartoes,
+      { id: "cartao-nu", nome: "Nu Mastercard" },
+    ];
+    const agosto = filtrar_extrato([azul, nu], contas, nomes, {
+      ...base,
+      visao: "movimentacoes",
+    });
+    const linhas = agosto.filter((m) => m.apresentacao);
+    expect(linhas.map((m) => m.cartaoId).sort()).toEqual(["cartao-azul", "cartao-nu"]);
+    expect(linhas.map((m) => m.valor).sort()).toEqual(["316.72", "474.00"]);
+    expect(resumir_extrato(agosto).saidas).toBe(0);
+  });
+
   it("sem data da compra não inventa linha de apresentação", () => {
     const serie = [
       movimento({
