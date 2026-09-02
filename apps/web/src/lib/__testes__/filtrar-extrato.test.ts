@@ -4,7 +4,9 @@ import {
   agrupar_faturas_por_cartao,
   classificacao_da_query,
   filtrar_extrato,
+  origem_aceita_modo_fatura,
   origem_da_query,
+  origem_da_visao_fatura,
   origem_para_query,
   paginar,
   tamanho_pagina_da_query,
@@ -650,6 +652,17 @@ describe("parsers da URL", () => {
     expect(visao_da_query("x")).toBe("movimentacoes");
     expect(visao_para_query("faturas")).toBe("faturas");
     expect(visao_para_query("movimentacoes")).toBeNull();
+  });
+
+  it("só cartões aceitam modo fatura", () => {
+    expect(origem_aceita_modo_fatura({ tipo: "cartoes" })).toBe(true);
+    expect(origem_aceita_modo_fatura({ tipo: "cartao", id: "c1" })).toBe(true);
+    expect(origem_aceita_modo_fatura({ tipo: "todas" })).toBe(false);
+    expect(origem_aceita_modo_fatura({ tipo: "contas" })).toBe(false);
+    expect(origem_aceita_modo_fatura({ tipo: "conta", id: "a1" })).toBe(false);
+    expect(origem_da_visao_fatura({ tipo: "cartao", id: "c1" })).toEqual({ tipo: "cartao", id: "c1" });
+    expect(origem_da_visao_fatura({ tipo: "todas" })).toEqual({ tipo: "cartoes" });
+    expect(origem_da_visao_fatura({ tipo: "contas" })).toEqual({ tipo: "cartoes" });
   });
 
   it("lê papel gastos/pagamentos de fatura", () => {

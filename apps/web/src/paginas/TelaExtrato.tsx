@@ -66,7 +66,9 @@ import {
   filtrar_extrato,
   id_movimento_api,
   nome_origem_movimento,
+  origem_aceita_modo_fatura,
   origem_da_query,
+  origem_da_visao_fatura,
   origem_para_query,
   ordenar_categorias_por_uso,
   categorias_com_lancamentos,
@@ -345,6 +347,11 @@ export function TelaExtrato() {
     setFaturasDispensadas(ler_faturas_dispensadas(usuario.id));
   }, [usuario?.id]);
 
+  useEffect(() => {
+    if (visao !== "faturas" || origem_aceita_modo_fatura(origem)) return;
+    sincronizar_params({ origem: origem_da_visao_fatura(origem) });
+  }, [visao, origem.tipo, "id" in origem ? origem.id : ""]);
+
   function sincronizar_params(entrada: {
     filtro?: FilaExtrato;
     mes?: string;
@@ -397,12 +404,16 @@ export function TelaExtrato() {
     sincronizar_params({ mes: proximo });
   }
 
-  function escolher_visao(proxima: VisaoExtrato) {
-    const origemAjustada =
-      proxima === "faturas" && (origem.tipo === "contas" || origem.tipo === "conta")
-        ? ({ tipo: "todas" } as const)
-        : origem;
-    sincronizar_params({ visao: proxima, origem: origemAjustada });
+  function escolher_origem(proxima: OrigemExtrato) {
+    sincronizar_params({
+      origem: proxima,
+      visao: origem_aceita_modo_fatura(proxima) ? visao : "movimentacoes",
+    });
+  }
+
+  function alternar_modo_fatura() {
+    if (!origem_aceita_modo_fatura(origem)) return;
+    sincronizar_params({ visao: visao === "faturas" ? "movimentacoes" : "faturas" });
   }
 
   async function alternar_parcelas(movimento: MovimentoResumo) {
@@ -787,31 +798,7 @@ export function TelaExtrato() {
                 : rotulo_legenda_periodos(mes)}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex shrink-0 rounded-lg border border-borda p-0.5 text-xs">
-            {(
-              [
-                { valor: "movimentacoes" as const, rotulo: "Movimentações" },
-                { valor: "faturas" as const, rotulo: "Faturas" },
-              ] as const
-            ).map((opcao) => (
-              <button
-                key={opcao.valor}
-                type="button"
-                onClick={() => escolher_visao(opcao.valor)}
-                className={unir_classes(
-                  "rounded-md px-2.5 py-1 font-medium transition",
-                  visao === opcao.valor
-                    ? "bg-primaria/15 text-primaria"
-                    : "text-texto-suave hover:text-texto",
-                )}
-              >
-                {opcao.rotulo}
-              </button>
-            ))}
-          </div>
-          <SeletorMes mes={mes} onChange={escolher_mes} />
-        </div>
+        <SeletorMes mes={mes} onChange={escolher_mes} />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -851,8 +838,23 @@ export function TelaExtrato() {
                   grupo: "Cartões",
                 })),
               ]}
-              onChange={(v) => sincronizar_params({ origem: origem_da_query(v || null) })}
+              onChange={(v) => escolher_origem(origem_da_query(v || null))}
             />
+            {origem_aceita_modo_fatura(origem) ? (
+              <button
+                type="button"
+                aria-pressed={visao === "faturas"}
+                onClick={alternar_modo_fatura}
+                className={unir_classes(
+                  "shrink-0 rounded-lg border px-2.5 py-2 text-xs font-medium transition",
+                  visao === "faturas"
+                    ? "border-primaria/40 bg-primaria/15 text-primaria"
+                    : "border-borda text-texto-suave hover:border-primaria/50 hover:text-texto",
+                )}
+              >
+                Modo fatura
+              </button>
+            ) : null}
             <SeletorTipoGasto
               valor={tipoGasto}
               onChange={(proximo) => sincronizar_params({ tipoGasto: proximo })}

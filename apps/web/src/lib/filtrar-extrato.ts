@@ -104,6 +104,14 @@ export function origem_para_query(origem: OrigemExtrato): string | null {
   return `${origem.tipo}:${origem.id}`;
 }
 
+export function origem_aceita_modo_fatura(origem: OrigemExtrato): boolean {
+  return origem.tipo === "cartoes" || origem.tipo === "cartao";
+}
+
+export function origem_da_visao_fatura(origem: OrigemExtrato): OrigemExtrato {
+  return origem_aceita_modo_fatura(origem) ? origem : { tipo: "cartoes" };
+}
+
 export function tipo_gasto_da_query(valor: string | null): TipoGastoExtrato {
   if (valor === "pessoal" || valor === "empresa") return valor;
   return "todas";
