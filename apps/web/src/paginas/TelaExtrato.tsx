@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ComponentType, type KeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   CalendarClock,
+  ChevronRight,
   CreditCard,
   ListFilter,
   MoreHorizontal,
@@ -1085,9 +1086,16 @@ export function TelaExtrato() {
                 const mostraParcelas =
                   Boolean(movimento.parcelaTotal && movimento.parcelaTotal >= 2) &&
                   (Boolean(movimento.apresentacao) || Boolean(movimento.parcelaNumero));
+                const parcelasAbertas = parcelasExpandidasId === movimento.id;
+                const aoTeclarLinha = (evento: KeyboardEvent<HTMLTableRowElement>) => {
+                  if (!mostraParcelas) return;
+                  if (evento.key !== "Enter" && evento.key !== " ") return;
+                  evento.preventDefault();
+                  void alternar_parcelas(movimento);
+                };
                 return (
+                  <Fragment key={movimento.id}>
                   <tr
-                    key={movimento.id}
                     className={unir_classes(
                       "border-b border-borda/70 last:border-0",
                       movimento.apresentacao
@@ -1096,7 +1104,13 @@ export function TelaExtrato() {
                           ? "bg-aviso/5"
                           : "hover:bg-fundo/40",
                       movimento.status === "cancelado" && "opacity-60",
+                      mostraParcelas && "cursor-pointer hover:bg-fundo/60",
                     )}
+                    role={mostraParcelas ? "button" : undefined}
+                    tabIndex={mostraParcelas ? 0 : undefined}
+                    aria-expanded={mostraParcelas ? parcelasAbertas : undefined}
+                    onClick={mostraParcelas ? () => void alternar_parcelas(movimento) : undefined}
+                    onKeyDown={mostraParcelas ? aoTeclarLinha : undefined}
                   >
                     <td className="px-3 py-2.5">
                       <span
@@ -1119,63 +1133,52 @@ export function TelaExtrato() {
                           : ""}
                       </p>
                       {movimento.possivelRepetido && !movimento.ignoradoEmRelatorio && !movimento.apresentacao ? (
-                        <BannerRepetido
-                          salvando={salvandoId === movimento.id}
-                          onManter={() => void decidir_repetido(movimento, true)}
-                          onNaoManter={() => void decidir_repetido(movimento, false)}
-                        />
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <BannerRepetido
+                            salvando={salvandoId === movimento.id}
+                            onManter={() => void decidir_repetido(movimento, true)}
+                            onNaoManter={() => void decidir_repetido(movimento, false)}
+                          />
+                        </div>
                       ) : null}
                       {mostra_check_pagamento_fatura(movimento) && !movimento.apresentacao && (
-                        <BannerFatura
-                          movimento={movimento}
-                          cartoes={cartoesTodos}
-                          movimentos={movimentos}
-                          salvando={salvandoId === movimento.id}
-                          dispensou={faturasDispensadas.has(movimento.id)}
-                          ofertaRegra={
-                            ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
-                          }
-                          onPedirConfirmacao={() => abrir_modal_fatura(movimento)}
-                          onDispensar={() => {
-                            if (!usuario) return;
-                            setFaturasDispensadas((atuais) =>
-                              dispensar_convite_fatura(usuario.id, movimento.id, atuais),
-                            );
-                          }}
-                          onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
-                          onDispensarRegra={() => setOfertaRegra(null)}
-                        />
-                      )}
-                      {parcelasExpandidasId === movimento.id && (
-                        <div className="mt-2 rounded-lg border border-borda bg-fundo/40 px-2 py-1.5">
-                          {carregandoParcelasId === movimento.id ? (
-                            <p className="text-[11px] text-texto-suave">Carregando parcelas…</p>
-                          ) : (parcelasPorMovimento[movimento.id]?.parcelas.length ?? 0) === 0 ? (
-                            <p className="text-[11px] text-texto-suave">Não encontrei as outras parcelas.</p>
-                          ) : (
-                            <ul className="flex flex-col gap-0.5">
-                              {parcelasPorMovimento[movimento.id]!.parcelas.map((parcela) => (
-                                <li
-                                  key={parcela.id}
-                                  className={unir_classes(
-                                    "flex justify-between gap-2 text-[11px]",
-                                    parcela.id === id_movimento_api(movimento.id) ? "font-medium text-texto" : "text-texto-suave",
-                                  )}
-                                >
-                                  <span>
-                                    {parcela.parcelaNumero}/{parcela.parcelaTotal} ·{" "}
-                                    {formatar_mes_competencia(parcela.dataMovimento)}
-                                  </span>
-                                  <span className="tabular-nums">{formatar_moeda_br(parcela.valor)}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <BannerFatura
+                            movimento={movimento}
+                            cartoes={cartoesTodos}
+                            movimentos={movimentos}
+                            salvando={salvandoId === movimento.id}
+                            dispensou={faturasDispensadas.has(movimento.id)}
+                            ofertaRegra={
+                              ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
+                            }
+                            onPedirConfirmacao={() => abrir_modal_fatura(movimento)}
+                            onDispensar={() => {
+                              if (!usuario) return;
+                              setFaturasDispensadas((atuais) =>
+                                dispensar_convite_fatura(usuario.id, movimento.id, atuais),
+                              );
+                            }}
+                            onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
+                            onDispensarRegra={() => setOfertaRegra(null)}
+                          />
                         </div>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-texto-suave">
-                      {rotulo_natureza(movimento)}
+                      <span className="inline-flex items-center gap-1">
+                        {mostraParcelas ? (
+                          <ChevronRight
+                            size={14}
+                            className={unir_classes(
+                              "shrink-0 transition-transform",
+                              parcelasAbertas && "rotate-90",
+                            )}
+                            aria-hidden
+                          />
+                        ) : null}
+                        {rotulo_natureza(movimento)}
+                      </span>
                     </td>
                     <td className="max-w-[9rem] truncate px-3 py-2.5 text-texto-suave">
                       {nome_origem_movimento(movimento, contas, cartoes)}
@@ -1212,118 +1215,133 @@ export function TelaExtrato() {
                         </p>
                       )}
                     </td>
-                    <td className="relative px-2 py-2.5">
-                      <button
-                        type="button"
-                        className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
-                        aria-label="Ações"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuId(menuId === movimento.id ? null : movimento.id);
-                        }}
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-                      {menuId === movimento.id && (
-                        <MenuAcoes
-                          aoEscolher={() => setMenuId(null)}
-                          acoes={
-                            movimento.apresentacao
-                              ? [
-                                  {
-                                    rotulo:
-                                      parcelasExpandidasId === movimento.id
-                                        ? "Ocultar parcelas"
-                                        : "Ver parcelas",
-                                    icone: Repeat,
-                                    onClick: () => void alternar_parcelas(movimento),
-                                  },
-                                ]
-                              : [
-                            {
-                              rotulo: "Categoria",
-                              icone: Tags,
-                              submenu: categoriasParaClassificar.map((categoria) => ({
-                                rotulo: categoria.nome,
-                                iconeCategoria: categoria.icone ?? null,
-                                cor: categoria.cor ?? null,
-                                ativo: categoria.id === movimento.categoriaId,
-                                onClick: () => void classificar(movimento.id, categoria.id),
-                              })),
-                            },
-                            ...(origemPerfil && ehGasto
-                              ? [
-                                  {
-                                    rotulo:
-                                      origemPerfil === "pj"
-                                        ? movimento.tipoGasto === "pf"
-                                          ? "Marcar como empresa"
-                                          : "Marcar como pessoal"
-                                        : movimento.tipoGasto === "pj"
-                                          ? "Marcar como pessoal"
-                                          : "Marcar como empresa",
-                                    icone: UserRound,
-                                    onClick: () => {
-                                      const cruzado =
-                                        origemPerfil === "pj"
-                                          ? movimento.tipoGasto === "pf"
-                                          : movimento.tipoGasto === "pj";
-                                      const proximo: Perfil = cruzado
-                                        ? origemPerfil
-                                        : origemPerfil === "pj"
-                                          ? "pf"
-                                          : "pj";
-                                      void alterar_tipo_gasto(movimento.id, proximo);
-                                    },
-                                  },
-                                ]
-                              : []),
-                            ...(mostra_acao_pagamento_fatura(movimento)
-                              ? [
-                                  {
-                                    rotulo:
-                                      movimento.papel === "pagamento_fatura"
-                                        ? "Desmarcar pagamento de fatura"
-                                        : "Marcar pagamento de fatura",
-                                    icone: Repeat,
-                                    onClick: () => {
-                                      if (movimento.papel === "pagamento_fatura") {
-                                        void marcar_pagamento_fatura(movimento, false);
-                                        return;
-                                      }
-                                      abrir_modal_fatura(movimento);
-                                    },
-                                  },
-                                ]
-                              : []),
-                            ...(mostraParcelas
-                              ? [
-                                  {
-                                    rotulo:
-                                      parcelasExpandidasId === movimento.id
-                                        ? "Ocultar parcelas"
-                                        : "Ver parcelas",
-                                    icone: Repeat,
-                                    onClick: () => void alternar_parcelas(movimento),
-                                  },
-                                ]
-                              : []),
-                            ...(pode_excluir_movimento(movimento.fonte)
-                              ? [
-                                  {
-                                    rotulo: "Excluir",
-                                    icone: Trash2,
-                                    perigo: true,
-                                    onClick: () => void excluir_movimento(movimento),
-                                  },
-                                ]
-                              : []),
-                          ]
-                          }
-                        />
+                    <td className="relative px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      {movimento.apresentacao ? null : (
+                        <>
+                          <button
+                            type="button"
+                            className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
+                            aria-label="Ações"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuId(menuId === movimento.id ? null : movimento.id);
+                            }}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+                          {menuId === movimento.id && (
+                            <MenuAcoes
+                              aoEscolher={() => setMenuId(null)}
+                              acoes={[
+                                {
+                                  rotulo: "Categoria",
+                                  icone: Tags,
+                                  submenu: categoriasParaClassificar.map((categoria) => ({
+                                    rotulo: categoria.nome,
+                                    iconeCategoria: categoria.icone ?? null,
+                                    cor: categoria.cor ?? null,
+                                    ativo: categoria.id === movimento.categoriaId,
+                                    onClick: () => void classificar(movimento.id, categoria.id),
+                                  })),
+                                },
+                                ...(origemPerfil && ehGasto
+                                  ? [
+                                      {
+                                        rotulo:
+                                          origemPerfil === "pj"
+                                            ? movimento.tipoGasto === "pf"
+                                              ? "Marcar como empresa"
+                                              : "Marcar como pessoal"
+                                            : movimento.tipoGasto === "pj"
+                                              ? "Marcar como pessoal"
+                                              : "Marcar como empresa",
+                                        icone: UserRound,
+                                        onClick: () => {
+                                          const cruzado =
+                                            origemPerfil === "pj"
+                                              ? movimento.tipoGasto === "pf"
+                                              : movimento.tipoGasto === "pj";
+                                          const proximo: Perfil = cruzado
+                                            ? origemPerfil
+                                            : origemPerfil === "pj"
+                                              ? "pf"
+                                              : "pj";
+                                          void alterar_tipo_gasto(movimento.id, proximo);
+                                        },
+                                      },
+                                    ]
+                                  : []),
+                                ...(mostra_acao_pagamento_fatura(movimento)
+                                  ? [
+                                      {
+                                        rotulo:
+                                          movimento.papel === "pagamento_fatura"
+                                            ? "Desmarcar pagamento de fatura"
+                                            : "Marcar pagamento de fatura",
+                                        icone: Repeat,
+                                        onClick: () => {
+                                          if (movimento.papel === "pagamento_fatura") {
+                                            void marcar_pagamento_fatura(movimento, false);
+                                            return;
+                                          }
+                                          abrir_modal_fatura(movimento);
+                                        },
+                                      },
+                                    ]
+                                  : []),
+                                ...(pode_excluir_movimento(movimento.fonte)
+                                  ? [
+                                      {
+                                        rotulo: "Excluir",
+                                        icone: Trash2,
+                                        perigo: true,
+                                        onClick: () => void excluir_movimento(movimento),
+                                      },
+                                    ]
+                                  : []),
+                              ]}
+                            />
+                          )}
+                        </>
                       )}
                     </td>
                   </tr>
+                  {parcelasAbertas ? (
+                    <tr className="border-b border-borda/70 bg-fundo/25">
+                      <td colSpan={8} className="px-3 py-2.5">
+                        <div className="rounded-lg border border-borda bg-superficie/60 px-3 py-2">
+                          {carregandoParcelasId === movimento.id ? (
+                            <p className="text-[11px] text-texto-suave">Carregando parcelas…</p>
+                          ) : (parcelasPorMovimento[movimento.id]?.parcelas.length ?? 0) === 0 ? (
+                            <p className="text-[11px] text-texto-suave">Não encontrei as outras parcelas.</p>
+                          ) : (
+                            <ul className="flex flex-col gap-1">
+                              {parcelasPorMovimento[movimento.id]!.parcelas.map((parcela) => {
+                                const atual = parcela.id === id_movimento_api(movimento.id);
+                                return (
+                                  <li
+                                    key={parcela.id}
+                                    className={unir_classes(
+                                      "flex justify-between gap-3 text-[12px]",
+                                      atual ? "font-medium text-texto" : "text-texto-suave",
+                                    )}
+                                  >
+                                    <span>
+                                      {parcela.parcelaNumero}/{parcela.parcelaTotal} ·{" "}
+                                      {formatar_mes_competencia(parcela.dataMovimento)}
+                                    </span>
+                                    <span className="tabular-nums">{formatar_moeda_br(parcela.valor)}</span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>
