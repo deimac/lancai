@@ -90,6 +90,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         valor: movimento.valor,
         status: movimento.status,
         dataMovimento: movimento.dataMovimento,
+        cartaoId: movimento.cartaoId,
         parcelaNumero: movimento.parcelaNumero,
         parcelaTotal: movimento.parcelaTotal,
         parcelaCompraEm: movimento.parcelaCompraEm,

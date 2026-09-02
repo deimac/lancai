@@ -72,6 +72,7 @@ import {
   paginar,
   papel_da_query,
   papel_para_query,
+  parcelas_irmas_no_extrato,
   quantidade_filtros_drawer,
   resumir_extrato,
   tamanho_pagina_da_query,
@@ -403,21 +404,29 @@ export function TelaExtrato() {
     sincronizar_params({ visao: proxima, origem: origemAjustada });
   }
 
-  async function alternar_parcelas(movimentoId: string) {
+  async function alternar_parcelas(movimento: MovimentoResumo) {
     if (!usuario) return;
-    if (parcelasExpandidasId === movimentoId) {
+    if (parcelasExpandidasId === movimento.id) {
       setParcelasExpandidasId(null);
       return;
     }
-    setParcelasExpandidasId(movimentoId);
-    if (parcelasPorMovimento[movimentoId]) return;
-    setCarregandoParcelasId(movimentoId);
+    setParcelasExpandidasId(movimento.id);
+    if (parcelasPorMovimento[movimento.id]) return;
+    const locais = parcelas_irmas_no_extrato(movimento, movimentos);
+    if (locais.length > 0) {
+      setParcelasPorMovimento((atual) => ({
+        ...atual,
+        [movimento.id]: { ancoraId: id_movimento_api(movimento.id), totalCompra: null, parcelas: locais },
+      }));
+      return;
+    }
+    setCarregandoParcelasId(movimento.id);
     try {
       const resposta = await clienteApi.listar_parcelas_irmas(
-        id_movimento_api(movimentoId),
+        id_movimento_api(movimento.id),
         usuario.id,
       );
-      setParcelasPorMovimento((atual) => ({ ...atual, [movimentoId]: resposta }));
+      setParcelasPorMovimento((atual) => ({ ...atual, [movimento.id]: resposta }));
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível carregar as parcelas.");
       setParcelasExpandidasId(null);
@@ -1227,7 +1236,7 @@ export function TelaExtrato() {
                                         ? "Ocultar parcelas"
                                         : "Ver parcelas",
                                     icone: Repeat,
-                                    onClick: () => void alternar_parcelas(movimento.id),
+                                    onClick: () => void alternar_parcelas(movimento),
                                   },
                                 ]
                               : [
@@ -1295,7 +1304,7 @@ export function TelaExtrato() {
                                         ? "Ocultar parcelas"
                                         : "Ver parcelas",
                                     icone: Repeat,
-                                    onClick: () => void alternar_parcelas(movimento.id),
+                                    onClick: () => void alternar_parcelas(movimento),
                                   },
                                 ]
                               : []),

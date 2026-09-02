@@ -23,6 +23,7 @@ import {
   visao_da_query,
   visao_para_query,
   TAMANHO_PAGINA_PADRAO,
+  parcelas_irmas_no_extrato,
   type FiltrosExtrato,
 } from "../filtrar-extrato";
 
@@ -406,6 +407,29 @@ describe("filtrar_extrato", () => {
       visao: "movimentacoes",
     }).map((m) => m.id);
     expect(ids).toEqual(["apresentacao:p1"]);
+  });
+
+  it("expande as irmãs a partir da linha de apresentação, sem ir na API", () => {
+    const serie = [1, 2, 3, 4].map((numero) =>
+      movimento({
+        id: `p${numero}`,
+        descricao: "E AGENCIAS*183846",
+        cartaoId: "cartao-mp",
+        contaId: null,
+        valor: "259.42",
+        parcelaNumero: numero,
+        parcelaTotal: 4,
+        parcelaCompraEm: "2026-08-26",
+        dataMovimento: `2026-${String(8 + numero).padStart(2, "0")}-01`,
+      }),
+    );
+    const [apresentacao] = filtrar_extrato(serie, contas, cartoes, {
+      ...base,
+      visao: "movimentacoes",
+    });
+    expect(apresentacao?.apresentacao).toBe(true);
+    const irmas = parcelas_irmas_no_extrato(apresentacao!, serie);
+    expect(irmas.map((p) => p.parcelaNumero)).toEqual([1, 2, 3, 4]);
   });
 
   it("visão Faturas recorta pelo ciclo; Movimentações pelo calendário", () => {

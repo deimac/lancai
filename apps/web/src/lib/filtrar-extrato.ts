@@ -7,6 +7,7 @@ import {
   data_iso_parcela,
   hojeISO,
   intervalo_ciclo_fatura,
+  irmas_da_serie,
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
   mes_gasto_do_cartao,
@@ -344,6 +345,35 @@ export function filtrar_extrato(
     movimento_passa_filtros(linha, contas, cartoes, filtros, contexto),
   );
   return mesclar_apresentacao(semChoque, apresentacao);
+}
+
+export type ParcelaIrmaExtrato = {
+  id: string;
+  descricao: string;
+  valor: string;
+  status: MovimentoResumo["status"];
+  dataMovimento: string;
+  parcelaNumero: number | null;
+  parcelaTotal: number | null;
+};
+
+/** Irmãs da série a partir da lista já carregada no Extrato (sem round-trip). */
+export function parcelas_irmas_no_extrato(
+  ancora: MovimentoResumo,
+  movimentos: MovimentoResumo[],
+): ParcelaIrmaExtrato[] {
+  return irmas_da_serie(
+    ancora,
+    movimentos.filter((item) => !item.apresentacao),
+  ).map((irma) => ({
+    id: irma.id,
+    descricao: irma.descricao,
+    valor: irma.valor,
+    status: irma.status,
+    dataMovimento: irma.dataMovimento,
+    parcelaNumero: irma.parcelaNumero,
+    parcelaTotal: irma.parcelaTotal,
+  }));
 }
 
 function eh_entrada_extrato(tipo: string): boolean {
