@@ -11,6 +11,7 @@ export function eh_categoria_pagamento_fatura(nome: string): boolean {
 
 /** Só entra na fila quem ainda está sem categoria — IA baixa não conta se já tem classificação. */
 export function precisa_revisao(movimento: MovimentoResumo): boolean {
+  if (movimento.apresentacao) return false;
   if (movimento.status === "cancelado") return false;
   if (movimento.papel === "pagamento_fatura") return false;
   return eh_nao_classificado(movimento.categoriaNome);

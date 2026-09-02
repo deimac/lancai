@@ -1,13 +1,14 @@
 import type { MovimentoResumo } from "./api";
 
-export type NaturezaExtrato = "fatura" | "parcela" | "recorrente" | "avista";
+export type NaturezaExtrato = "fatura" | "parcela" | "recorrente" | "avista" | "compra_parcelada";
 
 export function natureza_do_movimento(
   movimento: Pick<
     MovimentoResumo,
-    "papel" | "parcelaNumero" | "parcelaTotal" | "fonte"
+    "papel" | "parcelaNumero" | "parcelaTotal" | "fonte" | "apresentacao"
   >,
 ): NaturezaExtrato {
+  if (movimento.apresentacao) return "compra_parcelada";
   if (movimento.papel === "pagamento_fatura") return "fatura";
   if (
     movimento.parcelaNumero != null &&
@@ -23,11 +24,15 @@ export function natureza_do_movimento(
 export function rotulo_natureza(
   movimento: Pick<
     MovimentoResumo,
-    "papel" | "parcelaNumero" | "parcelaTotal" | "fonte"
+    "papel" | "parcelaNumero" | "parcelaTotal" | "fonte" | "apresentacao"
   >,
 ): string {
   const natureza = natureza_do_movimento(movimento);
   if (natureza === "fatura") return "Fatura";
+  if (natureza === "compra_parcelada") {
+    const vezes = movimento.parcelaTotal;
+    return vezes && vezes >= 2 ? `Parcelado em ${vezes}x` : "Parcelado";
+  }
   if (natureza === "parcela") {
     return `Parcela ${movimento.parcelaNumero}/${movimento.parcelaTotal}`;
   }

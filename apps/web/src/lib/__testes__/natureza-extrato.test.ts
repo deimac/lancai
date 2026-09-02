@@ -57,6 +57,16 @@ describe("natureza_do_movimento", () => {
     expect(natureza_do_movimento(base({ fonte: "recorrencia" }))).toBe("recorrente");
   });
 
+  it("mostra compra parcelada em Nx", () => {
+    const m = base({
+      apresentacao: true,
+      parcelaNumero: null,
+      parcelaTotal: 4,
+    });
+    expect(natureza_do_movimento(m)).toBe("compra_parcelada");
+    expect(rotulo_natureza(m)).toBe("Parcelado em 4x");
+  });
+
   it("não deixa excluir Open Finance", () => {
     expect(pode_excluir_movimento("open_finance")).toBe(false);
     expect(pode_excluir_movimento("manual")).toBe(true);

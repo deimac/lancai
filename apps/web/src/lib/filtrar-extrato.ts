@@ -2,6 +2,9 @@ import type { MovimentoResumo } from "./api";
 import { eh_nao_classificado, precisa_revisao } from "./fila-revisao";
 import {
   aplicar_total_oficial,
+  agrupar_series_parcelamento,
+  arredondar,
+  data_iso_parcela,
   hojeISO,
   intervalo_ciclo_fatura,
   mapa_fechamento_cartoes,
@@ -170,6 +173,152 @@ export function normalizar_busca(texto: string): string {
     .trim();
 }
 
+export const PREFIXO_APRESENTACAO_PARCELA = "apresentacao:";
+
+export function id_movimento_api(id: string): string {
+  return id.startsWith(PREFIXO_APRESENTACAO_PARCELA)
+    ? id.slice(PREFIXO_APRESENTACAO_PARCELA.length)
+    : id;
+}
+
+function valor_compra_da_serie(irmas: MovimentoResumo[]): number {
+  for (const irma of irmas) {
+    const informado = Number(irma.parcelaCompraValor);
+    if (Number.isFinite(informado) && informado > 0) return arredondar(informado);
+  }
+  let soma = 0;
+  for (const irma of irmas) {
+    const n = Number(irma.valor);
+    if (Number.isFinite(n)) soma += n;
+  }
+  return arredondar(soma);
+}
+
+/** Compra cheia no dia da autorização — não é Fato, não soma. */
+export function linhas_apresentacao_parcelamento(
+  movimentos: MovimentoResumo[],
+): MovimentoResumo[] {
+  const linhas: MovimentoResumo[] = [];
+  for (const irmas of agrupar_series_parcelamento(movimentos)) {
+    const ancora = irmas[0];
+    if (!ancora) continue;
+    const compra = data_iso_parcela(ancora.parcelaCompraEm);
+    if (!compra) continue;
+    linhas.push({
+      ...ancora,
+      id: `${PREFIXO_APRESENTACAO_PARCELA}${ancora.id}`,
+      valor: valor_compra_da_serie(irmas).toFixed(2),
+      dataMovimento: compra,
+      ocorridoEmInstante: null,
+      parcelaNumero: null,
+      apresentacao: true,
+    });
+  }
+  return linhas;
+}
+
+function parcela_no_dia_da_compra(movimento: MovimentoResumo): boolean {
+  if (movimento.apresentacao) return false;
+  if (movimento.parcelaTotal == null || movimento.parcelaTotal < 2) return false;
+  const compra = data_iso_parcela(movimento.parcelaCompraEm);
+  if (!compra) return false;
+  return data_iso_parcela(movimento.dataMovimento) === compra;
+}
+
+function mesclar_apresentacao(
+  reais: MovimentoResumo[],
+  apresentacao: MovimentoResumo[],
+): MovimentoResumo[] {
+  if (apresentacao.length === 0) return reais;
+  return [...reais, ...apresentacao].sort((a, b) => {
+    const porData = b.dataMovimento.localeCompare(a.dataMovimento);
+    if (porData !== 0) return porData;
+    if (Boolean(a.apresentacao) !== Boolean(b.apresentacao)) {
+      return a.apresentacao ? 1 : -1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function movimento_passa_filtros(
+  movimento: MovimentoResumo,
+  contas: OrigemNomeada[],
+  cartoes: OrigemNomeada[],
+  filtros: FiltrosExtrato,
+  contexto: {
+    termo: string;
+    fechamentoPorCartao: ReadonlyMap<string, number>;
+    vencimentoPorCartao: ReadonlyMap<string, number>;
+    hoje: string;
+    pagamentos: ReturnType<typeof pagamentos_ciclo_de>;
+  },
+): boolean {
+  if (movimento.status === "cancelado") return false;
+  if (movimento.ignoradoEmRelatorio) {
+    if (filtros.visao === "faturas" || movimento.possivelRepetido) return false;
+  }
+  if (filtros.visao === "faturas") {
+    const fechamento = movimento.cartaoId
+      ? contexto.fechamentoPorCartao.get(movimento.cartaoId)
+      : undefined;
+    const vencimento = movimento.cartaoId
+      ? contexto.vencimentoPorCartao.get(movimento.cartaoId)
+      : undefined;
+    if (
+      !na_fatura_do_recorte(movimento, {
+        mes: filtros.mes,
+        hoje: contexto.hoje,
+        fechamento,
+        vencimento,
+        pagamentos: contexto.pagamentos,
+      })
+    ) {
+      return false;
+    }
+  } else if (!movimento.dataMovimento.startsWith(`${filtros.mes}-`)) {
+    return false;
+  }
+  if (filtros.fila === "banco" && movimento.fonte !== "open_finance") return false;
+  if (filtros.fila === "manual" && movimento.fonte === "open_finance") return false;
+  if (filtros.fila === "revisar" && !precisa_revisao(movimento)) return false;
+
+  if (filtros.origem.tipo === "contas" && !movimento.contaId) return false;
+  if (filtros.origem.tipo === "cartoes" && !movimento.cartaoId) return false;
+  if (filtros.origem.tipo === "conta" && movimento.contaId !== filtros.origem.id) return false;
+  if (filtros.origem.tipo === "cartao" && movimento.cartaoId !== filtros.origem.id) {
+    return false;
+  }
+
+  if (filtros.categoriaId && movimento.categoriaId !== filtros.categoriaId) return false;
+
+  if (filtros.classificacao === "sem_classificar") {
+    if (!eh_nao_classificado(movimento.categoriaNome)) return false;
+  } else if (
+    filtros.classificacao !== "todas" &&
+    movimento.classificadoPor !== filtros.classificacao
+  ) {
+    return false;
+  }
+
+  if (filtros.tipoGasto === "pessoal" && movimento.tipoGasto !== "pf") return false;
+  if (filtros.tipoGasto === "empresa" && movimento.tipoGasto !== "pj") return false;
+
+  if (filtros.papel === "gastos" && movimento.papel === "pagamento_fatura") return false;
+  if (filtros.papel === "pagamentos_fatura" && movimento.papel !== "pagamento_fatura") {
+    return false;
+  }
+
+  if (contexto.termo) {
+    const origem = nome_origem_movimento(movimento, contas, cartoes);
+    const haystack = normalizar_busca(
+      `${movimento.descricao} ${movimento.descricaoFonte} ${origem}`,
+    );
+    if (!haystack.includes(contexto.termo)) return false;
+  }
+
+  return true;
+}
+
 export function filtrar_extrato(
   movimentos: MovimentoResumo[],
   contas: OrigemNomeada[],
@@ -181,72 +330,17 @@ export function filtrar_extrato(
   const vencimentoPorCartao = mapa_vencimento_cartoes(filtros.cartoesCiclo ?? []);
   const hoje = filtros.hoje ?? hojeISO();
   const pagamentos = pagamentos_ciclo_de(movimentos);
-  return movimentos.filter((movimento) => {
-    if (movimento.status === "cancelado") return false;
-    if (movimento.ignoradoEmRelatorio) {
-      if (filtros.visao === "faturas" || movimento.possivelRepetido) return false;
-    }
-    if (filtros.visao === "faturas") {
-      const fechamento = movimento.cartaoId
-        ? fechamentoPorCartao.get(movimento.cartaoId)
-        : undefined;
-      const vencimento = movimento.cartaoId
-        ? vencimentoPorCartao.get(movimento.cartaoId)
-        : undefined;
-      if (
-        !na_fatura_do_recorte(movimento, {
-          mes: filtros.mes,
-          hoje,
-          fechamento,
-          vencimento,
-          pagamentos,
-        })
-      ) {
-        return false;
-      }
-    } else if (!movimento.dataMovimento.startsWith(`${filtros.mes}-`)) {
-      return false;
-    }
-    if (filtros.fila === "banco" && movimento.fonte !== "open_finance") return false;
-    if (filtros.fila === "manual" && movimento.fonte === "open_finance") return false;
-    if (filtros.fila === "revisar" && !precisa_revisao(movimento)) return false;
+  const contexto = { termo, fechamentoPorCartao, vencimentoPorCartao, hoje, pagamentos };
+  const filtrados = movimentos.filter((movimento) =>
+    movimento_passa_filtros(movimento, contas, cartoes, filtros, contexto),
+  );
+  if (filtros.visao === "faturas") return filtrados;
 
-    if (filtros.origem.tipo === "contas" && !movimento.contaId) return false;
-    if (filtros.origem.tipo === "cartoes" && !movimento.cartaoId) return false;
-    if (filtros.origem.tipo === "conta" && movimento.contaId !== filtros.origem.id) return false;
-    if (filtros.origem.tipo === "cartao" && movimento.cartaoId !== filtros.origem.id) {
-      return false;
-    }
-
-    if (filtros.categoriaId && movimento.categoriaId !== filtros.categoriaId) return false;
-
-    if (filtros.classificacao === "sem_classificar") {
-      if (!eh_nao_classificado(movimento.categoriaNome)) return false;
-    } else if (
-      filtros.classificacao !== "todas" &&
-      movimento.classificadoPor !== filtros.classificacao
-    ) {
-      return false;
-    }
-
-    if (filtros.tipoGasto === "pessoal" && movimento.tipoGasto !== "pf") return false;
-    if (filtros.tipoGasto === "empresa" && movimento.tipoGasto !== "pj") return false;
-
-    if (filtros.papel === "gastos" && movimento.papel === "pagamento_fatura") return false;
-    if (filtros.papel === "pagamentos_fatura" && movimento.papel !== "pagamento_fatura") {
-      return false;
-    }
-
-    if (termo) {
-      const origem = nome_origem_movimento(movimento, contas, cartoes);
-      const haystack = normalizar_busca(
-        `${movimento.descricao} ${movimento.descricaoFonte} ${origem}`,
-      );
-      if (!haystack.includes(termo)) return false;
-    }
-
-    return true;
-  });
+  const semChoque = filtrados.filter((movimento) => !parcela_no_dia_da_compra(movimento));
+  const apresentacao = linhas_apresentacao_parcelamento(movimentos).filter((linha) =>
+    movimento_passa_filtros(linha, contas, cartoes, filtros, contexto),
+  );
+  return mesclar_apresentacao(semChoque, apresentacao);
 }
 
 function eh_entrada_extrato(tipo: string): boolean {
@@ -270,6 +364,7 @@ export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
   let revisarTotal = 0;
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
+    if (movimento.apresentacao) continue;
     const valor = Number(movimento.valor);
     const seguro = Number.isFinite(valor) ? valor : 0;
     if (movimento.papel !== "pagamento_fatura") {
@@ -329,6 +424,7 @@ export function agrupar_faturas_por_cartao(
   const mapa = new Map<string, GrupoFaturaExtrato>();
   for (const movimento of movimentos) {
     if (!movimento.cartaoId) continue;
+    if (movimento.apresentacao) continue;
     const cartao = cartoes.find((item) => item.id === movimento.cartaoId);
     const grupo = mapa.get(movimento.cartaoId) ?? {
       cartaoId: movimento.cartaoId,

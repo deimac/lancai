@@ -542,6 +542,11 @@ export interface MovimentoResumo {
   cartaoFaturaId: string | null;
   competenciaFatura: string | null;
   workspaceId?: string | null;
+  /**
+   * Linha só de tela: compra parcelada no dia da autorização, valor cheio.
+   * Não é Fato — não soma em totais nem vai para a fatura.
+   */
+  apresentacao?: boolean;
 }
 
 class ErroApi extends Error {

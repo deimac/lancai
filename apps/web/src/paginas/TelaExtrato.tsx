@@ -63,6 +63,7 @@ import {
   classificacao_da_query,
   fila_da_query,
   filtrar_extrato,
+  id_movimento_api,
   nome_origem_movimento,
   origem_da_query,
   origem_para_query,
@@ -412,7 +413,10 @@ export function TelaExtrato() {
     if (parcelasPorMovimento[movimentoId]) return;
     setCarregandoParcelasId(movimentoId);
     try {
-      const resposta = await clienteApi.listar_parcelas_irmas(movimentoId, usuario.id);
+      const resposta = await clienteApi.listar_parcelas_irmas(
+        id_movimento_api(movimentoId),
+        usuario.id,
+      );
       setParcelasPorMovimento((atual) => ({ ...atual, [movimentoId]: resposta }));
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível carregar as parcelas.");
@@ -1057,7 +1061,7 @@ export function TelaExtrato() {
                   ? cartoesTodos.find((item) => item.id === movimento.cartaoId)
                   : undefined;
                 const seloFatura =
-                  visao === "movimentacoes"
+                  visao === "movimentacoes" && !movimento.apresentacao
                     ? selo_fatura_ciclo({
                         dataMovimento: movimento.dataMovimento,
                         cartaoId: movimento.cartaoId,
@@ -1069,12 +1073,19 @@ export function TelaExtrato() {
                         papel: movimento.papel,
                       })
                     : null;
+                const mostraParcelas =
+                  Boolean(movimento.parcelaTotal && movimento.parcelaTotal >= 2) &&
+                  (Boolean(movimento.apresentacao) || Boolean(movimento.parcelaNumero));
                 return (
                   <tr
                     key={movimento.id}
                     className={unir_classes(
                       "border-b border-borda/70 last:border-0",
-                      revisao ? "bg-aviso/5" : "hover:bg-fundo/40",
+                      movimento.apresentacao
+                        ? "bg-fundo/30 text-texto-suave"
+                        : revisao
+                          ? "bg-aviso/5"
+                          : "hover:bg-fundo/40",
                       movimento.status === "cancelado" && "opacity-60",
                     )}
                   >
@@ -1098,14 +1109,14 @@ export function TelaExtrato() {
                           ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
                           : ""}
                       </p>
-                      {movimento.possivelRepetido && !movimento.ignoradoEmRelatorio ? (
+                      {movimento.possivelRepetido && !movimento.ignoradoEmRelatorio && !movimento.apresentacao ? (
                         <BannerRepetido
                           salvando={salvandoId === movimento.id}
                           onManter={() => void decidir_repetido(movimento, true)}
                           onNaoManter={() => void decidir_repetido(movimento, false)}
                         />
                       ) : null}
-                      {mostra_check_pagamento_fatura(movimento) && (
+                      {mostra_check_pagamento_fatura(movimento) && !movimento.apresentacao && (
                         <BannerFatura
                           movimento={movimento}
                           cartoes={cartoesTodos}
@@ -1139,7 +1150,7 @@ export function TelaExtrato() {
                                   key={parcela.id}
                                   className={unir_classes(
                                     "flex justify-between gap-2 text-[11px]",
-                                    parcela.id === movimento.id ? "font-medium text-texto" : "text-texto-suave",
+                                    parcela.id === id_movimento_api(movimento.id) ? "font-medium text-texto" : "text-texto-suave",
                                   )}
                                 >
                                   <span>
@@ -1177,16 +1188,20 @@ export function TelaExtrato() {
                     <td
                       className={unir_classes(
                         "whitespace-nowrap px-3 py-2.5",
-                        cor_valor(movimento.tipo, movimento.status),
+                        movimento.apresentacao
+                          ? "text-texto-suave"
+                          : cor_valor(movimento.tipo, movimento.status),
                       )}
                     >
                       <p className="text-right font-medium tabular-nums">
                         {formatar_valor(movimento.tipo, movimento.valor)}
                       </p>
-                      <p className="text-right text-[11px] tabular-nums text-texto-suave">
-                        {hora_visivel_do_fato(movimento.dataMovimento, movimento.ocorridoEmInstante) ||
-                          "00:00"}
-                      </p>
+                      {movimento.apresentacao ? null : (
+                        <p className="text-right text-[11px] tabular-nums text-texto-suave">
+                          {hora_visivel_do_fato(movimento.dataMovimento, movimento.ocorridoEmInstante) ||
+                            "00:00"}
+                        </p>
+                      )}
                     </td>
                     <td className="relative px-2 py-2.5">
                       <button
@@ -1203,7 +1218,19 @@ export function TelaExtrato() {
                       {menuId === movimento.id && (
                         <MenuAcoes
                           aoEscolher={() => setMenuId(null)}
-                          acoes={[
+                          acoes={
+                            movimento.apresentacao
+                              ? [
+                                  {
+                                    rotulo:
+                                      parcelasExpandidasId === movimento.id
+                                        ? "Ocultar parcelas"
+                                        : "Ver parcelas",
+                                    icone: Repeat,
+                                    onClick: () => void alternar_parcelas(movimento.id),
+                                  },
+                                ]
+                              : [
                             {
                               rotulo: "Categoria",
                               icone: Tags,
@@ -1260,9 +1287,7 @@ export function TelaExtrato() {
                                   },
                                 ]
                               : []),
-                            ...(movimento.parcelaNumero &&
-                            movimento.parcelaTotal &&
-                            movimento.parcelaTotal >= 2
+                            ...(mostraParcelas
                               ? [
                                   {
                                     rotulo:
@@ -1284,7 +1309,8 @@ export function TelaExtrato() {
                                   },
                                 ]
                               : []),
-                          ]}
+                          ]
+                          }
                         />
                       )}
                     </td>

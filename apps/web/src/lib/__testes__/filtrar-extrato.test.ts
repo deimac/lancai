@@ -263,6 +263,112 @@ describe("filtrar_extrato", () => {
     ).toEqual(["f"]);
   });
 
+  it("calendário mostra a compra parcelada no dia, sem somar; fatura só a parcela", () => {
+    const serie = [1, 2, 3, 4].map((numero) =>
+      movimento({
+        id: `p${numero}`,
+        descricao: "E AGENCIAS*183846",
+        descricaoFonte: "E AGENCIAS*183846",
+        valor: "259.42",
+        cartaoId: "cartao-mp",
+        contaId: null,
+        dataMovimento: `2026-${String(8 + numero).padStart(2, "0")}-01`,
+        parcelaNumero: numero,
+        parcelaTotal: 4,
+        parcelaCompraEm: "2026-08-26",
+        parcelaCompraValor: "1037.68",
+        status: "previsto",
+        tipoGasto: "pj",
+      }),
+    );
+    const cartoesCiclo = [{ id: "cartao-mp", fechamento: 12, vencimento: 17 }];
+    const nomes = [...cartoes, { id: "cartao-mp", nome: "Mercado Pago Visa" }];
+
+    const agosto = filtrar_extrato(serie, contas, nomes, {
+      ...base,
+      mes: "2026-08",
+      visao: "movimentacoes",
+    });
+    expect(agosto).toHaveLength(1);
+    expect(agosto[0]?.apresentacao).toBe(true);
+    expect(agosto[0]?.valor).toBe("1037.68");
+    expect(agosto[0]?.dataMovimento).toBe("2026-08-26");
+    expect(agosto[0]?.id).toBe("apresentacao:p1");
+    expect(resumir_extrato(agosto).saidas).toBe(0);
+
+    const setembro = filtrar_extrato(serie, contas, nomes, {
+      ...base,
+      mes: "2026-09",
+      visao: "movimentacoes",
+    });
+    expect(setembro.map((m) => m.id)).toEqual(["p1"]);
+    expect(setembro[0]?.valor).toBe("259.42");
+    expect(resumir_extrato(setembro).saidas).toBeCloseTo(259.42, 2);
+
+    const faturas = filtrar_extrato(serie, contas, nomes, {
+      ...base,
+      mes: "2026-09",
+      visao: "faturas",
+      cartoesCiclo,
+      hoje: "2026-09-02",
+    });
+    expect(faturas.map((m) => m.id)).toEqual(["p1"]);
+    expect(faturas.some((m) => m.apresentacao)).toBe(false);
+    expect(resumir_extrato(faturas).saidas).toBeCloseTo(259.42, 2);
+  });
+
+  it("sem data da compra não inventa linha de apresentação", () => {
+    const serie = [
+      movimento({
+        id: "s1",
+        descricao: "HOTELDO",
+        valor: "553.69",
+        cartaoId: "cartao-mp",
+        contaId: null,
+        dataMovimento: "2026-08-01",
+        parcelaNumero: 1,
+        parcelaTotal: 2,
+      }),
+      movimento({
+        id: "s2",
+        descricao: "HOTELDO",
+        valor: "553.69",
+        cartaoId: "cartao-mp",
+        contaId: null,
+        dataMovimento: "2026-09-01",
+        parcelaNumero: 2,
+        parcelaTotal: 2,
+      }),
+    ];
+    const agosto = filtrar_extrato(serie, contas, cartoes, {
+      ...base,
+      mes: "2026-08",
+      visao: "movimentacoes",
+    });
+    expect(agosto.map((m) => m.id)).toEqual(["s1"]);
+    expect(agosto.some((m) => m.apresentacao)).toBe(false);
+  });
+
+  it("no dia da compra some a parcela para não duplicar com a linha cheia", () => {
+    const mesmaData = movimento({
+      id: "p1",
+      descricao: "E AGENCIAS*183846",
+      valor: "259.42",
+      cartaoId: "cartao-mp",
+      contaId: null,
+      dataMovimento: "2026-08-26",
+      parcelaNumero: 1,
+      parcelaTotal: 4,
+      parcelaCompraEm: "2026-08-26",
+      parcelaCompraValor: "1037.68",
+    });
+    const ids = filtrar_extrato([mesmaData], contas, cartoes, {
+      ...base,
+      visao: "movimentacoes",
+    }).map((m) => m.id);
+    expect(ids).toEqual(["apresentacao:p1"]);
+  });
+
   it("visão Faturas recorta pelo ciclo; Movimentações pelo calendário", () => {
     const compraPosFecha = movimento({
       id: "agencias",
@@ -591,6 +697,22 @@ describe("resumir_extrato", () => {
       revisarTotal: 0,
       proximaFatura: 0,
     });
+  });
+
+  it("linha de apresentação da compra parcelada não entra nas saídas", () => {
+    expect(
+      resumir_extrato([
+        movimento({
+          id: "apresentacao:p1",
+          descricao: "E AGENCIAS*183846",
+          valor: "1037.68",
+          apresentacao: true,
+          parcelaTotal: 4,
+          dataMovimento: "2026-08-26",
+        }),
+        movimento({ id: "padaria", valor: "32.50" }),
+      ]),
+    ).toMatchObject({ saidas: 32.5, entradas: 0 });
   });
 });
 
