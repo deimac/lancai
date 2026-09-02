@@ -1,4 +1,5 @@
 import {
+  competencia_vencimento_da_quitacao,
   competencia_vencimento_proximo,
   linha_aceita_pagamento_fatura,
 } from "@lancai/tipos";
@@ -31,10 +32,15 @@ export function cartao_preferencial_fatura(
 
 export function competencia_default_fatura(
   movimento: Pick<MovimentoResumo, "dataMovimento" | "competenciaFatura">,
-  cartao: Pick<CartaoResumo, "vencimento"> | undefined,
+  cartao: Pick<CartaoResumo, "vencimento" | "fechamento"> | undefined,
 ): string {
   if (movimento.competenciaFatura) return movimento.competenciaFatura;
-  return competencia_vencimento_proximo(movimento.dataMovimento, cartao?.vencimento ?? 10);
+  const vencimento = cartao?.vencimento ?? 10;
+  const fechamento = cartao?.fechamento;
+  if (fechamento != null && fechamento >= 1) {
+    return competencia_vencimento_da_quitacao(movimento.dataMovimento, fechamento, vencimento);
+  }
+  return competencia_vencimento_proximo(movimento.dataMovimento, vencimento);
 }
 
 export function opcoes_competencia(referenciaISO: string): Array<{ valor: string; rotulo: string }> {

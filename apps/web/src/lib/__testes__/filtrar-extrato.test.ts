@@ -451,18 +451,24 @@ describe("filtrar_extrato", () => {
     expect(irmas.map((p) => p.parcelaNumero)).toEqual([1, 2, 3, 4]);
   });
 
-  it("visão Faturas recorta pelo ciclo; Movimentações pelo calendário", () => {
+  it("visão Faturas recorta pelo ciclo que vence no mês; Movimentações pelo calendário", () => {
     const compraPosFecha = movimento({
       id: "agencias",
       cartaoId: "cartao-mp",
       contaId: null,
       dataMovimento: "2026-08-25",
     });
+    const compraNoCicloMp = movimento({
+      id: "mercado",
+      cartaoId: "cartao-mp",
+      contaId: null,
+      dataMovimento: "2026-08-10",
+    });
     const compraCicloFechado = movimento({
       id: "pizza",
       cartaoId: "cartao-itau",
       contaId: null,
-      dataMovimento: "2026-08-18",
+      dataMovimento: "2026-07-18",
     });
     const compraCicloAberto = movimento({
       id: "hotel",
@@ -475,10 +481,16 @@ describe("filtrar_extrato", () => {
       contaId: "conta-itau",
       dataMovimento: "2026-08-10",
     });
-    const loteCiclo = [compraPosFecha, compraCicloFechado, compraCicloAberto, pixConta];
+    const loteCiclo = [
+      compraPosFecha,
+      compraNoCicloMp,
+      compraCicloFechado,
+      compraCicloAberto,
+      pixConta,
+    ];
     const cartoesCiclo = [
-      { id: "cartao-mp", fechamento: 12 },
-      { id: "cartao-itau", fechamento: 30 },
+      { id: "cartao-mp", fechamento: 12, vencimento: 17 },
+      { id: "cartao-itau", fechamento: 30, vencimento: 6 },
     ];
 
     expect(
@@ -486,7 +498,7 @@ describe("filtrar_extrato", () => {
         ...base,
         visao: "movimentacoes",
       }).map((m) => m.id),
-    ).toEqual(["agencias", "pizza", "hotel", "pix"]);
+    ).toEqual(["agencias", "mercado", "hotel", "pix"]);
 
     expect(
       filtrar_extrato(loteCiclo, contas, cartoes, {
@@ -494,8 +506,8 @@ describe("filtrar_extrato", () => {
         visao: "faturas",
         cartoesCiclo,
         hoje: "2026-08-31",
-      }).map((m) => m.id),
-    ).toEqual(["agencias", "hotel"]);
+      }).map((m) => m.id).sort(),
+    ).toEqual(["mercado", "pizza"]);
 
     expect(
       filtrar_extrato(loteCiclo, contas, cartoes, {
@@ -503,82 +515,78 @@ describe("filtrar_extrato", () => {
         visao: "faturas",
         cartoesCiclo,
         hoje: "2026-10-15",
-      }).map((m) => m.id),
-    ).toEqual(["pizza"]);
+      }).map((m) => m.id).sort(),
+    ).toEqual(["mercado", "pizza"]);
   });
 
-  it("visão Faturas no mês atual: após o fecha o Itaú já mostra o ciclo de setembro", () => {
-    const itau = "cartao-itau";
+  it("Modo fatura: Azul em junho é o ciclo que vence 06/06; Nu continua o que fecha em junho", () => {
+    const azul = "cartao-azul";
     const nu = "cartao-nu";
-    const revolut = "cartao-revolut";
     const cartoesCiclo = [
-      { id: itau, fechamento: 30, vencimento: 6 },
+      { id: azul, fechamento: 30, vencimento: 6 },
       { id: nu, fechamento: 2, vencimento: 10 },
-      { id: revolut, fechamento: 9, vencimento: 15 },
     ];
     const lote = [
       movimento({
-        id: "nu",
+        id: "azul-maio",
+        cartaoId: azul,
+        contaId: null,
+        dataMovimento: "2026-05-20",
+        valor: "4135.00",
+      }),
+      movimento({
+        id: "azul-junho",
+        cartaoId: azul,
+        contaId: null,
+        dataMovimento: "2026-06-15",
+        valor: "5271.00",
+      }),
+      movimento({
+        id: "nu-ciclo-jun",
         cartaoId: nu,
         contaId: null,
-        dataMovimento: "2026-08-20",
-        valor: "4220.10",
-      }),
-      movimento({
-        id: "rev",
-        cartaoId: revolut,
-        contaId: null,
-        dataMovimento: "2026-08-15",
-        valor: "494.99",
-      }),
-      movimento({
-        id: "parcela-itau",
-        cartaoId: itau,
-        contaId: null,
-        dataMovimento: "2026-09-08",
-        valor: "1582.79",
-        parcelaNumero: 3,
-        status: "previsto",
-      }),
-      movimento({
-        id: "pag-itau",
-        cartaoId: itau,
-        contaId: null,
-        dataMovimento: "2026-08-30",
-        valor: "8290.62",
-        tipo: "receita",
-        papel: "pagamento_fatura",
-        competenciaFatura: "2026-09",
-        ignoradoEmRelatorio: true,
-      }),
-      movimento({
-        id: "compra-itau-aberta",
-        cartaoId: itau,
-        contaId: null,
-        dataMovimento: "2026-08-31",
+        dataMovimento: "2026-05-20",
         valor: "100",
       }),
     ];
     const visiveis = filtrar_extrato(lote, contas, cartoes, {
       ...base,
+      mes: "2026-06",
       visao: "faturas",
       cartoesCiclo,
-      hoje: "2026-08-31",
+      hoje: "2026-09-02",
     });
-    expect(visiveis.map((m) => m.id).sort()).toEqual([
-      "compra-itau-aberta",
-      "nu",
-      "parcela-itau",
-      "rev",
-    ]);
-    expect(resumir_extrato(visiveis).saidas).toBeCloseTo(6397.88, 2);
-    expect(
-      agrupar_faturas_por_cartao(visiveis, [
-        { id: nu, nome: "Nu", fechamento: 2 },
-        { id: revolut, nome: "Revolut", fechamento: 9 },
-        { id: itau, nome: "Itaú", fechamento: 30 },
-      ], "2026-08", "2026-08-31").reduce((soma, grupo) => soma + grupo.total, 0),
-    ).toBeCloseTo(6397.88, 2);
+    expect(visiveis.map((m) => m.id).sort()).toEqual(["azul-maio", "nu-ciclo-jun"]);
+
+    const grupos = agrupar_faturas_por_cartao(
+      visiveis,
+      [
+        { id: azul, nome: "Azul Itaú", fechamento: 30, vencimento: 6 },
+        { id: nu, nome: "Nu", fechamento: 2, vencimento: 10 },
+      ],
+      "2026-06",
+      "2026-09-02",
+      [],
+      [
+        movimento({
+          id: "pix-jun",
+          contaId: "conta-itau",
+          cartaoId: null,
+          cartaoFaturaId: azul,
+          papel: "pagamento_fatura",
+          competenciaFatura: "2026-06",
+          dataMovimento: "2026-06-01",
+          valor: "5632.78",
+        }),
+      ],
+    );
+    const grupoAzul = grupos.find((grupo) => grupo.cartaoId === azul);
+    expect(grupoAzul?.intervalo).toBe("01/05 → 30/05 · vence 06/06");
+    expect(grupoAzul?.total).toBeCloseTo(5632.78, 2);
+    expect(grupoAzul?.ajuste).toBeCloseTo(1497.78, 2);
+    expect(grupos.find((grupo) => grupo.cartaoId === nu)?.intervalo).toBe(
+      "03/05 → 02/06 · vence 10/06",
+    );
   });
 
   it("usa o total oficial do banco quando a fatura já fechou", () => {
@@ -593,13 +601,14 @@ describe("filtrar_extrato", () => {
           valor: "9405.07",
         }),
       ],
-      [{ id: nu, nome: "Nu", fechamento: 2 }],
+      [{ id: nu, nome: "Nu", fechamento: 2, vencimento: 10 }],
       "2026-08",
       "2026-09-01",
       [{ cartaoId: nu, competencia: "2026-08", total: 9622.31 }],
     );
     expect(grupos[0]?.total).toBeCloseTo(9622.31, 2);
     expect(grupos[0]?.ajuste).toBeCloseTo(217.24, 2);
+    expect(grupos[0]?.intervalo).toContain("vence 10/08");
   });
 });
 
@@ -740,6 +749,16 @@ describe("resumir_extrato", () => {
         papel: "pagamento_fatura",
         descricao: "Pagamento recebido",
         cartaoId: "cartao-nu",
+        contaId: null,
+      }),
+      movimento({
+        id: "pix-azul",
+        tipo: "receita",
+        valor: "5632.78",
+        papel: "gasto",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+        cartaoId: "cartao-azul",
         contaId: null,
       }),
       movimento({

@@ -7,6 +7,7 @@ import {
   descricao_ainda_automatica,
   descricoes_da_mesma_serie,
   eh_credito_quitacao_no_cartao,
+  conhecimento_inicial_credito_quitacao,
   enxugar_descricao_conhecimento,
   fato_imune_correcao,
   garantir_parcelas_subsequentes,
@@ -501,6 +502,7 @@ export class MotorFinanceiro {
 
     const perfilPorConta = new Map<string, "pf" | "pj">();
     const perfilPorCartao = new Map<string, "pf" | "pj">();
+    const cartaoPorId = new Map<string, Cartao>();
     const eventos = await this.aplicar_competencia_parcela_cartao(
       eventosBrutos.map((eventoBruto) => schemaEventoFinanceiroNormalizado.parse(eventoBruto)),
     );
@@ -537,6 +539,22 @@ export class MotorFinanceiro {
       );
 
       const movimentoId = randomUUID();
+      let cartaoDestino: Cartao | undefined;
+      if (evento.cartaoId) {
+        cartaoDestino = cartaoPorId.get(evento.cartaoId);
+        if (!cartaoDestino) {
+          cartaoDestino = await this.repositorio.obterCartao(evento.cartaoId);
+          if (cartaoDestino) cartaoPorId.set(evento.cartaoId, cartaoDestino);
+        }
+      }
+      const quitacao = conhecimento_inicial_credito_quitacao({
+        tipo: evento.tipo,
+        descricaoFonte: evento.descricaoFonte,
+        cartaoId: evento.cartaoId,
+        dataMovimento: evento.ocorridoEm,
+        fechamento: cartaoDestino?.fechamento,
+        vencimento: cartaoDestino?.vencimento,
+      });
       const novoMovimento: NovoMovimento = {
         id: movimentoId,
         workspaceId: evento.workspaceId,
@@ -563,6 +581,7 @@ export class MotorFinanceiro {
         classificadoPor: "regra",
         usuarioId: contexto.usuarioId,
         criadoPor: contexto.criadoPor,
+        ...quitacao,
       };
       novosMovimentos.push(novoMovimento);
 

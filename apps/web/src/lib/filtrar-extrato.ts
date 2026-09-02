@@ -4,18 +4,21 @@ import {
   aplicar_total_oficial,
   agrupar_series_parcelamento,
   arredondar,
+  competencia_alvo_do_modo_fatura,
   data_iso_parcela,
+  data_vencimento_do_ciclo,
+  eh_credito_quitacao_no_cartao,
   hojeISO,
   intervalo_ciclo_fatura,
   irmas_da_serie,
   mapa_fechamento_cartoes,
   mapa_vencimento_cartoes,
-  mes_gasto_do_cartao,
   na_fatura_do_recorte,
   pagamentos_ciclo_de,
+  soma_cobrada_do_vencimento,
   valor_na_fatura,
 } from "@lancai/tipos";
-import { formatar_intervalo_ciclo } from "./formatar";
+import { formatar_data_curta, formatar_intervalo_ciclo } from "./formatar";
 
 export type FilaExtrato = "todas" | "banco" | "manual" | "revisar";
 
@@ -294,6 +297,7 @@ function movimento_passa_filtros(
         fechamento,
         vencimento,
         pagamentos: contexto.pagamentos,
+        eixo: "vencimento",
       })
     ) {
       return false;
@@ -419,7 +423,10 @@ export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
     if (movimento.apresentacao) continue;
     const valor = Number(movimento.valor);
     const seguro = Number.isFinite(valor) ? valor : 0;
-    if (movimento.papel !== "pagamento_fatura") {
+    if (
+      movimento.papel !== "pagamento_fatura" &&
+      !eh_credito_quitacao_no_cartao(movimento.descricaoFonte ?? movimento.descricao)
+    ) {
       if (eh_entrada_extrato(movimento.tipo)) {
         entradas += seguro;
       } else {
@@ -454,24 +461,34 @@ export type GrupoFaturaExtrato = {
 export type FaturaOficialExtrato = { cartaoId: string; competencia: string; total: number };
 
 function intervalo_grupo_cartao(
-  fechamento: number | null | undefined,
+  cartao: { fechamento?: number | null; vencimento?: number | null } | undefined,
   mes: string,
-  hoje: string,
 ): string {
-  if (fechamento == null) return "";
-  const ciclo = intervalo_ciclo_fatura(
-    mes_gasto_do_cartao({ mesSelecionado: mes, hoje, fechamento }),
-    fechamento,
-  );
-  return formatar_intervalo_ciclo(ciclo.inicio, ciclo.fim);
+  if (cartao?.fechamento == null || cartao.fechamento < 1) return "";
+  const competencia = competencia_alvo_do_modo_fatura({
+    mes,
+    fechamento: cartao.fechamento,
+    vencimento: cartao.vencimento,
+  });
+  const ciclo = intervalo_ciclo_fatura(competencia, cartao.fechamento);
+  const intervalo = formatar_intervalo_ciclo(ciclo.inicio, ciclo.fim);
+  if (cartao.vencimento == null || cartao.vencimento < 1) return intervalo;
+  const vence = data_vencimento_do_ciclo(competencia, cartao.fechamento, cartao.vencimento);
+  return `${intervalo} · vence ${formatar_data_curta(vence)}`;
 }
 
 export function agrupar_faturas_por_cartao(
   movimentos: MovimentoResumo[],
-  cartoes: Array<{ id: string; nome: string; fechamento?: number | null }>,
+  cartoes: Array<{
+    id: string;
+    nome: string;
+    fechamento?: number | null;
+    vencimento?: number | null;
+  }>,
   mes: string,
-  hoje = hojeISO(),
+  _hoje = hojeISO(),
   oficiais: FaturaOficialExtrato[] = [],
+  cobrancas: MovimentoResumo[] = [],
 ): GrupoFaturaExtrato[] {
   const mapa = new Map<string, GrupoFaturaExtrato>();
   for (const movimento of movimentos) {
@@ -481,7 +498,7 @@ export function agrupar_faturas_por_cartao(
     const grupo = mapa.get(movimento.cartaoId) ?? {
       cartaoId: movimento.cartaoId,
       cartaoNome: cartao?.nome ?? "Cartão",
-      intervalo: intervalo_grupo_cartao(cartao?.fechamento, mes, hoje),
+      intervalo: intervalo_grupo_cartao(cartao, mes),
       total: 0,
       movimentos: [],
     };
@@ -491,14 +508,34 @@ export function agrupar_faturas_por_cartao(
   }
   for (const grupo of mapa.values()) {
     const cartao = cartoes.find((item) => item.id === grupo.cartaoId);
-    const competencia =
+    const competenciaFecha =
       cartao?.fechamento != null && cartao.fechamento >= 1
-        ? mes_gasto_do_cartao({ mesSelecionado: mes, hoje, fechamento: cartao.fechamento })
+        ? competencia_alvo_do_modo_fatura({
+            mes,
+            fechamento: cartao.fechamento,
+            vencimento: cartao.vencimento,
+          })
         : mes;
-    const oficial = oficiais.find(
-      (item) => item.cartaoId === grupo.cartaoId && item.competencia === competencia,
-    );
-    const aplicado = aplicar_total_oficial(grupo.total, oficial?.total);
+    const oficial =
+      oficiais.find(
+        (item) => item.cartaoId === grupo.cartaoId && item.competencia === competenciaFecha,
+      ) ??
+      oficiais.find((item) => item.cartaoId === grupo.cartaoId && item.competencia === mes);
+    const pix =
+      cartao?.fechamento != null &&
+      cartao.fechamento >= 1 &&
+      cartao.vencimento != null &&
+      cartao.vencimento >= 1
+        ? soma_cobrada_do_vencimento(
+            cobrancas,
+            grupo.cartaoId,
+            mes,
+            cartao.fechamento,
+            cartao.vencimento,
+          )
+        : 0;
+    const cobrado = oficial?.total ?? (pix > 0 ? pix : null);
+    const aplicado = aplicar_total_oficial(grupo.total, cobrado);
     grupo.total = aplicado.total;
     grupo.totalOficial = aplicado.totalOficial;
     grupo.ajuste = aplicado.ajuste;

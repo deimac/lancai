@@ -1098,6 +1098,32 @@ describe("MotorFinanceiro", () => {
       expect(porNumero.get(1)?.descricao).toBe("HOTELDOBARUERIBR");
     });
 
+    it("crédito Pagamento PIX no cartão já nasce como pagamento da fatura", async () => {
+      const conta = criarConta({ usuarioId });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 30, vencimento: 6 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            cartaoId: cartao.id,
+            contaId: undefined,
+            tipo: "receita",
+            ocorridoEm: "2026-06-01",
+            valor: 5632.78,
+            descricaoFonte: "Pagamento PIX",
+          }),
+        ],
+        contexto(),
+      );
+
+      expect(criados[0]?.papel).toBe("pagamento_fatura");
+      expect(criados[0]?.cartaoFaturaId).toBe(cartao.id);
+      expect(criados[0]?.competenciaFatura).toBe("2026-06");
+      expect(criados[0]?.ignoradoEmRelatorio).toBe(true);
+    });
+
     it("deixa as colunas de parcelamento nulas no que não é parcela", async () => {
       const conta = criarConta({ usuarioId });
       repositorio.contas.set(conta.id, conta);

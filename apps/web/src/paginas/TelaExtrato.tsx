@@ -430,9 +430,10 @@ export function TelaExtrato() {
                 total: fatura.total,
               })),
             ),
+            movimentos,
           )
         : [],
-    [visao, visiveis, cartoesTodos, mes],
+    [visao, visiveis, cartoesTodos, mes, movimentos],
   );
 
   const categoriasDoFiltro = useMemo(() => {

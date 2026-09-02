@@ -450,6 +450,41 @@ describe("ServicoIngestaoOpenFinance", () => {
       ]);
     });
 
+    it("grava fatura oficial também no sync de alteração, usando vencimento se faltar fecha", async () => {
+      const cartao = criarCartao(usuarioId);
+      financeiro.cartoes.set(cartao.id, cartao);
+      repositorio.associar(conexaoId, [
+        {
+          contaExternaId: CONTA_EXTERNA,
+          nome: "Azul Itaú Visa Platinum",
+          tipo: "CREDIT_CARD",
+          contaId: null,
+          cartaoId: cartao.id,
+        },
+      ]);
+      provedor.semear(CONEXAO_EXTERNA, [movimentacao({ idExterno: "tx-azul" })]);
+      provedor.semear_faturas(CONTA_EXTERNA, [
+        {
+          idExterno: "bill-jun",
+          contaExternaId: CONTA_EXTERNA,
+          total: 5632.78,
+          vencimentoEm: "2026-06-06",
+        },
+      ]);
+
+      await entregar(provedor.anunciar_alteracao(CONEXAO_EXTERNA, "ev-bill-alt", ["tx-azul"]));
+
+      expect(provedor.faturasColetadas).toContain(CONTA_EXTERNA);
+      expect(repositorio.faturasOficiais).toEqual([
+        expect.objectContaining({
+          cartaoId: cartao.id,
+          competencia: "2026-06",
+          total: 5632.78,
+          idExterno: "bill-jun",
+        }),
+      ]);
+    });
+
     it("cancela Pagamento recebido pendente quando chega o POSTED da fatura", async () => {
       const cartao = criarCartao(usuarioId);
       financeiro.cartoes.set(cartao.id, cartao);

@@ -8,8 +8,11 @@ import {
   ciclo_aberto_em,
   ciclo_do_movimento,
   competencia_ciclo_da_data,
+  competencia_alvo_do_modo_fatura,
   competencia_ciclo_vencendo_em,
   competencia_quitacao_fatura,
+  competencia_vencimento_da_quitacao,
+  conhecimento_inicial_credito_quitacao,
   data_vencimento_do_ciclo,
   dia_fechamento_no_mes,
   linha_aceita_pagamento_fatura,
@@ -20,6 +23,7 @@ import {
   eh_linha_da_fatura,
   aplicar_total_oficial,
   na_fatura_do_recorte,
+  soma_cobrada_do_vencimento,
   pagamentos_ciclo_de,
   valor_na_fatura,
   periodo_amplo_do_ciclo,
@@ -63,7 +67,8 @@ describe("heurística de pagamento de fatura", () => {
     expect(descricao_parece_pagamento_fatura("Pagamento PIX")).toBe(false);
     expect(descricao_parece_pagamento_fatura("Pagamento recebido")).toBe(false);
     expect(eh_credito_quitacao_no_cartao("Pagamento recebido")).toBe(true);
-    expect(eh_credito_quitacao_no_cartao("Pagamento PIX")).toBe(false);
+    expect(eh_credito_quitacao_no_cartao("Pagamento PIX")).toBe(true);
+    expect(eh_credito_quitacao_no_cartao("Pagamento com QR Pix ITAU")).toBe(false);
   });
 
   it("só oferece o check em débito de conta ou crédito no cartão", () => {
@@ -292,6 +297,31 @@ describe("heurística de pagamento de fatura", () => {
     expect(competencia_ciclo_vencendo_em("2026-08", 30, 6)).toBe("2026-07");
     expect(competencia_ciclo_vencendo_em("2026-09", 30, 6)).toBe("2026-08");
     expect(competencia_ciclo_vencendo_em("2026-08", 12, 17)).toBe("2026-08");
+    expect(competencia_vencimento_da_quitacao("2026-06-01", 30, 6)).toBe("2026-06");
+    expect(competencia_vencimento_da_quitacao("2026-07-29", 30, 6)).toBe("2026-08");
+    expect(competencia_vencimento_da_quitacao("2026-08-05", 30, 6)).toBe("2026-08");
+    expect(competencia_vencimento_da_quitacao("2026-08-10", 10, 17)).toBe("2026-08");
+    expect(competencia_alvo_do_modo_fatura({ mes: "2026-06", fechamento: 30, vencimento: 6 })).toBe(
+      "2026-05",
+    );
+    expect(competencia_alvo_do_modo_fatura({ mes: "2026-06", fechamento: 2, vencimento: 10 })).toBe(
+      "2026-06",
+    );
+    expect(
+      conhecimento_inicial_credito_quitacao({
+        tipo: "receita",
+        descricaoFonte: "Pagamento PIX",
+        cartaoId: "azul",
+        dataMovimento: "2026-06-01",
+        fechamento: 30,
+        vencimento: 6,
+      }),
+    ).toEqual({
+      papel: "pagamento_fatura",
+      cartaoFaturaId: "azul",
+      competenciaFatura: "2026-06",
+      ignoradoEmRelatorio: true,
+    });
   });
 
   it("sugere pela descrição na conta preferencial, sem aplicar sozinha", () => {
@@ -344,6 +374,83 @@ describe("heurística de pagamento de fatura", () => {
     );
     expect(sugestao?.motivo).toBe("valor_ciclo");
     expect(sugestao?.cartaoId).toBe("cartao-itau");
+  });
+
+  it("Azul fecha 30 vence 6: soma o ciclo que vence no mês, não o que fecha", () => {
+    const azul: CartaoSugestaoFatura = {
+      id: "cartao-azul",
+      nome: "Azul Itaú",
+      vencimento: 6,
+      fechamento: 30,
+    };
+    const sugestao = sugerir_pagamento_fatura(
+      mov({
+        id: "pix",
+        descricao: "Pix enviado",
+        descricaoFonte: "PIX ENVIADO",
+        valor: "5632.78",
+        dataMovimento: "2026-06-01",
+      }),
+      [azul],
+      [
+        mov({
+          id: "c1",
+          cartaoId: "cartao-azul",
+          contaId: null,
+          valor: "3000.00",
+          dataMovimento: "2026-05-10",
+        }),
+        mov({
+          id: "c2",
+          cartaoId: "cartao-azul",
+          contaId: null,
+          valor: "2632.78",
+          dataMovimento: "2026-05-28",
+        }),
+        mov({
+          id: "c3",
+          cartaoId: "cartao-azul",
+          contaId: null,
+          valor: "400.00",
+          dataMovimento: "2026-06-15",
+        }),
+      ],
+    );
+    expect(sugestao).toEqual({
+      cartaoId: "cartao-azul",
+      cartaoNome: "Azul Itaú",
+      competencia: "2026-06",
+      motivo: "valor_ciclo",
+    });
+  });
+
+  it("crédito Pagamento PIX no cartão sugere o mês do vencimento", () => {
+    const azul: CartaoSugestaoFatura = {
+      id: "cartao-azul",
+      nome: "Azul Itaú",
+      vencimento: 6,
+      fechamento: 30,
+    };
+    const sugestao = sugerir_pagamento_fatura(
+      mov({
+        id: "credito",
+        tipo: "receita",
+        cartaoId: "cartao-azul",
+        contaId: null,
+        valor: "5632.78",
+        dataMovimento: "2026-06-01",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+      }),
+      [azul],
+      [],
+    );
+    expect(sugestao).toEqual({
+      cartaoId: "cartao-azul",
+      cartaoNome: "Azul Itaú",
+      competencia: "2026-06",
+      motivo: "descricao",
+    });
   });
 
   it("prefere o cartão cujo nome aparece na descrição", () => {
@@ -657,6 +764,76 @@ describe("na_fatura_do_recorte", () => {
       2,
     );
   });
+
+  it("eixo vencimento: Azul em junho é o ciclo que fechou em maio", () => {
+    const noCiclo = {
+      dataMovimento: "2026-05-20",
+      cartaoId: itau.id,
+      tipo: "despesa" as const,
+    };
+    const noCicloSeguinte = {
+      dataMovimento: "2026-06-15",
+      cartaoId: itau.id,
+      tipo: "despesa" as const,
+    };
+    expect(
+      na_fatura_do_recorte(noCiclo, {
+        mes: "2026-06",
+        hoje: "2026-09-02",
+        fechamento: 30,
+        vencimento: 6,
+        eixo: "vencimento",
+      }),
+    ).toBe(true);
+    expect(
+      na_fatura_do_recorte(noCicloSeguinte, {
+        mes: "2026-06",
+        hoje: "2026-09-02",
+        fechamento: 30,
+        vencimento: 6,
+        eixo: "vencimento",
+      }),
+    ).toBe(false);
+    expect(
+      na_fatura_do_recorte(noCiclo, {
+        mes: "2026-06",
+        hoje: "2026-09-02",
+        fechamento: 2,
+        vencimento: 10,
+        eixo: "vencimento",
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("soma_cobrada_do_vencimento", () => {
+  it("soma o Pix marcado no mês do vencimento", () => {
+    expect(
+      soma_cobrada_do_vencimento(
+        [
+          {
+            cartaoFaturaId: "azul",
+            cartaoId: null,
+            papel: "pagamento_fatura",
+            competenciaFatura: "2026-06",
+            dataMovimento: "2026-06-01",
+            valor: "5632.78",
+          },
+          {
+            cartaoId: "azul",
+            papel: "gasto",
+            dataMovimento: "2026-05-20",
+            valor: "100",
+            tipo: "despesa",
+          },
+        ],
+        "azul",
+        "2026-06",
+        30,
+        6,
+      ),
+    ).toBeCloseTo(5632.78, 2);
+  });
 });
 
 describe("eh_linha_da_fatura", () => {
@@ -673,6 +850,13 @@ describe("eh_linha_da_fatura", () => {
         cartaoId: "nu",
         tipo: "receita",
         descricao: "Pagamento recebido",
+      }),
+    ).toBe(false);
+    expect(
+      eh_linha_da_fatura({
+        cartaoId: "azul",
+        tipo: "receita",
+        descricao: "Pagamento PIX",
       }),
     ).toBe(false);
     expect(

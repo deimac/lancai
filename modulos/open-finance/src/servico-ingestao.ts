@@ -514,6 +514,7 @@ export class ServicoIngestaoOpenFinance {
     await this.aplicar_eventos_da_fonte(eventos, contexto, resumo);
 
     await this.completar_parcelas_projetadas(conexao, mapa, contexto, resumo);
+    await this.ingerir_faturas_oficiais(conexao, mapa);
 
     await this.registrar_resumo_sync(conexao.id, resumo);
     return resumo;
@@ -603,7 +604,7 @@ export class ServicoIngestaoOpenFinance {
         continue;
       }
       for (const fatura of faturas) {
-        const competencia = fatura.fechamentoEm?.slice(0, 7);
+        const competencia = (fatura.fechamentoEm ?? fatura.vencimentoEm)?.slice(0, 7);
         if (!competencia || !/^\d{4}-\d{2}$/.test(competencia)) continue;
         gravar.push({
           workspaceId: conexao.workspaceId,

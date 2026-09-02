@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  competencia_default_fatura,
   modo_convite_pagamento_fatura,
   mostra_acao_pagamento_fatura,
   mostra_check_pagamento_fatura,
@@ -110,6 +111,21 @@ describe("modo_convite_pagamento_fatura", () => {
     };
     expect(mostra_acao_pagamento_fatura(compra)).toBe(false);
     expect(mostra_acao_pagamento_fatura({ ...compra, papel: "pagamento_fatura" })).toBe(true);
+  });
+
+  it("pré-preenche o mês do vencimento no Azul (fecha 30 vence 6)", () => {
+    expect(
+      competencia_default_fatura(
+        { dataMovimento: "2026-06-01", competenciaFatura: null },
+        { fechamento: 30, vencimento: 6 },
+      ),
+    ).toBe("2026-06");
+    expect(
+      competencia_default_fatura(
+        { dataMovimento: "2026-07-29", competenciaFatura: null },
+        { fechamento: 30, vencimento: 6 },
+      ),
+    ).toBe("2026-08");
   });
 
   it("não oferece convite em compra no cartão", () => {

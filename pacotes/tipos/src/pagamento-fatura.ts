@@ -59,12 +59,13 @@ export function descricao_parece_pagamento_fatura(...textos: Array<string | null
 }
 
 /**
- * Crédito de quitação no extrato do cartão (Nubank: "Pagamento recebido").
+ * Crédito de quitação no extrato do cartão.
+ * Nubank: "Pagamento recebido". Itaú/Azul: "Pagamento PIX" (além do débito na conta).
  * A Open Finance manda duas linhas para o mesmo pagamento — pendente e fatura.
- * Não usa a heurística acima: "Pagamento recebido" não deve marcar fatura sozinho.
+ * Não usa a heurística acima: esses textos não devem marcar fatura sozinhos na conta.
  */
 export function eh_credito_quitacao_no_cartao(descricao: string): boolean {
-  return /^pagamento recebido$/i.test(descricao.trim());
+  return /^pagamento (recebido|pix)$/i.test(descricao.trim());
 }
 
 /** Débito na conta (Pix/TED da quitação) ou crédito de quitação no extrato do cartão. */
@@ -239,6 +240,21 @@ export function competencia_ciclo_vencendo_em(
 }
 
 /**
+ * Ciclo do Modo fatura: a fatura que **vence** no mês da tela.
+ * Sem dia de vencimento, o mês é o do fecha (mesmo recorte histórico).
+ */
+export function competencia_alvo_do_modo_fatura(entrada: {
+  mes: string;
+  fechamento: number;
+  vencimento?: number | null;
+}): string {
+  if (entrada.vencimento != null && entrada.vencimento >= 1) {
+    return competencia_ciclo_vencendo_em(entrada.mes, entrada.fechamento, entrada.vencimento);
+  }
+  return entrada.mes;
+}
+
+/**
  * Competência que o pagamento quita: se cai perto do vencimento do ciclo
  * anterior, é resto/liquidação daquele; no dia do fecha, quita o ciclo que
  * fechou (ignora tag do ciclo recém-aberto); tag de ciclo anterior prevalece.
@@ -265,6 +281,51 @@ export function competencia_quitacao_fatura(
   }
   if (competenciaFatura && /^\d{4}-\d{2}$/.test(competenciaFatura)) return competenciaFatura;
   return ciclo;
+}
+
+/**
+ * Mês que o modal grava (`Fatura que vence em`): vencimento do ciclo que o
+ * Pix quitou. `competencia_quitacao_fatura` devolve o mês do fecha.
+ */
+export function competencia_vencimento_da_quitacao(
+  dataISO: string,
+  fechamento: number,
+  vencimento: number,
+  competenciaFatura?: string | null,
+): string {
+  const ciclo = competencia_quitacao_fatura(dataISO, fechamento, vencimento, competenciaFatura);
+  return data_vencimento_do_ciclo(ciclo, fechamento, vencimento).slice(0, 7);
+}
+
+/** Crédito OF de quitação no cartão: já nasce como pagamento da fatura. */
+export function conhecimento_inicial_credito_quitacao(entrada: {
+  tipo: string;
+  descricaoFonte: string;
+  cartaoId?: string | null;
+  dataMovimento: string;
+  fechamento?: number | null;
+  vencimento?: number | null;
+}): {
+  papel: "pagamento_fatura";
+  cartaoFaturaId: string;
+  competenciaFatura: string;
+  ignoradoEmRelatorio: true;
+} | null {
+  if (!entrada.cartaoId) return null;
+  if (entrada.tipo !== "receita" && entrada.tipo !== "estorno") return null;
+  if (!eh_credito_quitacao_no_cartao(entrada.descricaoFonte)) return null;
+  if (entrada.fechamento == null || entrada.fechamento < 1) return null;
+  if (entrada.vencimento == null || entrada.vencimento < 1) return null;
+  return {
+    papel: "pagamento_fatura",
+    cartaoFaturaId: entrada.cartaoId,
+    competenciaFatura: competencia_vencimento_da_quitacao(
+      entrada.dataMovimento,
+      entrada.fechamento,
+      entrada.vencimento,
+    ),
+    ignoradoEmRelatorio: true,
+  };
 }
 
 const MESES_CURTOS = [
@@ -526,6 +587,69 @@ export function aplicar_total_oficial(
   return { total: banco, totalOficial: banco, ajuste: arredondar(banco - soma) };
 }
 
+export type MovimentoCobrancaFatura = {
+  cartaoId?: string | null;
+  cartaoFaturaId?: string | null;
+  competenciaFatura?: string | null;
+  dataMovimento: string;
+  valor: string | number;
+  papel?: string | null;
+  tipo?: string | null;
+  status?: string | null;
+  descricao?: string | null;
+  descricaoFonte?: string | null;
+};
+
+function cartao_do_pagamento(movimento: MovimentoCobrancaFatura): string | null {
+  return movimento.cartaoFaturaId ?? movimento.cartaoId ?? null;
+}
+
+function competencia_cobranca_casa(
+  movimento: MovimentoCobrancaFatura,
+  mesVencimento: string,
+  fechamento: number,
+  vencimento: number,
+): boolean {
+  const tag = movimento.competenciaFatura;
+  if (tag && /^\d{4}-\d{2}$/.test(tag)) {
+    if (tag === mesVencimento) return true;
+    return tag === competencia_ciclo_vencendo_em(mesVencimento, fechamento, vencimento);
+  }
+  return (
+    competencia_vencimento_da_quitacao(movimento.dataMovimento, fechamento, vencimento) ===
+    mesVencimento
+  );
+}
+
+/**
+ * Pix/crédito que quitou a fatura daquele vencimento — vira o total cobrado
+ * quando ainda não há `fatura_oficial`.
+ */
+export function soma_cobrada_do_vencimento(
+  movimentos: MovimentoCobrancaFatura[],
+  cartaoId: string,
+  mesVencimento: string,
+  fechamento: number,
+  vencimento: number,
+): number {
+  let soma = 0;
+  for (const movimento of movimentos) {
+    if (movimento.status === "cancelado") continue;
+    const doCartao = cartao_do_pagamento(movimento) === cartaoId;
+    if (!doCartao) continue;
+    const marcado = movimento.papel === "pagamento_fatura";
+    const credito =
+      Boolean(movimento.cartaoId) &&
+      movimento.cartaoId === cartaoId &&
+      eh_quitacao_da_fatura(movimento);
+    if (!marcado && !credito) continue;
+    if (!competencia_cobranca_casa(movimento, mesVencimento, fechamento, vencimento)) continue;
+    const n = Number(movimento.valor);
+    if (Number.isFinite(n)) soma += n;
+  }
+  return arredondar(soma);
+}
+
 export function pagamentos_ciclo_de(
   movimentos: Array<{
     cartaoId?: string | null;
@@ -546,7 +670,9 @@ export function pagamentos_ciclo_de(
 
 /**
  * Compra na fatura do recorte (card Cartões / Extrato Faturas / drawer).
- * Mês atual = ciclo aberto; histórico = ciclo que fecha naquele mês.
+ * `eixo: fechamento` (padrão, Cockpit): mês atual = ciclo aberto; histórico =
+ * ciclo que fecha naquele mês. `eixo: vencimento` (Modo fatura): ciclo cuja
+ * fatura vence no mês da tela.
  */
 export function na_fatura_do_recorte(
   movimento: {
@@ -566,6 +692,7 @@ export function na_fatura_do_recorte(
     fechamento?: number | null;
     vencimento?: number | null;
     pagamentos?: PagamentoCiclo[];
+    eixo?: "fechamento" | "vencimento";
   },
 ): boolean {
   if (!eh_linha_da_fatura(movimento)) return false;
@@ -573,11 +700,18 @@ export function na_fatura_do_recorte(
   if (fechamento == null || fechamento < 1) {
     return String(movimento.dataMovimento).startsWith(`${entrada.mes}-`);
   }
-  const alvo = mes_gasto_do_cartao({
-    mesSelecionado: entrada.mes,
-    hoje: entrada.hoje,
-    fechamento,
-  });
+  const alvo =
+    entrada.eixo === "vencimento"
+      ? competencia_alvo_do_modo_fatura({
+          mes: entrada.mes,
+          fechamento,
+          vencimento: entrada.vencimento,
+        })
+      : mes_gasto_do_cartao({
+          mesSelecionado: entrada.mes,
+          hoje: entrada.hoje,
+          fechamento,
+        });
   return (
     ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
       vencimento: entrada.vencimento,
@@ -729,6 +863,27 @@ export function sugerir_pagamento_fatura(
   const par = sugestao_par_credito(movimento, valor, candidatos, movimentos);
   if (par) return par;
 
+  const creditoQuitacao = textos_do_movimento(movimento).some((texto) =>
+    eh_credito_quitacao_no_cartao(texto),
+  );
+  if (creditoQuitacao) {
+    const alvo = candidatos[0];
+    if (alvo) {
+      const fechamento = alvo.fechamento ?? alvo.vencimento;
+      return {
+        cartaoId: alvo.id,
+        cartaoNome: alvo.nome,
+        competencia: competencia_vencimento_da_quitacao(
+          movimento.dataMovimento,
+          fechamento,
+          alvo.vencimento,
+          movimento.competenciaFatura,
+        ),
+        motivo: "descricao",
+      };
+    }
+  }
+
   const citado = cartoes.find((cartao) => texto_cita_nome(textoDescricao, cartao.nome));
   if (citado) {
     return {
@@ -761,7 +916,8 @@ export function sugerir_pagamento_fatura(
     if (!pertoVencimento || !Number.isFinite(valor)) continue;
 
     const fechamento = cartao.fechamento ?? cartao.vencimento;
-    const ciclo = intervalo_ciclo_fatura(competencia, fechamento);
+    const cicloFecha = competencia_ciclo_vencendo_em(competencia, fechamento, cartao.vencimento);
+    const ciclo = intervalo_ciclo_fatura(cicloFecha, fechamento);
     const soma = soma_despesas_ciclo(cartao.id, ciclo, movimentos);
     if (valores_proximos(valor, soma)) {
       return {
