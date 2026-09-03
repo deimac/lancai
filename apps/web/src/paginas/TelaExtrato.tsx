@@ -78,6 +78,8 @@ import {
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
   tipo_gasto_para_query,
+  id_movimento_api,
+  ids_classificacao_da_serie,
   valor_parcela_da_apresentacao,
   visao_da_query,
   visao_para_query,
@@ -490,17 +492,24 @@ export function TelaExtrato() {
 
   async function classificar(movimentoId: string, categoriaId: string) {
     if (!usuario || !categoriaId) return;
+    const realId = id_movimento_api(movimentoId);
+    const ancora =
+      movimentos.find((item) => item.id === realId) ??
+      movimentos.find((item) => item.id === movimentoId);
+    const idsSerie = new Set(
+      ancora ? ids_classificacao_da_serie(ancora, movimentos) : [realId],
+    );
     setSalvandoId(movimentoId);
     setErro(null);
     try {
       const atualizado = await clienteApi.atualizar_conhecimento({
         usuarioId: usuario.id,
-        movimentoId,
+        movimentoId: realId,
         categoriaId,
       });
       setMovimentos((atual) =>
         atual.map((item) =>
-          item.id === movimentoId
+          idsSerie.has(item.id)
             ? {
                 ...item,
                 categoriaId: atualizado.categoriaId,
@@ -1134,92 +1143,92 @@ export function TelaExtrato() {
                       )}
                     </td>
                     <td className="relative px-2 py-2.5">
-                      {movimento.apresentacao ? null : (
-                        <>
-                          <button
-                            type="button"
-                            className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
-                            aria-label="Ações"
-                            onClick={() => {
-                              setMenuId(menuId === movimento.id ? null : movimento.id);
-                            }}
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-                          {menuId === movimento.id && (
-                            <MenuAcoes
-                              aoEscolher={() => setMenuId(null)}
-                              acoes={[
-                                {
-                                  rotulo: "Categoria",
-                                  icone: Tags,
-                                  submenu: categoriasParaClassificar.map((categoria) => ({
-                                    rotulo: categoria.nome,
-                                    iconeCategoria: categoria.icone ?? null,
-                                    cor: categoria.cor ?? null,
-                                    ativo: categoria.id === movimento.categoriaId,
-                                    onClick: () => void classificar(movimento.id, categoria.id),
-                                  })),
-                                },
-                                ...(origemPerfil && ehGasto
-                                  ? [
-                                      {
-                                        rotulo:
-                                          origemPerfil === "pj"
-                                            ? movimento.tipoGasto === "pf"
-                                              ? "Marcar como empresa"
-                                              : "Marcar como pessoal"
-                                            : movimento.tipoGasto === "pj"
-                                              ? "Marcar como pessoal"
-                                              : "Marcar como empresa",
-                                        icone: UserRound,
-                                        onClick: () => {
-                                          const cruzado =
+                      <button
+                        type="button"
+                        className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
+                        aria-label="Ações"
+                        onClick={() => {
+                          setMenuId(menuId === movimento.id ? null : movimento.id);
+                        }}
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                      {menuId === movimento.id && (
+                        <MenuAcoes
+                          aoEscolher={() => setMenuId(null)}
+                          acoes={[
+                            {
+                              rotulo: "Categoria",
+                              icone: Tags,
+                              submenu: categoriasParaClassificar.map((categoria) => ({
+                                rotulo: categoria.nome,
+                                iconeCategoria: categoria.icone ?? null,
+                                cor: categoria.cor ?? null,
+                                ativo: categoria.id === movimento.categoriaId,
+                                onClick: () => void classificar(movimento.id, categoria.id),
+                              })),
+                            },
+                            ...(movimento.apresentacao
+                              ? []
+                              : [
+                                  ...(origemPerfil && ehGasto
+                                    ? [
+                                        {
+                                          rotulo:
                                             origemPerfil === "pj"
                                               ? movimento.tipoGasto === "pf"
-                                              : movimento.tipoGasto === "pj";
-                                          const proximo: Perfil = cruzado
-                                            ? origemPerfil
-                                            : origemPerfil === "pj"
-                                              ? "pf"
-                                              : "pj";
-                                          void alterar_tipo_gasto(movimento.id, proximo);
+                                                ? "Marcar como empresa"
+                                                : "Marcar como pessoal"
+                                              : movimento.tipoGasto === "pj"
+                                                ? "Marcar como pessoal"
+                                                : "Marcar como empresa",
+                                          icone: UserRound,
+                                          onClick: () => {
+                                            const cruzado =
+                                              origemPerfil === "pj"
+                                                ? movimento.tipoGasto === "pf"
+                                                : movimento.tipoGasto === "pj";
+                                            const proximo: Perfil = cruzado
+                                              ? origemPerfil
+                                              : origemPerfil === "pj"
+                                                ? "pf"
+                                                : "pj";
+                                            void alterar_tipo_gasto(movimento.id, proximo);
+                                          },
                                         },
-                                      },
-                                    ]
-                                  : []),
-                                ...(mostra_acao_pagamento_fatura(movimento)
-                                  ? [
-                                      {
-                                        rotulo:
-                                          movimento.papel === "pagamento_fatura"
-                                            ? "Desmarcar pagamento de fatura"
-                                            : "Marcar pagamento de fatura",
-                                        icone: Repeat,
-                                        onClick: () => {
-                                          if (movimento.papel === "pagamento_fatura") {
-                                            void marcar_pagamento_fatura(movimento, false);
-                                            return;
-                                          }
-                                          abrir_modal_fatura(movimento);
+                                      ]
+                                    : []),
+                                  ...(mostra_acao_pagamento_fatura(movimento)
+                                    ? [
+                                        {
+                                          rotulo:
+                                            movimento.papel === "pagamento_fatura"
+                                              ? "Desmarcar pagamento de fatura"
+                                              : "Marcar pagamento de fatura",
+                                          icone: Repeat,
+                                          onClick: () => {
+                                            if (movimento.papel === "pagamento_fatura") {
+                                              void marcar_pagamento_fatura(movimento, false);
+                                              return;
+                                            }
+                                            abrir_modal_fatura(movimento);
+                                          },
                                         },
-                                      },
-                                    ]
-                                  : []),
-                                ...(pode_excluir_movimento(movimento.fonte)
-                                  ? [
-                                      {
-                                        rotulo: "Excluir",
-                                        icone: Trash2,
-                                        perigo: true,
-                                        onClick: () => void excluir_movimento(movimento),
-                                      },
-                                    ]
-                                  : []),
-                              ]}
-                            />
-                          )}
-                        </>
+                                      ]
+                                    : []),
+                                  ...(pode_excluir_movimento(movimento.fonte)
+                                    ? [
+                                        {
+                                          rotulo: "Excluir",
+                                          icone: Trash2,
+                                          perigo: true,
+                                          onClick: () => void excluir_movimento(movimento),
+                                        },
+                                      ]
+                                    : []),
+                                ]),
+                          ]}
+                        />
                       )}
                     </td>
                   </tr>

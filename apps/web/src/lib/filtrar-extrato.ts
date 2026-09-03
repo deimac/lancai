@@ -399,6 +399,16 @@ export function parcelas_irmas_no_extrato(
   }));
 }
 
+/** Âncora real + parcelas da compra — classificar a linha de apresentação atualiza todas. */
+export function ids_classificacao_da_serie(
+  movimento: MovimentoResumo,
+  movimentos: MovimentoResumo[],
+): string[] {
+  const realId = id_movimento_api(movimento.id);
+  const ancora = { ...movimento, id: realId, apresentacao: false };
+  return [...new Set([realId, ...parcelas_irmas_no_extrato(ancora, movimentos).map((irma) => irma.id)])];
+}
+
 function eh_entrada_extrato(tipo: string): boolean {
   return tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte";
 }

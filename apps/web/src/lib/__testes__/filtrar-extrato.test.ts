@@ -25,6 +25,8 @@ import {
   visao_da_query,
   visao_para_query,
   TAMANHO_PAGINA_PADRAO,
+  id_movimento_api,
+  ids_classificacao_da_serie,
   parcelas_irmas_no_extrato,
   valor_parcela_da_apresentacao,
   type FiltrosExtrato,
@@ -449,6 +451,8 @@ describe("filtrar_extrato", () => {
     expect(apresentacao?.apresentacao).toBe(true);
     const irmas = parcelas_irmas_no_extrato(apresentacao!, serie);
     expect(irmas.map((p) => p.parcelaNumero)).toEqual([1, 2, 3, 4]);
+    expect(id_movimento_api(apresentacao!.id)).toBe("p1");
+    expect(ids_classificacao_da_serie(apresentacao!, serie).sort()).toEqual(["p1", "p2", "p3", "p4"]);
   });
 
   it("visão Faturas recorta pelo ciclo que vence no mês; Movimentações pelo calendário", () => {
