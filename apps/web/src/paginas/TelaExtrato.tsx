@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   CalendarClock,
@@ -75,6 +74,7 @@ import {
   papel_para_query,
   quantidade_filtros_drawer,
   resumir_extrato,
+  saidas_dos_grupos_fatura,
   tamanho_pagina_da_query,
   tipo_gasto_da_query,
   tipo_gasto_para_query,
@@ -421,19 +421,19 @@ export function TelaExtrato() {
     () =>
       visao === "faturas"
         ? agrupar_faturas_por_cartao(
-            visiveis,
-            cartoesTodos,
-            mes,
-            hojeISO(),
-            cartoesTodos.flatMap((cartao) =>
-              (cartao.faturasOficiais ?? []).map((fatura) => ({
-                cartaoId: cartao.id,
-                competencia: fatura.competencia,
-                total: fatura.total,
-              })),
-            ),
-            movimentos,
-          )
+          visiveis,
+          cartoesTodos,
+          mes,
+          hojeISO(),
+          cartoesTodos.flatMap((cartao) =>
+            (cartao.faturasOficiais ?? []).map((fatura) => ({
+              cartaoId: cartao.id,
+              competencia: fatura.competencia,
+              total: fatura.total,
+            })),
+          ),
+          movimentos,
+        )
         : [],
     [visao, visiveis, cartoesTodos, mes, movimentos],
   );
@@ -473,7 +473,12 @@ export function TelaExtrato() {
     ]);
   }, [visao, paginaAtual.itens, gruposFatura]);
 
-  const resumo = useMemo(() => resumir_extrato(visiveis), [visiveis]);
+  const resumo = useMemo(() => {
+    const base = resumir_extrato(visiveis, visao === "movimentacoes");
+    if (visao !== "faturas") return base;
+    const saidas = saidas_dos_grupos_fatura(gruposFatura);
+    return { ...base, saidas, resultado: base.entradas - saidas };
+  }, [visiveis, visao, gruposFatura]);
 
   const filtrosDrawer = quantidade_filtros_drawer({
     categoriaId,
@@ -511,21 +516,21 @@ export function TelaExtrato() {
         atual.map((item) =>
           idsSerie.has(item.id)
             ? {
-                ...item,
-                categoriaId: atualizado.categoriaId,
-                categoriaNome: atualizado.categoriaNome,
-                classificadoPor: atualizado.classificadoPor,
-                regraId: atualizado.regraId,
-                regraTrecho: null,
-                classificadoEm: atualizado.classificadoEm,
-                confiancaIa: atualizado.confiancaIa,
-                tipoGasto: atualizado.tipoGasto,
-                ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
-                possivelRepetido: atualizado.possivelRepetido,
-                papel: atualizado.papel,
-                cartaoFaturaId: atualizado.cartaoFaturaId,
-                competenciaFatura: atualizado.competenciaFatura,
-              }
+              ...item,
+              categoriaId: atualizado.categoriaId,
+              categoriaNome: atualizado.categoriaNome,
+              classificadoPor: atualizado.classificadoPor,
+              regraId: atualizado.regraId,
+              regraTrecho: null,
+              classificadoEm: atualizado.classificadoEm,
+              confiancaIa: atualizado.confiancaIa,
+              tipoGasto: atualizado.tipoGasto,
+              ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+              possivelRepetido: atualizado.possivelRepetido,
+              papel: atualizado.papel,
+              cartaoFaturaId: atualizado.cartaoFaturaId,
+              competenciaFatura: atualizado.competenciaFatura,
+            }
             : item,
         ),
       );
@@ -571,21 +576,21 @@ export function TelaExtrato() {
       atual.map((item) =>
         item.id === movimentoId
           ? {
-              ...item,
-              categoriaId: atualizado.categoriaId,
-              categoriaNome: atualizado.categoriaNome,
-              classificadoPor: atualizado.classificadoPor,
-              regraId: atualizado.regraId,
-              regraTrecho: null,
-              classificadoEm: atualizado.classificadoEm,
-              confiancaIa: atualizado.confiancaIa,
-              tipoGasto: atualizado.tipoGasto,
-              ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
-              possivelRepetido: atualizado.possivelRepetido,
-              papel: atualizado.papel,
-              cartaoFaturaId: atualizado.cartaoFaturaId,
-              competenciaFatura: atualizado.competenciaFatura,
-            }
+            ...item,
+            categoriaId: atualizado.categoriaId,
+            categoriaNome: atualizado.categoriaNome,
+            classificadoPor: atualizado.classificadoPor,
+            regraId: atualizado.regraId,
+            regraTrecho: null,
+            classificadoEm: atualizado.classificadoEm,
+            confiancaIa: atualizado.confiancaIa,
+            tipoGasto: atualizado.tipoGasto,
+            ignoradoEmRelatorio: atualizado.ignoradoEmRelatorio,
+            possivelRepetido: atualizado.possivelRepetido,
+            papel: atualizado.papel,
+            cartaoFaturaId: atualizado.cartaoFaturaId,
+            competenciaFatura: atualizado.competenciaFatura,
+          }
           : item,
       ),
     );
@@ -894,14 +899,22 @@ export function TelaExtrato() {
           <PainelResumo
             titulo="Entradas"
             valor={formatar_moeda(resumo.entradas)}
-            detalhe={visao === "faturas" ? "só cartões no ciclo" : "sem pagamento de fatura"}
+            detalhe={
+              visao === "faturas"
+                ? "só cartões no ciclo"
+                : `${resumo.entradasQuantidade} lançamento${resumo.entradasQuantidade === 1 ? "" : "s"}`
+            }
             icone={ArrowDownLeft}
             tom="receita"
           />
           <PainelResumo
             titulo="Saídas"
             valor={formatar_moeda(resumo.saidas)}
-            detalhe={visao === "faturas" ? "só cartões no ciclo" : "sem pagamento de fatura"}
+            detalhe={
+              visao === "faturas"
+                ? "só cartões no ciclo"
+                : `${resumo.saidasQuantidade} lançamento${resumo.saidasQuantidade === 1 ? "" : "s"}`
+            }
             icone={ArrowUpRight}
             tom="despesa"
           />
@@ -912,27 +925,6 @@ export function TelaExtrato() {
             icone={resumo.resultado >= 0 ? ArrowDownLeft : ArrowUpRight}
             tom={resumo.resultado >= 0 ? "receita" : "despesa"}
           />
-          <button
-            type="button"
-            onClick={() => escolher_filtro("revisar")}
-            className={unir_classes(
-              "rounded-2xl border bg-superficie/80 p-4 text-left shadow-sm shadow-black/20 transition",
-              filtro === "revisar" ? "border-aviso/50" : "border-borda hover:border-aviso/40",
-            )}
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs font-medium uppercase tracking-wide text-texto-suave">
-                Para revisar
-              </span>
-              <AlertTriangle size={16} className="text-aviso" />
-            </div>
-            <p className="text-2xl font-semibold tracking-tight text-texto tabular-nums">
-              {resumo.revisarQuantidade}
-            </p>
-            <p className="mt-1 text-xs text-texto-suave tabular-nums">
-              {formatar_moeda(resumo.revisarTotal)} sem classificação
-            </p>
-          </button>
         </div>
       ) : null}
 
@@ -968,62 +960,62 @@ export function TelaExtrato() {
         </Cartao>
       ) : (
         <>
-        <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie/80">
-          <table className="min-w-[56rem] w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-borda text-left text-[11px] uppercase tracking-wide text-texto-suave">
-                <th className="w-10 px-3 py-2 font-medium">Tipo</th>
-                <th className="px-3 py-2 font-medium">Descrição</th>
-                <th className="px-3 py-2 font-medium">Natureza</th>
-                <th className="px-3 py-2 font-medium">Conta</th>
-                <th className="px-3 py-2 font-medium">Categoria</th>
-                <th className="px-3 py-2 font-medium">Data</th>
-                <th className="px-3 py-2 text-right font-medium">Valor</th>
-                <th className="w-12 px-2 py-2 font-medium"><span className="sr-only">Ações</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhasTabela.map((linha) => {
-                if (linha.tipo === "grupo") {
-                  return (
-                    <tr key={`grupo-${linha.grupo.cartaoId}`} className="border-b border-borda bg-fundo/50">
-                      <td colSpan={8} className="px-3 py-2">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <p className="text-sm font-medium text-texto">
-                            {linha.grupo.cartaoNome}
-                            {linha.grupo.intervalo ? (
-                              <span className="ml-2 text-xs font-normal text-texto-suave">
-                                {linha.grupo.intervalo}
-                              </span>
-                            ) : null}
-                          </p>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold tabular-nums text-despesa">
-                              {formatar_moeda(linha.grupo.total)}
+          <div className="overflow-x-auto rounded-2xl border border-borda bg-superficie/80">
+            <table className="min-w-[56rem] w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-borda text-left text-[11px] uppercase tracking-wide text-texto-suave">
+                  <th className="w-10 px-3 py-2 font-medium">Tipo</th>
+                  <th className="px-3 py-2 font-medium">Descrição</th>
+                  <th className="px-3 py-2 font-medium">Natureza</th>
+                  <th className="px-3 py-2 font-medium">Conta</th>
+                  <th className="px-3 py-2 font-medium">Categoria</th>
+                  <th className="px-3 py-2 font-medium">Data</th>
+                  <th className="px-3 py-2 text-right font-medium">Valor</th>
+                  <th className="w-12 px-2 py-2 font-medium"><span className="sr-only">Ações</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {linhasTabela.map((linha) => {
+                  if (linha.tipo === "grupo") {
+                    return (
+                      <tr key={`grupo-${linha.grupo.cartaoId}`} className="border-b border-borda bg-fundo/50">
+                        <td colSpan={8} className="px-3 py-2">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <p className="text-sm font-medium text-texto">
+                              {linha.grupo.cartaoNome}
+                              {linha.grupo.intervalo ? (
+                                <span className="ml-2 text-xs font-normal text-texto-suave">
+                                  {linha.grupo.intervalo}
+                                </span>
+                              ) : null}
                             </p>
-                            {linha.grupo.ajuste != null && Math.abs(linha.grupo.ajuste) >= 0.01 ? (
-                              <p className="text-[11px] text-texto-suave">
-                                ajuste {formatar_moeda(linha.grupo.ajuste)}
+                            <div className="text-right">
+                              <p className="text-sm font-semibold tabular-nums text-despesa">
+                                {formatar_moeda(linha.grupo.total)}
                               </p>
-                            ) : null}
+                              {linha.grupo.ajuste != null && Math.abs(linha.grupo.ajuste) >= 0.01 ? (
+                                <p className="text-[11px] text-texto-suave">
+                                  ajuste {formatar_moeda(linha.grupo.ajuste)}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }
-                const movimento = linha.movimento;
-                const revisao = precisa_revisao(movimento);
-                const entrada = ["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo);
-                const origemPerfil = perfil_origem_movimento(movimento, contas, cartoes);
-                const ehGasto = movimento.tipo === "despesa" || movimento.tipo === "retirada";
-                const categoriaAtual = categorias.find((c) => c.id === movimento.categoriaId);
-                const cartaoMovimento = movimento.cartaoId
-                  ? cartoesTodos.find((item) => item.id === movimento.cartaoId)
-                  : undefined;
-                const seloFatura =
-                  visao === "movimentacoes" && !movimento.apresentacao
-                    ? selo_fatura_ciclo({
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const movimento = linha.movimento;
+                  const revisao = precisa_revisao(movimento);
+                  const entrada = ["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo);
+                  const origemPerfil = perfil_origem_movimento(movimento, contas, cartoes);
+                  const ehGasto = movimento.tipo === "despesa" || movimento.tipo === "retirada";
+                  const categoriaAtual = categorias.find((c) => c.id === movimento.categoriaId);
+                  const cartaoMovimento = movimento.cartaoId
+                    ? cartoesTodos.find((item) => item.id === movimento.cartaoId)
+                    : undefined;
+                  const seloFatura =
+                    visao === "movimentacoes" && !movimento.apresentacao
+                      ? selo_fatura_ciclo({
                         dataMovimento: movimento.dataMovimento,
                         cartaoId: movimento.cartaoId,
                         fechamento: cartaoMovimento?.fechamento,
@@ -1033,222 +1025,222 @@ export function TelaExtrato() {
                         tipo: movimento.tipo,
                         papel: movimento.papel,
                       })
-                    : null;
-                const valorParcela = valor_parcela_da_apresentacao(movimento);
-                return (
-                  <tr
-                    key={movimento.id}
-                    className={unir_classes(
-                      "border-b border-borda/70 last:border-0",
-                      movimento.apresentacao
-                        ? "bg-fundo/30 text-texto-suave"
-                        : revisao
-                          ? "bg-aviso/5"
-                          : "hover:bg-fundo/40",
-                      movimento.status === "cancelado" && "opacity-60",
-                    )}
-                  >
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={unir_classes(
-                          "inline-flex h-7 w-7 items-center justify-center rounded-lg",
-                          entrada ? "bg-receita/15 text-receita" : "bg-despesa/15 text-despesa",
-                        )}
-                      >
-                        {entrada ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
-                      </span>
-                    </td>
-                    <td className="max-w-[16rem] px-3 py-2.5">
-                      <Dica texto={movimento.descricao}>
-                        <p className="truncate font-medium text-texto">{movimento.descricao}</p>
-                      </Dica>
-                      <p className="truncate text-[11px] text-texto-suave">
-                        {rotulo_classificado_por(movimento.classificadoPor, movimento.confiancaIa)}
-                        {rotulo_tipo_gasto(movimento.tipoGasto)
-                          ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
-                          : ""}
-                      </p>
-                      {movimento.possivelRepetido && !movimento.ignoradoEmRelatorio && !movimento.apresentacao ? (
-                        <BannerRepetido
-                          salvando={salvandoId === movimento.id}
-                          onManter={() => void decidir_repetido(movimento, true)}
-                          onNaoManter={() => void decidir_repetido(movimento, false)}
-                        />
-                      ) : null}
-                      {mostra_check_pagamento_fatura(movimento) && !movimento.apresentacao && (
-                        <BannerFatura
-                          movimento={movimento}
-                          cartoes={cartoesTodos}
-                          movimentos={movimentos}
-                          salvando={salvandoId === movimento.id}
-                          dispensou={faturasDispensadas.has(movimento.id)}
-                          ofertaRegra={
-                            ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
-                          }
-                          onPedirConfirmacao={() => abrir_modal_fatura(movimento)}
-                          onDispensar={() => {
-                            if (!usuario) return;
-                            setFaturasDispensadas((atuais) =>
-                              dispensar_convite_fatura(usuario.id, movimento.id, atuais),
-                            );
-                          }}
-                          onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
-                          onDispensarRegra={() => setOfertaRegra(null)}
-                        />
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-texto-suave">
-                      <span className="flex flex-col">
-                        <span>{rotulo_natureza(movimento)}</span>
-                        {valorParcela != null ? (
-                          <span className="text-[11px] tabular-nums text-texto-suave">
-                            {formatar_moeda_br(valorParcela)}
-                          </span>
-                        ) : null}
-                      </span>
-                    </td>
-                    <td className="max-w-[9rem] truncate px-3 py-2.5 text-texto-suave">
-                      {nome_origem_movimento(movimento, contas, cartoes)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-flex max-w-[10rem] items-center gap-1.5">
-                        <IconeCategoria icone={categoriaAtual?.icone} cor={categoriaAtual?.cor} tamanho={14} />
-                        <span className="truncate text-texto">
-                          {movimento.categoriaNome ?? "Não classificado"}
-                        </span>
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-texto-suave">
-                      <span className="inline-flex items-center gap-1.5">
-                        {formatar_data(movimento.dataMovimento)}
-                        {seloFatura ? <IconeProximaFatura dica={seloFatura.dica} /> : null}
-                      </span>
-                    </td>
-                    <td
+                      : null;
+                  const valorParcela = valor_parcela_da_apresentacao(movimento);
+                  return (
+                    <tr
+                      key={movimento.id}
                       className={unir_classes(
-                        "whitespace-nowrap px-3 py-2.5",
+                        "border-b border-borda/70 last:border-0",
                         movimento.apresentacao
-                          ? "text-texto-suave"
-                          : cor_valor(movimento.tipo, movimento.status),
+                          ? "bg-fundo/30 text-texto-suave"
+                          : revisao
+                            ? "bg-aviso/5"
+                            : "hover:bg-fundo/40",
+                        movimento.status === "cancelado" && "opacity-60",
                       )}
                     >
-                      <p className="text-right font-medium tabular-nums">
-                        {formatar_valor(movimento.tipo, movimento.valor)}
-                      </p>
-                      {movimento.apresentacao ? null : (
-                        <p className="text-right text-[11px] tabular-nums text-texto-suave">
-                          {hora_visivel_do_fato(movimento.dataMovimento, movimento.ocorridoEmInstante) ||
-                            "00:00"}
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={unir_classes(
+                            "inline-flex h-7 w-7 items-center justify-center rounded-lg",
+                            entrada ? "bg-receita/15 text-receita" : "bg-despesa/15 text-despesa",
+                          )}
+                        >
+                          {entrada ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
+                        </span>
+                      </td>
+                      <td className="max-w-[16rem] px-3 py-2.5">
+                        <Dica texto={movimento.descricao}>
+                          <p className="truncate font-medium text-texto">{movimento.descricao}</p>
+                        </Dica>
+                        <p className="truncate text-[11px] text-texto-suave">
+                          {rotulo_classificado_por(movimento.classificadoPor, movimento.confiancaIa)}
+                          {rotulo_tipo_gasto(movimento.tipoGasto)
+                            ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
+                            : ""}
                         </p>
-                      )}
-                    </td>
-                    <td className="relative px-2 py-2.5">
-                      <button
-                        type="button"
-                        className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
-                        aria-label="Ações"
-                        onClick={() => {
-                          setMenuId(menuId === movimento.id ? null : movimento.id);
-                        }}
+                        {movimento.possivelRepetido && !movimento.ignoradoEmRelatorio && !movimento.apresentacao ? (
+                          <BannerRepetido
+                            salvando={salvandoId === movimento.id}
+                            onManter={() => void decidir_repetido(movimento, true)}
+                            onNaoManter={() => void decidir_repetido(movimento, false)}
+                          />
+                        ) : null}
+                        {mostra_check_pagamento_fatura(movimento) && !movimento.apresentacao && (
+                          <BannerFatura
+                            movimento={movimento}
+                            cartoes={cartoesTodos}
+                            movimentos={movimentos}
+                            salvando={salvandoId === movimento.id}
+                            dispensou={faturasDispensadas.has(movimento.id)}
+                            ofertaRegra={
+                              ofertaRegra?.movimentoId === movimento.id ? ofertaRegra : null
+                            }
+                            onPedirConfirmacao={() => abrir_modal_fatura(movimento)}
+                            onDispensar={() => {
+                              if (!usuario) return;
+                              setFaturasDispensadas((atuais) =>
+                                dispensar_convite_fatura(usuario.id, movimento.id, atuais),
+                              );
+                            }}
+                            onCriarRegra={() => void criar_regra_do_pagamento(movimento.id)}
+                            onDispensarRegra={() => setOfertaRegra(null)}
+                          />
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-texto-suave">
+                        <span className="flex flex-col">
+                          <span>{rotulo_natureza(movimento)}</span>
+                          {valorParcela != null ? (
+                            <span className="text-[11px] tabular-nums text-texto-suave">
+                              {formatar_moeda_br(valorParcela)}
+                            </span>
+                          ) : null}
+                        </span>
+                      </td>
+                      <td className="max-w-[9rem] truncate px-3 py-2.5 text-texto-suave">
+                        {nome_origem_movimento(movimento, contas, cartoes)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex max-w-[10rem] items-center gap-1.5">
+                          <IconeCategoria icone={categoriaAtual?.icone} cor={categoriaAtual?.cor} tamanho={14} />
+                          <span className="truncate text-texto">
+                            {movimento.categoriaNome ?? "Não classificado"}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-texto-suave">
+                        <span className="inline-flex items-center gap-1.5">
+                          {formatar_data(movimento.dataMovimento)}
+                          {seloFatura ? <IconeProximaFatura dica={seloFatura.dica} /> : null}
+                        </span>
+                      </td>
+                      <td
+                        className={unir_classes(
+                          "whitespace-nowrap px-3 py-2.5",
+                          movimento.apresentacao
+                            ? "text-texto-suave"
+                            : cor_valor(movimento.tipo, movimento.status),
+                        )}
                       >
-                        <MoreHorizontal size={16} />
-                      </button>
-                      {menuId === movimento.id && (
-                        <MenuAcoes
-                          aoEscolher={() => setMenuId(null)}
-                          acoes={[
-                            {
-                              rotulo: "Categoria",
-                              icone: Tags,
-                              submenu: categoriasParaClassificar.map((categoria) => ({
-                                rotulo: categoria.nome,
-                                iconeCategoria: categoria.icone ?? null,
-                                cor: categoria.cor ?? null,
-                                ativo: categoria.id === movimento.categoriaId,
-                                onClick: () => void classificar(movimento.id, categoria.id),
-                              })),
-                            },
-                            ...(movimento.apresentacao
-                              ? []
-                              : [
+                        <p className="text-right font-medium tabular-nums">
+                          {formatar_valor(movimento.tipo, movimento.valor)}
+                        </p>
+                        {movimento.apresentacao ? null : (
+                          <p className="text-right text-[11px] tabular-nums text-texto-suave">
+                            {hora_visivel_do_fato(movimento.dataMovimento, movimento.ocorridoEmInstante) ||
+                              "00:00"}
+                          </p>
+                        )}
+                      </td>
+                      <td className="relative px-2 py-2.5">
+                        <button
+                          type="button"
+                          className="rounded-lg p-1.5 text-texto-suave hover:bg-fundo hover:text-texto"
+                          aria-label="Ações"
+                          onClick={() => {
+                            setMenuId(menuId === movimento.id ? null : movimento.id);
+                          }}
+                        >
+                          <MoreHorizontal size={16} />
+                        </button>
+                        {menuId === movimento.id && (
+                          <MenuAcoes
+                            aoEscolher={() => setMenuId(null)}
+                            acoes={[
+                              {
+                                rotulo: "Categoria",
+                                icone: Tags,
+                                submenu: categoriasParaClassificar.map((categoria) => ({
+                                  rotulo: categoria.nome,
+                                  iconeCategoria: categoria.icone ?? null,
+                                  cor: categoria.cor ?? null,
+                                  ativo: categoria.id === movimento.categoriaId,
+                                  onClick: () => void classificar(movimento.id, categoria.id),
+                                })),
+                              },
+                              ...(movimento.apresentacao
+                                ? []
+                                : [
                                   ...(origemPerfil && ehGasto
                                     ? [
-                                        {
-                                          rotulo:
+                                      {
+                                        rotulo:
+                                          origemPerfil === "pj"
+                                            ? movimento.tipoGasto === "pf"
+                                              ? "Marcar como empresa"
+                                              : "Marcar como pessoal"
+                                            : movimento.tipoGasto === "pj"
+                                              ? "Marcar como pessoal"
+                                              : "Marcar como empresa",
+                                        icone: UserRound,
+                                        onClick: () => {
+                                          const cruzado =
                                             origemPerfil === "pj"
                                               ? movimento.tipoGasto === "pf"
-                                                ? "Marcar como empresa"
-                                                : "Marcar como pessoal"
-                                              : movimento.tipoGasto === "pj"
-                                                ? "Marcar como pessoal"
-                                                : "Marcar como empresa",
-                                          icone: UserRound,
-                                          onClick: () => {
-                                            const cruzado =
-                                              origemPerfil === "pj"
-                                                ? movimento.tipoGasto === "pf"
-                                                : movimento.tipoGasto === "pj";
-                                            const proximo: Perfil = cruzado
-                                              ? origemPerfil
-                                              : origemPerfil === "pj"
-                                                ? "pf"
-                                                : "pj";
-                                            void alterar_tipo_gasto(movimento.id, proximo);
-                                          },
+                                              : movimento.tipoGasto === "pj";
+                                          const proximo: Perfil = cruzado
+                                            ? origemPerfil
+                                            : origemPerfil === "pj"
+                                              ? "pf"
+                                              : "pj";
+                                          void alterar_tipo_gasto(movimento.id, proximo);
                                         },
-                                      ]
+                                      },
+                                    ]
                                     : []),
                                   ...(mostra_acao_pagamento_fatura(movimento)
                                     ? [
-                                        {
-                                          rotulo:
-                                            movimento.papel === "pagamento_fatura"
-                                              ? "Desmarcar pagamento de fatura"
-                                              : "Marcar pagamento de fatura",
-                                          icone: Repeat,
-                                          onClick: () => {
-                                            if (movimento.papel === "pagamento_fatura") {
-                                              void marcar_pagamento_fatura(movimento, false);
-                                              return;
-                                            }
-                                            abrir_modal_fatura(movimento);
-                                          },
+                                      {
+                                        rotulo:
+                                          movimento.papel === "pagamento_fatura"
+                                            ? "Desmarcar pagamento de fatura"
+                                            : "Marcar pagamento de fatura",
+                                        icone: Repeat,
+                                        onClick: () => {
+                                          if (movimento.papel === "pagamento_fatura") {
+                                            void marcar_pagamento_fatura(movimento, false);
+                                            return;
+                                          }
+                                          abrir_modal_fatura(movimento);
                                         },
-                                      ]
+                                      },
+                                    ]
                                     : []),
                                   ...(pode_excluir_movimento(movimento.fonte)
                                     ? [
-                                        {
-                                          rotulo: "Excluir",
-                                          icone: Trash2,
-                                          perigo: true,
-                                          onClick: () => void excluir_movimento(movimento),
-                                        },
-                                      ]
+                                      {
+                                        rotulo: "Excluir",
+                                        icone: Trash2,
+                                        perigo: true,
+                                        onClick: () => void excluir_movimento(movimento),
+                                      },
+                                    ]
                                     : []),
                                 ]),
-                          ]}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {visao === "movimentacoes" ? (
-          <Paginador
-            pagina={paginaAtual.pagina}
-            paginas={paginaAtual.paginas}
-            total={paginaAtual.total}
-            porPagina={paginaAtual.porPagina}
-            de={paginaAtual.de}
-            ate={paginaAtual.ate}
-            onPagina={setPagina}
-            onPorPagina={(n) => sincronizar_params({ porPagina: n })}
-          />
-        ) : null}
+                            ]}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {visao === "movimentacoes" ? (
+            <Paginador
+              pagina={paginaAtual.pagina}
+              paginas={paginaAtual.paginas}
+              total={paginaAtual.total}
+              porPagina={paginaAtual.porPagina}
+              de={paginaAtual.de}
+              ate={paginaAtual.ate}
+              onPagina={setPagina}
+              onPorPagina={(n) => sincronizar_params({ porPagina: n })}
+            />
+          ) : null}
         </>
       )}
 

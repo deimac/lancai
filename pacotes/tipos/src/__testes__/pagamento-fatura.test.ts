@@ -23,6 +23,8 @@ import {
   eh_linha_da_fatura,
   aplicar_total_oficial,
   na_fatura_do_recorte,
+  intervalo_fecha_a_vence,
+  competencia_cobranca_casa,
   soma_cobrada_do_vencimento,
   pagamentos_ciclo_de,
   valor_na_fatura,
@@ -806,7 +808,84 @@ describe("na_fatura_do_recorte", () => {
   });
 });
 
+describe("intervalo_fecha_a_vence", () => {
+  it("Azul fecha 30 vence 6: depois do fechamento até o vencimento", () => {
+    expect(intervalo_fecha_a_vence("2026-06", 30, 6)).toEqual({
+      inicio: "2026-05-31",
+      fim: "2026-06-06",
+    });
+    expect(intervalo_fecha_a_vence("2026-07", 30, 6)).toEqual({
+      inicio: "2026-07-01",
+      fim: "2026-07-06",
+    });
+    expect(intervalo_fecha_a_vence("2026-08", 30, 6)).toEqual({
+      inicio: "2026-07-31",
+      fim: "2026-08-06",
+    });
+    expect(intervalo_fecha_a_vence("2026-08", 12, 17)).toEqual({
+      inicio: "2026-08-13",
+      fim: "2026-08-17",
+    });
+  });
+});
+
 describe("soma_cobrada_do_vencimento", () => {
+  const azul = "azul";
+
+  function parPix(entrada: {
+    id: string;
+    data: string;
+    valor: string;
+    tag?: string | null;
+    cartaoDebito?: string | null;
+  }): Array<{
+    cartaoFaturaId?: string | null;
+    cartaoId?: string | null;
+    papel?: string | null;
+    competenciaFatura?: string | null;
+    dataMovimento: string;
+    valor: string;
+    tipo?: string;
+    descricao?: string;
+    descricaoFonte?: string;
+  }> {
+    return [
+      {
+        cartaoFaturaId: entrada.cartaoDebito === undefined ? azul : entrada.cartaoDebito,
+        cartaoId: null,
+        papel: "pagamento_fatura",
+        competenciaFatura: entrada.tag,
+        dataMovimento: entrada.data,
+        valor: entrada.valor,
+        tipo: "despesa",
+      },
+      {
+        cartaoId: azul,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: entrada.tag,
+        dataMovimento: entrada.data,
+        valor: entrada.valor,
+        tipo: "receita",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+      },
+    ];
+  }
+
+  const cobrancasAzul = [
+    ...parPix({ id: "jun", data: "2026-06-01", valor: "5632.78", tag: "2026-06" }),
+    ...parPix({ id: "jul", data: "2026-07-06", valor: "5717.42", tag: "2026-07" }),
+    ...parPix({ id: "ant", data: "2026-07-29", valor: "6858.34", tag: "2026-07" }),
+    ...parPix({
+      id: "res",
+      data: "2026-08-05",
+      valor: "11.02",
+      tag: "2026-08",
+      cartaoDebito: "mercado-pago",
+    }),
+  ];
+
   it("soma o Pix marcado no mês do vencimento", () => {
     expect(
       soma_cobrada_do_vencimento(
@@ -833,6 +912,102 @@ describe("soma_cobrada_do_vencimento", () => {
         6,
       ),
     ).toBeCloseTo(5632.78, 2);
+  });
+
+  it("Azul fecha 30 vence 6: cabeçalho é a soma dos Pix únicos no intervalo", () => {
+    expect(soma_cobrada_do_vencimento(cobrancasAzul, azul, "2026-06", 30, 6)).toBeCloseTo(
+      5632.78,
+      2,
+    );
+    expect(soma_cobrada_do_vencimento(cobrancasAzul, azul, "2026-07", 30, 6)).toBeCloseTo(
+      5717.42,
+      2,
+    );
+    expect(soma_cobrada_do_vencimento(cobrancasAzul, azul, "2026-08", 30, 6)).toBeCloseTo(
+      11.02,
+      2,
+    );
+  });
+
+  it("vários Pix no recorte fecha→vence somam; débito+crédito do mesmo Pix não duplica", () => {
+    expect(
+      soma_cobrada_do_vencimento(
+        [
+          {
+            cartaoFaturaId: azul,
+            papel: "pagamento_fatura",
+            dataMovimento: "2026-08-01",
+            valor: "10",
+          },
+          {
+            cartaoId: azul,
+            cartaoFaturaId: azul,
+            papel: "pagamento_fatura",
+            dataMovimento: "2026-08-01",
+            valor: "10",
+            tipo: "receita",
+            descricao: "Pagamento PIX",
+            descricaoFonte: "Pagamento PIX",
+          },
+          {
+            cartaoId: azul,
+            papel: "pagamento_fatura",
+            dataMovimento: "2026-08-05",
+            valor: "11.02",
+            tipo: "receita",
+            descricao: "Pagamento PIX",
+            descricaoFonte: "Pagamento PIX",
+          },
+        ],
+        azul,
+        "2026-08",
+        30,
+        6,
+      ),
+    ).toBeCloseTo(21.02, 2);
+  });
+
+  it("antecipação de 29/07 fica fora do cabeçalho de julho e de agosto", () => {
+    expect(
+      competencia_cobranca_casa(
+        { dataMovimento: "2026-07-06" },
+        "2026-07",
+        30,
+        6,
+      ),
+    ).toBe(true);
+    expect(
+      competencia_cobranca_casa(
+        { dataMovimento: "2026-07-06" },
+        "2026-08",
+        30,
+        6,
+      ),
+    ).toBe(false);
+    expect(
+      competencia_cobranca_casa(
+        { dataMovimento: "2026-07-29" },
+        "2026-07",
+        30,
+        6,
+      ),
+    ).toBe(false);
+    expect(
+      competencia_cobranca_casa(
+        { dataMovimento: "2026-07-29" },
+        "2026-08",
+        30,
+        6,
+      ),
+    ).toBe(false);
+    expect(
+      competencia_cobranca_casa(
+        { dataMovimento: "2026-08-05" },
+        "2026-08",
+        30,
+        6,
+      ),
+    ).toBe(true);
   });
 });
 

@@ -365,7 +365,8 @@ describe("AdaptadorPluggy", () => {
           vencimentoEm: "2026-08-10",
         },
       ]);
-      expect(rede.chamadas.some((chamada) => chamada.url.includes("/bills"))).toBe(true);
+      expect(rede.chamadas.some((chamada) => chamada.url.includes("/bills?"))).toBe(true);
+      expect(rede.chamadas.some((chamada) => chamada.url.includes("/v2/bills"))).toBe(false);
     });
 
     it("não grava compra internacional sem valor na moeda da conta", async () => {

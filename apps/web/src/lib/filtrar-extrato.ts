@@ -416,16 +416,23 @@ function eh_entrada_extrato(tipo: string): boolean {
 export type ResumoExtrato = {
   entradas: number;
   saidas: number;
+  entradasQuantidade: number;
+  saidasQuantidade: number;
   resultado: number;
   revisarQuantidade: number;
   revisarTotal: number;
   proximaFatura: number;
 };
 
-/** Totais do recorte já filtrado (exclui cancelados e pagamento de fatura). */
-export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
+/** Totais do recorte já filtrado, excluindo cancelados e linhas de apresentação. */
+export function resumir_extrato(
+  movimentos: MovimentoResumo[],
+  incluirPagamentosFatura = false,
+): ResumoExtrato {
   let entradas = 0;
   let saidas = 0;
+  let entradasQuantidade = 0;
+  let saidasQuantidade = 0;
   let revisarQuantidade = 0;
   let revisarTotal = 0;
   for (const movimento of movimentos) {
@@ -434,13 +441,16 @@ export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
     const valor = Number(movimento.valor);
     const seguro = Number.isFinite(valor) ? valor : 0;
     if (
-      movimento.papel !== "pagamento_fatura" &&
-      !eh_credito_quitacao_no_cartao(movimento.descricaoFonte ?? movimento.descricao)
+      incluirPagamentosFatura ||
+      (movimento.papel !== "pagamento_fatura" &&
+        !eh_credito_quitacao_no_cartao(movimento.descricaoFonte ?? movimento.descricao))
     ) {
       if (eh_entrada_extrato(movimento.tipo)) {
         entradas += seguro;
+        entradasQuantidade += 1;
       } else {
         saidas += seguro;
+        saidasQuantidade += 1;
       }
     }
     if (precisa_revisao(movimento)) {
@@ -451,6 +461,8 @@ export function resumir_extrato(movimentos: MovimentoResumo[]): ResumoExtrato {
   return {
     entradas,
     saidas,
+    entradasQuantidade,
+    saidasQuantidade,
     resultado: entradas - saidas,
     revisarQuantidade,
     revisarTotal,
@@ -521,10 +533,10 @@ export function agrupar_faturas_por_cartao(
     const competenciaFecha =
       cartao?.fechamento != null && cartao.fechamento >= 1
         ? competencia_alvo_do_modo_fatura({
-            mes,
-            fechamento: cartao.fechamento,
-            vencimento: cartao.vencimento,
-          })
+          mes,
+          fechamento: cartao.fechamento,
+          vencimento: cartao.vencimento,
+        })
         : mes;
     const oficial =
       oficiais.find(
@@ -533,24 +545,34 @@ export function agrupar_faturas_por_cartao(
       oficiais.find((item) => item.cartaoId === grupo.cartaoId && item.competencia === mes);
     const pix =
       cartao?.fechamento != null &&
-      cartao.fechamento >= 1 &&
-      cartao.vencimento != null &&
-      cartao.vencimento >= 1
+        cartao.fechamento >= 1 &&
+        cartao.vencimento != null &&
+        cartao.vencimento >= 1
         ? soma_cobrada_do_vencimento(
-            cobrancas,
-            grupo.cartaoId,
-            mes,
-            cartao.fechamento,
-            cartao.vencimento,
-          )
+          cobrancas,
+          grupo.cartaoId,
+          mes,
+          cartao.fechamento,
+          cartao.vencimento,
+        )
         : 0;
-    const cobrado = oficial?.total ?? (pix > 0 ? pix : null);
-    const aplicado = aplicar_total_oficial(grupo.total, cobrado);
-    grupo.total = aplicado.total;
-    grupo.totalOficial = aplicado.totalOficial;
-    grupo.ajuste = aplicado.ajuste;
+    if (oficial != null && Number.isFinite(oficial.total)) {
+      const aplicado = aplicar_total_oficial(grupo.total, oficial.total);
+      grupo.total = aplicado.total;
+      grupo.totalOficial = aplicado.totalOficial;
+      grupo.ajuste = aplicado.ajuste;
+    } else {
+      if (pix > 0) grupo.total = pix;
+      grupo.totalOficial = null;
+      grupo.ajuste = null;
+    }
   }
   return [...mapa.values()].sort((a, b) => a.cartaoNome.localeCompare(b.cartaoNome, "pt-BR"));
+}
+
+/** Card Saídas no Modo fatura: soma dos totais cobrados dos grupos. */
+export function saidas_dos_grupos_fatura(grupos: GrupoFaturaExtrato[]): number {
+  return arredondar(grupos.reduce((soma, grupo) => soma + grupo.total, 0));
 }
 
 export function quantidade_filtros_drawer(

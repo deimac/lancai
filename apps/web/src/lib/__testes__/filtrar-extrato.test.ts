@@ -22,6 +22,7 @@ import {
   ordenar_categorias_por_uso,
   categorias_com_lancamentos,
   resumir_extrato,
+  saidas_dos_grupos_fatura,
   visao_da_query,
   visao_para_query,
   TAMANHO_PAGINA_PADRAO,
@@ -587,7 +588,7 @@ describe("filtrar_extrato", () => {
     const grupoAzul = grupos.find((grupo) => grupo.cartaoId === azul);
     expect(grupoAzul?.intervalo).toBe("01/05 → 30/05 · vence 06/06");
     expect(grupoAzul?.total).toBeCloseTo(5632.78, 2);
-    expect(grupoAzul?.ajuste).toBeCloseTo(1497.78, 2);
+    expect(grupoAzul?.ajuste).toBeNull();
     expect(grupos.find((grupo) => grupo.cartaoId === nu)?.intervalo).toBe(
       "03/05 → 02/06 · vence 10/06",
     );
@@ -613,6 +614,164 @@ describe("filtrar_extrato", () => {
     expect(grupos[0]?.total).toBeCloseTo(9622.31, 2);
     expect(grupos[0]?.ajuste).toBeCloseTo(217.24, 2);
     expect(grupos[0]?.intervalo).toContain("vence 10/08");
+  });
+
+  it("Azul fecha 30 vence 6: totais fecha→vence, sem duplicar débito+crédito nem vazar tag", () => {
+    const azul = "cartao-azul";
+    const cartao = { id: azul, nome: "Azul Itaú", fechamento: 30, vencimento: 6 };
+    const compraJulho = movimento({
+      id: "compra-jul",
+      cartaoId: azul,
+      contaId: null,
+      dataMovimento: "2026-06-20",
+      valor: "4000.00",
+    });
+    const compraAgosto = movimento({
+      id: "compra-ago",
+      cartaoId: azul,
+      contaId: null,
+      dataMovimento: "2026-07-20",
+      valor: "8000.00",
+    });
+    const cobrancas = [
+      movimento({
+        id: "pix-jun-deb",
+        contaId: "conta-itau",
+        cartaoId: null,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-06",
+        dataMovimento: "2026-06-01",
+        valor: "5632.78",
+      }),
+      movimento({
+        id: "pix-jun-cred",
+        contaId: null,
+        cartaoId: azul,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-06",
+        dataMovimento: "2026-06-01",
+        valor: "5632.78",
+        tipo: "receita",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+      }),
+      movimento({
+        id: "pix-jul-deb",
+        contaId: "conta-itau",
+        cartaoId: null,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-07",
+        dataMovimento: "2026-07-06",
+        valor: "5717.42",
+      }),
+      movimento({
+        id: "pix-jul-cred",
+        contaId: null,
+        cartaoId: azul,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-07",
+        dataMovimento: "2026-07-06",
+        valor: "5717.42",
+        tipo: "receita",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+      }),
+      movimento({
+        id: "pix-ant-deb",
+        contaId: "conta-itau",
+        cartaoId: null,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-07",
+        dataMovimento: "2026-07-29",
+        valor: "6858.34",
+      }),
+      movimento({
+        id: "pix-ant-cred",
+        contaId: null,
+        cartaoId: azul,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-07",
+        dataMovimento: "2026-07-29",
+        valor: "6858.34",
+        tipo: "receita",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+      }),
+      movimento({
+        id: "pix-res-deb",
+        contaId: "conta-itau",
+        cartaoId: null,
+        cartaoFaturaId: "cartao-mp",
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-08",
+        dataMovimento: "2026-08-05",
+        valor: "11.02",
+      }),
+      movimento({
+        id: "pix-res-cred",
+        contaId: null,
+        cartaoId: azul,
+        cartaoFaturaId: azul,
+        papel: "pagamento_fatura",
+        competenciaFatura: "2026-08",
+        dataMovimento: "2026-08-05",
+        valor: "11.02",
+        tipo: "receita",
+        descricao: "Pagamento PIX",
+        descricaoFonte: "Pagamento PIX",
+      }),
+    ];
+
+    const junho = agrupar_faturas_por_cartao(
+      [
+        movimento({
+          id: "compra-jun",
+          cartaoId: azul,
+          contaId: null,
+          dataMovimento: "2026-05-20",
+          valor: "4135.00",
+        }),
+      ],
+      [cartao],
+      "2026-06",
+      "2026-09-03",
+      [],
+      cobrancas,
+    );
+    expect(junho[0]?.total).toBeCloseTo(5632.78, 2);
+    expect(junho[0]?.ajuste).toBeNull();
+    expect(junho[0]?.movimentos.map((item) => item.id)).toEqual(["compra-jun"]);
+
+    const julho = agrupar_faturas_por_cartao(
+      [compraJulho],
+      [cartao],
+      "2026-07",
+      "2026-09-03",
+      [],
+      cobrancas,
+    );
+    expect(julho[0]?.total).toBeCloseTo(5717.42, 2);
+    expect(julho[0]?.ajuste).toBeNull();
+    expect(julho[0]?.movimentos.map((item) => item.id)).toEqual(["compra-jul"]);
+
+    const agosto = agrupar_faturas_por_cartao(
+      [compraAgosto],
+      [cartao],
+      "2026-08",
+      "2026-09-03",
+      [],
+      cobrancas,
+    );
+    expect(agosto[0]?.total).toBeCloseTo(11.02, 2);
+    expect(agosto[0]?.ajuste).toBeNull();
+    expect(agosto[0]?.movimentos.map((item) => item.id)).toEqual(["compra-ago"]);
+    expect(saidas_dos_grupos_fatura(agosto)).toBeCloseTo(11.02, 2);
   });
 });
 
@@ -737,6 +896,8 @@ describe("resumir_extrato", () => {
     expect(resumir_extrato(recorte)).toEqual({
       entradas: 100,
       saidas: 55,
+      entradasQuantidade: 1,
+      saidasQuantidade: 2,
       resultado: 45,
       revisarQuantidade: 1,
       revisarTotal: 15,
@@ -744,7 +905,7 @@ describe("resumir_extrato", () => {
     });
   });
 
-  it("crédito de quitação no cartão não infla entradas nem o resultado", () => {
+  it("inclui pagamentos de fatura nas entradas e saídas de movimentações", () => {
     const recorte = [
       movimento({
         id: "pix",
@@ -766,6 +927,15 @@ describe("resumir_extrato", () => {
         contaId: null,
       }),
       movimento({
+        id: "debito",
+        tipo: "despesa",
+        valor: "300",
+        papel: "pagamento_fatura",
+        descricao: "Fatura debitada",
+        cartaoId: null,
+        contaId: "conta-itau",
+      }),
+      movimento({
         id: "estorno",
         tipo: "receita",
         valor: "21.13",
@@ -775,10 +945,12 @@ describe("resumir_extrato", () => {
         contaId: null,
       }),
     ];
-    expect(resumir_extrato(recorte)).toEqual({
-      entradas: 21.13,
-      saidas: 0,
-      resultado: 21.13,
+    expect(resumir_extrato(recorte, true)).toEqual({
+      entradas: 15276.22,
+      saidas: 300,
+      entradasQuantidade: 3,
+      saidasQuantidade: 1,
+      resultado: 14976.22,
       revisarQuantidade: 0,
       revisarTotal: 0,
       proximaFatura: 0,
@@ -808,6 +980,8 @@ describe("resumir_extrato", () => {
     expect(resumir_extrato(recorte)).toEqual({
       entradas: 0,
       saidas: 1050.76,
+      entradasQuantidade: 0,
+      saidasQuantidade: 2,
       resultado: -1050.76,
       revisarQuantidade: 0,
       revisarTotal: 0,

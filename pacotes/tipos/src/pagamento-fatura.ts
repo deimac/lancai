@@ -1,5 +1,6 @@
 import {
   adicionarMeses,
+  datas_civis_proximas,
   deISOParaData,
   dias_calendario_entre,
   paraDataISO,
@@ -205,6 +206,15 @@ export function competencia_ciclo_da_data(dataISO: string, fechamento: number): 
     return `${anoStr}-${pad2(mes)}`;
   }
   return mes_seguinte_competencia(`${anoStr}-${pad2(mes)}`);
+}
+
+/** Fechamento da fatura cujo ciclo fecha no mês `competencia`. */
+export function data_fechamento_do_ciclo(competencia: string, fechamento: number): string {
+  const [anoStr, mesStr] = competencia.split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  const dia = dia_fechamento_no_mes(ano, mes, fechamento);
+  return `${competencia}-${pad2(dia)}`;
 }
 
 /** Vencimento da fatura que fechou no mês `competencia`. */
@@ -604,26 +614,55 @@ function cartao_do_pagamento(movimento: MovimentoCobrancaFatura): string | null 
   return movimento.cartaoFaturaId ?? movimento.cartaoId ?? null;
 }
 
-function competencia_cobranca_casa(
-  movimento: MovimentoCobrancaFatura,
+function dia_seguinte_iso(dataISO: string): string {
+  const data = deISOParaData(dataISO.slice(0, 10));
+  data.setUTCDate(data.getUTCDate() + 1);
+  return iso_utc(data);
+}
+
+/**
+ * Intervalo do Pix no cabeçalho do Modo fatura: depois do fechamento até o
+ * vencimento (inclusive). Antecipação no ciclo ainda aberto fica de fora;
+ * vários Pix nesse recorte somam (liquidação em mais de um pagamento).
+ */
+export function intervalo_fecha_a_vence(
+  mesVencimento: string,
+  fechamento: number,
+  vencimento: number,
+): { inicio: string; fim: string } {
+  const ciclo = competencia_ciclo_vencendo_em(mesVencimento, fechamento, vencimento);
+  const fecha = data_fechamento_do_ciclo(ciclo, fechamento);
+  const fim = data_vencimento_do_ciclo(ciclo, fechamento, vencimento);
+  return { inicio: dia_seguinte_iso(fecha), fim };
+}
+
+/**
+ * O Pix cai neste vencimento se a data está no intervalo fecha→vence.
+ * Tag `competenciaFatura` não decide — antecipação no ciclo aberto pode
+ * carregar tag do mês anterior e não entra no cabeçalho.
+ */
+export function competencia_cobranca_casa(
+  movimento: Pick<MovimentoCobrancaFatura, "dataMovimento">,
   mesVencimento: string,
   fechamento: number,
   vencimento: number,
 ): boolean {
-  const tag = movimento.competenciaFatura;
-  if (tag && /^\d{4}-\d{2}$/.test(tag)) {
-    if (tag === mesVencimento) return true;
-    return tag === competencia_ciclo_vencendo_em(mesVencimento, fechamento, vencimento);
-  }
-  return (
-    competencia_vencimento_da_quitacao(movimento.dataMovimento, fechamento, vencimento) ===
-    mesVencimento
-  );
+  const data = movimento.dataMovimento.slice(0, 10);
+  const { inicio, fim } = intervalo_fecha_a_vence(mesVencimento, fechamento, vencimento);
+  return data >= inicio && data <= fim;
+}
+
+function mesmo_pix_quitacao(
+  a: { data: string; valor: number },
+  b: { data: string; valor: number },
+): boolean {
+  return valores_proximos(a.valor, b.valor) && datas_civis_proximas(a.data, b.data);
 }
 
 /**
- * Pix/crédito que quitou a fatura daquele vencimento — vira o total cobrado
- * quando ainda não há `fatura_oficial`.
+ * Pix únicos cuja data cai no intervalo fecha→vence. Débito na conta e
+ * crédito no cartão do mesmo pagamento contam uma vez (mesmo valor, ±1 dia).
+ * Vira o total cobrado quando ainda não há `fatura_oficial`.
  */
 export function soma_cobrada_do_vencimento(
   movimentos: MovimentoCobrancaFatura[],
@@ -632,20 +671,37 @@ export function soma_cobrada_do_vencimento(
   fechamento: number,
   vencimento: number,
 ): number {
-  let soma = 0;
+  const cobrados: Array<{ data: string; valor: number }> = [];
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
-    const doCartao = cartao_do_pagamento(movimento) === cartaoId;
-    if (!doCartao) continue;
-    const marcado = movimento.papel === "pagamento_fatura";
-    const credito =
+    const creditoNoCartao =
       Boolean(movimento.cartaoId) &&
       movimento.cartaoId === cartaoId &&
       eh_quitacao_da_fatura(movimento);
-    if (!marcado && !credito) continue;
+    const debitoDesteCartao =
+      movimento.papel === "pagamento_fatura" && cartao_do_pagamento(movimento) === cartaoId;
+    if (!creditoNoCartao && !debitoDesteCartao) continue;
     if (!competencia_cobranca_casa(movimento, mesVencimento, fechamento, vencimento)) continue;
     const n = Number(movimento.valor);
-    if (Number.isFinite(n)) soma += n;
+    if (!Number.isFinite(n)) continue;
+    cobrados.push({ data: movimento.dataMovimento.slice(0, 10), valor: n });
+  }
+  const usados = new Set<number>();
+  let soma = 0;
+  for (let i = 0; i < cobrados.length; i += 1) {
+    if (usados.has(i)) continue;
+    const atual = cobrados[i];
+    if (!atual) continue;
+    for (let j = i + 1; j < cobrados.length; j += 1) {
+      if (usados.has(j)) continue;
+      const outro = cobrados[j];
+      if (outro && mesmo_pix_quitacao(atual, outro)) {
+        usados.add(j);
+        break;
+      }
+    }
+    usados.add(i);
+    soma += atual.valor;
   }
   return arredondar(soma);
 }

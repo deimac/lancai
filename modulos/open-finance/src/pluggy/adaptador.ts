@@ -144,7 +144,8 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
   async coletar_faturas(contaExternaId: string): Promise<FaturaExterna[]> {
     const faturas: FaturaExterna[] = [];
     const vistas = new Set<string>();
-    let caminho: string | null = `/v2/bills?accountId=${encodeURIComponent(contaExternaId)}`;
+    // `/v2/bills` devolve 403. Faturas ficam em `/bills` (sem o prefixo v2).
+    let caminho: string | null = `/bills?accountId=${encodeURIComponent(contaExternaId)}`;
 
     while (caminho && !vistas.has(caminho)) {
       vistas.add(caminho);
@@ -153,7 +154,7 @@ export class AdaptadorPluggy implements ProvedorOpenFinance {
         const traduzida = traduzir_fatura(bruta, contaExternaId);
         if (traduzida) faturas.push(traduzida);
       }
-      caminho = this.resolver_proxima(corpo.next, "/v2/bills");
+      caminho = this.resolver_proxima(corpo.next, "/bills");
     }
 
     return faturas;
