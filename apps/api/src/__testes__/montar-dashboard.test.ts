@@ -603,6 +603,36 @@ describe("montar_serie_faturas_dashboard", () => {
     expect(meses[0]).toMatchObject({ total: 250, totalOficial: 0, totalPago: 0, saldo: 250, status: "aberta" });
     expect(meses[0]?.linhas[0]).toMatchObject({ origem: "aberta", totalOficial: null });
   });
+
+  it("soma lançamentos realizados e parcelas previstas no ciclo aberto", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoBase.id, tipo: "despesa", valor: 19, dataMovimento: "2026-09-03", status: "realizado" },
+        {
+          cartaoId: cartaoBase.id,
+          tipo: "despesa",
+          valor: 31,
+          dataMovimento: "2026-09-08",
+          parcelaNumero: 2,
+          status: "previsto",
+        },
+      ],
+      inicio: "2026-09-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+
+    expect(meses[0]).toMatchObject({ total: 50, totalOficial: 0, totalPago: 0, saldo: 50, status: "aberta" });
+    expect(meses[0]?.linhas[0]).toMatchObject({
+      total: 50,
+      totalOficial: null,
+      quantidadeLancamentos: 2,
+      origem: "aberta",
+      status: "aberta",
+    });
+  });
 });
 
 describe("natureza do dashboard", () => {

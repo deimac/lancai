@@ -360,8 +360,13 @@ type MovimentoFaturaDashboard = {
   descricaoFonte?: string | null;
 };
 
-function status_fatura(totalOficial: number | null, totalPago: number, aberta: boolean): StatusFaturaDashboard {
-  if (totalOficial == null) return aberta ? "aberta" : "em_aberto";
+function status_fatura(
+  totalOficial: number | null,
+  totalPago: number,
+  aberta: boolean,
+  prevista: boolean,
+): StatusFaturaDashboard {
+  if (totalOficial == null) return aberta ? "aberta" : prevista ? "prevista" : "em_aberto";
   if (totalPago >= totalOficial - 0.01) return "paga";
   if (totalPago > 0.01) return "parcial";
   return "em_aberto";
@@ -408,19 +413,26 @@ export function montar_serie_faturas_dashboard(entrada: {
 
   return meses.map((competencia) => {
     const linhas = entrada.cartoes.map((cartao) => {
-      const ciclo = intervalo_ciclo_fatura(competencia, cartao.fechamento);
-      const oficial = oficiais.get(`${cartao.id}:${competencia}`);
+      const competenciaCiclo = mes_gasto_do_cartao({
+        mesSelecionado: competencia,
+        hoje: entrada.hoje,
+        fechamento: cartao.fechamento,
+      });
+      const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
+      const oficial = oficiais.get(`${cartao.id}:${competenciaCiclo}`);
       const gasto = agregar_gasto_cartao_por_competencia(
         entrada.movimentos,
         fechamentoPorCartao,
-        competencia,
+        new Map([[cartao.id, competenciaCiclo]]),
         vencimentoPorCartao,
       ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
       const atual = competencia === entrada.hoje.slice(0, 7);
       const totalOficial = oficial?.total ?? null;
       const total = totalOficial ?? arredondar(gasto.gasto);
-      const totalPago = somar_pagamentos_fatura(entrada.movimentos, cartao.id, competencia);
+      const totalPago = somar_pagamentos_fatura(entrada.movimentos, cartao.id, competenciaCiclo);
       const aberta = totalOficial == null && atual;
+      const futura = competencia > entrada.hoje.slice(0, 7);
+      const prevista = totalOficial == null && futura && gasto.quantidade > 0;
       const origem = totalOficial != null ? "oficial" : aberta ? "aberta" : "prevista";
       const base = totalOficial ?? total;
       return {
@@ -431,7 +443,7 @@ export function montar_serie_faturas_dashboard(entrada: {
         totalOficial,
         totalPago,
         saldo: arredondar(Math.max(0, base - totalPago)),
-        status: status_fatura(totalOficial, totalPago, aberta),
+        status: status_fatura(totalOficial, totalPago, aberta, prevista),
         origem,
         cicloInicio: ciclo.inicio,
         cicloFim: ciclo.fim,
@@ -443,7 +455,7 @@ export function montar_serie_faturas_dashboard(entrada: {
     });
     const mesAtual = entrada.hoje.slice(0, 7);
     const comDados = linhas.filter(
-      (linha) => linha.totalOficial != null || linha.competencia === mesAtual,
+      (linha) => linha.totalOficial != null || linha.quantidadeLancamentos > 0 || linha.competencia === mesAtual,
     );
     const totalOficial = arredondar(comDados.reduce((total, linha) => total + (linha.totalOficial ?? 0), 0));
     const total = arredondar(comDados.reduce((total, linha) => total + linha.total, 0));
