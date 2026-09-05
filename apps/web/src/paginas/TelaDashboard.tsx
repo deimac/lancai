@@ -569,14 +569,6 @@ export function TelaDashboard() {
         </p>
       </motion.div>
 
-      <motion.div {...fade} transition={{ delay: 0.22 }}>
-        <CardFaturasDashboard
-          faturas={dados.faturas}
-          ocultarValores={ocultarValores}
-          hrefExtrato={hrefFaturas}
-        />
-      </motion.div>
-
       {mostrarCruzamento && cruzamento ? (
         <motion.div
           {...fade}
@@ -809,6 +801,14 @@ export function TelaDashboard() {
           />
         </motion.section>
       </div>
+
+      <motion.div {...fade} transition={{ delay: 0.22 }}>
+        <CardFaturasDashboard
+          faturas={dados.faturas}
+          ocultarValores={ocultarValores}
+          hrefExtrato={hrefFaturas}
+        />
+      </motion.div>
 
       <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <motion.section

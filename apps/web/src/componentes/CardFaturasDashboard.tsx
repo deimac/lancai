@@ -119,6 +119,11 @@ export function CardFaturasDashboard({
     const linhas = serie?.linhas.filter(
         (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
     ) ?? [];
+    const quantidadeCartoes = new Set(
+        linhas
+            .filter((linha) => linha.cartaoId !== "todos")
+            .map((linha) => linha.cartaoId),
+    ).size;
     const totalRecorte = linhas.reduce((soma, linha) => soma + linha.total, 0);
     const totalPagoRecorte = linhas.reduce((soma, linha) => soma + linha.totalPago, 0);
     const saldoRecorte = linhas.reduce((soma, linha) => soma + linha.saldo, 0);
@@ -139,14 +144,21 @@ export function CardFaturasDashboard({
     });
 
     function navegar(delta: number) {
-        setIndiceJanela((atual) => {
-            const limite = Math.max(0, meses.length - janelaTamanho);
-            const proximo = Math.min(Math.max(0, atual + delta), limite);
-            if (proximo !== atual) {
-                setMesSelecionado(meses[proximo]?.competencia ?? mesSelecionado);
-            }
-            return proximo;
-        });
+        const limite = Math.max(0, meses.length - janelaTamanho);
+        const proximo = Math.min(Math.max(0, janelaInicio + delta), limite);
+        if (proximo === janelaInicio) return;
+
+        setIndiceJanela(proximo);
+
+        const indiceSelecionado = meses.findIndex((item) => item.competencia === mesSelecionado);
+        const selecionadoContinuaVisivel = indiceSelecionado >= proximo
+            && indiceSelecionado < proximo + janelaTamanho;
+        if (!selecionadoContinuaVisivel) {
+            const indiceNovoFoco = delta < 0
+                ? Math.min(proximo + janelaTamanho - 1, meses.length - 1)
+                : proximo;
+            setMesSelecionado(meses[indiceNovoFoco]?.competencia ?? mesSelecionado);
+        }
     }
 
     function selecionar_mes(competencia: string) {
@@ -200,7 +212,7 @@ export function CardFaturasDashboard({
                 <div className="text-center">
                     <p className="text-sm font-semibold capitalize text-texto">{rotulo_mes(serie.competencia)}</p>
                     <p className="mt-0.5 text-[11px] text-texto-suave">
-                        {linhas.length} {linhas.length === 1 ? "cartão" : "cartões"} no recorte
+                        {quantidadeCartoes} {quantidadeCartoes === 1 ? "cartão" : "cartões"} no recorte
                     </p>
                 </div>
                 <button

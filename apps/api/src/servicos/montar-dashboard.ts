@@ -555,13 +555,17 @@ export async function montar_dashboard(
   const saldos = saldosVisao.dados;
   const historico = historicoVisao.dados;
   const cartoes = cartoesVisao.dados;
-  const cartoesCiclo = [...cartoesDb, ...cartoes.cartoes];
+  const cartoesCiclo = [
+    ...new Map(
+      [...cartoesDb, ...cartoes.cartoes].map((cartao) => [cartao.id, cartao] as const),
+    ).values(),
+  ];
   const fechamentoPorCartao = mapa_fechamento_cartoes(cartoesCiclo);
   const vencimentoPorCartao = mapa_vencimento_cartoes(cartoesCiclo);
   const mesCivilHoje = hoje.slice(0, 7);
   const porFechamento = (mesAlvo: string) =>
     new Map(
-      [...cartoesDb, ...cartoes.cartoes].map((cartao) => [
+      cartoesCiclo.map((cartao) => [
         cartao.id,
         mes_gasto_do_cartao({
           mesSelecionado: mesAlvo,
