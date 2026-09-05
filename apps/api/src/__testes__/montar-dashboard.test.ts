@@ -7,6 +7,7 @@ import {
   filtrar_movimentos_do_resultado,
   montar_fluxo_caixa,
   montar_proximos_pagamentos,
+  montar_serie_faturas_dashboard,
   perfil_de_tipo_gasto_dashboard,
   type DashboardCartao,
 } from "../servicos/montar-dashboard";
@@ -546,6 +547,61 @@ describe("montar_proximos_pagamentos", () => {
       expect.objectContaining({ descricao: "Fatura Azul Itaú Visa Platinum", valor: 80 }),
       expect.objectContaining({ descricao: "Fatura Cartão Empresa", valor: 150 }),
     ]);
+  });
+});
+
+describe("montar_serie_faturas_dashboard", () => {
+  const cartaoBase = {
+    id: "cartao-mp",
+    nome: "Mercado Pago Visa",
+    fechamento: 10,
+    vencimento: 17,
+  };
+
+  it("marca como paga quando os créditos somam o total oficial", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
+      movimentos: [
+        { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 600, dataMovimento: "2026-08-12" },
+        { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 400, dataMovimento: "2026-08-15" },
+      ],
+      inicio: "2026-08-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    const agosto = meses.find((mes) => mes.competencia === "2026-08");
+    expect(agosto).toMatchObject({ total: 1000, totalOficial: 1000, totalPago: 1000, saldo: 0, status: "paga" });
+    expect(agosto?.linhas[0]).toMatchObject({ status: "paga", origem: "oficial" });
+  });
+
+  it("mantém o total oficial e marca pagamento parcial", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
+      movimentos: [
+        { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 600, dataMovimento: "2026-08-12" },
+      ],
+      inicio: "2026-08-01",
+      fim: "2026-08-31",
+      hoje: "2026-09-05",
+    });
+    expect(meses[0]).toMatchObject({ total: 1000, totalOficial: 1000, totalPago: 600, saldo: 400, status: "parcial" });
+  });
+
+  it("mostra o ciclo atual sem total oficial como aberto", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoBase.id, tipo: "despesa", valor: 250, dataMovimento: "2026-09-03", status: "realizado" },
+      ],
+      inicio: "2026-09-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    expect(meses[0]).toMatchObject({ total: 250, totalOficial: 0, totalPago: 0, saldo: 250, status: "aberta" });
+    expect(meses[0]?.linhas[0]).toMatchObject({ origem: "aberta", totalOficial: null });
   });
 });
 

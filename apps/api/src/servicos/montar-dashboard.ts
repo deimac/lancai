@@ -10,6 +10,7 @@ import {
   aplicar_total_oficial,
   competencia_ciclo_da_data,
   competencia_quitacao_fatura,
+  data_fechamento_do_ciclo,
   data_vencimento_do_ciclo,
   intervalo_ciclo_fatura,
   mes_gasto_do_cartao,
@@ -59,6 +60,37 @@ export interface DashboardCartao {
   totalOficial?: number | null;
   /** Oficial − soma líquida das linhas. Null se não há total do banco. */
   ajusteFatura?: number | null;
+}
+
+export type StatusFaturaDashboard = "paga" | "parcial" | "em_aberto" | "aberta" | "prevista";
+
+export interface LinhaFaturaDashboard {
+  cartaoId: string;
+  cartaoNome: string;
+  competencia: string;
+  total: number;
+  totalOficial: number | null;
+  totalPago: number;
+  saldo: number;
+  status: StatusFaturaDashboard;
+  origem: "oficial" | "aberta" | "prevista";
+  cicloInicio: string;
+  cicloFim: string;
+  dataFechamento: string;
+  dataVencimento: string;
+  quantidadeLancamentos: number;
+  ajuste: number | null;
+}
+
+export interface SerieFaturasDashboard {
+  competencia: string;
+  linhas: LinhaFaturaDashboard[];
+  total: number;
+  totalOficial: number;
+  totalPago: number;
+  saldo: number;
+  quantidadeCartoes: number;
+  status: StatusFaturaDashboard;
 }
 
 export interface RankingCategoria {
@@ -173,6 +205,12 @@ export interface DashboardResposta {
   orcamentos: OrcamentoDashboard[];
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
   cartoes: DashboardCartao[];
+  faturas: {
+    meses: SerieFaturasDashboard[];
+    mesAtual: string;
+    inicio: string;
+    fim: string;
+  };
 }
 
 /**
@@ -306,6 +344,133 @@ export function agregar_gasto_cartao_por_competencia(
   return gastoPorCartao;
 }
 
+type MovimentoFaturaDashboard = {
+  tipo: string;
+  valor: string | number;
+  dataMovimento: string;
+  cartaoId?: string | null;
+  cartaoFaturaId?: string | null;
+  competenciaFatura?: string | null;
+  papel?: string | null;
+  parcelaNumero?: number | null;
+  status?: string | null;
+  tipoGasto?: string | null;
+  ignoradoEmRelatorio?: boolean;
+  descricao?: string | null;
+  descricaoFonte?: string | null;
+};
+
+function status_fatura(totalOficial: number | null, totalPago: number, aberta: boolean): StatusFaturaDashboard {
+  if (totalOficial == null) return aberta ? "aberta" : "em_aberto";
+  if (totalPago >= totalOficial - 0.01) return "paga";
+  if (totalPago > 0.01) return "parcial";
+  return "em_aberto";
+}
+
+function somar_pagamentos_fatura(
+  movimentos: MovimentoFaturaDashboard[],
+  cartaoId: string,
+  competencia: string,
+): number {
+  const relacionados = movimentos.filter(
+    (movimento) =>
+      movimento.papel === "pagamento_fatura" &&
+      movimento.status !== "cancelado" &&
+      (movimento.cartaoFaturaId === cartaoId || movimento.cartaoId === cartaoId) &&
+      movimento.competenciaFatura === competencia,
+  );
+  const creditos = relacionados.filter((movimento) => movimento.cartaoId === cartaoId);
+  const fonte = creditos.length > 0 ? creditos : relacionados;
+  return arredondar(fonte.reduce((total, movimento) => total + Number(movimento.valor), 0));
+}
+
+export function montar_serie_faturas_dashboard(entrada: {
+  cartoes: Array<{ id: string; nome: string; fechamento: number; vencimento: number }>;
+  oficiais: Array<{ cartaoId: string; competencia: string; total: number; dataFechamento: string | null }>;
+  movimentos: MovimentoFaturaDashboard[];
+  inicio: string;
+  fim: string;
+  hoje: string;
+}): SerieFaturasDashboard[] {
+  const fechamentoPorCartao = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
+  const vencimentoPorCartao = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
+  const oficiais = new Map(
+    entrada.oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura] as const),
+  );
+  const meses: string[] = [];
+  for (
+    let cursor = deISOParaData(entrada.inicio);
+    cursor <= deISOParaData(entrada.fim);
+    cursor = adicionarMeses(cursor, 1)
+  ) {
+    meses.push(paraDataISO(cursor).slice(0, 7));
+  }
+
+  return meses.map((competencia) => {
+    const linhas = entrada.cartoes.map((cartao) => {
+      const ciclo = intervalo_ciclo_fatura(competencia, cartao.fechamento);
+      const oficial = oficiais.get(`${cartao.id}:${competencia}`);
+      const gasto = agregar_gasto_cartao_por_competencia(
+        entrada.movimentos,
+        fechamentoPorCartao,
+        competencia,
+        vencimentoPorCartao,
+      ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+      const atual = competencia === entrada.hoje.slice(0, 7);
+      const totalOficial = oficial?.total ?? null;
+      const total = totalOficial ?? arredondar(gasto.gasto);
+      const totalPago = somar_pagamentos_fatura(entrada.movimentos, cartao.id, competencia);
+      const aberta = totalOficial == null && atual;
+      const origem = totalOficial != null ? "oficial" : aberta ? "aberta" : "prevista";
+      const base = totalOficial ?? total;
+      return {
+        cartaoId: cartao.id,
+        cartaoNome: cartao.nome,
+        competencia,
+        total,
+        totalOficial,
+        totalPago,
+        saldo: arredondar(Math.max(0, base - totalPago)),
+        status: status_fatura(totalOficial, totalPago, aberta),
+        origem,
+        cicloInicio: ciclo.inicio,
+        cicloFim: ciclo.fim,
+        dataFechamento: data_fechamento_do_ciclo(competencia, cartao.fechamento),
+        dataVencimento: data_vencimento_do_ciclo(competencia, cartao.fechamento, cartao.vencimento),
+        quantidadeLancamentos: gasto.quantidade,
+        ajuste: totalOficial == null ? null : arredondar(totalOficial - gasto.gasto),
+      } satisfies LinhaFaturaDashboard;
+    });
+    const mesAtual = entrada.hoje.slice(0, 7);
+    const comDados = linhas.filter(
+      (linha) => linha.totalOficial != null || linha.competencia === mesAtual,
+    );
+    const totalOficial = arredondar(comDados.reduce((total, linha) => total + (linha.totalOficial ?? 0), 0));
+    const total = arredondar(comDados.reduce((total, linha) => total + linha.total, 0));
+    const totalPago = arredondar(comDados.reduce((total, linha) => total + linha.totalPago, 0));
+    const saldo = arredondar(comDados.reduce((total, linha) => total + linha.saldo, 0));
+    const status = comDados.some((linha) => linha.status === "parcial")
+      ? "parcial"
+      : comDados.some((linha) => linha.status === "em_aberto")
+        ? "em_aberto"
+        : comDados.some((linha) => linha.status === "aberta")
+          ? "aberta"
+          : comDados.some((linha) => linha.status === "prevista")
+            ? "prevista"
+            : "paga";
+    return {
+      competencia,
+      linhas: comDados,
+      total,
+      totalOficial,
+      totalPago,
+      saldo,
+      quantidadeCartoes: comDados.length,
+      status,
+    };
+  });
+}
+
 /**
  * Agrega o cockpit a partir do ModuloRelatorios — o web só exibe.
  * `tipoGasto` recorta P&L, categorias, orçamentos e o gasto do card de cartões
@@ -324,6 +489,10 @@ export async function montar_dashboard(
   const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
   const mesAnterior = periodoAnterior.de.slice(0, 7);
+  const inicioFaturas = inicioFimMesAtual(
+    paraDataISO(adicionarMeses(deISOParaData(periodo.de), -11)),
+  );
+  const periodoFaturas = { de: inicioFaturas.de, ate: periodo.ate };
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
   const periodoPnL = {
     ...periodo_amplo_do_ciclo(periodo, 2),
@@ -339,6 +508,7 @@ export async function montar_dashboard(
     movimentosAmplo,
     categoriasDb,
     movimentosQuitadas,
+    movimentosFaturas,
     movimentosCaixa,
     escopo,
     fluxoVisao,
@@ -357,6 +527,10 @@ export async function montar_dashboard(
           de: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1))).de,
           ate: inicioFimMesAtual(paraDataISO(adicionarMeses(deISOParaData(periodo.de), 1))).ate,
         },
+        incluirIgnorados: true,
+      }),
+      repositorio.listarMovimentos(usuarioId, {
+        periodo: periodoFaturas,
         incluirIgnorados: true,
       }),
       repositorio.listarMovimentos(usuarioId, {
@@ -511,9 +685,9 @@ export async function montar_dashboard(
   const cruzamento = escopo.visaoAgregada
     ? null
     : {
-        totalPessoalComEmpresa: fluxoVisao.dados.totalPessoalComEmpresa,
-        totalEmpresaComPessoal: fluxoVisao.dados.totalEmpresaComPessoal,
-      };
+      totalPessoalComEmpresa: fluxoVisao.dados.totalPessoalComEmpresa,
+      totalEmpresaComPessoal: fluxoVisao.dados.totalEmpresaComPessoal,
+    };
   const recentes = historico.dias
     .flatMap((dia) =>
       dia.itens.map((item) => {
@@ -563,6 +737,20 @@ export async function montar_dashboard(
     periodo,
   });
 
+  const faturas = montar_serie_faturas_dashboard({
+    cartoes: cartoesDetalhe.map((cartao) => ({
+      id: cartao.id,
+      nome: cartao.nome,
+      fechamento: cartao.fechamento,
+      vencimento: cartao.vencimento,
+    })),
+    oficiais,
+    movimentos: movimentosFaturas,
+    inicio: inicioFaturas.de,
+    fim: periodo.ate,
+    hoje,
+  });
+
   return {
     mes: dataAtual.slice(0, 7),
     periodo,
@@ -597,6 +785,12 @@ export async function montar_dashboard(
     orcamentos,
     contas: saldos.contas,
     cartoes: cartoesDetalhe,
+    faturas: {
+      meses: faturas,
+      mesAtual: mes,
+      inicio: inicioFaturas.de.slice(0, 7),
+      fim: mes,
+    },
   };
 }
 
@@ -826,11 +1020,11 @@ export function montar_proximos_pagamentos(entrada: {
     const dataPag = movimento.dataMovimento ? String(movimento.dataMovimento).slice(0, 10) : "";
     const competencia = cartaoQuitacao
       ? competencia_quitacao_fatura(
-          dataPag || `${mesAgenda}-01`,
-          cartaoQuitacao.fechamento,
-          cartaoQuitacao.vencimento,
-          movimento.competenciaFatura,
-        )
+        dataPag || `${mesAgenda}-01`,
+        cartaoQuitacao.fechamento,
+        cartaoQuitacao.vencimento,
+        movimento.competenciaFatura,
+      )
       : movimento.competenciaFatura;
     if (competencia) ciclosPagos.add(`${cartaoId}:${competencia}`);
     if (!dataPag.startsWith(mesAgenda)) continue;

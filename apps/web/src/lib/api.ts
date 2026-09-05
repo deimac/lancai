@@ -337,10 +337,10 @@ export interface ProgressoImportacaoApi {
 type EventoAtualizarConexao =
   | ({ tipo: "progresso" } & ProgressoImportacaoApi)
   | {
-      tipo: "fim";
-      detalhe: ConexaoComContas;
-      resumo: ResumoReatachar;
-    }
+    tipo: "fim";
+    detalhe: ConexaoComContas;
+    resumo: ResumoReatachar;
+  }
   | { tipo: "erro"; erro: string; conexaoDesconectada?: boolean };
 
 function evento_ndjson(texto: string): EventoAtualizarConexao | null {
@@ -411,6 +411,37 @@ export interface DashboardCartao {
   cicloFim?: string;
   totalOficial?: number | null;
   ajusteFatura?: number | null;
+}
+
+export type StatusFaturaDashboard = "paga" | "parcial" | "em_aberto" | "aberta" | "prevista";
+
+export interface LinhaFaturaDashboard {
+  cartaoId: string;
+  cartaoNome: string;
+  competencia: string;
+  total: number;
+  totalOficial: number | null;
+  totalPago: number;
+  saldo: number;
+  status: StatusFaturaDashboard;
+  origem: "oficial" | "aberta" | "prevista";
+  cicloInicio: string;
+  cicloFim: string;
+  dataFechamento: string;
+  dataVencimento: string;
+  quantidadeLancamentos: number;
+  ajuste: number | null;
+}
+
+export interface SerieFaturasDashboard {
+  competencia: string;
+  linhas: LinhaFaturaDashboard[];
+  total: number;
+  totalOficial: number;
+  totalPago: number;
+  saldo: number;
+  quantidadeCartoes: number;
+  status: StatusFaturaDashboard;
 }
 
 export interface RankingCategoria {
@@ -499,6 +530,12 @@ export interface DashboardResposta {
   orcamentos?: OrcamentoDashboard[];
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
   cartoes: DashboardCartao[];
+  faturas: {
+    meses: SerieFaturasDashboard[];
+    mesAtual: string;
+    inicio: string;
+    fim: string;
+  };
 }
 
 export type ClassificadoPor = "regra" | "ia" | "usuario";

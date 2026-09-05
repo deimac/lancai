@@ -43,6 +43,7 @@ import {
   type TipoGastoExtrato,
 } from "../lib/filtrar-extrato";
 import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
+import { CardFaturasDashboard } from "../componentes/CardFaturasDashboard";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { SeletorTipoGasto } from "../componentes/SeletorTipoGasto";
@@ -321,11 +322,11 @@ export function TelaDashboard() {
   };
   const legendaResultado = pontoResultadoHover
     ? {
-        entradas: pontoResultadoHover.entradas,
-        saidas: Math.abs(pontoResultadoHover.saidas),
-        resultado: pontoResultadoHover.resultadoAcumulado,
-        rotulo: pontoResultadoHover.rotulo,
-      }
+      entradas: pontoResultadoHover.entradas,
+      saidas: Math.abs(pontoResultadoHover.saidas),
+      resultado: pontoResultadoHover.resultadoAcumulado,
+      rotulo: pontoResultadoHover.rotulo,
+    }
     : { ...totaisResultado, rotulo: null as string | null };
   const ultimoCaixa = fluxoChart.at(-1);
   const legendaCaixa = pontoCaixaHover
@@ -568,6 +569,16 @@ export function TelaDashboard() {
         </p>
       </motion.div>
 
+      <motion.div {...fade} transition={{ delay: 0.22 }}>
+        <CardFaturasDashboard
+          faturas={dados.faturas}
+          mesSelecionado={mes}
+          ocultarValores={ocultarValores}
+          onMesChange={escolher_mes}
+          hrefExtrato={hrefFaturas}
+        />
+      </motion.div>
+
       {mostrarCruzamento && cruzamento ? (
         <motion.div
           {...fade}
@@ -657,71 +668,71 @@ export function TelaDashboard() {
             ) : (
               <div>
                 <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart
-                    data={resultadoChart}
-                    onMouseMove={(estado) => {
-                      const rotulo = estado.activeLabel;
-                      if (rotulo == null) return;
-                      const ponto = resultadoChart.find((item) => item.rotulo === String(rotulo));
-                      if (ponto) setPontoResultadoHover(ponto);
-                    }}
-                    onMouseLeave={() => setPontoResultadoHover(null)}
-                  >
-                    <defs>
-                      <linearGradient id="entradasFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#2dd4a0" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="saidasFill" x1="0" y1="1" x2="0" y2="0">
-                        <stop offset="0%" stopColor="#f07178" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#f07178" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      dataKey="rotulo"
-                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
-                      axisLine={false}
-                      tickFormatter={(v: number) =>
-                        v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
-                      }
-                    />
-                    <ReferenceLine y={0} stroke="var(--color-borda)" />
-                    <Tooltip
-                      content={() => null}
-                      cursor={{ stroke: "var(--color-texto-suave)", strokeDasharray: "4 4" }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="entradas"
-                      name="Entradas"
-                      stroke="#2dd4a0"
-                      fill="url(#entradasFill)"
-                      strokeWidth={1.5}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="saidas"
-                      name="Saídas"
-                      stroke="#f07178"
-                      fill="url(#saidasFill)"
-                      strokeWidth={1.5}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="resultadoAcumulado"
-                      name="Resultado"
-                      stroke="var(--color-texto)"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={resultadoChart}
+                      onMouseMove={(estado) => {
+                        const rotulo = estado.activeLabel;
+                        if (rotulo == null) return;
+                        const ponto = resultadoChart.find((item) => item.rotulo === String(rotulo));
+                        if (ponto) setPontoResultadoHover(ponto);
+                      }}
+                      onMouseLeave={() => setPontoResultadoHover(null)}
+                    >
+                      <defs>
+                        <linearGradient id="entradasFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#2dd4a0" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="saidasFill" x1="0" y1="1" x2="0" y2="0">
+                          <stop offset="0%" stopColor="#f07178" stopOpacity={0.35} />
+                          <stop offset="100%" stopColor="#f07178" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="rotulo"
+                        tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                        axisLine={false}
+                        tickFormatter={(v: number) =>
+                          v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
+                        }
+                      />
+                      <ReferenceLine y={0} stroke="var(--color-borda)" />
+                      <Tooltip
+                        content={() => null}
+                        cursor={{ stroke: "var(--color-texto-suave)", strokeDasharray: "4 4" }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="entradas"
+                        name="Entradas"
+                        stroke="#2dd4a0"
+                        fill="url(#entradasFill)"
+                        strokeWidth={1.5}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="saidas"
+                        name="Saídas"
+                        stroke="#f07178"
+                        fill="url(#saidasFill)"
+                        strokeWidth={1.5}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="resultadoAcumulado"
+                        name="Resultado"
+                        stroke="var(--color-texto)"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
                 </div>
                 <LegendaResultado
                   entradas={legendaResultado.entradas}
@@ -739,45 +750,45 @@ export function TelaDashboard() {
           ) : (
             <div>
               <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={fluxoChart}
-                  onMouseMove={(estado) => {
-                    const rotulo = estado.activeLabel;
-                    if (rotulo == null) return;
-                    const ponto = fluxoChart.find((item) => item.rotulo === String(rotulo));
-                    if (ponto) setPontoCaixaHover({ rotulo: ponto.rotulo, saldo: ponto.saldo });
-                  }}
-                  onMouseLeave={() => setPontoCaixaHover(null)}
-                >
-                  <defs>
-                    <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#2dd4a0" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="rotulo" tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }} axisLine={false} />
-                  <YAxis
-                    tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
-                    axisLine={false}
-                    tickFormatter={(v: number) =>
-                      v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
-                    }
-                  />
-                  <Tooltip
-                    content={() => null}
-                    cursor={{ stroke: "var(--color-texto-suave)", strokeDasharray: "4 4" }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="saldo"
-                    stroke="#2dd4a0"
-                    fill="url(#saldoFill)"
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={fluxoChart}
+                    onMouseMove={(estado) => {
+                      const rotulo = estado.activeLabel;
+                      if (rotulo == null) return;
+                      const ponto = fluxoChart.find((item) => item.rotulo === String(rotulo));
+                      if (ponto) setPontoCaixaHover({ rotulo: ponto.rotulo, saldo: ponto.saldo });
+                    }}
+                    onMouseLeave={() => setPontoCaixaHover(null)}
+                  >
+                    <defs>
+                      <linearGradient id="saldoFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2dd4a0" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#2dd4a0" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="rotulo" tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }} axisLine={false} />
+                    <YAxis
+                      tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }}
+                      axisLine={false}
+                      tickFormatter={(v: number) =>
+                        v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })
+                      }
+                    />
+                    <Tooltip
+                      content={() => null}
+                      cursor={{ stroke: "var(--color-texto-suave)", strokeDasharray: "4 4" }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="saldo"
+                      stroke="#2dd4a0"
+                      fill="url(#saldoFill)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
               <LegendaCaixa
                 saldo={legendaCaixa.saldo}
