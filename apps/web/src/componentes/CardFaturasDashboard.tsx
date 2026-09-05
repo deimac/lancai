@@ -119,6 +119,9 @@ export function CardFaturasDashboard({
     const linhas = serie?.linhas.filter(
         (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
     ) ?? [];
+    const totalRecorte = linhas.reduce((soma, linha) => soma + linha.total, 0);
+    const totalPagoRecorte = linhas.reduce((soma, linha) => soma + linha.totalPago, 0);
+    const saldoRecorte = linhas.reduce((soma, linha) => soma + linha.saldo, 0);
     const chartData = mesesVisiveis.map((mes) => {
         const linhasMes = mes.linhas.filter(
             (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
@@ -138,7 +141,11 @@ export function CardFaturasDashboard({
     function navegar(delta: number) {
         setIndiceJanela((atual) => {
             const limite = Math.max(0, meses.length - janelaTamanho);
-            return Math.min(Math.max(0, atual + delta), limite);
+            const proximo = Math.min(Math.max(0, atual + delta), limite);
+            if (proximo !== atual) {
+                setMesSelecionado(meses[proximo]?.competencia ?? mesSelecionado);
+            }
+            return proximo;
         });
     }
 
@@ -193,7 +200,7 @@ export function CardFaturasDashboard({
                 <div className="text-center">
                     <p className="text-sm font-semibold capitalize text-texto">{rotulo_mes(serie.competencia)}</p>
                     <p className="mt-0.5 text-[11px] text-texto-suave">
-                        {serie.quantidadeCartoes} {serie.quantidadeCartoes === 1 ? "cartão" : "cartões"} no recorte
+                        {linhas.length} {linhas.length === 1 ? "cartão" : "cartões"} no recorte
                     </p>
                 </div>
                 <button
@@ -255,11 +262,19 @@ export function CardFaturasDashboard({
                 </ResponsiveContainer>
             </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                <div><p className="text-[11px] text-texto-suave">Total</p><p className="font-semibold tabular-nums text-texto">{valor_oculto(serie.total, ocultarValores)}</p></div>
-                <div><p className="text-[11px] text-texto-suave">Total pago</p><p className="font-semibold tabular-nums text-receita">{valor_oculto(serie.totalPago, ocultarValores)}</p></div>
-                <div><p className="text-[11px] text-texto-suave">Saldo aberto</p><p className="font-semibold tabular-nums text-despesa">{valor_oculto(serie.saldo, ocultarValores)}</p></div>
-                <div><p className="text-[11px] text-texto-suave">Situação</p><div className="mt-1"><SeloStatus status={serie.status} /></div></div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div className="flex items-baseline justify-center gap-2 text-center">
+                    <span className="text-[11px] text-texto-suave">Total</span>
+                    <span className="font-semibold tabular-nums text-texto">{valor_oculto(totalRecorte, ocultarValores)}</span>
+                </div>
+                <div className="flex items-baseline justify-center gap-2 text-center">
+                    <span className="text-[11px] text-texto-suave">Total pago</span>
+                    <span className="font-semibold tabular-nums text-receita">{valor_oculto(totalPagoRecorte, ocultarValores)}</span>
+                </div>
+                <div className="flex items-baseline justify-center gap-2 text-center">
+                    <span className="text-[11px] text-texto-suave">Saldo aberto</span>
+                    <span className="font-semibold tabular-nums text-despesa">{valor_oculto(saldoRecorte, ocultarValores)}</span>
+                </div>
             </div>
 
             <div className="mt-5 overflow-x-auto rounded-xl border border-borda">
