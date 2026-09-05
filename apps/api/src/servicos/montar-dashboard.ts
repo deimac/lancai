@@ -504,7 +504,10 @@ export async function montar_dashboard(
   const inicioFaturas = inicioFimMesAtual(
     paraDataISO(adicionarMeses(deISOParaData(periodo.de), -11)),
   );
-  const periodoFaturas = { de: inicioFaturas.de, ate: periodo.ate };
+  const fimFaturas = inicioFimMesAtual(
+    paraDataISO(adicionarMeses(deISOParaData(periodo.ate), 5)),
+  ).ate;
+  const periodoFaturas = { de: inicioFaturas.de, ate: fimFaturas };
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
   const periodoPnL = {
     ...periodo_amplo_do_ciclo(periodo, 2),
@@ -772,7 +775,7 @@ export async function montar_dashboard(
     oficiais,
     movimentos: movimentosFaturas,
     inicio: inicioFaturas.de,
-    fim: periodo.ate,
+    fim: fimFaturas,
     hoje,
   });
 
@@ -814,7 +817,7 @@ export async function montar_dashboard(
       meses: faturas,
       mesAtual: mes,
       inicio: inicioFaturas.de.slice(0, 7),
-      fim: mes,
+      fim: fimFaturas.slice(0, 7),
     },
   };
 }
