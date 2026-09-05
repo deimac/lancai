@@ -166,13 +166,11 @@ export function CardFaturasDashboard({
         const selecionadoContinuaVisivel = indiceSelecionado >= proximo
             && indiceSelecionado < proximo + janelaTamanho;
         const selecaoTemFatura = indiceSelecionado >= 0 && total_mes(meses[indiceSelecionado]) > 0;
-        const inicioNovosMeses = delta < 0 ? proximo : janelaInicio + janelaTamanho;
-        const fimNovosMeses = delta < 0 ? janelaInicio : Math.min(proximo + janelaTamanho, meses.length);
-        const indicesNovosMeses = Array.from(
-            { length: Math.max(0, fimNovosMeses - inicioNovosMeses) },
-            (_, indice) => inicioNovosMeses + indice,
+        const indicesJanela = Array.from(
+            { length: Math.min(janelaTamanho, meses.length - proximo) },
+            (_, indice) => proximo + indice,
         );
-        const ordemBusca = delta < 0 ? indicesNovosMeses.reverse() : indicesNovosMeses;
+        const ordemBusca = delta < 0 ? indicesJanela.reverse() : indicesJanela;
         const indiceComFatura = ordemBusca.find((indice) => total_mes(meses[indice]) > 0);
 
         if (!selecionadoContinuaVisivel) {
