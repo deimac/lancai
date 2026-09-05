@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ArrowLeft, ArrowRight, CreditCard, ExternalLink } from "lucide-react";
 import type { SerieFaturasDashboard, StatusFaturaDashboard } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
@@ -57,23 +57,47 @@ function SeloStatus({ status }: { status: StatusFaturaDashboard }) {
     );
 }
 
+function RotuloEixoFaturas({
+    x = 0,
+    y = 0,
+    payload,
+    dados,
+    ocultarValores,
+}: {
+    x?: number;
+    y?: number;
+    payload?: { value?: string };
+    dados: Array<{ rotulo: string; total: number }>;
+    ocultarValores: boolean;
+}) {
+    const dado = dados.find((item) => item.rotulo === payload?.value);
+    return (
+        <g transform={`translate(${x},${y})`}>
+            <text textAnchor="middle" fill="var(--color-texto-suave)" fontSize={11}>
+                {payload?.value}
+            </text>
+            <text y={17} textAnchor="middle" fill="var(--color-texto)" fontSize={10}>
+                {valor_oculto(dado?.total ?? 0, ocultarValores)}
+            </text>
+        </g>
+    );
+}
+
 export function CardFaturasDashboard({
     faturas,
-    mesSelecionado,
     ocultarValores,
-    onMesChange,
     hrefExtrato,
 }: {
     faturas: { meses: SerieFaturasDashboard[]; inicio: string; fim: string };
-    mesSelecionado: string;
     ocultarValores: boolean;
-    onMesChange: (mes: string) => void;
     hrefExtrato: string;
 }) {
     const [cartaoSelecionado, setCartaoSelecionado] = useState("todos");
+    const [mesSelecionado, setMesSelecionado] = useState(
+        () => faturas.meses[faturas.meses.length - 1]?.competencia ?? "",
+    );
     const [indiceJanela, setIndiceJanela] = useState(() => {
-        const indice = faturas.meses.findIndex((item) => item.competencia === mesSelecionado);
-        return Math.max(0, indice >= 0 ? indice : faturas.meses.length - 1);
+        return Math.max(0, faturas.meses.length - Math.min(6, faturas.meses.length));
     });
 
     const meses = faturas.meses;
@@ -84,15 +108,9 @@ export function CardFaturasDashboard({
     const mesesVisiveis = meses.slice(janelaInicio, janelaInicio + janelaTamanho);
 
     useEffect(() => {
-        const indice = meses.findIndex((item) => item.competencia === mesSelecionado);
-        if (indice < 0) return;
-        setIndiceJanela((atual) => {
-            const limite = Math.max(0, meses.length - janelaTamanho);
-            const dentroDaJanela = atual <= indice && indice < atual + janelaTamanho;
-            if (dentroDaJanela) return atual;
-            return Math.min(Math.max(0, indice - Math.floor(janelaTamanho / 2)), limite);
-        });
-    }, [janelaTamanho, meses, mesSelecionado]);
+        if (meses.some((item) => item.competencia === mesSelecionado)) return;
+        setMesSelecionado(meses[meses.length - 1]?.competencia ?? "");
+    }, [meses, mesSelecionado]);
 
     const cartoes = useMemo(
         () => [...new Map(meses.flatMap((mes) => mes.linhas).map((linha) => [linha.cartaoId, linha.cartaoNome])).entries()],
@@ -125,12 +143,7 @@ export function CardFaturasDashboard({
     }
 
     function selecionar_mes(competencia: string) {
-        onMesChange(competencia);
-        const indice = meses.findIndex((item) => item.competencia === competencia);
-        if (indice >= 0) {
-            const limite = Math.max(0, meses.length - janelaTamanho);
-            setIndiceJanela(Math.min(Math.max(0, indice), limite));
-        }
+        setMesSelecionado(competencia);
     }
 
     if (!serie) return null;
@@ -178,10 +191,7 @@ export function CardFaturasDashboard({
                     <ArrowLeft size={16} />
                 </button>
                 <div className="text-center">
-                    <p className="inline-flex items-center justify-center rounded-full border border-primaria/20 bg-primaria/10 px-2.5 py-1 text-xs font-medium text-primaria">
-                        Mês em foco
-                    </p>
-                    <p className="mt-2 text-sm font-semibold capitalize text-texto">{rotulo_mes(serie.competencia)}</p>
+                    <p className="text-sm font-semibold capitalize text-texto">{rotulo_mes(serie.competencia)}</p>
                     <p className="mt-0.5 text-[11px] text-texto-suave">
                         {serie.quantidadeCartoes} {serie.quantidadeCartoes === 1 ? "cartão" : "cartões"} no recorte
                     </p>
@@ -199,18 +209,16 @@ export function CardFaturasDashboard({
 
             <div className="mt-3 h-56 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                    <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 18 }}>
                         <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="rotulo" tick={{ fill: "var(--color-texto-suave)", fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <YAxis hide />
-                        <Tooltip
-                            cursor={{ fill: "var(--color-fundo)", opacity: 0.5 }}
-                            formatter={(valor, nome) => [
-                                valor_oculto(Number(valor ?? 0), ocultarValores),
-                                nome === "total" ? "Fatura" : "Pago",
-                            ]}
-                            labelFormatter={(_, payload) => payload[0]?.payload?.competencia ? rotulo_mes(payload[0].payload.competencia) : ""}
+                        <XAxis
+                            dataKey="rotulo"
+                            tick={<RotuloEixoFaturas dados={chartData} ocultarValores={ocultarValores} />}
+                            axisLine={false}
+                            tickLine={false}
+                            height={42}
                         />
+                        <YAxis hide />
                         <Bar
                             dataKey="total"
                             name="total"

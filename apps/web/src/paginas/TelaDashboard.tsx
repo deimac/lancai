@@ -572,9 +572,7 @@ export function TelaDashboard() {
       <motion.div {...fade} transition={{ delay: 0.22 }}>
         <CardFaturasDashboard
           faturas={dados.faturas}
-          mesSelecionado={mes}
           ocultarValores={ocultarValores}
-          onMesChange={escolher_mes}
           hrefExtrato={hrefFaturas}
         />
       </motion.div>
