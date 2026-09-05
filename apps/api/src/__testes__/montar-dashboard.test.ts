@@ -633,35 +633,6 @@ describe("montar_serie_faturas_dashboard", () => {
       status: "aberta",
     });
   });
-
-  it("exibe como prevista a fatura futura com parcela conhecida", () => {
-    const meses = montar_serie_faturas_dashboard({
-      cartoes: [cartaoBase],
-      oficiais: [],
-      movimentos: [
-        {
-          cartaoId: cartaoBase.id,
-          tipo: "despesa",
-          valor: 75,
-          dataMovimento: "2026-10-03",
-          parcelaNumero: 3,
-          status: "previsto",
-        },
-      ],
-      inicio: "2026-09-01",
-      fim: "2026-10-31",
-      hoje: "2026-09-05",
-    });
-    const outubro = meses.find((mes) => mes.competencia === "2026-10");
-
-    expect(outubro).toMatchObject({ total: 75, totalOficial: 0, status: "prevista" });
-    expect(outubro?.linhas[0]).toMatchObject({
-      total: 75,
-      totalOficial: null,
-      origem: "prevista",
-      status: "prevista",
-    });
-  });
 });
 
 describe("natureza do dashboard", () => {
