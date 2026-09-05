@@ -10,7 +10,7 @@ const COR_STATUS: Record<StatusFaturaDashboard, string> = {
     parcial: "#f6b94c",
     em_aberto: "#f07178",
     aberta: "#6ea8fe",
-    prevista: "#a9aeb8",
+    prevista: "#e6b450",
 };
 
 const ROTULO_STATUS: Record<StatusFaturaDashboard, string> = {
@@ -26,8 +26,21 @@ const CLASSE_STATUS: Record<StatusFaturaDashboard, { fundo: string; texto: strin
     parcial: { fundo: "bg-aviso/15", texto: "text-aviso" },
     em_aberto: { fundo: "bg-despesa/15", texto: "text-despesa" },
     aberta: { fundo: "bg-primaria/15", texto: "text-primaria" },
-    prevista: { fundo: "bg-borda/60", texto: "text-texto-suave" },
+    prevista: { fundo: "bg-aviso/15", texto: "text-aviso" },
 };
+
+function indice_competencia(meses: SerieFaturasDashboard[], competencia: string): number {
+    return meses.findIndex((item) => item.competencia === competencia);
+}
+
+function janela_para_competencia(meses: SerieFaturasDashboard[], competencia: string): number {
+    const tamanho = Math.min(6, meses.length || 1);
+    const limite = Math.max(0, meses.length - tamanho);
+    const indice = indice_competencia(meses, competencia);
+    const foco = indice >= 0 ? indice : Math.max(0, meses.length - 1);
+    // Deixa o mês atual visível, com espaço à direita para previstas.
+    return Math.min(Math.max(0, foco - Math.max(0, tamanho - 2)), limite);
+}
 
 function rotulo_mes(competencia: string): string {
     return new Date(`${competencia}-01T00:00:00Z`).toLocaleDateString("pt-BR", {
@@ -46,12 +59,12 @@ function SeloStatus({ status }: { status: StatusFaturaDashboard }) {
     return (
         <span
             className={unir_classes(
-                "inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium",
+                "inline-flex min-w-[5.5rem] items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-center text-[11px] font-medium",
                 classe.fundo,
                 classe.texto,
             )}
         >
-            <span className={unir_classes("h-1.5 w-1.5 rounded-full", classe.texto.replace("text-", "bg-"))} />
+            <span className={unir_classes("h-1.5 w-1.5 shrink-0 rounded-full", classe.texto.replace("text-", "bg-"))} />
             {ROTULO_STATUS[status]}
         </span>
     );
@@ -93,29 +106,35 @@ export function CardFaturasDashboard({
     ocultarValores,
     hrefExtrato,
 }: {
-    faturas: { meses: SerieFaturasDashboard[]; inicio: string; fim: string };
+    faturas: { meses: SerieFaturasDashboard[]; mesAtual: string; inicio: string; fim: string };
     ocultarValores: boolean;
     hrefExtrato: string;
 }) {
+    const mesAtual =
+        faturas.mesAtual && faturas.meses.some((item) => item.competencia === faturas.mesAtual)
+            ? faturas.mesAtual
+            : (faturas.meses[faturas.meses.length - 1]?.competencia ?? "");
     const [cartaoSelecionado, setCartaoSelecionado] = useState("todos");
-    const [mesSelecionado, setMesSelecionado] = useState(
-        () => faturas.meses[faturas.meses.length - 1]?.competencia ?? "",
-    );
-    const [indiceJanela, setIndiceJanela] = useState(() => {
-        return Math.max(0, faturas.meses.length - Math.min(6, faturas.meses.length));
-    });
+    const [mesSelecionado, setMesSelecionado] = useState(() => mesAtual);
+    const [indiceJanela, setIndiceJanela] = useState(() => janela_para_competencia(faturas.meses, mesAtual));
 
     const meses = faturas.meses;
-    const indiceMes = Math.max(0, meses.findIndex((item) => item.competencia === mesSelecionado));
+    const indiceMes = Math.max(0, indice_competencia(meses, mesSelecionado));
     const serie = meses[indiceMes] ?? meses[meses.length - 1];
     const janelaTamanho = Math.min(6, meses.length || 1);
     const janelaInicio = Math.max(0, Math.min(indiceJanela, Math.max(0, meses.length - janelaTamanho)));
     const mesesVisiveis = meses.slice(janelaInicio, janelaInicio + janelaTamanho);
 
     useEffect(() => {
+        if (!mesAtual || meses.length === 0) return;
+        setMesSelecionado(mesAtual);
+        setIndiceJanela(janela_para_competencia(meses, mesAtual));
+    }, [mesAtual, faturas.inicio, faturas.fim, meses.length]);
+
+    useEffect(() => {
         if (meses.some((item) => item.competencia === mesSelecionado)) return;
-        setMesSelecionado(meses[meses.length - 1]?.competencia ?? "");
-    }, [meses, mesSelecionado]);
+        setMesSelecionado(mesAtual || meses[meses.length - 1]?.competencia || "");
+    }, [meses, mesSelecionado, mesAtual]);
 
     const cartoes = useMemo(
         () => [...new Map(meses.flatMap((mes) => mes.linhas).map((linha) => [linha.cartaoId, linha.cartaoNome])).entries()],
@@ -142,14 +161,18 @@ export function CardFaturasDashboard({
         const linhasMes = mes.linhas.filter(
             (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
         );
+        const total = linhasMes.reduce((soma, linha) => soma + linha.total, 0);
+        const pago = linhasMes.reduce((soma, linha) => soma + linha.totalPago, 0);
         return {
             competencia: mes.competencia,
             rotulo: new Date(`${mes.competencia}-01T00:00:00Z`).toLocaleDateString("pt-BR", {
                 month: "short",
                 timeZone: "UTC",
             }).replace(".", ""),
-            total: linhasMes.reduce((soma, linha) => soma + linha.total, 0),
-            pago: linhasMes.reduce((soma, linha) => soma + linha.totalPago, 0),
+            total,
+            pago,
+            // Em prevista o pago ainda é 0; a linha acompanha o topo da barra.
+            linha: pago > 0.01 ? pago : mes.status === "prevista" ? total : pago,
             status: mes.status,
             selecionado: mes.competencia === mesSelecionado,
         };
@@ -291,7 +314,15 @@ export function CardFaturasDashboard({
                                 );
                             })}
                         </Bar>
-                        <Line type="monotone" dataKey="pago" name="pago" stroke="var(--color-receita)" strokeWidth={2} dot={false} />
+                        <Line
+                            type="monotone"
+                            dataKey="linha"
+                            name="pago"
+                            stroke="var(--color-receita)"
+                            strokeWidth={2}
+                            dot={false}
+                            isAnimationActive={false}
+                        />
                     </ComposedChart>
                 </ResponsiveContainer>
             </div>
@@ -314,7 +345,7 @@ export function CardFaturasDashboard({
             <div className="mt-5 overflow-x-auto rounded-xl border border-borda">
                 <div className="min-w-[760px]">
                     <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] gap-3 bg-fundo/70 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-texto-suave">
-                        <span>Cartão e ciclo</span><span>Total</span><span>Pago</span><span>Saldo</span><span>Status</span>
+                        <span>Cartão e ciclo</span><span>Total</span><span>Pago</span><span>Saldo</span><span className="text-center">Status</span>
                     </div>
                     {linhas.length === 0 ? <p className="px-3 py-6 text-center text-sm text-texto-suave">Nenhuma fatura neste recorte.</p> : linhas.map((linha) => (
                         <div key={linha.cartaoId} className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] items-center gap-3 border-t border-borda px-3 py-3 text-xs">
@@ -322,7 +353,7 @@ export function CardFaturasDashboard({
                             <span className="tabular-nums text-texto">{valor_oculto(linha.total, ocultarValores)}</span>
                             <span className="tabular-nums text-receita">{valor_oculto(linha.totalPago, ocultarValores)}</span>
                             <span className={unir_classes("tabular-nums", linha.saldo > 0 ? "text-despesa" : "text-texto-suave")}>{valor_oculto(linha.saldo, ocultarValores)}</span>
-                            <span><SeloStatus status={linha.status} /></span>
+                            <span className="flex justify-center"><SeloStatus status={linha.status} /></span>
                         </div>
                     ))}
                 </div>
