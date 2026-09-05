@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowLeft, ArrowRight, CreditCard, ExternalLink } from "lucide-react";
 import type { SerieFaturasDashboard, StatusFaturaDashboard } from "../lib/api";
@@ -71,9 +71,29 @@ export function CardFaturasDashboard({
     hrefExtrato: string;
 }) {
     const [cartaoSelecionado, setCartaoSelecionado] = useState("todos");
+    const [indiceJanela, setIndiceJanela] = useState(() => {
+        const indice = faturas.meses.findIndex((item) => item.competencia === mesSelecionado);
+        return Math.max(0, indice >= 0 ? indice : faturas.meses.length - 1);
+    });
+
     const meses = faturas.meses;
     const indiceMes = Math.max(0, meses.findIndex((item) => item.competencia === mesSelecionado));
     const serie = meses[indiceMes] ?? meses[meses.length - 1];
+    const janelaTamanho = Math.min(6, meses.length || 1);
+    const janelaInicio = Math.max(0, Math.min(indiceJanela, Math.max(0, meses.length - janelaTamanho)));
+    const mesesVisiveis = meses.slice(janelaInicio, janelaInicio + janelaTamanho);
+
+    useEffect(() => {
+        const indice = meses.findIndex((item) => item.competencia === mesSelecionado);
+        if (indice < 0) return;
+        setIndiceJanela((atual) => {
+            const limite = Math.max(0, meses.length - janelaTamanho);
+            const dentroDaJanela = atual <= indice && indice < atual + janelaTamanho;
+            if (dentroDaJanela) return atual;
+            return Math.min(Math.max(0, indice - Math.floor(janelaTamanho / 2)), limite);
+        });
+    }, [janelaTamanho, meses, mesSelecionado]);
+
     const cartoes = useMemo(
         () => [...new Map(meses.flatMap((mes) => mes.linhas).map((linha) => [linha.cartaoId, linha.cartaoNome])).entries()],
         [meses],
@@ -81,7 +101,7 @@ export function CardFaturasDashboard({
     const linhas = serie?.linhas.filter(
         (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
     ) ?? [];
-    const chartData = meses.map((mes) => {
+    const chartData = mesesVisiveis.map((mes) => {
         const linhasMes = mes.linhas.filter(
             (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
         );
@@ -98,8 +118,19 @@ export function CardFaturasDashboard({
     });
 
     function navegar(delta: number) {
-        const proximo = meses[indiceMes + delta];
-        if (proximo) onMesChange(proximo.competencia);
+        setIndiceJanela((atual) => {
+            const limite = Math.max(0, meses.length - janelaTamanho);
+            return Math.min(Math.max(0, atual + delta), limite);
+        });
+    }
+
+    function selecionar_mes(competencia: string) {
+        onMesChange(competencia);
+        const indice = meses.findIndex((item) => item.competencia === competencia);
+        if (indice >= 0) {
+            const limite = Math.max(0, meses.length - janelaTamanho);
+            setIndiceJanela(Math.min(Math.max(0, indice), limite));
+        }
     }
 
     if (!serie) return null;
@@ -114,7 +145,6 @@ export function CardFaturasDashboard({
                         </span>
                         <div>
                             <h2 className="text-base font-semibold text-texto">Faturas de cartões</h2>
-                            <p className="text-xs text-texto-suave">Faturas fechadas e ciclo atual</p>
                         </div>
                     </div>
                 </div>
@@ -141,14 +171,17 @@ export function CardFaturasDashboard({
                 <button
                     type="button"
                     aria-label="Mês anterior"
-                    disabled={indiceMes <= 0}
+                    disabled={janelaInicio <= 0}
                     onClick={() => navegar(-1)}
                     className="rounded-lg border border-borda p-2 text-texto-suave hover:text-texto disabled:cursor-not-allowed disabled:opacity-35"
                 >
                     <ArrowLeft size={16} />
                 </button>
                 <div className="text-center">
-                    <p className="text-sm font-semibold capitalize text-texto">{rotulo_mes(serie.competencia)}</p>
+                    <p className="inline-flex items-center justify-center rounded-full border border-primaria/20 bg-primaria/10 px-2.5 py-1 text-xs font-medium text-primaria">
+                        Mês em foco
+                    </p>
+                    <p className="mt-2 text-sm font-semibold capitalize text-texto">{rotulo_mes(serie.competencia)}</p>
                     <p className="mt-0.5 text-[11px] text-texto-suave">
                         {serie.quantidadeCartoes} {serie.quantidadeCartoes === 1 ? "cartão" : "cartões"} no recorte
                     </p>
@@ -156,7 +189,7 @@ export function CardFaturasDashboard({
                 <button
                     type="button"
                     aria-label="Próximo mês"
-                    disabled={indiceMes >= meses.length - 1}
+                    disabled={janelaInicio + janelaTamanho >= meses.length}
                     onClick={() => navegar(1)}
                     className="rounded-lg border border-borda p-2 text-texto-suave hover:text-texto disabled:cursor-not-allowed disabled:opacity-35"
                 >
@@ -178,10 +211,36 @@ export function CardFaturasDashboard({
                             ]}
                             labelFormatter={(_, payload) => payload[0]?.payload?.competencia ? rotulo_mes(payload[0].payload.competencia) : ""}
                         />
-                        <Bar dataKey="total" name="total" radius={[6, 6, 0, 0]} maxBarSize={42}>
-                            {chartData.map((item) => (
-                                <Cell key={item.competencia} fill={item.competencia === serie.competencia ? "var(--color-texto)" : COR_STATUS[item.status]} fillOpacity={item.competencia === serie.competencia ? 1 : 0.55} />
-                            ))}
+                        <Bar
+                            dataKey="total"
+                            name="total"
+                            radius={[6, 6, 0, 0]}
+                            maxBarSize={42}
+                            cursor="pointer"
+                        >
+                            {chartData.map((item) => {
+                                const selecionado = item.competencia === mesSelecionado;
+                                return (
+                                    <Cell
+                                        key={item.competencia}
+                                        fill={selecionado ? "var(--color-texto)" : COR_STATUS[item.status]}
+                                        fillOpacity={selecionado ? 1 : 0.6}
+                                        stroke={selecionado ? "var(--color-primaria)" : "transparent"}
+                                        strokeWidth={selecionado ? 2 : 0}
+                                        cursor="pointer"
+                                        onClick={() => selecionar_mes(item.competencia)}
+                                        aria-label={`Selecionar mês ${rotulo_mes(item.competencia)}`}
+                                        onKeyDown={(evento) => {
+                                            if (evento.key === "Enter" || evento.key === " ") {
+                                                evento.preventDefault();
+                                                selecionar_mes(item.competencia);
+                                            }
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                    />
+                                );
+                            })}
                         </Bar>
                         <Line type="monotone" dataKey="pago" name="pago" stroke="var(--color-receita)" strokeWidth={2} dot={false} />
                     </ComposedChart>

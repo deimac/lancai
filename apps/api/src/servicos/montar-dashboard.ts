@@ -601,16 +601,25 @@ export async function montar_dashboard(
     oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura.total] as const),
   );
 
-  const idsCartoes = cartoes.cartoes.map((cartao) => cartao.id);
+  const idsCartoes = cartoesCiclo.map((cartao) => cartao.id);
   const origens = await mapear_origem_cartoes(idsCartoes);
   const plasticoPorId = new Map(
     cartoesDb.map((cartao) => [cartao.id, cartao.dadosPlasticosCifrados] as const),
   );
 
-  const cartoesDetalhe: DashboardCartao[] = cartoes.cartoes.map((cartao) => {
+  const cartoesDetalhe: DashboardCartao[] = cartoesCiclo.map((cartao) => {
     const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
     const competenciaCiclo = mesGastoPorCartao.get(cartao.id) ?? mes;
     const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
+    const limite = Number(cartao.limite ?? 0);
+    const comprometido = Number(
+      "comprometido" in cartao && cartao.comprometido != null ? cartao.comprometido : 0,
+    );
+    const disponivel = Number(
+      "disponivel" in cartao && cartao.disponivel != null
+        ? cartao.disponivel
+        : Math.max(0, limite - comprometido),
+    );
     const aplicado = aplicar_total_oficial(
       gasto.gasto,
       oficialPorChave.get(`${cartao.id}:${competenciaCiclo}`),
@@ -619,12 +628,12 @@ export async function montar_dashboard(
       id: cartao.id,
       nome: cartao.nome,
       perfil: cartao.perfil,
-      limite: cartao.limite,
-      comprometido: cartao.comprometido,
-      disponivel: cartao.disponivel,
+      limite,
+      comprometido,
+      disponivel,
       fechamento: cartao.fechamento,
       vencimento: cartao.vencimento,
-      sincronizada: cartao.sincronizada,
+      sincronizada: Boolean(cartao.sincronizada),
       instituicao: origens.get(cartao.id)?.instituicao ?? null,
       final4: mascara_final4_do_payload(plasticoPorId.get(cartao.id)),
       gastoMes: aplicado.total,
