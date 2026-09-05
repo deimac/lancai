@@ -67,16 +67,21 @@ function RotuloEixoFaturas({
     x?: number;
     y?: number;
     payload?: { value?: string };
-    dados: Array<{ rotulo: string; total: number }>;
+    dados: Array<{ rotulo: string; total: number; selecionado: boolean }>;
     ocultarValores: boolean;
 }) {
     const dado = dados.find((item) => item.rotulo === payload?.value);
     return (
         <g transform={`translate(${x},${y})`}>
-            <text textAnchor="middle" fill="var(--color-texto-suave)" fontSize={11}>
+            <text
+                textAnchor="middle"
+                fill={dado?.selecionado ? "var(--color-texto)" : "var(--color-texto-suave)"}
+                fontSize={dado?.selecionado ? 12 : 11}
+                fontWeight={dado?.selecionado ? 700 : 400}
+            >
                 {payload?.value}
             </text>
-            <text y={17} textAnchor="middle" fill="var(--color-texto)" fontSize={10}>
+            <text y={24} textAnchor="middle" fill="var(--color-texto)" fontSize={10}>
                 {valor_oculto(dado?.total ?? 0, ocultarValores)}
             </text>
         </g>
@@ -127,6 +132,12 @@ export function CardFaturasDashboard({
     const totalRecorte = linhas.reduce((soma, linha) => soma + linha.total, 0);
     const totalPagoRecorte = linhas.reduce((soma, linha) => soma + linha.totalPago, 0);
     const saldoRecorte = linhas.reduce((soma, linha) => soma + linha.saldo, 0);
+    function total_mes(mes: SerieFaturasDashboard | undefined): number {
+        return (mes?.linhas ?? [])
+            .filter((linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado)
+            .reduce((soma, linha) => soma + linha.total, 0);
+    }
+
     const chartData = mesesVisiveis.map((mes) => {
         const linhasMes = mes.linhas.filter(
             (linha) => cartaoSelecionado === "todos" || linha.cartaoId === cartaoSelecionado,
@@ -140,6 +151,7 @@ export function CardFaturasDashboard({
             total: linhasMes.reduce((soma, linha) => soma + linha.total, 0),
             pago: linhasMes.reduce((soma, linha) => soma + linha.totalPago, 0),
             status: mes.status,
+            selecionado: mes.competencia === mesSelecionado,
         };
     });
 
@@ -153,11 +165,23 @@ export function CardFaturasDashboard({
         const indiceSelecionado = meses.findIndex((item) => item.competencia === mesSelecionado);
         const selecionadoContinuaVisivel = indiceSelecionado >= proximo
             && indiceSelecionado < proximo + janelaTamanho;
+        const selecaoTemFatura = indiceSelecionado >= 0 && total_mes(meses[indiceSelecionado]) > 0;
+        const inicioNovosMeses = delta < 0 ? proximo : janelaInicio + janelaTamanho;
+        const fimNovosMeses = delta < 0 ? janelaInicio : Math.min(proximo + janelaTamanho, meses.length);
+        const indicesNovosMeses = Array.from(
+            { length: Math.max(0, fimNovosMeses - inicioNovosMeses) },
+            (_, indice) => inicioNovosMeses + indice,
+        );
+        const ordemBusca = delta < 0 ? indicesNovosMeses.reverse() : indicesNovosMeses;
+        const indiceComFatura = ordemBusca.find((indice) => total_mes(meses[indice]) > 0);
+
         if (!selecionadoContinuaVisivel) {
-            const indiceNovoFoco = delta < 0
+            const indiceNovoFoco = indiceComFatura ?? (delta < 0
                 ? Math.min(proximo + janelaTamanho - 1, meses.length - 1)
-                : proximo;
+                : proximo);
             setMesSelecionado(meses[indiceNovoFoco]?.competencia ?? mesSelecionado);
+        } else if (!selecaoTemFatura && indiceComFatura != null) {
+            setMesSelecionado(meses[indiceComFatura]?.competencia ?? mesSelecionado);
         }
     }
 
@@ -228,14 +252,14 @@ export function CardFaturasDashboard({
 
             <div className="mt-3 h-56 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 18 }}>
+                    <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
                         <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
                         <XAxis
                             dataKey="rotulo"
                             tick={<RotuloEixoFaturas dados={chartData} ocultarValores={ocultarValores} />}
                             axisLine={false}
                             tickLine={false}
-                            height={42}
+                            height={50}
                         />
                         <YAxis hide />
                         <Bar
