@@ -90,15 +90,18 @@ function dia_do_mes(iso: string | null | undefined): number | undefined {
   return dia >= 1 && dia <= 31 ? dia : undefined;
 }
 
-export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExterna {
+export function traduzir_transacao(
+  transacao: TransacaoPluggy,
+  ciclo?: { fechamento?: number; vencimento?: number },
+): MovimentacaoExterna {
   const favorecido = transacao.merchant?.name ?? transacao.paymentData?.receiver?.name ?? undefined;
   const statusFonte = traduzir_status_transacao(transacao.status);
-  const ocorridoEm = data_do_movimento(transacao);
+  const ocorridoEm = data_do_movimento(transacao, ciclo);
 
   return {
     idExterno: transacao.id,
     contaExternaId: transacao.accountId,
-    /** Competência = mês da fatura (`billForecastDate`), não a data da compra. */
+    /** Competência = ciclo do cartão (ou billForecastDate se alinhado). */
     ocorridoEm,
     ocorridoEmInstante: instante_do_movimento(transacao.date, ocorridoEm),
     /** Compra internacional: `amount` é USD/EUR; o fatura em real está em `amountInAccountCurrency`. */
@@ -118,11 +121,13 @@ export function traduzir_transacao(transacao: TransacaoPluggy): MovimentacaoExte
 }
 
 /**
- * Mês da fatura (`billForecastDate`) é a verdade para o navegador de competências.
- * Sem ele, parcela cai em compra+(N−1) — o `date` da Pluggy costuma repetir a
- * data da compra em todas as parcelas.
+ * Com fecha/vence, o ciclo do cartão manda sobre `billForecastDate` divergente.
+ * Sem ciclo, o forecast manda; sem forecast, compra+(N−1).
  */
-function data_do_movimento(transacao: TransacaoPluggy): string {
+function data_do_movimento(
+  transacao: TransacaoPluggy,
+  ciclo?: { fechamento?: number; vencimento?: number },
+): string {
   const meta = transacao.creditCardMetadata;
   const compra = meta?.purchaseDate ? dia_provedor_iso(meta.purchaseDate) : undefined;
   const dateDia = dia_provedor_iso(transacao.date);
@@ -134,6 +139,8 @@ function data_do_movimento(transacao: TransacaoPluggy): string {
       compraEm: compra,
       billForecastDate: meta?.billForecastDate,
       dateProvedor: dateDia,
+      fechamento: ciclo?.fechamento,
+      vencimento: ciclo?.vencimento,
     });
   }
 
@@ -183,11 +190,14 @@ export function transacao_tem_valor_na_moeda_da_conta(transacao: TransacaoPluggy
  * IOF denuncia valor ainda estrangeiro e some o segundo "Pagamento recebido".
  * IOF de compra fica linha própria — a fatura soma as duas.
  */
-export function traduzir_lote_transacoes(transacoes: TransacaoPluggy[]): MovimentacaoExterna[] {
+export function traduzir_lote_transacoes(
+  transacoes: TransacaoPluggy[],
+  ciclo?: { fechamento?: number; vencimento?: number },
+): MovimentacaoExterna[] {
   const traduzidas: MovimentacaoExterna[] = [];
   for (const transacao of transacoes) {
     if (!transacao_tem_valor_na_moeda_da_conta(transacao)) continue;
-    traduzidas.push(traduzir_transacao(transacao));
+    traduzidas.push(traduzir_transacao(transacao, ciclo));
   }
   return absorver_creditos_de_fatura_duplicados(
     espaçar_parcelas_do_lote(omitir_compras_incompativeis_com_iof(traduzidas)),

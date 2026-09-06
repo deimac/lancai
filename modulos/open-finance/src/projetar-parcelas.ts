@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { EventoFinanceiroNormalizado, TipoFonte } from "@lancai/tipos";
 import {
+  data_movimento_parcela,
   datas_civis_proximas,
   descricoes_da_mesma_serie,
   garantir_parcelas_subsequentes,
@@ -266,12 +267,13 @@ export function ids_projetadas_orfas_apos_uniao(movimentos: ParcelaSerieEntrada[
  * Extrapolação mensal a partir da parcela conhecida mais próxima.
  * Ex.: temos 1→2026-06 e 2→2026-07; falta 4 → 2026-09-01.
  * Com `preservarDia`, mantém o dia da âncora (13/07 → 13/08), típico de fatura PDF.
+ * Sem âncora e com fecha/vence, a 1ª parcela ancora no ciclo da compra.
  */
 export function projetar_data_parcela(
   datasPorNumero: Map<number, string>,
   numero: number,
   compraEm: string,
-  opcoes: { preservarDia?: boolean } = {},
+  opcoes: { preservarDia?: boolean; fechamento?: number; vencimento?: number } = {},
 ): string {
   let ancoraNumero: number | null = null;
   let menorDist = Number.POSITIVE_INFINITY;
@@ -292,6 +294,20 @@ export function projetar_data_parcela(
     return somar_meses(mesAncora, numero - ancoraNumero);
   }
 
+  if (
+    opcoes.fechamento != null &&
+    opcoes.vencimento != null &&
+    opcoes.fechamento >= 1 &&
+    opcoes.vencimento >= 1
+  ) {
+    return data_movimento_parcela({
+      numero,
+      compraEm,
+      fechamento: opcoes.fechamento,
+      vencimento: opcoes.vencimento,
+    });
+  }
+
   return somar_meses(
     opcoes.preservarDia ? compraEm : `${compraEm.slice(0, 7)}-01`,
     numero,
@@ -309,6 +325,8 @@ export function planejar_parcelas_faltantes(entrada: {
   cartaoId: string;
   series: SerieParcelamento[];
   preservarDia?: boolean;
+  fechamento?: number;
+  vencimento?: number;
 }): ParcelaProjetada[] {
   const projetadas: ParcelaProjetada[] = [];
 
@@ -323,6 +341,8 @@ export function planejar_parcelas_faltantes(entrada: {
         valor: serie.valorParcela,
         ocorridoEm: projetar_data_parcela(serie.datasPorNumero, n, serie.compraEm, {
           preservarDia: entrada.preservarDia,
+          fechamento: entrada.fechamento,
+          vencimento: entrada.vencimento,
         }),
         descricaoFonte: serie.descricao,
         idExterno: id_externo_parcela_projetada({
@@ -378,6 +398,8 @@ export function planejar_complemento_parcelas_cartao(entrada: {
   provedor?: string;
   movimentos: ParcelaSerieEntrada[];
   preservarDia?: boolean;
+  fechamento?: number;
+  vencimento?: number;
 }): EventoFinanceiroNormalizado[] {
   const series = agrupar_series_parcelamento(entrada.movimentos);
   const projetadas = planejar_parcelas_faltantes({
@@ -385,6 +407,8 @@ export function planejar_complemento_parcelas_cartao(entrada: {
     cartaoId: entrada.cartaoId,
     series,
     preservarDia: entrada.preservarDia,
+    fechamento: entrada.fechamento,
+    vencimento: entrada.vencimento,
   });
   return eventos_de_parcelas_projetadas(
     {

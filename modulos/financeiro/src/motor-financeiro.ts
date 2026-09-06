@@ -393,6 +393,16 @@ export class MotorFinanceiro {
     return this.repositorio.listarMovimentosParceladosDoCartao(cartaoId);
   }
 
+  /** Fecha/vence do cartão — ciclo local para projeção e coerção de parcelas OF. */
+  async obter_ciclo_cartao(
+    cartaoId: string,
+  ): Promise<{ fechamento: number; vencimento: number } | null> {
+    const cartao = await this.repositorio.obterCartao(cartaoId);
+    if (!cartao) return null;
+    if (cartao.fechamento < 1 || cartao.vencimento < 1) return null;
+    return { fechamento: cartao.fechamento, vencimento: cartao.vencimento };
+  }
+
   /**
    * Parcela de cartão conta no mês da fatura (fechamento/vencimento), não no
    * lançamento. Na mesma série, N+1 é o ciclo seguinte à N.

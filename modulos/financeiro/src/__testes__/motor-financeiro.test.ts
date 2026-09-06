@@ -521,10 +521,10 @@ describe("MotorFinanceiro", () => {
       expect(resultado.movimentos).toHaveLength(1);
       expect(resultado.parcelas).toHaveLength(10);
       expect(resultado.parcelas.every((parcela) => parcela.valor === "800.00")).toBe(true);
-      // Compra em 15/07, fechamento dia 20 -> entra na fatura corrente, vencimento 27/08.
-      expect(resultado.parcelas[0]?.dataMovimento).toBe("2026-08-27");
-      expect(resultado.parcelas[1]?.dataMovimento).toBe("2026-09-27");
-      expect(resultado.parcelas[9]?.dataMovimento).toBe("2027-05-27");
+      // Compra em 15/07, fechamento dia 20 / vence 27 → mesma fatura de julho.
+      expect(resultado.parcelas[0]?.dataMovimento).toBe("2026-07-27");
+      expect(resultado.parcelas[1]?.dataMovimento).toBe("2026-08-27");
+      expect(resultado.parcelas[9]?.dataMovimento).toBe("2027-04-27");
 
       // Compra no cartão não afeta o saldo da conta vinculada.
       const contaAtualizada = await repositorio.obterConta(conta.id);

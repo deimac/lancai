@@ -34,6 +34,22 @@ describe("traduzir_transacao", () => {
     });
   });
 
+  it("ciclo do cartão corrige billForecastDate atrasado (LATAM MP)", () => {
+    const mov = traduzir_transacao(
+      tx({
+        date: "2026-09-04T03:00:00.000Z",
+        creditCardMetadata: {
+          installmentNumber: 1,
+          totalInstallments: 3,
+          purchaseDate: "2026-09-04T03:00:00.000Z",
+          billForecastDate: "2026-10",
+        },
+      }),
+      { fechamento: 12, vencimento: 17 },
+    );
+    expect(mov.ocorridoEm).toBe("2026-09-01");
+  });
+
   it("também usa billForecastDate em parcela POSTED quando o date é de outro mês", () => {
     const mov = traduzir_transacao(
       tx({

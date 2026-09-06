@@ -77,19 +77,78 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
     );
   });
 
-  it("fecha 20 vence 27: compra 15/07 vence em 27/08", () => {
+  it("fecha 20 vence 27: compra 15/07 vence em 27/07 (mesmo mês)", () => {
     expect(paraDataISO(calcularDataVencimentoFatura(deISOParaData("2026-07-15"), 20, 27))).toBe(
-      "2026-08-27",
+      "2026-07-27",
     );
   });
 
-  it("billForecastDate manda no mês da parcela", () => {
+  it("Mercado Pago 12/17: compra antes do fecha cai em setembro", () => {
+    expect(competencia_fatura_da_compra("2026-09-04", 12, 17)).toBe("2026-09");
+    expect(competencia_fatura_da_compra("2026-09-13", 12, 17)).toBe("2026-10");
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-09-04",
+        fechamento: 12,
+        vencimento: 17,
+      }),
+    ).toBe("2026-09-01");
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-09-13",
+        fechamento: 12,
+        vencimento: 17,
+      }),
+    ).toBe("2026-10-01");
+  });
+
+  it("Nu 2/10: compra antes/depois do fecha", () => {
+    expect(competencia_fatura_da_compra("2026-09-01", 2, 10)).toBe("2026-09");
+    expect(competencia_fatura_da_compra("2026-09-05", 2, 10)).toBe("2026-10");
+  });
+
+  it("forecast do provedor atrasado cede ao ciclo do cartão", () => {
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-09-04",
+        billForecastDate: "2026-10",
+        fechamento: 12,
+        vencimento: 17,
+      }),
+    ).toBe("2026-09-01");
+    expect(
+      data_movimento_parcela({
+        numero: 2,
+        compraEm: "2026-09-04",
+        billForecastDate: "2026-11",
+        fechamento: 12,
+        vencimento: 17,
+      }),
+    ).toBe("2026-10-01");
+  });
+
+  it("billForecastDate manda quando não há ciclo do cartão", () => {
     expect(
       data_movimento_parcela({
         numero: 1,
         compraEm: "2026-06-01",
         billForecastDate: "2026-07",
         dateProvedor: "2026-06-01",
+      }),
+    ).toBe("2026-07-01");
+  });
+
+  it("billForecastDate alinhado ao ciclo é mantido", () => {
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-06-01",
+        billForecastDate: "2026-07",
+        fechamento: 30,
+        vencimento: 6,
       }),
     ).toBe("2026-07-01");
   });

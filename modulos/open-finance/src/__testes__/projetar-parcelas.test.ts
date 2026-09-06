@@ -19,6 +19,15 @@ describe("projetar-parcelas", () => {
     expect(projetar_data_parcela(datas, 4, "2026-05-14")).toBe("2026-09-01");
   });
 
+  it("sem âncora, 1ª parcela ancora no ciclo MP (compra antes do fecha)", () => {
+    expect(
+      projetar_data_parcela(new Map(), 1, "2026-09-04", { fechamento: 12, vencimento: 17 }),
+    ).toBe("2026-09-01");
+    expect(
+      projetar_data_parcela(new Map(), 2, "2026-09-04", { fechamento: 12, vencimento: 17 }),
+    ).toBe("2026-10-01");
+  });
+
   it("completa série incompleta (ex. 955022 com só 1 e 2)", () => {
     const series = agrupar_series_parcelamento([
       {

@@ -242,8 +242,9 @@ export function calcularMelhorDiaCompra(fechamento: number): number {
 
 /**
  * Data de vencimento da fatura em que uma compra feita em `dataCompra` vai cair.
- * Compra até o fechamento entra neste ciclo; o vencimento é no mês seguinte ao
- * fechamento (fecha 20 → vence 27/08; Azul fecha 30/06 → vence 06/07).
+ * Compra até o fechamento entra neste ciclo. Se `vencimento < fechamento` (Azul
+ * 30/6), o vencimento é no mês seguinte ao fechamento; se `vencimento >= fechamento`
+ * (MP 12/17, Nu 2/10), fecha e vence no mesmo mês civil.
  */
 export function calcularDataVencimentoFatura(
   dataCompra: Date,
@@ -255,7 +256,7 @@ export function calcularDataVencimentoFatura(
   const diaVence = Math.min(Math.max(1, vencimento), 28);
   const entrouAposFechamento = diaCompra > diaFecha;
   const mesFechamento = dataCompra.getUTCMonth() + (entrouAposFechamento ? 1 : 0);
-  const mesVencimento = mesFechamento + 1;
+  const mesVencimento = mesFechamento + (diaVence < diaFecha ? 1 : 0);
   return new Date(Date.UTC(dataCompra.getUTCFullYear(), mesVencimento, diaVence));
 }
 
@@ -274,8 +275,9 @@ export function competencia_fatura_da_compra(
 }
 
 /**
- * Quando a parcela aparece no extrato. Prefere o mês da fatura (`billForecastDate`).
- * Sem forecast, usa fechamento/vencimento e espaça N a partir da 1ª competência.
+ * Quando a parcela aparece no extrato. Com fecha/vence do cartão, a competência
+ * do ciclo manda — `billForecastDate` só é usado se bater com essa competência
+ * (o provedor às vezes atrasa um mês no MP/Nu). Sem ciclo, o forecast manda.
  */
 export function data_movimento_parcela(entrada: {
   numero: number;
@@ -288,24 +290,34 @@ export function data_movimento_parcela(entrada: {
   const numero = Math.max(1, entrada.numero);
   const forecast = entrada.billForecastDate?.trim() ?? "";
   const dateDia = entrada.dateProvedor?.slice(0, 10) ?? "";
-  if (/^\d{4}-\d{2}$/.test(forecast)) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateDia) && dateDia.startsWith(`${forecast}-`)) return dateDia;
-    return `${forecast}-01`;
-  }
 
   const compra =
     (entrada.compraEm && /^\d{4}-\d{2}-\d{2}$/.test(entrada.compraEm) ? entrada.compraEm : null) ??
     (/^\d{4}-\d{2}-\d{2}$/.test(dateDia) ? dateDia : null);
 
-  if (
-    compra &&
+  const temCiclo =
+    Boolean(compra) &&
     entrada.fechamento != null &&
     entrada.vencimento != null &&
     entrada.fechamento >= 1 &&
-    entrada.vencimento >= 1
-  ) {
-    const primeira = competencia_fatura_da_compra(compra, entrada.fechamento, entrada.vencimento);
-    return somar_meses_calendario(`${primeira}-01`, numero - 1);
+    entrada.vencimento >= 1;
+
+  if (temCiclo && compra) {
+    const primeira = competencia_fatura_da_compra(compra, entrada.fechamento!, entrada.vencimento!);
+    const esperada = somar_meses_calendario(`${primeira}-01`, numero - 1);
+    const mesEsperado = esperada.slice(0, 7);
+
+    if (/^\d{4}-\d{2}$/.test(forecast) && forecast === mesEsperado) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateDia) && dateDia.startsWith(`${forecast}-`)) return dateDia;
+      return `${forecast}-01`;
+    }
+
+    return esperada;
+  }
+
+  if (/^\d{4}-\d{2}$/.test(forecast)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateDia) && dateDia.startsWith(`${forecast}-`)) return dateDia;
+    return `${forecast}-01`;
   }
 
   if (compra) return somar_meses_calendario(compra, numero - 1);
@@ -334,30 +346,46 @@ export function garantir_parcelas_subsequentes(
   return saida;
 }
 
-/** Se a parcela ainda está no mês da compra, desloca para a competência da fatura. */
+/**
+ * Alinha a data da parcela ao ciclo do cartão. Com fecha/vence, o ciclo local
+ * prevalece sobre forecast atrasado do provedor (ex. LATAM 1/3 em out → set).
+ * Sem ciclo, só desloca se a parcela ainda está no mês da compra.
+ */
 export function coerir_data_parcela_cartao(entrada: {
   ocorridoEm: string;
   numero?: number | null;
   compraEm?: string | null;
   fechamento?: number;
   vencimento?: number;
+  billForecastDate?: string | null;
 }): string {
   const numero = entrada.numero;
   const compra = entrada.compraEm?.slice(0, 10);
   const ocorrido = entrada.ocorridoEm.slice(0, 10);
   if (!numero || numero < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(ocorrido)) return entrada.ocorridoEm;
 
-  const noMesDaCompra = Boolean(compra && /^\d{4}-\d{2}-\d{2}$/.test(compra) && ocorrido.slice(0, 7) === compra.slice(0, 7));
-  if (!noMesDaCompra) return ocorrido;
-
-  if (entrada.fechamento != null && entrada.vencimento != null && compra) {
+  if (
+    entrada.fechamento != null &&
+    entrada.vencimento != null &&
+    entrada.fechamento >= 1 &&
+    entrada.vencimento >= 1 &&
+    compra &&
+    /^\d{4}-\d{2}-\d{2}$/.test(compra)
+  ) {
     return data_movimento_parcela({
       numero,
       compraEm: compra,
       fechamento: entrada.fechamento,
       vencimento: entrada.vencimento,
+      billForecastDate: entrada.billForecastDate ?? ocorrido.slice(0, 7),
+      dateProvedor: ocorrido,
     });
   }
+
+  const noMesDaCompra = Boolean(
+    compra && /^\d{4}-\d{2}-\d{2}$/.test(compra) && ocorrido.slice(0, 7) === compra.slice(0, 7),
+  );
+  if (!noMesDaCompra) return ocorrido;
 
   if (numero >= 2 && compra) return somar_meses_calendario(compra, numero - 1);
   return ocorrido;

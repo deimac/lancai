@@ -1,6 +1,7 @@
 import type { ContextoIngestao, MotorFinanceiro } from "@lancai/financeiro";
 import {
   data_iso_parcela,
+  data_movimento_parcela,
   datas_civis_proximas,
   descricoes_da_mesma_serie,
   eh_credito_quitacao_no_cartao,
@@ -709,7 +710,59 @@ export class ServicoIngestaoOpenFinance {
     const eventos: EventoFinanceiroNormalizado[] = [];
 
     for (const cartaoId of cartaoIds) {
-      const movimentos = await this.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+      const ciclo = await this.motor.obter_ciclo_cartao(cartaoId);
+      let movimentos = await this.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+
+      if (ciclo) {
+        const paraCorrigir: EventoFinanceiroNormalizado[] = [];
+        for (const movimento of movimentos) {
+          if (movimento.status !== "previsto") continue;
+          if (!movimento.idExterno || !movimento.parcelaNumero || !movimento.parcelaCompraEm) continue;
+          const compra = data_iso_parcela(movimento.parcelaCompraEm);
+          const atual =
+            data_iso_parcela(movimento.dataMovimento) ?? String(movimento.dataMovimento).slice(0, 10);
+          if (!compra || !/^\d{4}-\d{2}-\d{2}$/.test(atual)) continue;
+          const esperada = data_movimento_parcela({
+            numero: movimento.parcelaNumero,
+            compraEm: compra,
+            fechamento: ciclo.fechamento,
+            vencimento: ciclo.vencimento,
+            billForecastDate: atual.slice(0, 7),
+            dateProvedor: atual,
+          });
+          if (esperada === atual) continue;
+          const valor = Number.parseFloat(String(movimento.valor));
+          if (!Number.isFinite(valor) || valor <= 0) continue;
+          const valorCompra = movimento.parcelaCompraValor
+            ? Number.parseFloat(movimento.parcelaCompraValor)
+            : NaN;
+          paraCorrigir.push({
+            workspaceId: movimento.workspaceId,
+            fonte: "open_finance",
+            provedor: this.provedor.id,
+            idExterno: movimento.idExterno,
+            ocorridoEm: esperada,
+            valor,
+            tipo: movimento.tipo === "receita" ? "receita" : "despesa",
+            descricaoFonte: movimento.descricaoFonte || movimento.descricao,
+            cartaoId,
+            statusFonte: "pendente",
+            parcelamento: {
+              numero: movimento.parcelaNumero,
+              total: movimento.parcelaTotal!,
+              compraEm: compra,
+              valorTotal: Number.isFinite(valorCompra) && valorCompra > 0 ? valorCompra : undefined,
+            },
+            fatoImutavel: true,
+          });
+        }
+        if (paraCorrigir.length > 0) {
+          const alteracao = await this.motor.atualizar_fatos_da_fonte(paraCorrigir, contexto);
+          resumo.atualizados += alteracao.atualizados.length;
+          movimentos = await this.motor.listar_movimentos_parcelados_do_cartao(cartaoId);
+        }
+      }
+
       const entradas = movimentos
         .filter((m) => m.parcelaNumero != null && m.parcelaTotal != null && m.parcelaCompraEm)
         .map((m) => ({
@@ -749,6 +802,8 @@ export class ServicoIngestaoOpenFinance {
         workspaceId: workspaceDoCartao,
         cartaoId,
         series,
+        fechamento: ciclo?.fechamento,
+        vencimento: ciclo?.vencimento,
       });
 
       eventos.push(
