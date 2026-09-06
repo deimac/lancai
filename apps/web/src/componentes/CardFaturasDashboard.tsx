@@ -39,8 +39,8 @@ function janela_para_competencia(meses: SerieFaturasDashboard[], competencia: st
     const limite = Math.max(0, meses.length - tamanho);
     const indice = indice_competencia(meses, competencia);
     const foco = indice >= 0 ? indice : Math.max(0, meses.length - 1);
-    // Deixa o mês atual visível, com espaço à direita para previstas.
-    return Math.min(Math.max(0, foco - Math.max(0, tamanho - 2)), limite);
+    // Mês atual no meio da janela visível.
+    return Math.min(Math.max(0, foco - Math.floor((tamanho - 1) / 2)), limite);
 }
 
 function rotulo_mes(competencia: string): string {
@@ -132,17 +132,14 @@ export function CardFaturasDashboard({
     const janelaInicio = Math.max(0, Math.min(indiceJanela, Math.max(0, meses.length - janelaTamanho)));
     const mesesVisiveis = meses.slice(janelaInicio, janelaInicio + janelaTamanho);
 
-    // Só recentra no mês civil de hoje — não reage ao seletor do topo do cockpit.
+    // Recentra só quando a série muda de tamanho (ex. 1ª carga); foco em entrar no
+    // cockpit / trocar workspace é feito via `key` no pai (remonta o card).
     useEffect(() => {
         if (!mesAtual || meses.length === 0) return;
+        if (meses.some((item) => item.competencia === mesSelecionado)) return;
         setMesSelecionado(mesAtual);
         setIndiceJanela(janela_para_competencia(meses, mesAtual));
-    }, [mesAtual, meses.length]);
-
-    useEffect(() => {
-        if (meses.some((item) => item.competencia === mesSelecionado)) return;
-        setMesSelecionado(mesAtual || meses[meses.length - 1]?.competencia || "");
-    }, [meses, mesSelecionado, mesAtual]);
+    }, [mesAtual, meses, mesSelecionado]);
 
     const cartoes = useMemo(
         () => [...new Map(meses.flatMap((mes) => mes.linhas).map((linha) => [linha.cartaoId, linha.cartaoNome])).entries()],

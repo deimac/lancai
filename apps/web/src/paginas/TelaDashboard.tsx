@@ -198,6 +198,7 @@ export function TelaDashboard() {
   const perfilGasto = perfil_de_tipo_gasto(tipoGasto);
   const [dados, setDados] = useState<DashboardResposta | null>(null);
   const [visaoGeral, setVisaoGeral] = useState(false);
+  const [workspaceAtivoId, setWorkspaceAtivoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [drawerCartoesAberto, setDrawerCartoesAberto] = useState(false);
@@ -227,6 +228,7 @@ export function TelaDashboard() {
       ]);
       setDados(dash);
       const ativo = workspaces.find((w) => w.ativo);
+      setWorkspaceAtivoId(ativo?.id ?? null);
       setVisaoGeral(ativo?.id === "geral" || Boolean(ativo?.sintetico));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : "Não foi possível carregar o dashboard.");
@@ -804,6 +806,7 @@ export function TelaDashboard() {
 
       <motion.div {...fade} transition={{ delay: 0.22 }}>
         <CardFaturasDashboard
+          key={`faturas-${contexto?.geracaoCockpit ?? 0}-${workspaceAtivoId ?? "nenhum"}`}
           faturas={dados.faturas}
           ocultarValores={ocultarValores}
           hrefExtrato={hrefFaturas}
