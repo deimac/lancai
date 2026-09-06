@@ -662,6 +662,91 @@ describe("montar_serie_faturas_dashboard", () => {
       status: "prevista",
     });
   });
+
+  it("Azul (vence < fecha): mês UI setembro mostra oficial do ciclo que fechou em agosto", () => {
+    const azul = { id: "cartao-azul", nome: "Azul", fechamento: 30, vencimento: 6 };
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [azul],
+      oficiais: [
+        { cartaoId: azul.id, competencia: "2025-08", total: 5486.08, dataFechamento: "2025-08-30" },
+      ],
+      movimentos: [
+        {
+          papel: "pagamento_fatura",
+          cartaoId: azul.id,
+          cartaoFaturaId: azul.id,
+          competenciaFatura: "2025-09",
+          tipo: "receita",
+          valor: 5419.18,
+          dataMovimento: "2025-09-03",
+        },
+      ],
+      inicio: "2025-08-01",
+      fim: "2025-09-30",
+      hoje: "2025-09-10",
+    });
+    const setembro = meses.find((mes) => mes.competencia === "2025-09");
+    expect(setembro).toMatchObject({
+      total: 5486.08,
+      totalOficial: 5486.08,
+      totalPago: 5419.18,
+      status: "parcial",
+    });
+    expect(setembro?.linhas[0]).toMatchObject({
+      dataFechamento: "2025-08-30",
+      dataVencimento: "2025-09-06",
+      origem: "oficial",
+    });
+    const agosto = meses.find((mes) => mes.competencia === "2025-08");
+    expect(agosto?.linhas.find((l) => l.cartaoId === azul.id)?.totalOficial ?? null).not.toBe(5486.08);
+  });
+
+  it("pagamento no vencimento não conta no ciclo aberto", () => {
+    const azul = { id: "cartao-azul", nome: "Azul", fechamento: 30, vencimento: 6 };
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [azul],
+      oficiais: [
+        { cartaoId: azul.id, competencia: "2025-08", total: 5486.08, dataFechamento: "2025-08-30" },
+      ],
+      movimentos: [
+        {
+          papel: "pagamento_fatura",
+          cartaoId: azul.id,
+          cartaoFaturaId: azul.id,
+          competenciaFatura: "2025-09",
+          tipo: "receita",
+          valor: 5419.18,
+          dataMovimento: "2025-09-03",
+        },
+        { cartaoId: azul.id, tipo: "despesa", valor: 100, dataMovimento: "2025-09-10", status: "realizado" },
+      ],
+      inicio: "2025-09-01",
+      fim: "2025-10-31",
+      hoje: "2025-09-10",
+    });
+    const setembro = meses.find((mes) => mes.competencia === "2025-09");
+    expect(setembro?.totalPago).toBe(5419.18);
+    const outubro = meses.find((mes) => mes.competencia === "2025-10");
+    // Outubro na UI = ciclo fecha setembro (aberto) — Pix de set não entra como pago desse ciclo
+    expect(outubro?.totalPago ?? 0).toBe(0);
+  });
+
+  it("cartão genérico fecha 25 vence 5: UI junho aponta ciclo maio", () => {
+    const cartao = { id: "c-gen", nome: "Genérico", fechamento: 25, vencimento: 5 };
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartao],
+      oficiais: [
+        { cartaoId: cartao.id, competencia: "2026-05", total: 900, dataFechamento: "2026-05-25" },
+      ],
+      movimentos: [],
+      inicio: "2026-05-01",
+      fim: "2026-06-30",
+      hoje: "2026-06-10",
+    });
+    const junho = meses.find((mes) => mes.competencia === "2026-06");
+    expect(junho).toMatchObject({ total: 900, totalOficial: 900 });
+    expect(junho?.linhas[0]?.dataVencimento).toBe("2026-06-05");
+  });
 });
 
 describe("natureza do dashboard", () => {

@@ -8,6 +8,8 @@ import {
 import {
   adicionarMeses,
   aplicar_total_oficial,
+  ciclo_aberto_em,
+  competencia_alvo_do_modo_fatura,
   competencia_ciclo_da_data,
   competencia_quitacao_fatura,
   data_fechamento_do_ciclo,
@@ -372,18 +374,29 @@ function status_fatura(
   return "em_aberto";
 }
 
+/**
+ * Soma pagamentos que quitam o ciclo fechado `cicloFecha`.
+ * Sempre via `competencia_quitacao_fatura`: pagamento é do ciclo fechado
+ * (anterior ao aberto), nunca do aberto — tag pode ser fecha ou vencimento.
+ */
 function somar_pagamentos_fatura(
   movimentos: MovimentoFaturaDashboard[],
   cartaoId: string,
-  competencia: string,
+  cicloFecha: string,
+  fechamento: number,
+  vencimento: number,
 ): number {
-  const relacionados = movimentos.filter(
-    (movimento) =>
-      movimento.papel === "pagamento_fatura" &&
-      movimento.status !== "cancelado" &&
-      (movimento.cartaoFaturaId === cartaoId || movimento.cartaoId === cartaoId) &&
-      movimento.competenciaFatura === competencia,
-  );
+  const relacionados = movimentos.filter((movimento) => {
+    if (movimento.papel !== "pagamento_fatura" || movimento.status === "cancelado") return false;
+    if (movimento.cartaoFaturaId !== cartaoId && movimento.cartaoId !== cartaoId) return false;
+    const quitado = competencia_quitacao_fatura(
+      movimento.dataMovimento,
+      fechamento,
+      vencimento,
+      movimento.competenciaFatura,
+    );
+    return quitado === cicloFecha;
+  });
   const creditos = relacionados.filter((movimento) => movimento.cartaoId === cartaoId);
   const fonte = creditos.length > 0 ? creditos : relacionados;
   return arredondar(fonte.reduce((total, movimento) => total + Number(movimento.valor), 0));
@@ -411,34 +424,40 @@ export function montar_serie_faturas_dashboard(entrada: {
     meses.push(paraDataISO(cursor).slice(0, 7));
   }
 
-  return meses.map((competencia) => {
+  return meses.map((mesTela) => {
     const linhas = entrada.cartoes.map((cartao) => {
-      const competenciaCiclo = mes_gasto_do_cartao({
-        mesSelecionado: competencia,
-        hoje: entrada.hoje,
+      const cicloFecha = competencia_alvo_do_modo_fatura({
+        mes: mesTela,
         fechamento: cartao.fechamento,
+        vencimento: cartao.vencimento,
       });
-      const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
-      const oficial = oficiais.get(`${cartao.id}:${competenciaCiclo}`);
+      const ciclo = intervalo_ciclo_fatura(cicloFecha, cartao.fechamento);
+      const oficial = oficiais.get(`${cartao.id}:${cicloFecha}`);
       const gasto = agregar_gasto_cartao_por_competencia(
         entrada.movimentos,
         fechamentoPorCartao,
-        new Map([[cartao.id, competenciaCiclo]]),
+        new Map([[cartao.id, cicloFecha]]),
         vencimentoPorCartao,
       ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
-      const atual = competencia === entrada.hoje.slice(0, 7);
+      const cicloAberto = ciclo_aberto_em(entrada.hoje, cartao.fechamento);
       const totalOficial = oficial?.total ?? null;
       const total = totalOficial ?? arredondar(gasto.gasto);
-      const totalPago = somar_pagamentos_fatura(entrada.movimentos, cartao.id, competenciaCiclo);
-      const aberta = totalOficial == null && atual;
-      const futura = competencia > entrada.hoje.slice(0, 7);
+      const totalPago = somar_pagamentos_fatura(
+        entrada.movimentos,
+        cartao.id,
+        cicloFecha,
+        cartao.fechamento,
+        cartao.vencimento,
+      );
+      const aberta = totalOficial == null && cicloFecha === cicloAberto;
+      const futura = mesTela > entrada.hoje.slice(0, 7);
       const prevista = totalOficial == null && futura && gasto.quantidade > 0;
       const origem = totalOficial != null ? "oficial" : aberta ? "aberta" : "prevista";
       const base = totalOficial ?? total;
       return {
         cartaoId: cartao.id,
         cartaoNome: cartao.nome,
-        competencia,
+        competencia: mesTela,
         total,
         totalOficial,
         totalPago,
@@ -447,8 +466,8 @@ export function montar_serie_faturas_dashboard(entrada: {
         origem,
         cicloInicio: ciclo.inicio,
         cicloFim: ciclo.fim,
-        dataFechamento: data_fechamento_do_ciclo(competencia, cartao.fechamento),
-        dataVencimento: data_vencimento_do_ciclo(competencia, cartao.fechamento, cartao.vencimento),
+        dataFechamento: data_fechamento_do_ciclo(cicloFecha, cartao.fechamento),
+        dataVencimento: data_vencimento_do_ciclo(cicloFecha, cartao.fechamento, cartao.vencimento),
         quantidadeLancamentos: gasto.quantidade,
         ajuste: totalOficial == null ? null : arredondar(totalOficial - gasto.gasto),
       } satisfies LinhaFaturaDashboard;
@@ -471,7 +490,7 @@ export function montar_serie_faturas_dashboard(entrada: {
             ? "prevista"
             : "paga";
     return {
-      competencia,
+      competencia: mesTela,
       linhas: comDados,
       total,
       totalOficial,
