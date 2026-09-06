@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ArrowLeft, ArrowRight, CreditCard, ExternalLink } from "lucide-react";
+import { rotulo_mes_curto } from "@lancai/tipos";
 import type { SerieFaturasDashboard, StatusFaturaDashboard } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
 import { unir_classes } from "../lib/unir-classes";
@@ -48,6 +49,12 @@ function rotulo_mes(competencia: string): string {
         year: "numeric",
         timeZone: "UTC",
     });
+}
+
+/** Eixo do gráfico: `out/25`, `jan/26`. */
+function rotulo_mes_eixo(competencia: string): string {
+    const ano = competencia.slice(2, 4);
+    return `${rotulo_mes_curto(competencia)}/${ano || competencia.slice(0, 4)}`;
 }
 
 function valor_oculto(valor: number, ocultar: boolean): string {
@@ -125,11 +132,12 @@ export function CardFaturasDashboard({
     const janelaInicio = Math.max(0, Math.min(indiceJanela, Math.max(0, meses.length - janelaTamanho)));
     const mesesVisiveis = meses.slice(janelaInicio, janelaInicio + janelaTamanho);
 
+    // Só recentra no mês civil de hoje — não reage ao seletor do topo do cockpit.
     useEffect(() => {
         if (!mesAtual || meses.length === 0) return;
         setMesSelecionado(mesAtual);
         setIndiceJanela(janela_para_competencia(meses, mesAtual));
-    }, [mesAtual, faturas.inicio, faturas.fim, meses.length]);
+    }, [mesAtual, meses.length]);
 
     useEffect(() => {
         if (meses.some((item) => item.competencia === mesSelecionado)) return;
@@ -165,10 +173,7 @@ export function CardFaturasDashboard({
         const pago = linhasMes.reduce((soma, linha) => soma + linha.totalPago, 0);
         return {
             competencia: mes.competencia,
-            rotulo: new Date(`${mes.competencia}-01T00:00:00Z`).toLocaleDateString("pt-BR", {
-                month: "short",
-                timeZone: "UTC",
-            }).replace(".", ""),
+            rotulo: rotulo_mes_eixo(mes.competencia),
             total,
             pago,
             // Linha acompanha a evolução dos gastos (topo da barra).

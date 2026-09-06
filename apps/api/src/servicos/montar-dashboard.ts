@@ -520,11 +520,13 @@ export async function montar_dashboard(
   const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
   const mesAnterior = periodoAnterior.de.slice(0, 7);
+  // Série do card de faturas é independente do mês do cockpit: ancora em hoje.
+  const mesHoje = hoje.slice(0, 7);
   const inicioFaturas = inicioFimMesAtual(
-    paraDataISO(adicionarMeses(deISOParaData(periodo.de), -11)),
+    paraDataISO(adicionarMeses(deISOParaData(`${mesHoje}-01`), -11)),
   );
   const fimFaturas = inicioFimMesAtual(
-    paraDataISO(adicionarMeses(deISOParaData(periodo.ate), 5)),
+    paraDataISO(adicionarMeses(deISOParaData(`${mesHoje}-01`), 5)),
   ).ate;
   const periodoFaturas = { de: inicioFaturas.de, ate: fimFaturas };
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
@@ -834,7 +836,7 @@ export async function montar_dashboard(
     cartoes: cartoesDetalhe,
     faturas: {
       meses: faturas,
-      mesAtual: mes,
+      mesAtual: mesHoje,
       inicio: inicioFaturas.de.slice(0, 7),
       fim: fimFaturas.slice(0, 7),
     },
