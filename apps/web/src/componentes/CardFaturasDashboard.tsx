@@ -171,8 +171,8 @@ export function CardFaturasDashboard({
             }).replace(".", ""),
             total,
             pago,
-            // Em prevista o pago ainda é 0; a linha acompanha o topo da barra.
-            linha: pago > 0.01 ? pago : mes.status === "prevista" ? total : pago,
+            // Linha acompanha a evolução dos gastos (topo da barra).
+            linha: total,
             status: mes.status,
             selecionado: mes.competencia === mesSelecionado,
         };
