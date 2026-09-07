@@ -112,10 +112,12 @@ export function CardFaturasDashboard({
     faturas,
     ocultarValores,
     hrefExtrato,
+    resetToken,
 }: {
     faturas: { meses: SerieFaturasDashboard[]; mesAtual: string; inicio: string; fim: string };
     ocultarValores: boolean;
     hrefExtrato: string;
+    resetToken: string;
 }) {
     const mesAtual =
         faturas.mesAtual && faturas.meses.some((item) => item.competencia === faturas.mesAtual)
@@ -132,14 +134,13 @@ export function CardFaturasDashboard({
     const janelaInicio = Math.max(0, Math.min(indiceJanela, Math.max(0, meses.length - janelaTamanho)));
     const mesesVisiveis = meses.slice(janelaInicio, janelaInicio + janelaTamanho);
 
-    // Recentra só quando a série muda de tamanho (ex. 1ª carga); foco em entrar no
-    // cockpit / trocar workspace é feito via `key` no pai (remonta o card).
     useEffect(() => {
         if (!mesAtual || meses.length === 0) return;
-        if (meses.some((item) => item.competencia === mesSelecionado)) return;
         setMesSelecionado(mesAtual);
         setIndiceJanela(janela_para_competencia(meses, mesAtual));
-    }, [mesAtual, meses, mesSelecionado]);
+        // resetToken: entrar no cockpit ou trocar workspace — não o seletor de mês do topo.
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- só recentra nesses eventos
+    }, [resetToken]);
 
     const cartoes = useMemo(
         () => [...new Map(meses.flatMap((mes) => mes.linhas).map((linha) => [linha.cartaoId, linha.cartaoNome])).entries()],

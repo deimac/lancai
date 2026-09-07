@@ -66,6 +66,8 @@ export type ContextoLayout = {
   tema: TemaLancai;
   /** Incrementa ao clicar Cockpit no menu — a tela volta o filtro para Todos. */
   geracaoCockpit: number;
+  /** Incrementa ao trocar de workspace — o card de faturas volta ao mês atual. */
+  geracaoWorkspace: number;
 };
 
 export function LayoutAutenticado() {
@@ -79,6 +81,7 @@ export function LayoutAutenticado() {
   const [recolhida, setRecolhida] = useState(() => ler_sidebar_recolhida());
   const [tema, setTema] = useState<TemaLancai>(() => ler_tema());
   const [geracaoCockpit, setGeracaoCockpit] = useState(0);
+  const [geracaoWorkspace, setGeracaoWorkspace] = useState(0);
   const location = useLocation();
 
   useEffect(() => {
@@ -159,6 +162,7 @@ export function LayoutAutenticado() {
   }
 
   const aoMudarWorkspace = () => {
+    setGeracaoWorkspace((n) => n + 1);
     invalidar("tudo");
     void recarregar_contexto();
   };
@@ -301,6 +305,7 @@ export function LayoutAutenticado() {
                   definirPosicaoPainel: definir_posicao,
                   tema,
                   geracaoCockpit,
+                  geracaoWorkspace,
                 } satisfies ContextoLayout
               }
             />
