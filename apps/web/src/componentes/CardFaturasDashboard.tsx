@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowLeft, ArrowRight, CreditCard, ExternalLink } from "lucide-react";
 import { rotulo_mes_curto } from "@lancai/tipos";
 import type { SerieFaturasDashboard, StatusFaturaDashboard } from "../lib/api";
@@ -83,16 +83,25 @@ function RotuloEixoFaturas({
     payload,
     dados,
     ocultarValores,
+    onSelecionar,
 }: {
     x?: number;
     y?: number;
     payload?: { value?: string };
-    dados: Array<{ rotulo: string; total: number; selecionado: boolean }>;
+    dados: Array<{ rotulo: string; competencia: string; total: number; selecionado: boolean }>;
     ocultarValores: boolean;
+    onSelecionar: (competencia: string) => void;
 }) {
     const dado = dados.find((item) => item.rotulo === payload?.value);
     return (
-        <g transform={`translate(${x},${y})`}>
+        <g
+            transform={`translate(${x},${y})`}
+            style={{ cursor: "pointer" }}
+            onClick={() => {
+                if (dado) onSelecionar(dado.competencia);
+            }}
+        >
+            <rect x={-28} y={-4} width={56} height={36} fill="transparent" />
             <text
                 textAnchor="middle"
                 fill={dado?.selecionado ? "var(--color-texto)" : "var(--color-texto-suave)"}
@@ -174,7 +183,6 @@ export function CardFaturasDashboard({
             rotulo: rotulo_mes_eixo(mes.competencia),
             total,
             pago,
-            // Linha acompanha a evolução dos gastos (topo da barra).
             linha: total,
             status: mes.status,
             selecionado: mes.competencia === mesSelecionado,
@@ -276,43 +284,52 @@ export function CardFaturasDashboard({
 
             <div className="mt-3 h-56 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 26 }}>
+                    <ComposedChart
+                        data={chartData}
+                        margin={{ top: 8, right: 4, left: 0, bottom: 26 }}
+                        barCategoryGap="18%"
+                        onClick={(estado) => {
+                            const competencia = estado?.activePayload?.[0]?.payload?.competencia as string | undefined;
+                            if (competencia) selecionar_mes(competencia);
+                        }}
+                    >
                         <CartesianGrid stroke="var(--color-borda)" strokeDasharray="3 3" vertical={false} />
                         <XAxis
                             dataKey="rotulo"
-                            tick={<RotuloEixoFaturas dados={chartData} ocultarValores={ocultarValores} />}
+                            tick={<RotuloEixoFaturas dados={chartData} ocultarValores={ocultarValores} onSelecionar={selecionar_mes} />}
                             axisLine={false}
                             tickLine={false}
                             height={50}
+                            interval={0}
                         />
                         <YAxis hide />
+                        <Tooltip
+                            cursor={{ fill: "var(--color-texto)", fillOpacity: 0.06 }}
+                            content={() => null}
+                        />
                         <Bar
                             dataKey="total"
                             name="total"
                             radius={[6, 6, 0, 0]}
-                            maxBarSize={42}
+                            maxBarSize={48}
+                            minPointSize={10}
                             cursor="pointer"
+                            isAnimationActive={false}
                         >
                             {chartData.map((item) => {
                                 const selecionado = item.competencia === mesSelecionado;
+                                const vazio = item.total <= 0;
                                 return (
                                     <Cell
                                         key={item.competencia}
-                                        fill={selecionado ? "var(--color-texto)" : COR_STATUS[item.status]}
-                                        fillOpacity={selecionado ? 1 : 0.6}
-                                        stroke={selecionado ? "var(--color-primaria)" : "transparent"}
-                                        strokeWidth={selecionado ? 2 : 0}
+                                        fill={vazio
+                                            ? "transparent"
+                                            : selecionado ? "var(--color-texto)" : COR_STATUS[item.status]}
+                                        fillOpacity={vazio ? 0 : selecionado ? 1 : 0.6}
+                                        stroke={selecionado && !vazio ? "var(--color-primaria)" : "transparent"}
+                                        strokeWidth={selecionado && !vazio ? 2 : 0}
                                         cursor="pointer"
                                         onClick={() => selecionar_mes(item.competencia)}
-                                        aria-label={`Selecionar mês ${rotulo_mes(item.competencia)}`}
-                                        onKeyDown={(evento) => {
-                                            if (evento.key === "Enter" || evento.key === " ") {
-                                                evento.preventDefault();
-                                                selecionar_mes(item.competencia);
-                                            }
-                                        }}
-                                        role="button"
-                                        tabIndex={0}
                                     />
                                 );
                             })}
