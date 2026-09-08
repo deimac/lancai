@@ -438,6 +438,7 @@ export function resumir_extrato(
   for (const movimento of movimentos) {
     if (movimento.status === "cancelado") continue;
     if (movimento.apresentacao) continue;
+    if (movimento.ignoradoEmRelatorio) continue;
     const valor = Number(movimento.valor);
     const seguro = Number.isFinite(valor) ? valor : 0;
     if (

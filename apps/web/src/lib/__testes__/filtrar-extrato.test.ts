@@ -877,6 +877,27 @@ describe("parsers da URL", () => {
 });
 
 describe("resumir_extrato", () => {
+  it("não soma lançamentos ignorados em relatório", () => {
+    const aplicacao = movimento({
+      id: "rdb",
+      descricao: "Aplicação RDB",
+      valor: "50000",
+      ignoradoEmRelatorio: true,
+      classificadoPor: "regra",
+      regraTrecho: "Aplicação RDB",
+    });
+
+    expect(resumir_extrato([aplicacao])).toMatchObject({
+      entradas: 0,
+      saidas: 0,
+      entradasQuantidade: 0,
+      saidasQuantidade: 0,
+      resultado: 0,
+      revisarQuantidade: 0,
+      revisarTotal: 0,
+    });
+  });
+
   it("soma entradas, saídas sem fatura e o que falta classificar", () => {
     const recorte = [
       movimento({ id: "e", tipo: "receita", valor: "100", papel: "gasto" }),
