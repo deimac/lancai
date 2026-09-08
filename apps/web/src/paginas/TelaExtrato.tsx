@@ -927,7 +927,8 @@ export function TelaExtrato() {
           <PainelResumo
             titulo="Resultado"
             valor={`${resumo.resultado >= 0 ? "" : "−"}${formatar_moeda(Math.abs(resumo.resultado))}`}
-            detalhe={`${visiveis.length} lançamento${visiveis.length === 1 ? "" : "s"}`}
+            detalhe={`${resumo.entradasQuantidade + resumo.saidasQuantidade} lançamento${resumo.entradasQuantidade + resumo.saidasQuantidade === 1 ? "" : "s"
+              }`}
             icone={resumo.resultado >= 0 ? ArrowDownLeft : ArrowUpRight}
             tom={resumo.resultado >= 0 ? "receita" : "despesa"}
           />
