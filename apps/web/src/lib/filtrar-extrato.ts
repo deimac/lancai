@@ -38,7 +38,7 @@ export type OrigemExtrato =
 
 export type TipoGastoExtrato = "todas" | "pessoal" | "empresa";
 
-export type PapelExtrato = "todas" | "gastos" | "pagamentos_fatura";
+export type PapelExtrato = "todas" | "entradas" | "saidas" | "pagamentos_fatura";
 
 export type CartaoCicloExtrato = { id: string; fechamento?: number | null; vencimento?: number | null };
 
@@ -149,7 +149,10 @@ export function perfil_de_tipo_gasto(tipo: TipoGastoExtrato): "pf" | "pj" | unde
 }
 
 export function papel_da_query(valor: string | null): PapelExtrato {
-  if (valor === "gastos" || valor === "pagamentos_fatura") return valor;
+  if (valor === "entradas" || valor === "saidas" || valor === "pagamentos_fatura") {
+    return valor;
+  }
+  if (valor === "gastos") return "saidas";
   return "todas";
 }
 
@@ -330,7 +333,13 @@ function movimento_passa_filtros(
   if (filtros.tipoGasto === "pessoal" && movimento.tipoGasto !== "pf") return false;
   if (filtros.tipoGasto === "empresa" && movimento.tipoGasto !== "pj") return false;
 
-  if (filtros.papel === "gastos" && movimento.papel === "pagamento_fatura") return false;
+  if (filtros.papel === "entradas" && !eh_entrada_extrato(movimento.tipo)) return false;
+  if (
+    filtros.papel === "saidas" &&
+    (eh_entrada_extrato(movimento.tipo) || movimento.papel === "pagamento_fatura")
+  ) {
+    return false;
+  }
   if (filtros.papel === "pagamentos_fatura" && movimento.papel !== "pagamento_fatura") {
     return false;
   }

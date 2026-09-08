@@ -268,14 +268,18 @@ describe("filtrar_extrato", () => {
     ).toEqual(["e"]);
   });
 
-  it("filtra só gastos vs pagamentos de fatura", () => {
+  it("filtra entradas, saídas e pagamentos de fatura", () => {
     const misto = [
-      movimento({ id: "g", papel: "gasto" }),
+      movimento({ id: "e", tipo: "receita", papel: "gasto" }),
+      movimento({ id: "s", tipo: "despesa", papel: "gasto" }),
       movimento({ id: "f", papel: "pagamento_fatura", descricao: "Fatura Itaú" }),
     ];
     expect(
-      filtrar_extrato(misto, contas, cartoes, { ...base, papel: "gastos" }).map((m) => m.id),
-    ).toEqual(["g"]);
+      filtrar_extrato(misto, contas, cartoes, { ...base, papel: "entradas" }).map((m) => m.id),
+    ).toEqual(["e"]);
+    expect(
+      filtrar_extrato(misto, contas, cartoes, { ...base, papel: "saidas" }).map((m) => m.id),
+    ).toEqual(["s"]);
     expect(
       filtrar_extrato(misto, contas, cartoes, { ...base, papel: "pagamentos_fatura" }).map(
         (m) => m.id,
@@ -867,11 +871,13 @@ describe("parsers da URL", () => {
     expect(origem_da_visao_fatura({ tipo: "contas" })).toEqual({ tipo: "cartoes" });
   });
 
-  it("lê papel gastos/pagamentos de fatura", () => {
-    expect(papel_da_query("gastos")).toBe("gastos");
+  it("lê entradas, saídas e pagamentos de fatura", () => {
+    expect(papel_da_query("entradas")).toBe("entradas");
+    expect(papel_da_query("saidas")).toBe("saidas");
+    expect(papel_da_query("gastos")).toBe("saidas");
     expect(papel_da_query("pagamentos_fatura")).toBe("pagamentos_fatura");
     expect(papel_da_query("x")).toBe("todas");
-    expect(papel_para_query("gastos")).toBe("gastos");
+    expect(papel_para_query("saidas")).toBe("saidas");
     expect(papel_para_query("todas")).toBeNull();
   });
 });
@@ -1102,7 +1108,7 @@ describe("quantidade_filtros_drawer", () => {
       quantidade_filtros_drawer({
         categoriaId: "cat-1",
         classificacao: "ia",
-        papel: "gastos",
+        papel: "saidas",
         fila: "revisar",
       }),
     ).toBe(4);

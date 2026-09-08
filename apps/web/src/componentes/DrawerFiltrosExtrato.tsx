@@ -43,7 +43,8 @@ const OPCOES_CLASSIFICACAO: OpcaoSeletorVisual[] = [
 
 const OPCOES_PAPEL: OpcaoSeletorVisual[] = [
   { valor: "todas", rotulo: "Todos" },
-  { valor: "gastos", rotulo: "Só gastos" },
+  { valor: "saidas", rotulo: "Saídas" },
+  { valor: "entradas", rotulo: "Entradas" },
   { valor: "pagamentos_fatura", rotulo: "Pagamentos de fatura", icone: Landmark },
 ];
 

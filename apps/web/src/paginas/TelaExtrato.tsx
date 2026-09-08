@@ -855,7 +855,13 @@ export function TelaExtrato() {
             ) : null}
             {papel !== "todas" ? (
               <ChipFiltro
-                rotulo={papel === "gastos" ? "Só gastos" : "Pagamentos de fatura"}
+                rotulo={
+                  papel === "entradas"
+                    ? "Entradas"
+                    : papel === "saidas"
+                      ? "Saídas"
+                      : "Pagamentos de fatura"
+                }
                 onLimpar={() => sincronizar_params({ papel: "todas" })}
               />
             ) : null}
@@ -1032,12 +1038,13 @@ export function TelaExtrato() {
                       key={movimento.id}
                       className={unir_classes(
                         "border-b border-borda/70 last:border-0",
-                        movimento.apresentacao
+                        movimento.apresentacao || movimento.ignoradoEmRelatorio
                           ? "bg-fundo/30 text-texto-suave"
                           : revisao
                             ? "bg-aviso/5"
                             : "hover:bg-fundo/40",
-                        movimento.status === "cancelado" && "opacity-60",
+                        (movimento.status === "cancelado" || movimento.ignoradoEmRelatorio) &&
+                        "opacity-60",
                       )}
                     >
                       <td className="px-3 py-2.5">
