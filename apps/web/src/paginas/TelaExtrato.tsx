@@ -1055,7 +1055,11 @@ export function TelaExtrato() {
                           <p className="truncate font-medium text-texto">{movimento.descricao}</p>
                         </Dica>
                         <p className="truncate text-[11px] text-texto-suave">
-                          {rotulo_classificado_por(movimento.classificadoPor, movimento.confiancaIa)}
+                          {rotulo_classificado_por(
+                            movimento.classificadoPor,
+                            movimento.confiancaIa,
+                            movimento.regraTrecho,
+                          )}
                           {rotulo_tipo_gasto(movimento.tipoGasto)
                             ? ` · ${rotulo_tipo_gasto(movimento.tipoGasto)}`
                             : ""}

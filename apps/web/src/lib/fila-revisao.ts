@@ -20,8 +20,12 @@ export function precisa_revisao(movimento: MovimentoResumo): boolean {
 export function rotulo_classificado_por(
   origem: MovimentoResumo["classificadoPor"],
   confianca: number | null,
+  regraTrecho?: string | null,
 ): string {
-  if (origem === "regra") return "Regra";
+  if (origem === "regra") {
+    const nome = regraTrecho?.trim();
+    return nome ? `Regra · ${nome}` : "Regra";
+  }
   if (origem === "usuario") return "Você";
   if (confianca === null) return "IA";
   return `IA ${Math.round(confianca * 100)}%`;

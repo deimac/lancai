@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MovimentoResumo } from "../api";
+import { rotulo_classificado_por } from "../fila-revisao";
 import {
   agrupar_faturas_por_cartao,
   classificacao_da_query,
@@ -133,6 +134,18 @@ const lote: MovimentoResumo[] = [
     confiancaIa: 0.4,
   }),
 ];
+
+describe("rotulo_classificado_por", () => {
+  it("mostra o nome da regra", () => {
+    expect(rotulo_classificado_por("regra", null, "Aplicação RDB")).toBe(
+      "Regra · Aplicação RDB",
+    );
+  });
+
+  it("mantém o rótulo genérico quando a regra não tem nome", () => {
+    expect(rotulo_classificado_por("regra", null, "  ")).toBe("Regra");
+  });
+});
 
 describe("filtrar_extrato", () => {
   it("corta pelo mês", () => {

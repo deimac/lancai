@@ -289,7 +289,10 @@ export function CardFaturasDashboard({
                         margin={{ top: 8, right: 4, left: 0, bottom: 26 }}
                         barCategoryGap="18%"
                         onClick={(estado) => {
-                            const competencia = estado?.activePayload?.[0]?.payload?.competencia as string | undefined;
+                            const clique = estado as {
+                                activePayload?: Array<{ payload?: { competencia?: string } }>;
+                            } | null | undefined;
+                            const competencia = clique?.activePayload?.[0]?.payload?.competencia;
                             if (competencia) selecionar_mes(competencia);
                         }}
                     >
