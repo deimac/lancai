@@ -38,6 +38,7 @@ import { calcular_saldo, obter_direcao_padrao, tipo_movimento_implementado } fro
 import { calcular_fingerprint_movimento } from "./fingerprint";
 import { eh_fluxo_cruzado } from "./fluxo-cruzado";
 import { registrar_parcelamento } from "./registrar-parcelamento";
+import { decidir_alocacao_fatura } from "./alocacao-fatura";
 import {
   ErroContaSincronizada,
   ErroFatoImutavel,
@@ -47,6 +48,7 @@ import {
   ErroValidacaoFinanceira,
 } from "./erros";
 import type {
+  OperacaoAlocacaoFatura,
   OperacaoAtualizacaoFonte,
   OperacaoCorrecao,
   RepositorioFinanceiro,
@@ -141,7 +143,121 @@ function efeito_no_saldo(movimento: {
  * que é passada para `criar_movimento`.
  */
 export class MotorFinanceiro {
-  constructor(private readonly repositorio: RepositorioFinanceiro) {}
+  constructor(private readonly repositorio: RepositorioFinanceiro) { }
+
+  /**
+   * Reavalia a fatura de um movimento depois que o Fato foi persistido. A
+   * alocação é conhecimento derivado: uma mudança de previsão encerra a linha
+   * atual e cria outra, sem reescrever o movimento nem perder o histórico.
+   */
+  async alocar_movimento_fatura(
+    movimento: Movimento,
+    origem: "sistema" | "provedor" = "provedor",
+  ): Promise<void> {
+    if (!movimento.cartaoId || movimento.status === "cancelado" || movimento.statusFonte === "removido") {
+      return;
+    }
+
+    const cartao = await this.repositorio.obterCartao(movimento.cartaoId);
+    const faturaOficial = movimento.providerBillId
+      ? await this.repositorio.obterFaturaOficialPorIdExterno({
+        cartaoId: movimento.cartaoId,
+        idExterno: movimento.providerBillId,
+      })
+      : undefined;
+    const decisao = decidir_alocacao_fatura({
+      providerBillId: movimento.providerBillId,
+      faturaOficialParaBillId: faturaOficial
+        ? { id: faturaOficial.id, competencia: faturaOficial.competencia }
+        : null,
+      providerBillForecastDate: movimento.providerBillForecastDate,
+      dataMovimento: movimento.dataMovimento,
+      fechamentoCartao: cartao?.fechamento,
+    });
+
+    const anterior = await this.repositorio.obterAlocacaoAtualDoMovimento(movimento.id);
+    const mesmaDecisao = anterior &&
+      anterior.competencia === decisao.competencia &&
+      anterior.status === decisao.status &&
+      anterior.metodo === decisao.metodo &&
+      (anterior.faturaOficialId ?? null) === (decisao.faturaOficialId ?? null) &&
+      anterior.estadoConflito === "nenhum";
+    if (mesmaDecisao) return;
+
+    const conflito = Boolean(
+      anterior?.status === "confirmado" &&
+      decisao.status === "confirmado" &&
+      anterior.faturaOficialId &&
+      decisao.faturaOficialId &&
+      anterior.faturaOficialId !== decisao.faturaOficialId,
+    );
+    const operacao: OperacaoAlocacaoFatura = {
+      workspaceId: movimento.workspaceId,
+      movimentoId: movimento.id,
+      cartaoId: movimento.cartaoId,
+      valorAlocado: movimento.valor,
+      decisao,
+      estadoConflito: conflito ? "conflito" : "nenhum",
+      conflitoMotivo: conflito ? "provider_bill_id apontou para outra fatura confirmada" : undefined,
+      conflitoDadosOrigem: conflito
+        ? { alocacaoAnterior: anterior, decisaoNova: decisao }
+        : undefined,
+      alocacaoAnterior: anterior,
+      acaoAuditoria: conflito
+        ? "conflito"
+        : !anterior
+          ? "criada"
+          : decisao.status === "confirmado"
+            ? "confirmada"
+            : "substituida",
+      origemAuditoria: origem,
+    };
+
+    await this.repositorio.persistirAlocacaoFatura(operacao);
+  }
+
+  /** Resolve manualmente uma alocação conflitante sem transformar a decisão em confirmação do provedor. */
+  async resolver_alocacao_fatura_manual(entrada: {
+    movimentoId: string;
+    competencia: string;
+    usuarioId: string;
+  }): Promise<void> {
+    if (!/^\d{4}-\d{2}$/.test(entrada.competencia)) {
+      throw new ErroValidacaoFinanceira("A competência da fatura deve estar no formato YYYY-MM.");
+    }
+
+    const movimento = await this.repositorio.obterMovimento(entrada.movimentoId);
+    if (!movimento) throw new ErroRecursoNaoEncontrado("movimento", entrada.movimentoId);
+    if (!movimento.cartaoId) {
+      throw new ErroValidacaoFinanceira("Somente movimentos de cartão podem ter alocação de fatura.");
+    }
+
+    const atual = await this.repositorio.obterAlocacaoAtualDoMovimento(movimento.id);
+    if (!atual || atual.estadoConflito !== "conflito") {
+      throw new ErroValidacaoFinanceira("A alocação não está pendente de resolução manual.");
+    }
+
+    await this.repositorio.persistirAlocacaoFatura({
+      workspaceId: movimento.workspaceId,
+      movimentoId: movimento.id,
+      cartaoId: movimento.cartaoId,
+      valorAlocado: movimento.valor,
+      decisao: {
+        status: "possivel",
+        metodo: "manual",
+        competencia: entrada.competencia,
+        confidenceScore: 100,
+      },
+      estadoConflito: "resolvido",
+      conflitoMotivo: atual.conflitoMotivo ?? undefined,
+      conflitoDadosOrigem: atual.conflitoDadosOrigem,
+      resolvidoPor: entrada.usuarioId,
+      resolvidoEm: new Date(),
+      alocacaoAnterior: atual,
+      acaoAuditoria: "resolvido",
+      origemAuditoria: "usuario",
+    });
+  }
 
   /**
    * Colunas do grupo Fato que acompanham todo lançamento criado. `descricaoFonte`
@@ -522,7 +638,7 @@ export class MotorFinanceiro {
       if (!evento.contaId && !evento.cartaoId) {
         throw new ErroValidacaoFinanceira(
           `Evento ${evento.idExterno ?? "sem identificador"} não indica conta nem cartão. ` +
-            `A fonte precisa resolver a conta antes de entregar o evento ao Core.`,
+          `A fonte precisa resolver a conta antes de entregar o evento ao Core.`,
         );
       }
 
@@ -580,6 +696,8 @@ export class MotorFinanceiro {
         tipo: evento.tipo,
         status: evento.statusFonte === "pendente" ? "previsto" : "realizado",
         ...parcelamento_em_colunas(evento.parcelamento),
+        providerBillId: evento.providerBillId ?? null,
+        providerBillForecastDate: evento.providerBillForecastDate ?? null,
         tipoGasto,
         dataMovimento: evento.ocorridoEm,
         ocorridoEmInstante: evento.ocorridoEmInstante
@@ -631,6 +749,10 @@ export class MotorFinanceiro {
       })),
       auditorias,
     });
+
+    for (const movimento of resultado.movimentos) {
+      await this.alocar_movimento_fatura(movimento);
+    }
 
     return { criados: resultado.movimentos, duplicados };
   }
@@ -759,6 +881,10 @@ export class MotorFinanceiro {
       })),
       auditorias,
     });
+
+    for (const movimento of atualizados) {
+      await this.alocar_movimento_fatura(movimento);
+    }
 
     return { atualizados, desconhecidos, inalterados };
   }
@@ -900,6 +1026,20 @@ export class MotorFinanceiro {
       atual.parcelaCompraValor !== parcelamento.parcelaCompraValor
     ) {
       Object.assign(campos, parcelamento);
+    }
+
+    /**
+     * Evidência de fatura (L0/L1). Mudar não altera o Fato financeiro em si —
+     * só o que o provedor afirma sobre a fatura — mas precisa ficar registrado
+     * para a alocação poder reavaliar (ver AUDITORIA_TECNICA_CARTAOES_FATURAS_V2).
+     */
+    const providerBillId = evento.providerBillId ?? null;
+    if ((atual.providerBillId ?? null) !== providerBillId) {
+      campos.providerBillId = providerBillId;
+    }
+    const providerBillForecastDate = evento.providerBillForecastDate ?? null;
+    if ((atual.providerBillForecastDate ?? null) !== providerBillForecastDate) {
+      campos.providerBillForecastDate = providerBillForecastDate;
     }
 
     return campos;

@@ -18,3 +18,5 @@ export * from "./orcamento";
 export * from "./open-finance";
 export * from "./fatura-oficial";
 export * from "./regra";
+export * from "./bill-allocation";
+export * from "./bill-allocation-auditoria";

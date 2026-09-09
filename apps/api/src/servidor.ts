@@ -19,6 +19,7 @@ import { registrar_rotas_cron } from "./rotas/cron";
 import { registrar_rotas_workspaces } from "./rotas/workspaces";
 import { registrar_rotas_recorrencia } from "./rotas/recorrencias";
 import { registrar_rotas_importacao } from "./rotas/importacoes";
+import { registrar_rotas_faturas } from "./rotas/faturas";
 import { tratar_erro } from "./tratar-erro";
 
 /**
@@ -67,6 +68,7 @@ export function criar_servidor() {
   app.register(registrar_rotas_regras, { prefix: "/regras" });
   app.register(registrar_rotas_pessoa, { prefix: "/pessoas" });
   app.register(registrar_rotas_movimento, { prefix: "/movimentos" });
+  app.register(registrar_rotas_faturas, { prefix: "/faturas" });
   app.register(registrar_rotas_conhecimento, { prefix: "/conhecimento" });
   app.register(registrar_rotas_dashboard, { prefix: "/dashboard" });
   app.register(registrar_rotas_chat, { prefix: "/chat" });

@@ -98,6 +98,18 @@ export const movimento = pgTable(
     /** Valor da compra inteira. Guardado porque parcela desigual não multiplica. */
     parcelaCompraValor: numeric("parcela_compra_valor", { precision: 14, scale: 2 }),
 
+    /**
+     * Evidência L0: identificador da fatura no provedor. Só existe depois do
+     * fechamento (Pluggy). Autoridade de alocação quando presente — ver
+     * `docs/AUDITORIA_TECNICA_CARTAOES_FATURAS_V2.md`.
+     */
+    providerBillId: text("provider_bill_id"),
+    /**
+     * Evidência L1: competência prevista pelo provedor (`YYYY-MM`), nunca uma
+     * data. É previsão, não confirmação — mesmo quando bate com o ciclo local.
+     */
+    providerBillForecastDate: text("provider_bill_forecast_date"),
+
     // -------------------------------------------------------------------
     // CONHECIMENTO DO LANÇAI — sempre mutável, inclusive em conta sincronizada
     // -------------------------------------------------------------------
@@ -176,6 +188,9 @@ export const movimento = pgTable(
       .on(tabela.fingerprint)
       .where(sql`${tabela.fingerprint} is not null`),
     index("movimento_workspace_data_idx").on(tabela.workspaceId, tabela.dataMovimento),
+    index("movimento_provider_bill_id_idx")
+      .on(tabela.providerBillId)
+      .where(sql`${tabela.providerBillId} is not null`),
   ],
 );
 

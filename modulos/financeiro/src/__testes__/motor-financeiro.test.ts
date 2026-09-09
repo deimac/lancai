@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Cartao, Categoria, Conta, Pessoa } from "@lancai/banco";
+import type { Cartao, Categoria, Conta, FaturaOficial, Pessoa } from "@lancai/banco";
 import type { EntradaCriarMovimento, EventoFinanceiroNormalizado } from "@lancai/tipos";
 import { MotorFinanceiro } from "../motor-financeiro";
 import type { ContextoIngestao } from "../motor-financeiro";
@@ -1330,6 +1330,171 @@ describe("MotorFinanceiro", () => {
       expect(resultado.atualizados).toHaveLength(0);
       expect(repositorio.auditorias).toHaveLength(auditoriasAntes);
       expect(Number(repositorio.contas.get(conta.id)?.saldoAtual)).toBe(1000);
+    });
+
+    it("persiste providerBillId e providerBillForecastDate na ingestão", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+
+      const criado = await ingerir(conta.id, {
+        providerBillId: "bill-123",
+        providerBillForecastDate: "2026-10",
+      });
+
+      expect(criado.providerBillId).toBe("bill-123");
+      expect(criado.providerBillForecastDate).toBe("2026-10");
+    });
+
+    it("persiste alocação não resolvida sem inventar competência", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: undefined });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const criado = await ingerir(conta.id, { cartaoId: cartao.id });
+      const alocacao = await repositorio.obterAlocacaoAtualDoMovimento(criado.id);
+
+      expect(alocacao).toMatchObject({
+        status: "nao_resolvido",
+        metodo: "nao_resolvido",
+        competencia: null,
+        isCurrent: true,
+      });
+      expect(repositorio.auditoriasAlocacaoFatura).toHaveLength(1);
+    });
+
+    it("detecta quando o provedor confirma o billId que antes era só forecast", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      await ingerir(conta.id, { providerBillForecastDate: "2026-10" });
+
+      const { atualizados } = await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, providerBillForecastDate: "2026-10", providerBillId: "bill-123" })],
+        contexto(),
+      );
+
+      expect(atualizados[0]?.providerBillId).toBe("bill-123");
+      expect(atualizados[0]?.providerBillForecastDate).toBe("2026-10");
+    });
+
+    it("persiste forecast, confirma com billId e mantém o histórico da alocação", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 20 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+      const fatura = {
+        id: randomUUID(),
+        competencia: "2026-10",
+      } as FaturaOficial;
+      repositorio.obterFaturaOficialPorIdExterno = async () => fatura;
+
+      const criado = await ingerir(conta.id, {
+        cartaoId: cartao.id,
+        providerBillForecastDate: "2026-10",
+      });
+      const previsao = await repositorio.obterAlocacaoAtualDoMovimento(criado.id);
+
+      expect(previsao?.status).toBe("previsto");
+      expect(previsao?.metodo).toBe("provider_forecast");
+      expect(repositorio.auditoriasAlocacaoFatura).toHaveLength(1);
+
+      await motor.atualizar_fatos_da_fonte(
+        [evento({
+          contaId: conta.id,
+          cartaoId: cartao.id,
+          providerBillForecastDate: "2026-10",
+          providerBillId: "bill-123",
+        })],
+        contexto(),
+      );
+
+      const confirmacao = await repositorio.obterAlocacaoAtualDoMovimento(criado.id);
+      const historico = [...repositorio.alocacoesFatura.values()];
+      expect(confirmacao?.status).toBe("confirmado");
+      expect(confirmacao?.metodo).toBe("provider_bill_id");
+      expect(confirmacao?.faturaOficialId).toBe(fatura.id);
+      expect(historico.filter((alocacao) => alocacao.isCurrent)).toHaveLength(1);
+      expect(historico.filter((alocacao) => !alocacao.isCurrent)).toHaveLength(1);
+      expect(repositorio.auditoriasAlocacaoFatura).toHaveLength(2);
+    });
+
+    it("preserva o histórico e marca conflito quando o billId muda para outra fatura", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 20 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+      const faturas = new Map([
+        ["bill-1", { id: randomUUID(), competencia: "2026-09" } as FaturaOficial],
+        ["bill-2", { id: randomUUID(), competencia: "2026-10" } as FaturaOficial],
+      ]);
+      repositorio.obterFaturaOficialPorIdExterno = async ({ idExterno }) => faturas.get(idExterno);
+
+      const criado = await ingerir(conta.id, {
+        cartaoId: cartao.id,
+        providerBillId: "bill-1",
+      });
+      await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, cartaoId: cartao.id, providerBillId: "bill-2" })],
+        contexto(),
+      );
+
+      const atual = await repositorio.obterAlocacaoAtualDoMovimento(criado.id);
+      const historico = [...repositorio.alocacoesFatura.values()];
+      expect(atual).toMatchObject({
+        status: "confirmado",
+        estadoConflito: "conflito",
+        faturaOficialId: faturas.get("bill-2")?.id,
+      });
+      expect(historico.filter((alocacao) => alocacao.isCurrent)).toHaveLength(1);
+      expect(historico.filter((alocacao) => !alocacao.isCurrent)).toHaveLength(1);
+      expect(repositorio.auditoriasAlocacaoFatura.at(-1)?.acao).toBe("conflito");
+    });
+
+    it("resolve conflito manualmente sem promover a alocação a confirmada", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 20 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+      const faturas = new Map([
+        ["bill-1", { id: randomUUID(), competencia: "2026-09" } as FaturaOficial],
+        ["bill-2", { id: randomUUID(), competencia: "2026-10" } as FaturaOficial],
+      ]);
+      repositorio.obterFaturaOficialPorIdExterno = async ({ idExterno }) => faturas.get(idExterno);
+
+      const criado = await ingerir(conta.id, { cartaoId: cartao.id, providerBillId: "bill-1" });
+      await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, cartaoId: cartao.id, providerBillId: "bill-2" })],
+        contexto(),
+      );
+      await motor.resolver_alocacao_fatura_manual({
+        movimentoId: criado.id,
+        competencia: "2026-11",
+        usuarioId,
+      });
+
+      const atual = await repositorio.obterAlocacaoAtualDoMovimento(criado.id);
+      expect(atual).toMatchObject({
+        status: "possivel",
+        metodo: "manual",
+        competencia: "2026-11",
+        estadoConflito: "resolvido",
+        resolvidoPor: usuarioId,
+      });
+      expect(repositorio.auditoriasAlocacaoFatura.at(-1)?.origem).toBe("usuario");
+    });
+
+    it("não marca alteração quando a evidência de fatura chega idêntica", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      await ingerir(conta.id, { providerBillId: "bill-123", providerBillForecastDate: "2026-10" });
+
+      const resultado = await motor.atualizar_fatos_da_fonte(
+        [evento({ contaId: conta.id, providerBillId: "bill-123", providerBillForecastDate: "2026-10" })],
+        contexto(),
+      );
+
+      expect(resultado.inalterados).toBe(1);
+      expect(resultado.atualizados).toHaveLength(0);
     });
 
     it("re-sync desloca data_movimento da parcela para o mês da fatura", async () => {

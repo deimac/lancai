@@ -39,6 +39,45 @@ export const acaoAuditoriaEnum = pgEnum("acao_auditoria", [
 
 export const statusSessaoEnum = pgEnum("status_sessao", ["ativa", "encerrada"]);
 
+/**
+ * Confiança da alocação transação↔fatura. `confirmado` só existe com evidência
+ * L0 (`providerBillId`); os demais são estimativa e nunca entram como certeza.
+ */
+export const statusAlocacaoFaturaEnum = pgEnum("status_alocacao_fatura", [
+  "confirmado",
+  "previsto",
+  "possivel",
+  "nao_resolvido",
+]);
+
+/** Como a alocação foi decidida. Nunca usado como autoridade sozinho — só o `status` é. */
+export const metodoAlocacaoFaturaEnum = pgEnum("metodo_alocacao_fatura", [
+  "provider_bill_id",
+  "provider_forecast",
+  "regra_ciclo",
+  "historico",
+  "correspondencia",
+  "manual",
+  "nao_resolvido",
+]);
+
+/**
+ * Estado do conflito de alocação (ex.: `providerBillId` apontando para mais de
+ * uma fatura). Resolução é sempre manual e explícita — nunca automática.
+ */
+export const estadoConflitoAlocacaoEnum = pgEnum("estado_conflito_alocacao", [
+  "nenhum",
+  "conflito",
+  "resolvido",
+]);
+
+/** Origem da mudança registrada no log de auditoria da alocação. */
+export const origemAuditoriaAlocacaoEnum = pgEnum("origem_auditoria_alocacao", [
+  "sistema",
+  "provedor",
+  "usuario",
+]);
+
 export const papelChatEnum = pgEnum("papel_chat", ["usuario", "sistema", "ia"]);
 
 /** Crédito puro, débito puro, ou plástico que aceita os dois (com conta vinculada). */

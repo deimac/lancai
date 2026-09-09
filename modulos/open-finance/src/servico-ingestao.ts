@@ -140,7 +140,7 @@ export class ServicoIngestaoOpenFinance {
     private readonly provedor: ProvedorOpenFinance,
     private readonly repositorio: RepositorioOpenFinance,
     private readonly motor: MotorFinanceiro,
-  ) {}
+  ) { }
 
   /**
    * Etapa que roda dentro do request do webhook. Interpreta o corpo, que é puro,
@@ -869,13 +869,13 @@ export class ServicoIngestaoOpenFinance {
         absorvidos.flatMap((evento) =>
           evento.idExterno
             ? [
-                {
-                  workspaceId: evento.workspaceId,
-                  fonte: evento.fonte,
-                  provedor: evento.provedor,
-                  idExterno: evento.idExterno,
-                },
-              ]
+              {
+                workspaceId: evento.workspaceId,
+                fonte: evento.fonte,
+                provedor: evento.provedor,
+                idExterno: evento.idExterno,
+              },
+            ]
             : [],
         ),
         contexto,
@@ -985,6 +985,8 @@ export class ServicoIngestaoOpenFinance {
         cartaoId: associacao.cartaoId ?? undefined,
         statusFonte: movimentacao.statusFonte,
         parcelamento: movimentacao.parcelamento,
+        providerBillId: movimentacao.providerBillId,
+        providerBillForecastDate: movimentacao.providerBillForecastDate,
         /** Nasceu na instituição: o Core recusa alteração manual daqui em diante. */
         fatoImutavel: true,
       });

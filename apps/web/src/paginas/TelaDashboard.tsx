@@ -45,6 +45,7 @@ import {
 import { DonutCategoriasDashboard } from "../componentes/DonutCategoriasDashboard";
 import { CardFaturasDashboard } from "../componentes/CardFaturasDashboard";
 import { DrawerCartoesDashboard } from "../componentes/DrawerCartoesDashboard";
+import { PainelConflitosFatura } from "../componentes/PainelConflitosFatura";
 import { IconeCategoria } from "../componentes/IconeCategoria";
 import { SeletorTipoGasto } from "../componentes/SeletorTipoGasto";
 import { Botao } from "../componentes/ui/Botao";
@@ -394,6 +395,8 @@ export function TelaDashboard() {
           </Link>
         </motion.div>
       )}
+
+      <PainelConflitosFatura dependencia={depsDados} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <motion.div

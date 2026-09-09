@@ -90,6 +90,19 @@ export const schemaEventoFinanceiroNormalizado = z.object({
   /** Ausente na esmagadora maioria: só compra parcelada no cartão traz. */
   parcelamento: parcelamentoFonteSchema.optional(),
   /**
+   * Evidência L0 (confirmação): identificador da fatura no provedor. Só existe
+   * depois do fechamento — nunca em `PENDING`. Autoridade de alocação quando presente.
+   */
+  providerBillId: z.string().optional(),
+  /**
+   * Evidência L1 (previsão): competência prevista pelo provedor (`YYYY-MM`).
+   * Nunca é convertida em data — o provedor informa período, não dia.
+   */
+  providerBillForecastDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, "providerBillForecastDate deve estar no formato YYYY-MM")
+    .optional(),
+  /**
    * Declarado pela fonte, não pelo Core. É isso que permite acrescentar uma
    * fonte nova sem tocar em nenhuma linha do Core. Ver ADR-010.
    */

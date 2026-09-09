@@ -1,8 +1,10 @@
 import type {
+  AlocacaoFatura,
   Auditoria,
   Cartao,
   Categoria,
   Conta,
+  FaturaOficial,
   Movimento,
   NovaAuditoria,
   NovaParcela,
@@ -10,6 +12,7 @@ import type {
   Parcela,
   Pessoa,
 } from "@lancai/banco";
+import type { DecisaoAlocacaoFatura } from "./alocacao-fatura";
 
 /**
  * Tudo que o MotorFinanceiro precisa persistir para um único lançamento
@@ -180,6 +183,38 @@ export interface RepositorioFinanceiro {
     contaIds: string[];
     cartaoIds: string[];
   }): Promise<{ contas: string[]; cartoes: string[] }>;
+  /** Fatura fechada correspondente ao `providerBillId` — resolve o alvo da evidência L0. */
+  obterFaturaOficialPorIdExterno(chave: {
+    cartaoId: string;
+    idExterno: string;
+  }): Promise<FaturaOficial | undefined>;
+  /** Alocação atual (`is_current`) do movimento, se existir. */
+  obterAlocacaoAtualDoMovimento(movimentoId: string): Promise<AlocacaoFatura | undefined>;
+  /**
+   * Persiste a decisão de alocação atomicamente: encerra a alocação atual (se
+   * houver e for diferente), cria a nova e grava o log de auditoria. Nunca
+   * sobrescreve silenciosamente um `providerBillId` conflitante — quem chama
+   * decide o `estadoConflito` antes de persistir.
+   */
+  persistirAlocacaoFatura(operacao: OperacaoAlocacaoFatura): Promise<AlocacaoFatura>;
+}
+
+export interface OperacaoAlocacaoFatura {
+  workspaceId: string;
+  movimentoId: string;
+  cartaoId: string;
+  valorAlocado?: string | number | null;
+  decisao: DecisaoAlocacaoFatura;
+  /** `NONE` por padrão; `CONFLICT` quando o billId aponta para fatura diferente da já confirmada. */
+  estadoConflito: "nenhum" | "conflito" | "resolvido";
+  conflitoMotivo?: string;
+  conflitoDadosOrigem?: unknown;
+  resolvidoPor?: string;
+  resolvidoEm?: Date;
+  /** Alocação atual a ser encerrada, se existir e a decisão for diferente dela. */
+  alocacaoAnterior?: AlocacaoFatura;
+  acaoAuditoria: "criada" | "substituida" | "confirmada" | "conflito" | "resolvido";
+  origemAuditoria: "sistema" | "provedor" | "usuario";
 }
 
 export type { Auditoria, Cartao, Categoria, Conta, Movimento, NovoMovimento, Parcela, Pessoa };

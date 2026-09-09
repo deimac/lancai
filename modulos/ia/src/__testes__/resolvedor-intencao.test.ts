@@ -46,6 +46,8 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     parcelaTotal: null,
     parcelaCompraEm: null,
     parcelaCompraValor: null,
+    providerBillId: null,
+    providerBillForecastDate: null,
     descricao: "Combustível",
     valor: "185.00",
     tipo: "despesa",

@@ -1,23 +1,27 @@
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
+  alocacaoFatura as alocacaoFaturaTabela,
+  auditoriaAlocacaoFatura as auditoriaAlocacaoFaturaTabela,
   auditoria as auditoriaTabela,
   cartao as cartaoTabela,
   categoria as categoriaTabela,
   conta as contaTabela,
   contaFinanceira as contaFinanceiraTabela,
+  faturaOficial as faturaOficialTabela,
   movimento as movimentoTabela,
   obter_banco,
   parcela as parcelaTabela,
   pessoa as pessoaTabela,
 } from "@lancai/banco";
 import type {
+  OperacaoAlocacaoFatura,
   OperacaoAtualizacaoFonte,
   OperacaoCorrecao,
   OperacaoPersistencia,
   RepositorioFinanceiro,
   ResultadoOperacaoPersistencia,
 } from "./repositorio";
-import type { Cartao, Conta, Movimento } from "@lancai/banco";
+import type { AlocacaoFatura, Cartao, Conta, FaturaOficial, Movimento } from "@lancai/banco";
 
 /** Implementação real do RepositorioFinanceiro, sobre Supabase Postgres via Drizzle. */
 export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
@@ -493,5 +497,86 @@ export class RepositorioFinanceiroDrizzle implements RepositorioFinanceiro {
       }
     }
     return { contas: [...contas], cartoes: [...cartoes] };
+  }
+
+  async obterFaturaOficialPorIdExterno(chave: {
+    cartaoId: string;
+    idExterno: string;
+  }): Promise<FaturaOficial | undefined> {
+    const [linha] = await this.banco
+      .select()
+      .from(faturaOficialTabela)
+      .where(
+        and(
+          eq(faturaOficialTabela.cartaoId, chave.cartaoId),
+          eq(faturaOficialTabela.idExterno, chave.idExterno),
+        ),
+      )
+      .limit(1);
+    return linha;
+  }
+
+  async obterAlocacaoAtualDoMovimento(movimentoId: string): Promise<AlocacaoFatura | undefined> {
+    const [linha] = await this.banco
+      .select()
+      .from(alocacaoFaturaTabela)
+      .where(
+        and(eq(alocacaoFaturaTabela.movimentoId, movimentoId), eq(alocacaoFaturaTabela.isCurrent, true)),
+      )
+      .limit(1);
+    return linha;
+  }
+
+  async persistirAlocacaoFatura(operacao: OperacaoAlocacaoFatura): Promise<AlocacaoFatura> {
+    return this.banco.transaction(async (tx) => {
+      const agora = new Date();
+      if (operacao.decisao.status !== "nao_resolvido" && !operacao.decisao.competencia) {
+        throw new Error(
+          `Uma alocação resolvida precisa de competência: movimento ${operacao.movimentoId}`,
+        );
+      }
+
+      if (operacao.alocacaoAnterior) {
+        await tx
+          .update(alocacaoFaturaTabela)
+          .set({ isCurrent: false, validoAte: agora, dataAtualizacao: agora })
+          .where(eq(alocacaoFaturaTabela.id, operacao.alocacaoAnterior.id));
+      }
+
+      const [criada] = await tx
+        .insert(alocacaoFaturaTabela)
+        .values({
+          workspaceId: operacao.workspaceId,
+          movimentoId: operacao.movimentoId,
+          cartaoId: operacao.cartaoId,
+          competencia: operacao.decisao.competencia ?? null,
+          faturaOficialId: operacao.decisao.faturaOficialId,
+          status: operacao.decisao.status,
+          metodo: operacao.decisao.metodo,
+          confidenceScore: operacao.decisao.confidenceScore,
+          valorAlocado: operacao.valorAlocado == null ? undefined : String(operacao.valorAlocado),
+          estadoConflito: operacao.estadoConflito,
+          conflitoMotivo: operacao.conflitoMotivo,
+          conflitoDadosOrigem: operacao.conflitoDadosOrigem,
+          resolvidoPor: operacao.resolvidoPor,
+          resolvidoEm: operacao.resolvidoEm,
+        })
+        .returning();
+
+      if (!criada) {
+        throw new Error(`Falha ao persistir alocação de fatura para movimento ${operacao.movimentoId}`);
+      }
+
+      await tx.insert(auditoriaAlocacaoFaturaTabela).values({
+        workspaceId: operacao.workspaceId,
+        alocacaoId: criada.id,
+        acao: operacao.acaoAuditoria,
+        estadoAnterior: operacao.alocacaoAnterior ?? null,
+        estadoNovo: criada,
+        origem: operacao.origemAuditoria,
+      });
+
+      return criada;
+    });
   }
 }

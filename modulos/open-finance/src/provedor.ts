@@ -43,6 +43,16 @@ export interface MovimentacaoExterna {
   statusFonte: StatusFonte;
   /** Só compra parcelada no cartão traz. Cada parcela chega como transação própria. */
   parcelamento?: ParcelamentoFonte;
+  /**
+   * Evidência L0: identificador da fatura no provedor. Confirmação — não existe
+   * em `PENDING`, só depois do fechamento. Autoridade de alocação quando presente.
+   */
+  providerBillId?: string;
+  /**
+   * Evidência L1: competência prevista pelo provedor (`YYYY-MM`), nunca uma
+   * data. É previsão, não confirmação — mesmo quando bate com o ciclo local.
+   */
+  providerBillForecastDate?: string;
 }
 
 /**

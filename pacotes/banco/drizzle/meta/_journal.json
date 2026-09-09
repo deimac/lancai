@@ -253,6 +253,20 @@
       "when": 1786202800000,
       "tag": "0036_fatura_oficial",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786400000000,
+      "tag": "0037_bill_allocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786400100000,
+      "tag": "0038_bill_allocation_unresolved",
+      "breakpoints": true
     }
   ]
 }

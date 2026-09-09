@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type { Auditoria, Cartao, Categoria, Conta, Movimento, Parcela, Pessoa } from "@lancai/banco";
 import type {
+  AlocacaoFatura,
+  Auditoria,
+  AuditoriaAlocacaoFatura,
+  Cartao,
+  Categoria,
+  Conta,
+  FaturaOficial,
+  Movimento,
+  Parcela,
+  Pessoa,
+} from "@lancai/banco";
+import type {
+  OperacaoAlocacaoFatura,
   OperacaoAtualizacaoFonte,
   OperacaoCorrecao,
   OperacaoPersistencia,
@@ -20,6 +32,8 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
   readonly movimentos = new Map<string, Movimento>();
   readonly parcelas = new Map<string, Parcela>();
   readonly auditorias: Auditoria[] = [];
+  readonly alocacoesFatura = new Map<string, AlocacaoFatura>();
+  readonly auditoriasAlocacaoFatura: AuditoriaAlocacaoFatura[] = [];
 
   async obterConta(id: string) {
     return this.contas.get(id);
@@ -140,6 +154,8 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         parcelaTotal: novoMovimento.parcelaTotal ?? null,
         parcelaCompraEm: novoMovimento.parcelaCompraEm ?? null,
         parcelaCompraValor: novoMovimento.parcelaCompraValor ?? null,
+        providerBillId: novoMovimento.providerBillId ?? null,
+        providerBillForecastDate: novoMovimento.providerBillForecastDate ?? null,
         descricao: novoMovimento.descricao,
         valor: String(novoMovimento.valor),
         tipo: novoMovimento.tipo,
@@ -489,5 +505,77 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
       }
     }
     return { contas: [...contas], cartoes: [...cartoes] };
+  }
+
+  async obterFaturaOficialPorIdExterno(_chave: {
+    cartaoId: string;
+    idExterno: string;
+  }): Promise<FaturaOficial | undefined> {
+    return undefined;
+  }
+
+  async obterAlocacaoAtualDoMovimento(movimentoId: string) {
+    return [...this.alocacoesFatura.values()].find(
+      (alocacao) => alocacao.movimentoId === movimentoId && alocacao.isCurrent,
+    );
+  }
+
+  async persistirAlocacaoFatura(operacao: OperacaoAlocacaoFatura): Promise<AlocacaoFatura> {
+    if (operacao.decisao.status !== "nao_resolvido" && !operacao.decisao.competencia) {
+      throw new Error(
+        `Uma alocação resolvida precisa de competência: movimento ${operacao.movimentoId}`,
+      );
+    }
+
+    const agora = new Date();
+    if (operacao.alocacaoAnterior) {
+      const anterior = this.alocacoesFatura.get(operacao.alocacaoAnterior.id);
+      if (anterior) {
+        this.alocacoesFatura.set(anterior.id, {
+          ...anterior,
+          isCurrent: false,
+          validoAte: agora,
+          dataAtualizacao: agora,
+        });
+      }
+    }
+
+    const criada: AlocacaoFatura = {
+      id: randomUUID(),
+      workspaceId: operacao.workspaceId,
+      movimentoId: operacao.movimentoId,
+      cartaoId: operacao.cartaoId,
+      competencia: operacao.decisao.competencia ?? null,
+      faturaOficialId: operacao.decisao.faturaOficialId ?? null,
+      status: operacao.decisao.status,
+      metodo: operacao.decisao.metodo,
+      confidenceScore: operacao.decisao.confidenceScore ?? null,
+      valorAlocado: operacao.valorAlocado == null ? null : String(operacao.valorAlocado),
+      validoDesde: agora,
+      validoAte: null,
+      isCurrent: true,
+      estadoConflito: operacao.estadoConflito,
+      conflitoMotivo: operacao.conflitoMotivo ?? null,
+      conflitoDadosOrigem: operacao.conflitoDadosOrigem ?? null,
+      resolvidoPor: operacao.resolvidoPor ?? null,
+      resolvidoEm: operacao.resolvidoEm ?? null,
+      dataCriacao: agora,
+      dataAtualizacao: agora,
+    };
+    this.alocacoesFatura.set(criada.id, criada);
+
+    this.auditoriasAlocacaoFatura.push({
+      id: randomUUID(),
+      workspaceId: operacao.workspaceId,
+      alocacaoId: criada.id,
+      acao: operacao.acaoAuditoria,
+      estadoAnterior: operacao.alocacaoAnterior ?? null,
+      estadoNovo: criada,
+      origem: operacao.origemAuditoria,
+      usuarioId: null,
+      dataCriacao: agora,
+    });
+
+    return criada;
   }
 }

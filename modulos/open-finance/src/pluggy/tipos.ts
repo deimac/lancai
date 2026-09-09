@@ -55,6 +55,11 @@ export interface TransacaoPluggy {
   status?: "POSTED" | "PENDING" | string;
   merchant?: { name?: string | null } | null;
   paymentData?: { receiver?: { name?: string | null } | null } | null;
+  /**
+   * Evidência L0: identificador da fatura no provedor. Só aparece depois do
+   * fechamento — nunca em `PENDING`. Autoridade de alocação quando presente.
+   */
+  billId?: string | null;
   /** Presente só em compra parcelada no cartão. */
   creditCardMetadata?: {
     installmentNumber?: number | null;

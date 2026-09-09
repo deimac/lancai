@@ -117,7 +117,18 @@ export function traduzir_transacao(
     favorecidoFonte: favorecido ?? undefined,
     statusFonte,
     parcelamento: traduzir_parcelamento(transacao.creditCardMetadata),
+    providerBillId: transacao.billId ?? undefined,
+    providerBillForecastDate: competencia_bill_forecast(transacao.creditCardMetadata?.billForecastDate),
   };
+}
+
+/**
+ * Evidência L1 crua do provedor, sem conversão para data. Só aceita o formato
+ * `YYYY-MM` — qualquer outra coisa é descartada, nunca adivinhada.
+ */
+function competencia_bill_forecast(billForecastDate: string | null | undefined): string | undefined {
+  if (!billForecastDate) return undefined;
+  return /^\d{4}-\d{2}$/.test(billForecastDate) ? billForecastDate : undefined;
 }
 
 /**

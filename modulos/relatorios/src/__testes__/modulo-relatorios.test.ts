@@ -94,6 +94,8 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     parcelaTotal: null,
     parcelaCompraEm: null,
     parcelaCompraValor: null,
+    providerBillId: null,
+    providerBillForecastDate: null,
     descricao: "Movimento de teste",
     valor: "100.00",
     tipo: "despesa",

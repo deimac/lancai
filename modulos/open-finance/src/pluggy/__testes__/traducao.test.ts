@@ -34,6 +34,28 @@ describe("traduzir_transacao", () => {
     });
   });
 
+  it("extrai providerBillId (evidência L0) quando o provedor informa", () => {
+    const mov = traduzir_transacao(tx({ billId: "bill-123" }));
+    expect(mov.providerBillId).toBe("bill-123");
+  });
+
+  it("não inventa providerBillId quando ausente (PENDING sem confirmação)", () => {
+    const mov = traduzir_transacao(tx({ billId: undefined }));
+    expect(mov.providerBillId).toBeUndefined();
+  });
+
+  it("extrai providerBillForecastDate como competência YYYY-MM, sem virar data", () => {
+    const mov = traduzir_transacao(tx());
+    expect(mov.providerBillForecastDate).toBe("2026-10");
+  });
+
+  it("descarta providerBillForecastDate malformado em vez de adivinhar", () => {
+    const mov = traduzir_transacao(
+      tx({ creditCardMetadata: { ...tx().creditCardMetadata, billForecastDate: "2026-10-01" } }),
+    );
+    expect(mov.providerBillForecastDate).toBeUndefined();
+  });
+
   it("ciclo do cartão corrige billForecastDate atrasado (LATAM MP)", () => {
     const mov = traduzir_transacao(
       tx({

@@ -77,6 +77,22 @@ export interface CartaoResumo {
   faturasOficiais?: Array<{ competencia: string; total: number }>;
 }
 
+export interface ConflitoAlocacaoFatura {
+  alocacaoId: string;
+  movimentoId: string;
+  descricao: string;
+  valor: string;
+  dataMovimento: string;
+  providerBillId: string | null;
+  competencia: string | null;
+  status: "confirmado" | "previsto" | "possivel" | "nao_resolvido";
+  metodo: string;
+  conflitoMotivo: string | null;
+  conflitoDadosOrigem: unknown;
+  cartaoId: string;
+  cartaoNome: string;
+}
+
 export type TipoDestinoPdf = "conta" | "cartao";
 
 export type DestinoPdf = {
@@ -1013,6 +1029,22 @@ export const clienteApi = {
     proposta: { trecho: string; categoriaNome: string } | null;
   }> {
     return requisitar("/conhecimento/virar-regra", {
+      method: "POST",
+      body: JSON.stringify(dados),
+    });
+  },
+
+  listar_conflitos_alocacao_fatura(usuarioId: string): Promise<ConflitoAlocacaoFatura[]> {
+    return requisitar<ConflitoAlocacaoFatura[]>(
+      `/faturas/alocacoes-conflitos?usuarioId=${encodeURIComponent(usuarioId)}`,
+    );
+  },
+
+  resolver_alocacao_fatura(
+    movimentoId: string,
+    dados: { usuarioId: string; competencia: string },
+  ): Promise<{ ok: boolean; movimentoId: string; competencia: string }> {
+    return requisitar(`/faturas/alocacoes/${movimentoId}/resolver`, {
       method: "POST",
       body: JSON.stringify(dados),
     });
