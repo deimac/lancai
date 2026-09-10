@@ -429,7 +429,12 @@ export interface DashboardCartao {
   ajusteFatura?: number | null;
 }
 
-export type StatusFaturaDashboard = "paga" | "parcial" | "em_aberto" | "aberta" | "prevista";
+export type StatusFaturaDashboard =
+  | "paga"
+  | "parcial"
+  | "em_aberto"
+  | "aguardando_confirmacao"
+  | "prevista";
 
 export interface LinhaFaturaDashboard {
   cartaoId: string;

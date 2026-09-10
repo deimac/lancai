@@ -589,7 +589,7 @@ describe("montar_serie_faturas_dashboard", () => {
     expect(meses[0]).toMatchObject({ total: 1000, totalOficial: 1000, totalPago: 600, saldo: 400, status: "parcial" });
   });
 
-  it("mostra o ciclo atual sem total oficial como aberto", () => {
+  it("mostra o ciclo atual sem total oficial como em aberto", () => {
     const meses = montar_serie_faturas_dashboard({
       cartoes: [cartaoBase],
       oficiais: [],
@@ -600,8 +600,25 @@ describe("montar_serie_faturas_dashboard", () => {
       fim: "2026-09-30",
       hoje: "2026-09-05",
     });
-    expect(meses[0]).toMatchObject({ total: 250, totalOficial: 0, totalPago: 0, saldo: 250, status: "aberta" });
+    expect(meses[0]).toMatchObject({ total: 250, totalOficial: 0, totalPago: 0, saldo: 250, status: "em_aberto" });
     expect(meses[0]?.linhas[0]).toMatchObject({ origem: "aberta", totalOficial: null });
+  });
+
+  it("aguarda confirmação para ciclo passado sem total oficial", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoBase.id, tipo: "despesa", valor: 250, dataMovimento: "2026-08-03", status: "realizado" },
+      ],
+      inicio: "2026-08-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    const agosto = meses.find((mes) => mes.competencia === "2026-08");
+
+    expect(agosto).toMatchObject({ total: 250, totalOficial: 0, saldo: 250, status: "aguardando_confirmacao" });
+    expect(agosto?.linhas[0]).toMatchObject({ status: "aguardando_confirmacao", totalOficial: null });
   });
 
   it("soma lançamentos realizados e parcelas previstas no ciclo aberto", () => {
@@ -624,13 +641,13 @@ describe("montar_serie_faturas_dashboard", () => {
       hoje: "2026-09-05",
     });
 
-    expect(meses[0]).toMatchObject({ total: 50, totalOficial: 0, totalPago: 0, saldo: 50, status: "aberta" });
+    expect(meses[0]).toMatchObject({ total: 50, totalOficial: 0, totalPago: 0, saldo: 50, status: "em_aberto" });
     expect(meses[0]?.linhas[0]).toMatchObject({
       total: 50,
       totalOficial: null,
       quantidadeLancamentos: 2,
       origem: "aberta",
-      status: "aberta",
+      status: "em_aberto",
     });
   });
 

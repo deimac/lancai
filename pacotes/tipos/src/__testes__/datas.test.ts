@@ -109,7 +109,7 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
     expect(competencia_fatura_da_compra("2026-09-05", 2, 10)).toBe("2026-10");
   });
 
-  it("forecast do provedor atrasado cede ao ciclo do cartão", () => {
+  it("forecast do provedor prevalece sobre o ciclo local", () => {
     expect(
       data_movimento_parcela({
         numero: 1,
@@ -118,7 +118,7 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
         fechamento: 12,
         vencimento: 17,
       }),
-    ).toBe("2026-09-01");
+    ).toBe("2026-10-01");
     expect(
       data_movimento_parcela({
         numero: 2,
@@ -127,7 +127,7 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
         fechamento: 12,
         vencimento: 17,
       }),
-    ).toBe("2026-10-01");
+    ).toBe("2026-11-01");
   });
 
   it("billForecastDate manda quando não há ciclo do cartão", () => {

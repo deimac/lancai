@@ -10,7 +10,7 @@ const COR_STATUS: Record<StatusFaturaDashboard, string> = {
     paga: "#2dd4a0",
     parcial: "#f6b94c",
     em_aberto: "#f07178",
-    aberta: "#6ea8fe",
+    aguardando_confirmacao: "#f6b94c",
     prevista: "#e6b450",
 };
 
@@ -18,7 +18,7 @@ const ROTULO_STATUS: Record<StatusFaturaDashboard, string> = {
     paga: "Paga",
     parcial: "Parcial",
     em_aberto: "Em aberto",
-    aberta: "Ciclo aberto",
+    aguardando_confirmacao: "Aguardando confirmação",
     prevista: "Prevista",
 };
 
@@ -26,7 +26,7 @@ const CLASSE_STATUS: Record<StatusFaturaDashboard, { fundo: string; texto: strin
     paga: { fundo: "bg-receita/15", texto: "text-receita" },
     parcial: { fundo: "bg-aviso/15", texto: "text-aviso" },
     em_aberto: { fundo: "bg-despesa/15", texto: "text-despesa" },
-    aberta: { fundo: "bg-primaria/15", texto: "text-primaria" },
+    aguardando_confirmacao: { fundo: "bg-aviso/15", texto: "text-aviso" },
     prevista: { fundo: "bg-aviso/15", texto: "text-aviso" },
 };
 

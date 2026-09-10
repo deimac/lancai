@@ -551,6 +551,7 @@ export class MotorFinanceiro {
         compraEm: parc.compraEm,
         fechamento: ciclo?.fechamento,
         vencimento: ciclo?.vencimento,
+        billForecastDate: evento.providerBillForecastDate,
       });
       if (ocorridoEm === evento.ocorridoEm) {
         coeridos.push(evento);

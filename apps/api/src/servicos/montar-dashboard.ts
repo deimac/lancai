@@ -64,7 +64,12 @@ export interface DashboardCartao {
   ajusteFatura?: number | null;
 }
 
-export type StatusFaturaDashboard = "paga" | "parcial" | "em_aberto" | "aberta" | "prevista";
+export type StatusFaturaDashboard =
+  | "paga"
+  | "parcial"
+  | "em_aberto"
+  | "aguardando_confirmacao"
+  | "prevista";
 
 export interface LinhaFaturaDashboard {
   cartaoId: string;
@@ -365,10 +370,14 @@ type MovimentoFaturaDashboard = {
 function status_fatura(
   totalOficial: number | null,
   totalPago: number,
-  aberta: boolean,
+  cicloAtual: boolean,
   prevista: boolean,
 ): StatusFaturaDashboard {
-  if (totalOficial == null) return aberta ? "aberta" : prevista ? "prevista" : "em_aberto";
+  if (totalOficial == null) {
+    if (cicloAtual) return "em_aberto";
+    if (prevista) return "prevista";
+    return "aguardando_confirmacao";
+  }
   if (totalPago >= totalOficial - 0.01) return "paga";
   if (totalPago > 0.01) return "parcial";
   return "em_aberto";
@@ -449,10 +458,10 @@ export function montar_serie_faturas_dashboard(entrada: {
         cartao.fechamento,
         cartao.vencimento,
       );
-      const aberta = totalOficial == null && cicloFecha === cicloAberto;
+      const cicloAtual = cicloFecha === cicloAberto;
       const futura = mesTela > entrada.hoje.slice(0, 7);
       const prevista = totalOficial == null && futura && gasto.quantidade > 0;
-      const origem = totalOficial != null ? "oficial" : aberta ? "aberta" : "prevista";
+      const origem = totalOficial != null ? "oficial" : cicloAtual ? "aberta" : "prevista";
       const base = totalOficial ?? total;
       return {
         cartaoId: cartao.id,
@@ -462,7 +471,7 @@ export function montar_serie_faturas_dashboard(entrada: {
         totalOficial,
         totalPago,
         saldo: arredondar(Math.max(0, base - totalPago)),
-        status: status_fatura(totalOficial, totalPago, aberta, prevista),
+        status: status_fatura(totalOficial, totalPago, cicloAtual, prevista),
         origem,
         cicloInicio: ciclo.inicio,
         cicloFim: ciclo.fim,
@@ -484,8 +493,8 @@ export function montar_serie_faturas_dashboard(entrada: {
       ? "parcial"
       : comDados.some((linha) => linha.status === "em_aberto")
         ? "em_aberto"
-        : comDados.some((linha) => linha.status === "aberta")
-          ? "aberta"
+        : comDados.some((linha) => linha.status === "aguardando_confirmacao")
+          ? "aguardando_confirmacao"
           : comDados.some((linha) => linha.status === "prevista")
             ? "prevista"
             : "paga";

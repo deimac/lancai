@@ -303,14 +303,12 @@ export function data_movimento_parcela(entrada: {
     entrada.vencimento >= 1;
 
   if (temCiclo && compra) {
-    const primeira = competencia_fatura_da_compra(compra, entrada.fechamento!, entrada.vencimento!);
-    const esperada = somar_meses_calendario(`${primeira}-01`, numero - 1);
-    const mesEsperado = esperada.slice(0, 7);
-
-    if (/^\d{4}-\d{2}$/.test(forecast) && forecast === mesEsperado) {
+    if (/^\d{4}-\d{2}$/.test(forecast)) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateDia) && dateDia.startsWith(`${forecast}-`)) return dateDia;
       return `${forecast}-01`;
     }
+    const primeira = competencia_fatura_da_compra(compra, entrada.fechamento!, entrada.vencimento!);
+    const esperada = somar_meses_calendario(`${primeira}-01`, numero - 1);
 
     return esperada;
   }
@@ -347,9 +345,9 @@ export function garantir_parcelas_subsequentes(
 }
 
 /**
- * Alinha a data da parcela ao ciclo do cartão. Com fecha/vence, o ciclo local
- * prevalece sobre forecast atrasado do provedor (ex. LATAM 1/3 em out → set).
- * Sem ciclo, só desloca se a parcela ainda está no mês da compra.
+ * Alinha a data da parcela ao ciclo do cartão. Quando o provedor informa
+ * `billForecastDate`, essa evidência prevalece sobre o ciclo local; sem ela,
+ * usa-se o ciclo e depois a sequência da compra como fallback.
  */
 export function coerir_data_parcela_cartao(entrada: {
   ocorridoEm: string;
@@ -372,12 +370,18 @@ export function coerir_data_parcela_cartao(entrada: {
     compra &&
     /^\d{4}-\d{2}-\d{2}$/.test(compra)
   ) {
+    if (/^\d{4}-\d{2}$/.test(entrada.billForecastDate ?? "")) {
+      const forecast = entrada.billForecastDate!;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ocorrido) && ocorrido.startsWith(`${forecast}-`)) {
+        return ocorrido;
+      }
+      return `${forecast}-01`;
+    }
     return data_movimento_parcela({
       numero,
       compraEm: compra,
       fechamento: entrada.fechamento,
       vencimento: entrada.vencimento,
-      billForecastDate: entrada.billForecastDate ?? ocorrido.slice(0, 7),
       dateProvedor: ocorrido,
     });
   }
