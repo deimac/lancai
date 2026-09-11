@@ -493,6 +493,11 @@ function montar_linha_fatura(
     cicloFecha,
     cartao.fechamento,
     cartao.vencimento,
+    // Total oficial é fixo e ignora o líquido local — sem isso, um crédito
+    // marcado por regra (subtrair_valor) nunca abateria o saldo quando o
+    // banco já confirmou o total. Sem oficial, o crédito já está líquido em
+    // `gasto`/`total` (via valor_na_fatura); somar aqui contaria em dobro.
+    { incluirCreditosDeRegra: totalOficial != null },
   );
   const cicloAtual = cicloFecha === cicloAberto;
   const futura = mesTela > hoje.slice(0, 7);

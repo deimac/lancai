@@ -1012,6 +1012,46 @@ describe("montar_serie_faturas_dashboard", () => {
       expect(agosto?.linhas[0]?.ajuste).toBe(950); // parcela continua em agosto, não desloca
     });
   });
+
+  describe("crédito de regra (subtrair_valor) abate o saldo quando há totalOficial", () => {
+    it("estorno marcado por regra reduz o saldo aberto mesmo com fatura oficial fixa", () => {
+      const meses = montar_serie_faturas_dashboard({
+        cartoes: [cartaoBase],
+        oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-07", total: 1000, dataFechamento: "2026-07-10" }],
+        movimentos: [
+          // Pagamento parcial via pagamento_fatura de verdade.
+          { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-07", tipo: "receita", valor: 853.52, dataMovimento: "2026-07-12" },
+          // Estorno de compra marcado pela regra "subtrair_valor" — sem isso,
+          // não sobra R$ 146,48 sem explicação no saldo. Data ≤ fechamento (10)
+          // pra ficar no ciclo de julho.
+          { cartaoId: cartaoBase.id, tipo: "estorno", valor: 146.48, dataMovimento: "2026-07-08", status: "realizado", efeitoValor: "subtrai" },
+        ],
+        inicio: "2026-07-01",
+        fim: "2026-08-31",
+        hoje: "2026-08-05",
+      });
+      const julho = meses.find((mes) => mes.competencia === "2026-07");
+      expect(julho).toMatchObject({ totalOficial: 1000, totalPago: 1000, saldo: 0, status: "paga" });
+    });
+
+    it("não conta em dobro quando NÃO há totalOficial (já líquido no total local)", () => {
+      const meses = montar_serie_faturas_dashboard({
+        cartoes: [cartaoBase],
+        oficiais: [],
+        movimentos: [
+          { cartaoId: cartaoBase.id, tipo: "despesa", valor: 300, dataMovimento: "2026-07-03", status: "realizado" },
+          { cartaoId: cartaoBase.id, tipo: "estorno", valor: 100, dataMovimento: "2026-07-08", status: "realizado", efeitoValor: "subtrai" },
+        ],
+        inicio: "2026-07-01",
+        fim: "2026-08-31",
+        hoje: "2026-08-05",
+      });
+      const julho = meses.find((mes) => mes.competencia === "2026-07");
+      // total já vem líquido (300 - 100 = 200) via valor_na_fatura; totalPago
+      // continua 0 — se contasse em dobro, o saldo ficaria negativo/zerado à toa.
+      expect(julho).toMatchObject({ total: 200, totalPago: 0, saldo: 200 });
+    });
+  });
 });
 
 describe("natureza do dashboard", () => {

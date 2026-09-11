@@ -1082,6 +1082,28 @@ describe("somar_pagamentos_fatura", () => {
     ];
     expect(somar_pagamentos_fatura(movimentos, "nu", "2026-08", 10, 17)).toBe(0);
   });
+
+  it("com incluirCreditosDeRegra: soma crédito de regra (efeitoValor 'subtrai') do ciclo, mas não sem a opção", () => {
+    const movimentos = [
+      { valor: 800, dataMovimento: "2026-08-12", cartaoId: "nu", cartaoFaturaId: "nu", competenciaFatura: "2026-08", papel: "pagamento_fatura", status: "realizado" },
+      // Estorno no dia 5 (≤ fechamento 10) — cicloFecha = 2026-08.
+      { valor: 200, dataMovimento: "2026-08-05", cartaoId: "nu", status: "realizado", efeitoValor: "subtrai" as const },
+    ];
+    expect(somar_pagamentos_fatura(movimentos, "nu", "2026-08", 10, 17)).toBe(800);
+    expect(
+      somar_pagamentos_fatura(movimentos, "nu", "2026-08", 10, 17, { incluirCreditosDeRegra: true }),
+    ).toBe(1000);
+  });
+
+  it("com incluirCreditosDeRegra: ignora crédito de regra de outro ciclo e o de outro cartão", () => {
+    const movimentos = [
+      { valor: 200, dataMovimento: "2026-09-05", cartaoId: "nu", status: "realizado", efeitoValor: "subtrai" as const },
+      { valor: 300, dataMovimento: "2026-08-05", cartaoId: "outro-cartao", status: "realizado", efeitoValor: "subtrai" as const },
+    ];
+    expect(
+      somar_pagamentos_fatura(movimentos, "nu", "2026-08", 10, 17, { incluirCreditosDeRegra: true }),
+    ).toBe(0);
+  });
 });
 
 describe("adiar_compra_do_fechamento_ja_pago", () => {

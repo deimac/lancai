@@ -739,6 +739,14 @@ export function soma_cobrada_do_vencimento(
  * `competencia_quitacao_fatura`: pagamento é do ciclo fechado (anterior ao
  * aberto), nunca do aberto — tag pode ser fecha ou vencimento.
  * Compartilhada entre o dashboard (API) e o Modo fatura do Extrato (web).
+ *
+ * `incluirCreditosDeRegra`: soma também lançamentos marcados por regra como
+ * `subtrair_valor` (crédito que abate a fatura — ver `efeito_valor_movimento`)
+ * que caem neste ciclo pela data normal do lançamento. Só faça isso quando
+ * `total`/`base` do ciclo vier do banco (`totalOficial`) — nesse caso o
+ * crédito não aparece em lugar nenhum, porque o total é fixo e ignora o
+ * líquido local. Sem `totalOficial`, o crédito já está líquido dentro do
+ * total (via `valor_na_fatura`); somar aqui também contaria duas vezes.
  */
 export function somar_pagamentos_fatura(
   movimentos: Array<{
@@ -749,11 +757,13 @@ export function somar_pagamentos_fatura(
     competenciaFatura?: string | null;
     papel?: string | null;
     status?: string | null;
+    efeitoValor?: "soma" | "subtrai" | null;
   }>,
   cartaoId: string,
   cicloFecha: string,
   fechamento: number,
   vencimento: number,
+  opcoes?: { incluirCreditosDeRegra?: boolean },
 ): number {
   const relacionados = movimentos.filter((movimento) => {
     if (movimento.papel !== "pagamento_fatura" || movimento.status === "cancelado") return false;
@@ -768,7 +778,22 @@ export function somar_pagamentos_fatura(
   });
   const creditos = relacionados.filter((movimento) => movimento.cartaoId === cartaoId);
   const fonte = creditos.length > 0 ? creditos : relacionados;
-  return arredondar(fonte.reduce((total, movimento) => total + Number(movimento.valor), 0));
+  const totalPagamentos = fonte.reduce((total, movimento) => total + Number(movimento.valor), 0);
+
+  if (!opcoes?.incluirCreditosDeRegra) return arredondar(totalPagamentos);
+
+  const creditosDeRegra = movimentos.filter((movimento) => {
+    if (movimento.status === "cancelado") return false;
+    if (movimento.papel === "pagamento_fatura") return false; // já contado acima
+    if (movimento.efeitoValor !== "subtrai") return false;
+    if (movimento.cartaoId !== cartaoId) return false;
+    return competencia_ciclo_da_data(movimento.dataMovimento, fechamento) === cicloFecha;
+  });
+  const totalCreditosDeRegra = creditosDeRegra.reduce(
+    (total, movimento) => total + Number(movimento.valor),
+    0,
+  );
+  return arredondar(totalPagamentos + totalCreditosDeRegra);
 }
 
 /**
