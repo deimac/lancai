@@ -790,6 +790,120 @@ describe("filtrar_extrato", () => {
     expect(agosto[0]?.movimentos.map((item) => item.id)).toEqual(["compra-ago"]);
     expect(saidas_dos_grupos_fatura(agosto)).toBeCloseTo(11.02, 2);
   });
+
+  describe("Modo fatura: compra no dia do fechamento de ciclo já pago", () => {
+    const cartoesCiclo = [
+      {
+        id: "cartao-nu",
+        fechamento: 10,
+        vencimento: 17,
+        faturasOficiais: [{ competencia: "2026-08", total: 1000 }],
+      },
+    ];
+    const nomes = [...cartoes, { id: "cartao-nu", nome: "Nu Mastercard" }];
+
+    it("some do ciclo de agosto (já pago) e aparece no de setembro", () => {
+      const pagamento = movimento({
+        id: "pag-nu",
+        papel: "pagamento_fatura",
+        tipo: "receita",
+        cartaoId: "cartao-nu",
+        cartaoFaturaId: "cartao-nu",
+        competenciaFatura: "2026-08",
+        contaId: null,
+        valor: "1000.00",
+        dataMovimento: "2026-08-12",
+      });
+      const iof = movimento({
+        id: "iof-nu",
+        descricao: "IOF de compra internacional",
+        cartaoId: "cartao-nu",
+        contaId: null,
+        valor: "50.00",
+        dataMovimento: "2026-08-10",
+      });
+
+      const agosto = filtrar_extrato([pagamento, iof], contas, nomes, {
+        ...base,
+        mes: "2026-08",
+        visao: "faturas",
+        cartoesCiclo,
+        hoje: "2026-09-05",
+      });
+      expect(agosto.map((m) => m.id)).not.toContain("iof-nu");
+
+      const setembro = filtrar_extrato([pagamento, iof], contas, nomes, {
+        ...base,
+        mes: "2026-09",
+        visao: "faturas",
+        cartoesCiclo,
+        hoje: "2026-09-05",
+      });
+      expect(setembro.map((m) => m.id)).toContain("iof-nu");
+    });
+
+    it("não mexe na aba de movimentações (data real do Fato)", () => {
+      const pagamento = movimento({
+        id: "pag-nu",
+        papel: "pagamento_fatura",
+        tipo: "receita",
+        cartaoId: "cartao-nu",
+        cartaoFaturaId: "cartao-nu",
+        competenciaFatura: "2026-08",
+        contaId: null,
+        valor: "1000.00",
+        dataMovimento: "2026-08-12",
+      });
+      const iof = movimento({
+        id: "iof-nu",
+        descricao: "IOF de compra internacional",
+        cartaoId: "cartao-nu",
+        contaId: null,
+        valor: "50.00",
+        dataMovimento: "2026-08-10",
+      });
+
+      const agosto = filtrar_extrato([pagamento, iof], contas, nomes, {
+        ...base,
+        mes: "2026-08",
+        visao: "movimentacoes",
+        cartoesCiclo,
+        hoje: "2026-09-05",
+      });
+      expect(agosto.find((m) => m.id === "iof-nu")?.dataMovimento).toBe("2026-08-10");
+    });
+
+    it("não desloca quando o ciclo ainda não está pago", () => {
+      const pagamentoParcial = movimento({
+        id: "pag-nu",
+        papel: "pagamento_fatura",
+        tipo: "receita",
+        cartaoId: "cartao-nu",
+        cartaoFaturaId: "cartao-nu",
+        competenciaFatura: "2026-08",
+        contaId: null,
+        valor: "200.00",
+        dataMovimento: "2026-08-12",
+      });
+      const iof = movimento({
+        id: "iof-nu",
+        descricao: "IOF de compra internacional",
+        cartaoId: "cartao-nu",
+        contaId: null,
+        valor: "50.00",
+        dataMovimento: "2026-08-10",
+      });
+
+      const agosto = filtrar_extrato([pagamentoParcial, iof], contas, nomes, {
+        ...base,
+        mes: "2026-08",
+        visao: "faturas",
+        cartoesCiclo,
+        hoje: "2026-09-05",
+      });
+      expect(agosto.map((m) => m.id)).toContain("iof-nu");
+    });
+  });
 });
 
 describe("paginar", () => {

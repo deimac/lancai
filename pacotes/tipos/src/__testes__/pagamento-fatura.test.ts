@@ -32,6 +32,8 @@ import {
   selo_fatura_ciclo,
   sugerir_pagamento_fatura,
   valores_proximos,
+  somar_pagamentos_fatura,
+  adiar_compra_do_fechamento_ja_pago,
   type CartaoSugestaoFatura,
   type MovimentoSugestaoFatura,
 } from "../pagamento-fatura";
@@ -1062,5 +1064,76 @@ describe("aplicar_total_oficial", () => {
       totalOficial: null,
       ajuste: null,
     });
+  });
+});
+
+describe("somar_pagamentos_fatura", () => {
+  it("soma o crédito de quitação do ciclo fechado, ignora outro ciclo", () => {
+    const movimentos = [
+      { valor: 1000, dataMovimento: "2026-08-12", cartaoId: "nu", cartaoFaturaId: "nu", competenciaFatura: "2026-08", papel: "pagamento_fatura", status: "realizado" },
+      { valor: 500, dataMovimento: "2026-09-12", cartaoId: "nu", cartaoFaturaId: "nu", competenciaFatura: "2026-09", papel: "pagamento_fatura", status: "realizado" },
+    ];
+    expect(somar_pagamentos_fatura(movimentos, "nu", "2026-08", 10, 17)).toBe(1000);
+  });
+
+  it("ignora pagamento cancelado", () => {
+    const movimentos = [
+      { valor: 1000, dataMovimento: "2026-08-12", cartaoId: "nu", cartaoFaturaId: "nu", competenciaFatura: "2026-08", papel: "pagamento_fatura", status: "cancelado" },
+    ];
+    expect(somar_pagamentos_fatura(movimentos, "nu", "2026-08", 10, 17)).toBe(0);
+  });
+});
+
+describe("adiar_compra_do_fechamento_ja_pago", () => {
+  const fechamentoPorCartao = new Map([["nu", 10]]);
+
+  it("desloca 1 dia quando a compra é no dia do fechamento e o ciclo já está pago", () => {
+    const movimento = { dataMovimento: "2026-08-10", cartaoId: "nu" };
+    const resultado = adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      () => true,
+    );
+    expect(resultado.dataMovimento).toBe("2026-08-11");
+  });
+
+  it("não desloca quando o ciclo ainda não está pago", () => {
+    const movimento = { dataMovimento: "2026-08-10", cartaoId: "nu" };
+    const resultado = adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      () => false,
+    );
+    expect(resultado.dataMovimento).toBe("2026-08-10");
+  });
+
+  it("não desloca compra fora do dia do fechamento", () => {
+    const movimento = { dataMovimento: "2026-08-05", cartaoId: "nu" };
+    const resultado = adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      () => true,
+    );
+    expect(resultado.dataMovimento).toBe("2026-08-05");
+  });
+
+  it("não desloca parcela, mesmo no dia do fechamento de ciclo pago", () => {
+    const movimento = { dataMovimento: "2026-08-10", cartaoId: "nu", parcelaNumero: 2 };
+    const resultado = adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      () => true,
+    );
+    expect(resultado.dataMovimento).toBe("2026-08-10");
+  });
+
+  it("passa o cicloFecha correto pro predicado (dia <= fechamento fica no mês atual)", () => {
+    const movimento = { dataMovimento: "2026-08-10", cartaoId: "nu" };
+    let cicloRecebido: string | null = null;
+    adiar_compra_do_fechamento_ja_pago(movimento, fechamentoPorCartao, (_cartaoId, cicloFecha) => {
+      cicloRecebido = cicloFecha;
+      return false;
+    });
+    expect(cicloRecebido).toBe("2026-08");
   });
 });

@@ -8,6 +8,7 @@ import {
 } from "@lancai/relatorios";
 import {
   adicionarMeses,
+  adiar_compra_do_fechamento_ja_pago,
   aplicar_total_oficial,
   ciclo_aberto_em,
   competencia_alvo_do_modo_fatura,
@@ -15,7 +16,6 @@ import {
   competencia_quitacao_fatura,
   data_fechamento_do_ciclo,
   data_vencimento_do_ciclo,
-  dia_fechamento_no_mes,
   intervalo_ciclo_fatura,
   mes_gasto_do_cartao,
   deISOParaData,
@@ -33,6 +33,7 @@ import {
   paraDataISO,
   periodo_amplo_do_ciclo,
   type Perfil,
+  somar_pagamentos_fatura,
 } from "@lancai/tipos";
 import { obter_escopo_leitura } from "./escopo-workspace";
 import { mapear_origem_cartoes } from "./origem-conta-cartao";
@@ -445,41 +446,9 @@ function status_fatura(
 }
 
 /**
- * Soma pagamentos que quitam o ciclo fechado `cicloFecha`.
- * Sempre via `competencia_quitacao_fatura`: pagamento é do ciclo fechado
- * (anterior ao aberto), nunca do aberto — tag pode ser fecha ou vencimento.
- */
-function somar_pagamentos_fatura(
-  movimentos: MovimentoFaturaDashboard[],
-  cartaoId: string,
-  cicloFecha: string,
-  fechamento: number,
-  vencimento: number,
-): number {
-  const relacionados = movimentos.filter((movimento) => {
-    if (movimento.papel !== "pagamento_fatura" || movimento.status === "cancelado") return false;
-    if (movimento.cartaoFaturaId !== cartaoId && movimento.cartaoId !== cartaoId) return false;
-    const quitado = competencia_quitacao_fatura(
-      movimento.dataMovimento,
-      fechamento,
-      vencimento,
-      movimento.competenciaFatura,
-    );
-    return quitado === cicloFecha;
-  });
-  const creditos = relacionados.filter((movimento) => movimento.cartaoId === cartaoId);
-  const fonte = creditos.length > 0 ? creditos : relacionados;
-  return arredondar(fonte.reduce((total, movimento) => total + Number(movimento.valor), 0));
-}
-
-/**
- * Compra datada no dia exato do fechamento de um ciclo que já está "paga"
- * chegou depois que o banco fechou/quitou aquela fatura — o próprio banco vai
- * empurrá-la pra fatura seguinte quando confirmar. Ajuste só de leitura: desloca
- * a data em 1 dia (cai no ciclo seguinte via `competencia_ciclo_da_data`) sem
- * gravar nada — se a próxima sincronização confirmar outra coisa, o cálculo
- * segue a partir do Fato normalmente. Parcela fica de fora (tem regra própria
- * de ciclo). Geral: vale pra qualquer cartão, inclusive manual.
+ * Aplica `adiar_compra_do_fechamento_ja_pago` (compartilhada com o Modo
+ * fatura do Extrato — ver `@lancai/tipos/pagamento-fatura`) usando o status
+ * pré-computado por cartão+ciclo (1ª passada de `montar_serie_faturas_dashboard`).
  */
 function adiar_compras_do_fechamento_ja_pago<T extends MovimentoFaturaDashboard>(
   movimentos: T[],
@@ -487,30 +456,13 @@ function adiar_compras_do_fechamento_ja_pago<T extends MovimentoFaturaDashboard>
   statusPorCicloCartao: ReadonlyMap<string, StatusFaturaDashboard>,
 ): T[] {
   const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
-  return movimentos.map((movimento) => {
-    if (movimento.parcelaNumero != null) return movimento;
-    if (!movimento.cartaoId) return movimento;
-    const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
-    if (fechamento == null || fechamento < 1) return movimento;
-
-    const data = String(movimento.dataMovimento).slice(0, 10);
-    const [anoStr, mesStr, diaStr] = data.split("-");
-    const ano = Number(anoStr);
-    const mes = Number(mesStr);
-    const dia = Number(diaStr);
-    if (!ano || !mes || !dia) return movimento;
-
-    const diaFecha = dia_fechamento_no_mes(ano, mes, fechamento);
-    if (dia !== diaFecha) return movimento;
-
-    const cicloFecha = competencia_ciclo_da_data(data, fechamento);
-    const status = statusPorCicloCartao.get(`${movimento.cartaoId}:${cicloFecha}`);
-    if (status !== "paga") return movimento;
-
-    const proximoDia = deISOParaData(data);
-    proximoDia.setUTCDate(proximoDia.getUTCDate() + 1);
-    return { ...movimento, dataMovimento: paraDataISO(proximoDia) };
-  });
+  return movimentos.map((movimento) =>
+    adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      (cartaoId, cicloFecha) => statusPorCicloCartao.get(`${cartaoId}:${cicloFecha}`) === "paga",
+    ),
+  );
 }
 
 function montar_linha_fatura(

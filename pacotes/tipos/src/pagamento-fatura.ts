@@ -734,6 +734,93 @@ export function soma_cobrada_do_vencimento(
   return arredondar(soma);
 }
 
+/**
+ * Soma pagamentos que quitam o ciclo fechado `cicloFecha`. Sempre via
+ * `competencia_quitacao_fatura`: pagamento é do ciclo fechado (anterior ao
+ * aberto), nunca do aberto — tag pode ser fecha ou vencimento.
+ * Compartilhada entre o dashboard (API) e o Modo fatura do Extrato (web).
+ */
+export function somar_pagamentos_fatura(
+  movimentos: Array<{
+    valor: string | number;
+    dataMovimento: string;
+    cartaoId?: string | null;
+    cartaoFaturaId?: string | null;
+    competenciaFatura?: string | null;
+    papel?: string | null;
+    status?: string | null;
+  }>,
+  cartaoId: string,
+  cicloFecha: string,
+  fechamento: number,
+  vencimento: number,
+): number {
+  const relacionados = movimentos.filter((movimento) => {
+    if (movimento.papel !== "pagamento_fatura" || movimento.status === "cancelado") return false;
+    if (movimento.cartaoFaturaId !== cartaoId && movimento.cartaoId !== cartaoId) return false;
+    const quitado = competencia_quitacao_fatura(
+      movimento.dataMovimento,
+      fechamento,
+      vencimento,
+      movimento.competenciaFatura,
+    );
+    return quitado === cicloFecha;
+  });
+  const creditos = relacionados.filter((movimento) => movimento.cartaoId === cartaoId);
+  const fonte = creditos.length > 0 ? creditos : relacionados;
+  return arredondar(fonte.reduce((total, movimento) => total + Number(movimento.valor), 0));
+}
+
+/**
+ * Compra datada no dia exato do fechamento de um ciclo cuja fatura já está
+ * quitada (`cicloEstaPago`) chegou depois que o banco fechou/quitou aquela
+ * fatura — o próprio banco vai empurrá-la pra fatura seguinte quando
+ * confirmar. Ajuste só de leitura: desloca a data em 1 dia (cai no ciclo
+ * seguinte via `competencia_ciclo_da_data`) sem gravar nada — se a próxima
+ * sincronização confirmar outra coisa, o cálculo segue a partir do Fato
+ * normalmente. Parcela fica de fora (tem regra própria de ciclo).
+ *
+ * Geral: vale pra qualquer cartão, inclusive manual — quem decide "já está
+ * pago" é o chamador (`cicloEstaPago`), porque o dashboard e o Modo fatura
+ * do Extrato calculam esse status a partir de fontes de dado diferentes,
+ * mas a regra de deslocamento em si é a mesma nos dois lugares.
+ */
+export function adiar_compra_do_fechamento_ja_pago<
+  T extends {
+    dataMovimento: string;
+    cartaoId?: string | null;
+    parcelaNumero?: number | null;
+  },
+>(
+  movimento: T,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  cicloEstaPago: (cartaoId: string, cicloFecha: string) => boolean,
+): T {
+  if (movimento.parcelaNumero != null) return movimento;
+  if (!movimento.cartaoId) return movimento;
+  const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
+  if (fechamento == null || fechamento < 1) return movimento;
+
+  const data = String(movimento.dataMovimento).slice(0, 10);
+  const [anoStr, mesStr, diaStr] = data.split("-");
+  const ano = Number(anoStr);
+  const mes = Number(mesStr);
+  const dia = Number(diaStr);
+  if (!ano || !mes || !dia) return movimento;
+
+  const diaFecha = dia_fechamento_no_mes(ano, mes, fechamento);
+  if (dia !== diaFecha) return movimento;
+
+  const cicloFecha = competencia_ciclo_da_data(data, fechamento);
+  if (!cicloEstaPago(movimento.cartaoId, cicloFecha)) return movimento;
+
+  const proximo = new Date(Date.UTC(ano, mes - 1, dia + 1));
+  const y = proximo.getUTCFullYear();
+  const m = String(proximo.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(proximo.getUTCDate()).padStart(2, "0");
+  return { ...movimento, dataMovimento: `${y}-${m}-${d}` };
+}
+
 export function pagamentos_ciclo_de(
   movimentos: Array<{
     cartaoId?: string | null;
