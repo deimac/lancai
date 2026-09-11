@@ -613,6 +613,29 @@ describe("contrato único de ciclo", () => {
       ciclo_do_movimento("2026-08-31", "c30", 30, { vencimento: 6, pagamentos: residual }),
     ).toBe("2026-09");
   });
+
+  it("Pix antecipado registrado 1-2 dias depois do fechamento ainda quita o ciclo que acabou de fechar (qualquer fechamento/vencimento)", () => {
+    // Azul Itaú (fecha 30, vence 6): fechou dia 30/08, Pix chega registrado
+    // já em 31/08 ou 01/09 (atraso de sincronização/instituição, não do
+    // usuário) — sem a janela espelhada isso caía direto no ciclo seguinte,
+    // que ainda nem fechou, e a fatura de agosto nunca era vista como paga.
+    expect(competencia_quitacao_fatura("2026-08-30", 30, 6)).toBe("2026-08");
+    expect(competencia_quitacao_fatura("2026-08-31", 30, 6)).toBe("2026-08");
+    expect(competencia_quitacao_fatura("2026-09-01", 30, 6)).toBe("2026-08");
+
+    // Longe das duas janelas (nem perto do fechamento nem do vencimento
+    // anteriores): volta a cair no ciclo que a própria data indica — não
+    // empurra pagamento de verdade do ciclo aberto pro ciclo errado.
+    expect(competencia_quitacao_fatura("2026-09-20", 30, 6)).toBe("2026-09");
+
+    // Mesma janela, cartão com desenho oposto (vence >= fecha, e o
+    // vencimento longe do fechamento — a janela do vencimento sozinha não
+    // resolveria): fecha 2, vence 15 — fechou dia 2, Pix registrado no dia
+    // seguinte ainda quita o ciclo que fechou; 23 dias depois já não.
+    expect(competencia_quitacao_fatura("2026-08-02", 2, 15)).toBe("2026-08");
+    expect(competencia_quitacao_fatura("2026-08-03", 2, 15)).toBe("2026-08");
+    expect(competencia_quitacao_fatura("2026-08-25", 2, 15)).toBe("2026-09");
+  });
 });
 
 describe("na_fatura_do_recorte", () => {
