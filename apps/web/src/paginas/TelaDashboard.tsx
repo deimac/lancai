@@ -660,10 +660,11 @@ export function TelaDashboard() {
               </p>
             ) : (
               <div>
-                <div className="h-56">
+                <div className="h-56 [&_.recharts-surface]:outline-none [&_.recharts-wrapper]:outline-none [&_.recharts-wrapper_*]:outline-none">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart
                       data={resultadoChart}
+                      accessibilityLayer={false}
                       onMouseMove={(estado) => {
                         const rotulo = estado.activeLabel;
                         if (rotulo == null) return;
@@ -742,10 +743,11 @@ export function TelaDashboard() {
             </p>
           ) : (
             <div>
-              <div className="h-56">
+              <div className="h-56 [&_.recharts-surface]:outline-none [&_.recharts-wrapper]:outline-none [&_.recharts-wrapper_*]:outline-none">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={fluxoChart}
+                    accessibilityLayer={false}
                     onMouseMove={(estado) => {
                       const rotulo = estado.activeLabel;
                       if (rotulo == null) return;
