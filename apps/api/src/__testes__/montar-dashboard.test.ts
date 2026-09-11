@@ -862,62 +862,87 @@ describe("montar_serie_faturas_dashboard", () => {
     expect(junho?.linhas[0]?.dataVencimento).toBe("2026-06-05");
   });
 
-  it("contabiliza estornos como redução do saldo (crédito na fatura)", () => {
+  it("cartão manual fechado e 100% pago mostra 'paga', nunca 'aguardando_confirmacao'", () => {
+    const cartaoManual = { ...cartaoBase, id: "cartao-manual", sincronizada: false };
     const meses = montar_serie_faturas_dashboard({
-      cartoes: [cartaoBase],
-      oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
+      cartoes: [cartaoManual],
+      oficiais: [], // cartão manual nunca tem fatura_oficial (não vem do Pluggy)
       movimentos: [
-        { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 600, dataMovimento: "2026-08-12" },
-        // Estorno de R$ 100 (crédito) que reduz o saldo devedor
-        { cartaoId: cartaoBase.id, tipo: "estorno", valor: 100, dataMovimento: "2026-08-15", status: "realizado" },
+        { cartaoId: cartaoManual.id, tipo: "despesa", valor: 300, dataMovimento: "2026-08-03", status: "realizado" },
+        { papel: "pagamento_fatura", cartaoId: cartaoManual.id, cartaoFaturaId: cartaoManual.id, competenciaFatura: "2026-08", tipo: "receita", valor: 300, dataMovimento: "2026-08-12" },
       ],
       inicio: "2026-08-01",
       fim: "2026-09-30",
       hoje: "2026-09-05",
     });
     const agosto = meses.find((mes) => mes.competencia === "2026-08");
-    // totalPago = 600 (crédito de quitação) + 100 (estorno) = 700
-    expect(agosto).toMatchObject({ total: 1000, totalOficial: 1000, totalPago: 700, saldo: 300, status: "parcial" });
+    expect(agosto).toMatchObject({ total: 300, totalOficial: 0, totalPago: 300, saldo: 0, status: "paga" });
   });
 
-  it("marca fatura como paga quando estornos + pagamentos quitam o total oficial", () => {
+  it("cartão manual fechado e sem pagamento mostra 'em_aberto', nunca 'aguardando_confirmacao'", () => {
+    const cartaoManual = { ...cartaoBase, id: "cartao-manual", sincronizada: false };
     const meses = montar_serie_faturas_dashboard({
-      cartoes: [cartaoBase],
-      oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
-      movimentos: [
-        { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 900, dataMovimento: "2026-08-12" },
-        // Estorno que completa o pagamento
-        { cartaoId: cartaoBase.id, tipo: "estorno", valor: 100, dataMovimento: "2026-08-15", status: "realizado" },
-      ],
-      inicio: "2026-08-01",
-      fim: "2026-09-30",
-      hoje: "2026-09-05",
-    });
-    const agosto = meses.find((mes) => mes.competencia === "2026-08");
-    // totalPago = 900 + 100 = 1000 (quitação completa)
-    expect(agosto).toMatchObject({ total: 1000, totalOficial: 1000, totalPago: 1000, saldo: 0, status: "paga" });
-  });
-
-  it("marca fatura como paga mesmo sem confirmação do banco quando está 100% quitada por pagamentos + estornos", () => {
-    const meses = montar_serie_faturas_dashboard({
-      cartoes: [cartaoBase],
+      cartoes: [cartaoManual],
       oficiais: [],
       movimentos: [
-        { cartaoId: cartaoBase.id, tipo: "despesa", valor: 300, dataMovimento: "2026-08-03", status: "realizado" },
-        // Pagamento de fatura
-        { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 200, dataMovimento: "2026-08-12" },
-        // Estorno que completa
-        { cartaoId: cartaoBase.id, tipo: "estorno", valor: 100, dataMovimento: "2026-08-15", status: "realizado" },
+        { cartaoId: cartaoManual.id, tipo: "despesa", valor: 300, dataMovimento: "2026-08-03", status: "realizado" },
       ],
       inicio: "2026-08-01",
       fim: "2026-09-30",
       hoje: "2026-09-05",
     });
     const agosto = meses.find((mes) => mes.competencia === "2026-08");
-    // total = 300 (despesa)
-    // totalPago = 200 (pagamento) + 100 (estorno) = 300 (100% quitado)
-    // Sem totalOficial, mas com totalPago completo → status deve ser "paga"
+    expect(agosto).toMatchObject({ total: 300, totalOficial: 0, totalPago: 0, saldo: 300, status: "em_aberto" });
+  });
+
+  it("cartão manual fechado e parcialmente pago mostra 'parcial'", () => {
+    const cartaoManual = { ...cartaoBase, id: "cartao-manual", sincronizada: false };
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoManual],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoManual.id, tipo: "despesa", valor: 300, dataMovimento: "2026-08-03", status: "realizado" },
+        { papel: "pagamento_fatura", cartaoId: cartaoManual.id, cartaoFaturaId: cartaoManual.id, competenciaFatura: "2026-08", tipo: "receita", valor: 150, dataMovimento: "2026-08-12" },
+      ],
+      inicio: "2026-08-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    const agosto = meses.find((mes) => mes.competencia === "2026-08");
+    expect(agosto).toMatchObject({ total: 300, totalPago: 150, saldo: 150, status: "parcial" });
+  });
+
+  it("cartão sincronizado (Pluggy) fechado e 100% pago localmente mostra 'paga' mesmo sem fatura_oficial ainda", () => {
+    const cartaoOF = { ...cartaoBase, id: "cartao-of", sincronizada: true };
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoOF],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoOF.id, tipo: "despesa", valor: 300, dataMovimento: "2026-08-03", status: "realizado" },
+        { papel: "pagamento_fatura", cartaoId: cartaoOF.id, cartaoFaturaId: cartaoOF.id, competenciaFatura: "2026-08", tipo: "receita", valor: 300, dataMovimento: "2026-08-12" },
+      ],
+      inicio: "2026-08-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    const agosto = meses.find((mes) => mes.competencia === "2026-08");
     expect(agosto).toMatchObject({ total: 300, totalPago: 300, saldo: 0, status: "paga" });
+  });
+
+  it("cartão sincronizado (Pluggy) fechado, não pago e sem fatura_oficial ainda mostra 'aguardando_confirmacao'", () => {
+    const cartaoOF = { ...cartaoBase, id: "cartao-of", sincronizada: true };
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoOF],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoOF.id, tipo: "despesa", valor: 250, dataMovimento: "2026-08-03", status: "realizado" },
+      ],
+      inicio: "2026-08-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    const agosto = meses.find((mes) => mes.competencia === "2026-08");
+    expect(agosto).toMatchObject({ status: "aguardando_confirmacao" });
   });
 });
 

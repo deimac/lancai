@@ -384,30 +384,44 @@ type MovimentoFaturaDashboard = {
   descricaoFonte?: string | null;
 };
 
+/**
+ * `origemManual`: cartão sem sincronização Pluggy/Open Finance — `totalOficial`
+ * nunca chega pra ele (esse campo só vem do provedor). Por isso, pra cartão
+ * manual, a comparação usa sempre `total` (líquido local) em vez de esperar
+ * confirmação do banco; sem isso, faturas manuais fechadas e pagas ficavam
+ * presas em "aguardando_confirmacao" pra sempre.
+ */
 function status_fatura(
   totalOficial: number | null,
+  total: number,
   totalPago: number,
   cicloAtual: boolean,
   prevista: boolean,
+  origemManual: boolean,
 ): StatusFaturaDashboard {
-  // Se temos confirmação do banco, usar o totalOficial como referência
+  // Confirmação do banco: ela é a autoridade.
   if (totalOficial != null) {
     if (totalPago >= totalOficial - 0.01) return "paga";
     if (totalPago > 0.01) return "parcial";
     return "em_aberto";
   }
 
-  // Sem confirmação do banco (totalOficial == null):
-  // Priorizar ciclo aberto e prevista
   if (cicloAtual) return "em_aberto";
   if (prevista) return "prevista";
 
-  // Para faturas fechadas (não é ciclo atual e não é prevista):
-  // Se há pagamentos, considerar como paga ou parcial
-  // Isso garante que faturas pagas sejam marcadas corretamente
-  // mesmo antes do banco confirmar o totalOficial
-  if (totalPago > 0.01) return "paga";
+  // Fatura fechada sem totalOficial: cartão manual nunca vai receber
+  // confirmação do banco, então usa o total local como referência definitiva.
+  if (origemManual) {
+    if (totalPago >= total - 0.01 && total > 0) return "paga";
+    if (totalPago > 0.01) return "parcial";
+    return "em_aberto";
+  }
 
+  // Cartão sincronizado (Pluggy): fatura fechada, mas o banco ainda não
+  // publicou o total oficial. Se já bateu o valor local, mostra paga —
+  // senão, ainda estamos esperando a confirmação.
+  if (totalPago >= total - 0.01 && total > 0) return "paga";
+  if (totalPago > 0.01) return "parcial";
   return "aguardando_confirmacao";
 }
 
@@ -415,9 +429,6 @@ function status_fatura(
  * Soma pagamentos que quitam o ciclo fechado `cicloFecha`.
  * Sempre via `competencia_quitacao_fatura`: pagamento é do ciclo fechado
  * (anterior ao aberto), nunca do aberto — tag pode ser fecha ou vencimento.
- * Inclui:
- * - Movimentos com `papel === "pagamento_fatura"` (pagamentos/créditos de quitação)
- * - Estornos no cartão (tipo === "estorno" com cartaoId) que reduzem o saldo devedor
  */
 function somar_pagamentos_fatura(
   movimentos: MovimentoFaturaDashboard[],
@@ -427,18 +438,8 @@ function somar_pagamentos_fatura(
   vencimento: number,
 ): number {
   const relacionados = movimentos.filter((movimento) => {
-    if (movimento.status === "cancelado") return false;
-
-    // Pagamentos de fatura explícitos
-    const ehPagamentoFatura = movimento.papel === "pagamento_fatura";
-
-    // Estornos/créditos no cartão que quitam fatura
-    const ehEstornoNoCartao = movimento.tipo === "estorno" && movimento.cartaoId === cartaoId;
-
-    if (!ehPagamentoFatura && !ehEstornoNoCartao) return false;
-
+    if (movimento.papel !== "pagamento_fatura" || movimento.status === "cancelado") return false;
     if (movimento.cartaoFaturaId !== cartaoId && movimento.cartaoId !== cartaoId) return false;
-
     const quitado = competencia_quitacao_fatura(
       movimento.dataMovimento,
       fechamento,
@@ -453,7 +454,14 @@ function somar_pagamentos_fatura(
 }
 
 export function montar_serie_faturas_dashboard(entrada: {
-  cartoes: Array<{ id: string; nome: string; fechamento: number; vencimento: number }>;
+  /** `sincronizada: false` (cartão manual) nunca recebe `totalOficial` — só vem do Pluggy. */
+  cartoes: Array<{
+    id: string;
+    nome: string;
+    fechamento: number;
+    vencimento: number;
+    sincronizada?: boolean;
+  }>;
   oficiais: Array<{ cartaoId: string; competencia: string; total: number; dataFechamento: string | null }>;
   movimentos: MovimentoFaturaDashboard[];
   inicio: string;
@@ -519,7 +527,14 @@ export function montar_serie_faturas_dashboard(entrada: {
         totalOficial,
         totalPago,
         saldo: arredondar(Math.max(0, base - totalPago)),
-        status: status_fatura(totalOficial, totalPago, cicloAtual, prevista),
+        status: status_fatura(
+          totalOficial,
+          total,
+          totalPago,
+          cicloAtual,
+          prevista,
+          cartao.sincronizada === false,
+        ),
         origem,
         cicloInicio: ciclo.inicio,
         cicloFim: ciclo.fim,
@@ -900,6 +915,7 @@ export async function montar_dashboard(
       nome: cartao.nome,
       fechamento: cartao.fechamento,
       vencimento: cartao.vencimento,
+      sincronizada: cartao.sincronizada,
     })),
     oficiais,
     movimentos: movimentosFaturas,
