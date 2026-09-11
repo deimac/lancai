@@ -253,8 +253,16 @@ export function competencia_alvo_do_modo_fatura(entrada: {
 
 /**
  * Competência que o pagamento quita: se cai perto do vencimento do ciclo
- * anterior, é resto/liquidação daquele; no dia do fecha, quita o ciclo que
- * fechou (ignora tag do ciclo recém-aberto); tag de ciclo anterior prevalece.
+ * anterior, é resto/liquidação daquele; perto do fechamento anterior (mesmo
+ * dia ou pouco depois), é antecipação de quem já pagou assim que a fatura
+ * fechou; tag de ciclo anterior prevalece.
+ *
+ * As duas janelas (perto do vencimento, perto do fechamento) são espelhadas
+ * de propósito: nenhuma delas depende de qual cartão é — cobre atraso e
+ * antecipação pra qualquer combinação de dia de fechamento/vencimento, não
+ * só o caso "paga no mesmo dia do fechamento" (esse já cai direto no ciclo
+ * certo pela data bruta; a janela do fechamento existe pra quando o dado
+ * chega registrado um ou dois dias depois do fecha real).
  */
 export function competencia_quitacao_fatura(
   dataISO: string,
@@ -266,7 +274,11 @@ export function competencia_quitacao_fatura(
   const ciclo = competencia_ciclo_da_data(data, fechamento);
   const anterior = mes_anterior_competencia(ciclo);
   const vencAnterior = data_vencimento_do_ciclo(anterior, fechamento, vencimento);
-  if (dias_calendario_entre(data, vencAnterior) <= JANELA_VENCIMENTO_DIAS) {
+  const fechaAnterior = data_fechamento_do_ciclo(anterior, fechamento);
+  const pertoDoVencimentoAnterior = dias_calendario_entre(data, vencAnterior) <= JANELA_VENCIMENTO_DIAS;
+  const antecipadoLogoAposOFechamentoAnterior =
+    data > fechaAnterior && dias_calendario_entre(data, fechaAnterior) <= JANELA_VENCIMENTO_DIAS;
+  if (pertoDoVencimentoAnterior || antecipadoLogoAposOFechamentoAnterior) {
     return anterior;
   }
   const { fim } = intervalo_ciclo_fatura(ciclo, fechamento);
