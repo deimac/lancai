@@ -1,4 +1,5 @@
-import { CATEGORIA_NAO_CLASSIFICADO } from "@lancai/banco";
+import { and, eq, inArray } from "drizzle-orm";
+import { CATEGORIA_NAO_CLASSIFICADO, alocacaoFatura, obter_banco } from "@lancai/banco";
 import { mascara_final4_do_payload } from "@lancai/ia";
 import {
   ModuloRelatorios,
@@ -71,6 +72,20 @@ export type StatusFaturaDashboard =
   | "aguardando_confirmacao"
   | "prevista";
 
+/**
+ * Reconciliação informativa contra `bill_allocation` (ver
+ * docs/AUDITORIA_TECNICA_CARTAOES_FATURAS_V2.md). Nunca é autoridade — não
+ * altera `total`/`totalOficial`/`saldo`/`status` — só sinaliza que parte do
+ * que compõe esta linha ainda não foi confirmado pelo banco (`providerBillId`),
+ * e sim previsto por `providerBillForecastDate` ou por regra de ciclo local.
+ */
+export interface ConfiancaBaixaFatura {
+  quantidade: number;
+  valor: number;
+  /** Alguma alocação usa `provider_forecast`: previsão do banco, ainda pode mudar de mês. */
+  temPrevisaoDoBanco: boolean;
+}
+
 export interface LinhaFaturaDashboard {
   cartaoId: string;
   cartaoNome: string;
@@ -87,6 +102,8 @@ export interface LinhaFaturaDashboard {
   dataVencimento: string;
   quantidadeLancamentos: number;
   ajuste: number | null;
+  /** Ausente quando não há nenhuma alocação de baixa confiança para esta competência. */
+  confiancaBaixa?: ConfiancaBaixaFatura;
 }
 
 export interface SerieFaturasDashboard {
@@ -418,12 +435,18 @@ export function montar_serie_faturas_dashboard(entrada: {
   inicio: string;
   fim: string;
   hoje: string;
+  /**
+   * Chave `${cartaoId}:${competencia}` → reconciliação informativa contra
+   * `bill_allocation`. Puramente aditivo (ver `ConfiancaBaixaFatura`).
+   */
+  alocacoesBaixaConfianca?: ReadonlyMap<string, ConfiancaBaixaFatura>;
 }): SerieFaturasDashboard[] {
   const fechamentoPorCartao = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
   const vencimentoPorCartao = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
   const oficiais = new Map(
     entrada.oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura] as const),
   );
+  const alocacoesBaixaConfianca = entrada.alocacoesBaixaConfianca;
   const meses: string[] = [];
   for (
     let cursor = deISOParaData(entrada.inicio);
@@ -463,6 +486,7 @@ export function montar_serie_faturas_dashboard(entrada: {
       const prevista = totalOficial == null && futura && gasto.quantidade > 0;
       const origem = totalOficial != null ? "oficial" : cicloAtual ? "aberta" : "prevista";
       const base = totalOficial ?? total;
+      const confiancaBaixa = alocacoesBaixaConfianca?.get(`${cartao.id}:${cicloFecha}`);
       return {
         cartaoId: cartao.id,
         cartaoNome: cartao.nome,
@@ -479,6 +503,7 @@ export function montar_serie_faturas_dashboard(entrada: {
         dataVencimento: data_vencimento_do_ciclo(cicloFecha, cartao.fechamento, cartao.vencimento),
         quantidadeLancamentos: gasto.quantidade,
         ajuste: totalOficial == null ? null : arredondar(totalOficial - gasto.gasto),
+        ...(confiancaBaixa ? { confiancaBaixa } : {}),
       } satisfies LinhaFaturaDashboard;
     });
     const mesAtual = entrada.hoje.slice(0, 7);
@@ -509,6 +534,51 @@ export function montar_serie_faturas_dashboard(entrada: {
       status,
     };
   });
+}
+
+/**
+ * Reconciliação informativa: agrega `bill_allocation` (isCurrent, status ainda
+ * não confirmado) por cartão + competência, para o dashboard sinalizar que
+ * parte do valor de uma fatura é previsão do banco (`providerBillForecastDate`)
+ * ou regra de ciclo local — nunca confirmação. Não é lido por nenhum cálculo
+ * de `total`/`totalOficial`/`saldo`/`status`; é só reconciliação visível
+ * (ver docs/AUDITORIA_TECNICA_CARTAOES_FATURAS_V2.md, §G).
+ */
+export async function listar_alocacoes_baixa_confianca(entrada: {
+  workspaceIds: string[];
+  cartaoIds: string[];
+}): Promise<Map<string, ConfiancaBaixaFatura>> {
+  const mapa = new Map<string, ConfiancaBaixaFatura>();
+  if (entrada.workspaceIds.length === 0 || entrada.cartaoIds.length === 0) return mapa;
+
+  const linhas = await obter_banco()
+    .select({
+      cartaoId: alocacaoFatura.cartaoId,
+      competencia: alocacaoFatura.competencia,
+      status: alocacaoFatura.status,
+      metodo: alocacaoFatura.metodo,
+      valorAlocado: alocacaoFatura.valorAlocado,
+    })
+    .from(alocacaoFatura)
+    .where(
+      and(
+        eq(alocacaoFatura.isCurrent, true),
+        inArray(alocacaoFatura.status, ["previsto", "possivel", "nao_resolvido"]),
+        inArray(alocacaoFatura.cartaoId, entrada.cartaoIds),
+        inArray(alocacaoFatura.workspaceId, entrada.workspaceIds),
+      ),
+    );
+
+  for (const linha of linhas) {
+    if (!linha.competencia) continue;
+    const chave = `${linha.cartaoId}:${linha.competencia}`;
+    const atual = mapa.get(chave) ?? { quantidade: 0, valor: 0, temPrevisaoDoBanco: false };
+    atual.quantidade += 1;
+    atual.valor = arredondar(atual.valor + Number(linha.valorAlocado ?? 0));
+    if (linha.metodo === "provider_forecast") atual.temPrevisaoDoBanco = true;
+    mapa.set(chave, atual);
+  }
+  return mapa;
 }
 
 /**
@@ -795,6 +865,11 @@ export async function montar_dashboard(
     periodo,
   });
 
+  const alocacoesBaixaConfianca = await listar_alocacoes_baixa_confianca({
+    workspaceIds: escopo.workspaceIds,
+    cartaoIds: idsCartoes,
+  });
+
   const faturas = montar_serie_faturas_dashboard({
     cartoes: cartoesDetalhe.map((cartao) => ({
       id: cartao.id,
@@ -807,6 +882,7 @@ export async function montar_dashboard(
     inicio: inicioFaturas.de,
     fim: fimFaturas,
     hoje,
+    alocacoesBaixaConfianca,
   });
 
   return {

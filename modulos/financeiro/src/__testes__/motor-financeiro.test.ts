@@ -1497,6 +1497,48 @@ describe("MotorFinanceiro", () => {
       expect(resultado.atualizados).toHaveLength(0);
     });
 
+    /**
+     * Regressão do "furo" real (docs/AUDITORIA_TECNICA_CARTAOES_FATURAS_V2.md):
+     * uma parcela cujo ciclo local (fecha 2, vence 10, estilo Nubank) já diz que
+     * a compra conta no mês corrente não pode ser empurrada para o mês seguinte
+     * só porque `providerBillForecastDate` está atrasado. `dataMovimento`
+     * (o Fato, ADR-009) segue o ciclo local; o forecast continua disponível na
+     * coluna bruta e no `bill_allocation` (L1, `previsto`), sem sobrescrever o Fato.
+     */
+    it("ciclo local do cartão prevalece sobre providerBillForecastDate divergente na ingestão", async () => {
+      const conta = criarConta({ usuarioId, saldoAtual: "1000.00" });
+      const cartao = criarCartao(conta.id, { usuarioId, fechamento: 2, vencimento: 10 });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const { criados } = await motor.ingerir_eventos(
+        [
+          evento({
+            cartaoId: cartao.id,
+            contaId: undefined,
+            valor: 52000,
+            ocorridoEm: "2026-09-01",
+            parcelamento: { numero: 1, total: 1, compraEm: "2026-09-01" },
+            providerBillForecastDate: "2026-10",
+          }),
+        ],
+        contexto(),
+      );
+
+      const criado = criados[0]!;
+      // Fato: ciclo local (compra dia 1, fecha dia 2) mantém a competência de setembro.
+      expect(criado.dataMovimento).toBe("2026-09-01");
+      // Conhecimento/evidência: o forecast bruto do provedor não se perde.
+      expect(criado.providerBillForecastDate).toBe("2026-10");
+
+      const alocacao = await repositorio.obterAlocacaoAtualDoMovimento(criado.id);
+      expect(alocacao).toMatchObject({
+        status: "previsto",
+        metodo: "provider_forecast",
+        competencia: "2026-10",
+      });
+    });
+
     it("re-sync desloca data_movimento da parcela para o mês da fatura", async () => {
       const conta = criarConta({ usuarioId });
       const cartao = criarCartao(conta.id, { usuarioId, fechamento: 30, vencimento: 6 });

@@ -436,6 +436,17 @@ export type StatusFaturaDashboard =
   | "aguardando_confirmacao"
   | "prevista";
 
+/**
+ * Reconciliação informativa — nunca altera `total`/`status`. Sinaliza que
+ * parte do valor da linha ainda não foi confirmada pelo banco (previsão via
+ * `providerBillForecastDate` ou regra de ciclo local).
+ */
+export interface ConfiancaBaixaFatura {
+  quantidade: number;
+  valor: number;
+  temPrevisaoDoBanco: boolean;
+}
+
 export interface LinhaFaturaDashboard {
   cartaoId: string;
   cartaoNome: string;
@@ -452,6 +463,7 @@ export interface LinhaFaturaDashboard {
   dataVencimento: string;
   quantidadeLancamentos: number;
   ajuste: number | null;
+  confiancaBaixa?: ConfiancaBaixaFatura;
 }
 
 export interface SerieFaturasDashboard {

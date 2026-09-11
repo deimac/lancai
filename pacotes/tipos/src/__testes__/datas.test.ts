@@ -109,7 +109,9 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
     expect(competencia_fatura_da_compra("2026-09-05", 2, 10)).toBe("2026-10");
   });
 
-  it("forecast do provedor prevalece sobre o ciclo local", () => {
+  it("ciclo local prevalece quando o forecast diverge (proteção contra atraso do provedor)", () => {
+    // Compra dia 4, fecha dia 12 → ainda no ciclo de setembro. Um forecast
+    // atrasado (out/nov) do provedor não deve empurrar a parcela para frente.
     expect(
       data_movimento_parcela({
         numero: 1,
@@ -118,7 +120,7 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
         fechamento: 12,
         vencimento: 17,
       }),
-    ).toBe("2026-10-01");
+    ).toBe("2026-09-01");
     expect(
       data_movimento_parcela({
         numero: 2,
@@ -127,7 +129,21 @@ describe("competência da fatura (parcela conta no vencimento)", () => {
         fechamento: 12,
         vencimento: 17,
       }),
-    ).toBe("2026-11-01");
+    ).toBe("2026-10-01");
+  });
+
+  it("forecast que concorda com o ciclo local é aceito (sem mudança de comportamento)", () => {
+    // Compra dia 13, depois do fecha (12) → cai em outubro pelo ciclo local.
+    // O forecast do provedor concorda, então é aceito normalmente.
+    expect(
+      data_movimento_parcela({
+        numero: 1,
+        compraEm: "2026-09-13",
+        billForecastDate: "2026-10",
+        fechamento: 12,
+        vencimento: 17,
+      }),
+    ).toBe("2026-10-01");
   });
 
   it("billForecastDate manda quando não há ciclo do cartão", () => {

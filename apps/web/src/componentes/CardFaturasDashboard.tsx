@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowLeft, ArrowRight, CreditCard, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowRight, CreditCard, ExternalLink, Info } from "lucide-react";
 import { rotulo_mes_curto } from "@lancai/tipos";
 import type { SerieFaturasDashboard, StatusFaturaDashboard } from "../lib/api";
 import { formatar_data_curta, formatar_moeda } from "../lib/formatar";
@@ -372,7 +372,23 @@ export function CardFaturasDashboard({
                     </div>
                     {linhas.length === 0 ? <p className="px-3 py-6 text-center text-sm text-texto-suave">Nenhuma fatura neste recorte.</p> : linhas.map((linha) => (
                         <div key={linha.cartaoId} className="grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr] items-center gap-3 border-t border-borda px-3 py-3 text-xs">
-                            <div className="min-w-0"><p className="truncate font-medium text-texto">{linha.cartaoNome}</p><p className="mt-0.5 text-[11px] text-texto-suave">{formatar_data_curta(linha.cicloInicio)} a {formatar_data_curta(linha.cicloFim)} · vence {formatar_data_curta(linha.dataVencimento)}</p></div>
+                            <div className="min-w-0">
+                                <p className="truncate font-medium text-texto">{linha.cartaoNome}</p>
+                                <p className="mt-0.5 text-[11px] text-texto-suave">{formatar_data_curta(linha.cicloInicio)} a {formatar_data_curta(linha.cicloFim)} · vence {formatar_data_curta(linha.dataVencimento)}</p>
+                                {linha.confiancaBaixa ? (
+                                    <p
+                                        className="mt-1 flex items-center gap-1 text-[10.5px] text-aviso"
+                                        title={
+                                            linha.confiancaBaixa.temPrevisaoDoBanco
+                                                ? "Previsão do banco (providerBillForecastDate) — ainda pode mudar de mês até a fatura fechar."
+                                                : "Estimativa por regra de ciclo local — o banco ainda não confirmou em qual fatura entra."
+                                        }
+                                    >
+                                        <Info className="h-3 w-3 shrink-0" />
+                                        {linha.confiancaBaixa.quantidade} lançamento{linha.confiancaBaixa.quantidade === 1 ? "" : "s"} ({valor_oculto(linha.confiancaBaixa.valor, ocultarValores)}) ainda não confirmado{linha.confiancaBaixa.quantidade === 1 ? "" : "s"} pelo banco
+                                    </p>
+                                ) : null}
+                            </div>
                             <span className="tabular-nums text-texto">{valor_oculto(linha.total, ocultarValores)}</span>
                             <span className="tabular-nums text-receita">{valor_oculto(linha.totalPago, ocultarValores)}</span>
                             <span className={unir_classes("tabular-nums", linha.saldo > 0 ? "text-despesa" : "text-texto-suave")}>{valor_oculto(linha.saldo, ocultarValores)}</span>

@@ -1,7 +1,7 @@
 import type { ContextoIngestao, MotorFinanceiro } from "@lancai/financeiro";
 import {
+  competencia_esperada_pelo_ciclo,
   data_iso_parcela,
-  data_movimento_parcela,
   datas_civis_proximas,
   descricoes_da_mesma_serie,
   eh_credito_quitacao_no_cartao,
@@ -722,15 +722,15 @@ export class ServicoIngestaoOpenFinance {
           const atual =
             data_iso_parcela(movimento.dataMovimento) ?? String(movimento.dataMovimento).slice(0, 10);
           if (!compra || !/^\d{4}-\d{2}-\d{2}$/.test(atual)) continue;
-          const esperada = data_movimento_parcela({
-            numero: movimento.parcelaNumero,
-            compraEm: compra,
-            fechamento: ciclo.fechamento,
-            vencimento: ciclo.vencimento,
-            billForecastDate: atual.slice(0, 7),
-            dateProvedor: atual,
-          });
-          if (esperada === atual) continue;
+          const esperada = competencia_esperada_pelo_ciclo(
+            movimento.parcelaNumero,
+            compra,
+            ciclo.fechamento,
+            ciclo.vencimento,
+          );
+          // Só corrige quando o MÊS diverge do que o ciclo espera — o dia exato
+          // (01 na resposta pura de `competencia_esperada_pelo_ciclo`) não importa aqui.
+          if (esperada.slice(0, 7) === atual.slice(0, 7)) continue;
           const valor = Number.parseFloat(String(movimento.valor));
           if (!Number.isFinite(valor) || valor <= 0) continue;
           const valorCompra = movimento.parcelaCompraValor

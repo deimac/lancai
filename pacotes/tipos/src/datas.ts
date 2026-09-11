@@ -275,6 +275,22 @@ export function competencia_fatura_da_compra(
 }
 
 /**
+ * Competência que o ciclo local (fechamento/vencimento) espera para a parcela
+ * `numero`, a partir da data da compra — sem considerar nenhum forecast do
+ * provedor. É a "verdade" determinística contra a qual `billForecastDate` é
+ * comparado em `data_movimento_parcela`.
+ */
+export function competencia_esperada_pelo_ciclo(
+  numero: number,
+  compraEm: string,
+  fechamento: number,
+  vencimento: number,
+): string {
+  const primeira = competencia_fatura_da_compra(compraEm, fechamento, vencimento);
+  return somar_meses_calendario(`${primeira}-01`, Math.max(1, numero) - 1);
+}
+
+/**
  * Quando a parcela aparece no extrato. Com fecha/vence do cartão, a competência
  * do ciclo manda — `billForecastDate` só é usado se bater com essa competência
  * (o provedor às vezes atrasa um mês no MP/Nu). Sem ciclo, o forecast manda.
@@ -303,12 +319,18 @@ export function data_movimento_parcela(entrada: {
     entrada.vencimento >= 1;
 
   if (temCiclo && compra) {
-    if (/^\d{4}-\d{2}$/.test(forecast)) {
+    const esperada = competencia_esperada_pelo_ciclo(
+      numero,
+      compra,
+      entrada.fechamento!,
+      entrada.vencimento!,
+    );
+    const mesEsperado = esperada.slice(0, 7);
+
+    if (/^\d{4}-\d{2}$/.test(forecast) && forecast === mesEsperado) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateDia) && dateDia.startsWith(`${forecast}-`)) return dateDia;
       return `${forecast}-01`;
     }
-    const primeira = competencia_fatura_da_compra(compra, entrada.fechamento!, entrada.vencimento!);
-    const esperada = somar_meses_calendario(`${primeira}-01`, numero - 1);
 
     return esperada;
   }
@@ -345,9 +367,9 @@ export function garantir_parcelas_subsequentes(
 }
 
 /**
- * Alinha a data da parcela ao ciclo do cartão. Quando o provedor informa
- * `billForecastDate`, essa evidência prevalece sobre o ciclo local; sem ela,
- * usa-se o ciclo e depois a sequência da compra como fallback.
+ * Alinha a data da parcela ao ciclo do cartão. Com fecha/vence, o ciclo local
+ * prevalece sobre forecast atrasado do provedor (ex. LATAM 1/3 em out → set).
+ * Sem ciclo, só desloca se a parcela ainda está no mês da compra.
  */
 export function coerir_data_parcela_cartao(entrada: {
   ocorridoEm: string;
@@ -370,18 +392,12 @@ export function coerir_data_parcela_cartao(entrada: {
     compra &&
     /^\d{4}-\d{2}-\d{2}$/.test(compra)
   ) {
-    if (/^\d{4}-\d{2}$/.test(entrada.billForecastDate ?? "")) {
-      const forecast = entrada.billForecastDate!;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(ocorrido) && ocorrido.startsWith(`${forecast}-`)) {
-        return ocorrido;
-      }
-      return `${forecast}-01`;
-    }
     return data_movimento_parcela({
       numero,
       compraEm: compra,
       fechamento: entrada.fechamento,
       vencimento: entrada.vencimento,
+      billForecastDate: entrada.billForecastDate ?? ocorrido.slice(0, 7),
       dateProvedor: ocorrido,
     });
   }

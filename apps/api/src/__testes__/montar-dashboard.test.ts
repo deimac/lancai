@@ -621,6 +621,103 @@ describe("montar_serie_faturas_dashboard", () => {
     expect(agosto?.linhas[0]).toMatchObject({ status: "aguardando_confirmacao", totalOficial: null });
   });
 
+  /**
+   * Regressão do "furo" descrito em docs/AUDITORIA_TECNICA_CARTAOES_FATURAS_V2.md:
+   * um valor alto lançado dentro do ciclo local (antes do fechamento) precisa
+   * somar em EXATAMENTE um mês — nunca sumir de ambos. Este teste prova que a
+   * agregação do dashboard (`ciclo_do_movimento` + `dataMovimento`) está correta
+   * nos dois cenários: quando o Fato fica no ciclo local (comportamento pós-fix
+   * de `providerBillForecastDate` divergente) e quando ele estivesse no mês
+   * seguinte (simulando o estado que o bug antigo produzia) — em nenhum dos dois
+   * o valor deve ficar de fora de todos os meses.
+   */
+  it("valor alto no ciclo local soma no mês do ciclo, nunca desaparece", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        {
+          cartaoId: cartaoBase.id,
+          tipo: "despesa",
+          valor: 52000,
+          dataMovimento: "2026-09-08", // antes do fecha (10) → ciclo de setembro
+          parcelaNumero: 1,
+          status: "realizado",
+        },
+      ],
+      inicio: "2026-09-01",
+      fim: "2026-10-31",
+      hoje: "2026-09-05",
+    });
+    const setembro = meses.find((mes) => mes.competencia === "2026-09");
+    const outubro = meses.find((mes) => mes.competencia === "2026-10");
+    expect(setembro).toMatchObject({ total: 52000 });
+    expect(setembro?.linhas[0]).toMatchObject({ total: 52000, quantidadeLancamentos: 1 });
+    expect(outubro?.linhas[0]?.quantidadeLancamentos ?? 0).toBe(0);
+  });
+
+  it("valor alto deslocado para o mês seguinte soma lá, nunca desaparece", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        {
+          cartaoId: cartaoBase.id,
+          tipo: "despesa",
+          valor: 52000,
+          dataMovimento: "2026-10-01", // deslocado (cenário do bug antigo)
+          parcelaNumero: 1,
+          status: "previsto",
+        },
+      ],
+      inicio: "2026-09-01",
+      fim: "2026-10-31",
+      hoje: "2026-09-05",
+    });
+    const setembro = meses.find((mes) => mes.competencia === "2026-09");
+    const outubro = meses.find((mes) => mes.competencia === "2026-10");
+    expect(setembro?.linhas[0]?.quantidadeLancamentos ?? 0).toBe(0);
+    expect(outubro).toMatchObject({ total: 52000 });
+    expect(outubro?.linhas[0]).toMatchObject({ total: 52000, quantidadeLancamentos: 1 });
+  });
+
+  it("anexa confiancaBaixa quando há alocação previsto/possível/não resolvida para a competência", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoBase.id, tipo: "despesa", valor: 250, dataMovimento: "2026-09-03", status: "realizado" },
+      ],
+      inicio: "2026-09-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+      alocacoesBaixaConfianca: new Map([
+        [`${cartaoBase.id}:2026-09`, { quantidade: 1, valor: 250, temPrevisaoDoBanco: true }],
+      ]),
+    });
+    expect(meses[0]?.linhas[0]?.confiancaBaixa).toEqual({
+      quantidade: 1,
+      valor: 250,
+      temPrevisaoDoBanco: true,
+    });
+    // Puramente informativo: não muda nenhum valor autoritativo.
+    expect(meses[0]).toMatchObject({ total: 250, status: "em_aberto" });
+  });
+
+  it("não anexa confiancaBaixa quando não há alocação de baixa confiança para a competência", () => {
+    const meses = montar_serie_faturas_dashboard({
+      cartoes: [cartaoBase],
+      oficiais: [],
+      movimentos: [
+        { cartaoId: cartaoBase.id, tipo: "despesa", valor: 250, dataMovimento: "2026-09-03", status: "realizado" },
+      ],
+      inicio: "2026-09-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    });
+    expect(meses[0]?.linhas[0]?.confiancaBaixa).toBeUndefined();
+  });
+
   it("soma lançamentos realizados e parcelas previstas no ciclo aberto", () => {
     const meses = montar_serie_faturas_dashboard({
       cartoes: [cartaoBase],
