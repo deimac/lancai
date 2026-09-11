@@ -282,7 +282,7 @@ export function CardFaturasDashboard({
                 </button>
             </div>
 
-            <div className="mt-3 h-56 min-w-0">
+            <div className="mt-3 h-56 min-w-0 [&_.recharts-surface]:outline-none [&_.recharts-wrapper]:outline-none [&_.recharts-wrapper_*]:outline-none">
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart
                         data={chartData}
