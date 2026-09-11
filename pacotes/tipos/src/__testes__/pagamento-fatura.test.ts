@@ -1095,6 +1095,25 @@ describe("somar_pagamentos_fatura", () => {
     ).toBe(1000);
   });
 
+  it("com incluirCreditosDeRegra: crédito postado 1 dia após o fechamento (dentro da janela de vencimento) ainda quita o ciclo que fechou — caso real do Nu Mastercard", () => {
+    // Fechamento dia 2, vencimento dia 9: um estorno de 03/07 (1 dia após o
+    // fecha) está a 6 dias do vencimento do ciclo de julho (09/07) — dentro
+    // da janela de 7 dias — então quita julho, não agosto (que é o que a
+    // data bruta indicaria).
+    const movimentos = [
+      { valor: 5644.89, dataMovimento: "2026-07-09", cartaoId: "nu", cartaoFaturaId: "nu", competenciaFatura: "2026-07", papel: "pagamento_fatura", status: "realizado" },
+      { valor: 146.48, dataMovimento: "2026-07-03", cartaoId: "nu", status: "realizado", efeitoValor: "subtrai" as const },
+    ];
+    expect(somar_pagamentos_fatura(movimentos, "nu", "2026-07", 2, 9)).toBe(5644.89);
+    expect(
+      somar_pagamentos_fatura(movimentos, "nu", "2026-07", 2, 9, { incluirCreditosDeRegra: true }),
+    ).toBe(5791.37);
+    // E não conta em agosto (onde a data bruta cairia sem a janela de quitação).
+    expect(
+      somar_pagamentos_fatura(movimentos, "nu", "2026-08", 2, 9, { incluirCreditosDeRegra: true }),
+    ).toBe(0);
+  });
+
   it("com incluirCreditosDeRegra: ignora crédito de regra de outro ciclo e o de outro cartão", () => {
     const movimentos = [
       { valor: 200, dataMovimento: "2026-09-05", cartaoId: "nu", status: "realizado", efeitoValor: "subtrai" as const },

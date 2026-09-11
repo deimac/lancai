@@ -787,7 +787,15 @@ export function somar_pagamentos_fatura(
     if (movimento.papel === "pagamento_fatura") return false; // já contado acima
     if (movimento.efeitoValor !== "subtrai") return false;
     if (movimento.cartaoId !== cartaoId) return false;
-    return competencia_ciclo_da_data(movimento.dataMovimento, fechamento) === cicloFecha;
+    // Mesma janela de quitação do pagamento normal, não o ciclo bruto da
+    // data: um estorno postado logo após o fechamento (ex.: 1 dia depois,
+    // dentro dos 7 dias até o vencimento) ainda quita o ciclo que acabou de
+    // fechar — é exatamente esse caso perto da borda que o gatilho da regra
+    // existe pra resolver manualmente.
+    return (
+      competencia_quitacao_fatura(movimento.dataMovimento, fechamento, vencimento, movimento.competenciaFatura) ===
+      cicloFecha
+    );
   });
   const totalCreditosDeRegra = creditosDeRegra.reduce(
     (total, movimento) => total + Number(movimento.valor),
