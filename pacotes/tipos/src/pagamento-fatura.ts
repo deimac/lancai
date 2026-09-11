@@ -889,15 +889,40 @@ export function adiar_compras_do_fechamento_ja_pago<
   const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
   const vencimentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
 
-  // Só avalia o status dos ciclos que realmente aparecem nos movimentos.
+  // Uma passada só sobre `movimentos` alimenta os ciclos tocados e o líquido
+  // por cartão+ciclo — antes isso era refeito varrendo a lista inteira pra
+  // CADA ciclo tocado (O(ciclos × lançamentos): com bastante histórico era
+  // essa conta rodando em série, de forma síncrona, que travava a UI ao
+  // entrar no Modo fatura do Extrato).
   const ciclosTocados = new Set<string>();
+  const liquidoPorChave = new Map<string, number>();
   for (const movimento of movimentos) {
-    if (!movimento.cartaoId) continue;
-    const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
+    const cartaoId = movimento.cartaoId;
+    if (!cartaoId) continue;
+    const fechamento = fechamentoPorCartao.get(cartaoId);
     if (fechamento == null) continue;
     const data = String(movimento.dataMovimento).slice(0, 10);
-    ciclosTocados.add(`${movimento.cartaoId}:${competencia_ciclo_da_data(data, fechamento)}`);
+    ciclosTocados.add(`${cartaoId}:${competencia_ciclo_da_data(data, fechamento)}`);
+
+    if (!eh_linha_da_fatura(movimento)) continue;
+    const vencimento = vencimentoPorCartao.get(cartaoId) ?? 0;
+    const ciclo = ciclo_do_movimento(movimento.dataMovimento, cartaoId, fechamento, {
+      vencimento,
+      parcelaNumero: movimento.parcelaNumero,
+      status: movimento.status,
+      pagamentos,
+    });
+    const chave = `${cartaoId}:${ciclo}`;
+    liquidoPorChave.set(chave, (liquidoPorChave.get(chave) ?? 0) + valor_na_fatura(movimento));
   }
+
+  // `somar_pagamentos_fatura` só olha pagamento de fatura (ou crédito de
+  // regra, quando `incluirCreditosDeRegra`) — filtrar antes deixa cada
+  // chamada por ciclo barata sem mudar o resultado (o resto já seria
+  // descartado pelos filtros internos dela mesma).
+  const movimentosPagamento = movimentos.filter(
+    (movimento) => movimento.papel === "pagamento_fatura" || movimento.efeitoValor === "subtrai",
+  );
 
   const cicloEstaPagoCache = new Map<string, boolean>();
   for (const chave of ciclosTocados) {
@@ -906,20 +931,9 @@ export function adiar_compras_do_fechamento_ja_pago<
     const vencimento = vencimentoPorCartao.get(cartaoId) ?? 0;
 
     const totalOficial = totalOficialDe(cartaoId, cicloFecha);
-    const totalLiquido = arredondar(
-      movimentos.reduce((soma, movimento) => {
-        if (movimento.cartaoId !== cartaoId || !eh_linha_da_fatura(movimento)) return soma;
-        const ciclo = ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
-          vencimento,
-          parcelaNumero: movimento.parcelaNumero,
-          status: movimento.status,
-          pagamentos,
-        });
-        return ciclo === cicloFecha ? soma + valor_na_fatura(movimento) : soma;
-      }, 0),
-    );
+    const totalLiquido = arredondar(liquidoPorChave.get(chave) ?? 0);
     const total = totalOficial ?? totalLiquido;
-    const totalPago = somar_pagamentos_fatura(movimentos, cartaoId, cicloFecha, fechamento, vencimento, {
+    const totalPago = somar_pagamentos_fatura(movimentosPagamento, cartaoId, cicloFecha, fechamento, vencimento, {
       incluirCreditosDeRegra: totalOficial != null,
     });
     cicloEstaPagoCache.set(chave, total > 0 && totalPago >= total - 0.01);
