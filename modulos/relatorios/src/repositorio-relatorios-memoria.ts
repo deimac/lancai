@@ -56,6 +56,13 @@ export class RepositorioRelatoriosMemoria implements RepositorioRelatorios {
       if (filtro.canal === "conta" && (!movimento.contaId || movimento.cartaoId)) return false;
       if (filtro.contaId && movimento.contaId !== filtro.contaId) return false;
       if (filtro.cartaoId && movimento.cartaoId !== filtro.cartaoId) return false;
+      if (
+        filtro.cartaoOuFaturaId &&
+        movimento.cartaoId !== filtro.cartaoOuFaturaId &&
+        movimento.cartaoFaturaId !== filtro.cartaoOuFaturaId
+      ) {
+        return false;
+      }
       if (filtro.categoriaId && movimento.categoriaId !== filtro.categoriaId) return false;
       if (filtro.pessoaId && movimento.pessoaId !== filtro.pessoaId) return false;
       if (filtro.tipos?.length && !filtro.tipos.includes(movimento.tipo)) return false;

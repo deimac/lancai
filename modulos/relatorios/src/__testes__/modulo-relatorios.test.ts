@@ -266,6 +266,88 @@ describe("ModuloRelatorios", () => {
       expect(dados.cartoes[0]?.comprometido).toBe(0);
       expect(dados.cartoes[0]?.disponivel).toBe(1000);
     });
+
+    /**
+     * Cartão manual não tem saldo institucional (Pluggy) pra confiar — o
+     * comprometido é derivado 100% dos lançamentos. Sem descontar o
+     * pagamento da fatura, ele só cresce a cada compra e nunca volta a
+     * baixar, mesmo depois de pago (bug relatado em produção).
+     */
+    it("cartão manual: pagamento de fatura (crédito no próprio cartão) reduz o comprometido", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, { limite: "2000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const compra = criarMovimento(usuarioId, categoria.id, { cartaoId: cartao.id, valor: "500.00" });
+      repositorio.movimentos.set(compra.id, compra);
+      repositorio.parcelas.set(randomUUID(), criarParcela(compra.id, { valor: "500.00" }));
+
+      const pagamento = criarMovimento(usuarioId, categoria.id, {
+        cartaoId: cartao.id,
+        tipo: "receita",
+        valor: "500.00",
+        papel: "pagamento_fatura",
+        ignoradoEmRelatorio: true,
+      });
+      repositorio.movimentos.set(pagamento.id, pagamento);
+
+      const resultado = await relatorios.consultar_visao("cartoes", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoCartoes;
+
+      expect(dados.cartoes[0]).toMatchObject({ comprometido: 0, disponivel: 2000 });
+    });
+
+    it("cartão manual: pagamento de fatura via débito na conta (cartaoFaturaId) também reduz o comprometido", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, { limite: "2000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const compra = criarMovimento(usuarioId, categoria.id, { cartaoId: cartao.id, valor: "500.00" });
+      repositorio.movimentos.set(compra.id, compra);
+      repositorio.parcelas.set(randomUUID(), criarParcela(compra.id, { valor: "500.00" }));
+
+      const pagamento = criarMovimento(usuarioId, categoria.id, {
+        cartaoId: null,
+        contaId: conta.id,
+        cartaoFaturaId: cartao.id,
+        tipo: "despesa",
+        valor: "300.00",
+        papel: "pagamento_fatura",
+      });
+      repositorio.movimentos.set(pagamento.id, pagamento);
+
+      const resultado = await relatorios.consultar_visao("cartoes", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoCartoes;
+
+      expect(dados.cartoes[0]).toMatchObject({ comprometido: 200, disponivel: 1800 });
+    });
+
+    it("cartão manual: comprometido nunca fica negativo mesmo se o pagamento passar do saldo devido", async () => {
+      const conta = criarConta(usuarioId);
+      const cartao = criarCartao(usuarioId, conta.id, { limite: "1000.00" });
+      repositorio.contas.set(conta.id, conta);
+      repositorio.cartoes.set(cartao.id, cartao);
+
+      const compra = criarMovimento(usuarioId, categoria.id, { cartaoId: cartao.id, valor: "100.00" });
+      repositorio.movimentos.set(compra.id, compra);
+      repositorio.parcelas.set(randomUUID(), criarParcela(compra.id, { valor: "100.00" }));
+
+      const pagamento = criarMovimento(usuarioId, categoria.id, {
+        cartaoId: cartao.id,
+        tipo: "receita",
+        valor: "150.00",
+        papel: "pagamento_fatura",
+        ignoradoEmRelatorio: true,
+      });
+      repositorio.movimentos.set(pagamento.id, pagamento);
+
+      const resultado = await relatorios.consultar_visao("cartoes", filtrosBase(usuarioId), DATA_ATUAL);
+      const dados = resultado.dados as ResultadoCartoes;
+
+      expect(dados.cartoes[0]?.comprometido).toBe(0);
+    });
   });
 
   describe("parcelamentos", () => {

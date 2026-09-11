@@ -99,6 +99,14 @@ export class RepositorioRelatoriosDrizzle implements RepositorioRelatorios {
     }
     if (filtro.contaId) condicoes.push(eq(movimentoTabela.contaId, filtro.contaId));
     if (filtro.cartaoId) condicoes.push(eq(movimentoTabela.cartaoId, filtro.cartaoId));
+    if (filtro.cartaoOuFaturaId) {
+      condicoes.push(
+        or(
+          eq(movimentoTabela.cartaoId, filtro.cartaoOuFaturaId),
+          eq(movimentoTabela.cartaoFaturaId, filtro.cartaoOuFaturaId),
+        )!,
+      );
+    }
     if (filtro.categoriaId) condicoes.push(eq(movimentoTabela.categoriaId, filtro.categoriaId));
     if (filtro.pessoaId) condicoes.push(eq(movimentoTabela.pessoaId, filtro.pessoaId));
     if (filtro.tipos?.length) condicoes.push(inArray(movimentoTabela.tipo, filtro.tipos));

@@ -180,20 +180,31 @@ export class ModuloRelatorios {
         const limite = paraNumero(cartao.limite);
         const saldoDevido = paraNumero(cartao.saldo);
 
-        // Open Finance: `saldo` já é o limite usado (inclui parcelas futuras).
-        // Somar parcelas de novo infla o comprometido e inventa disponível negativo.
-        // Manual: não há saldo institucional confiável — usa parcelas em aberto.
+        // Open Finance: `saldo` já é o limite usado (inclui parcelas futuras)
+        // — o banco atualiza sozinho a cada sincronização. Manual: não há
+        // saldo institucional pra confiar, então soma-se compra por compra
+        // (`parcela`) e subtrai-se pagamento de fatura por pagamento — senão
+        // o comprometido só cresce (nunca desconta o que já foi pago) e o
+        // "disponível" fica cada vez mais errado com o uso do cartão.
         let comprometido: number;
         if (cartao.sincronizada) {
           comprometido = saldoDevido;
         } else {
-          const parcelas = await this.repositorio.listarParcelas(filtros.usuarioId, {
-            cartaoId: cartao.id,
-          });
+          const [parcelas, pagamentos] = await Promise.all([
+            this.repositorio.listarParcelas(filtros.usuarioId, { cartaoId: cartao.id }),
+            this.repositorio.listarMovimentos(filtros.usuarioId, {
+              cartaoOuFaturaId: cartao.id,
+              incluirIgnorados: true,
+            }),
+          ]);
           const parcelasSoma = parcelas.length
             ? somar(...parcelas.map((parcela) => parcela.valor))
             : 0;
-          comprometido = somar(saldoDevido, parcelasSoma);
+          const pagamentosDeFatura = pagamentos.filter((movimento) => movimento.papel === "pagamento_fatura");
+          const pagamentosSoma = pagamentosDeFatura.length
+            ? somar(...pagamentosDeFatura.map((movimento) => movimento.valor))
+            : 0;
+          comprometido = Math.max(0, somar(saldoDevido, parcelasSoma, -pagamentosSoma));
         }
 
         return {

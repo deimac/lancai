@@ -9,6 +9,12 @@ export interface FiltroMovimentos {
   canal?: CanalPagamento;
   contaId?: string;
   cartaoId?: string;
+  /**
+   * Quitação de fatura de cartão manual: débito na conta (`cartaoFaturaId`)
+   * ou crédito no próprio cartão (`cartaoId`) — precisa casar os dois lados
+   * pra somar o total já pago do cartão, não só as compras nele.
+   */
+  cartaoOuFaturaId?: string;
   categoriaId?: string;
   pessoaId?: string;
   periodo?: { de: string; ate: string };
