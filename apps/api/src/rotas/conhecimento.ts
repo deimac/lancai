@@ -26,6 +26,8 @@ const schemaAtualizar = z
     papel: papelConhecimentoSchema.optional(),
     cartaoFaturaId: z.string().uuid().nullable().optional(),
     competenciaFatura: competenciaFaturaSchema.nullable().optional(),
+    /** Ajuste manual de ciclo — menu ⋯ do Extrato ou assistente. Só cartão manual. */
+    deslocamentoFatura: z.number().int().min(-24).max(24).nullable().optional(),
   })
   .refine(
     (dados) =>
@@ -35,7 +37,8 @@ const schemaAtualizar = z
       dados.possivelRepetido !== undefined ||
       dados.papel !== undefined ||
       dados.cartaoFaturaId !== undefined ||
-      dados.competenciaFatura !== undefined,
+      dados.competenciaFatura !== undefined ||
+      dados.deslocamentoFatura !== undefined,
     { message: "Informe ao menos um campo de conhecimento." },
   );
 
@@ -58,6 +61,7 @@ async function serializar_conhecimento(atualizado: {
   papel: "gasto" | "pagamento_fatura";
   cartaoFaturaId: string | null;
   competenciaFatura: string | null;
+  deslocamentoFatura: number | null;
 }) {
   const categoria = await repositorio.obterCategoria(atualizado.categoriaId);
   const proposta =
@@ -79,6 +83,7 @@ async function serializar_conhecimento(atualizado: {
     papel: atualizado.papel,
     cartaoFaturaId: atualizado.cartaoFaturaId,
     competenciaFatura: atualizado.competenciaFatura,
+    deslocamentoFatura: atualizado.deslocamentoFatura,
     propostaRegra: proposta
       ? { trecho: proposta.trecho, categoriaNome: proposta.categoriaNome }
       : null,
@@ -114,6 +119,9 @@ export async function registrar_rotas_conhecimento(app: FastifyInstance) {
           ...(dados.cartaoFaturaId !== undefined ? { cartaoFaturaId: dados.cartaoFaturaId } : {}),
           ...(dados.competenciaFatura !== undefined
             ? { competenciaFatura: dados.competenciaFatura }
+            : {}),
+          ...(dados.deslocamentoFatura !== undefined
+            ? { deslocamentoFatura: dados.deslocamentoFatura }
             : {}),
           /**
            * Só marca como classificação manual quando a categoria ou o papel mudam.

@@ -137,3 +137,84 @@ describe("interpretar_correcao_rapida", () => {
     });
   });
 });
+
+describe("interpretar_correcao_rapida — ajuste manual de fatura", () => {
+  it("move para a próxima fatura", () => {
+    expect(interpretar_correcao_rapida("move o mercado pra próxima fatura", "2026-09-11")).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Mercado", data_movimento: null, codigo: null },
+      campos_alterados: { deslocamento_fatura: 1 },
+    });
+  });
+
+  it("manda para a fatura anterior", () => {
+    expect(interpretar_correcao_rapida("manda o uber pra fatura anterior", "2026-09-11")).toEqual({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Uber", data_movimento: null, codigo: null },
+      campos_alterados: { deslocamento_fatura: -1 },
+    });
+  });
+
+  it("corrige a fatura do lançamento para a anterior (verbo corrigir)", () => {
+    const r = interpretar_correcao_rapida(
+      "corrige a fatura do mercado para a anterior",
+      "2026-09-11",
+    );
+    expect(r).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Mercado" },
+      campos_alterados: { deslocamento_fatura: -1 },
+    });
+  });
+
+  it("muda a fatura para a próxima (verbo mudar, sem repetir 'fatura')", () => {
+    const r = interpretar_correcao_rapida(
+      "muda a fatura da farmácia para a próxima",
+      "2026-09-11",
+    );
+    expect(r).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { descricao: "Farmácia" },
+      campos_alterados: { deslocamento_fatura: 1 },
+    });
+  });
+
+  it("aceita 'fatura seguinte' e 'fatura que vem' como próxima", () => {
+    expect(
+      interpretar_correcao_rapida("joga a farmácia pra fatura seguinte", "2026-09-11"),
+    ).toMatchObject({ campos_alterados: { deslocamento_fatura: 1 } });
+    expect(
+      interpretar_correcao_rapida("coloca a farmácia na fatura que vem", "2026-09-11"),
+    ).toMatchObject({ campos_alterados: { deslocamento_fatura: 1 } });
+  });
+
+  it("aceita 'fatura passada' como anterior", () => {
+    expect(
+      interpretar_correcao_rapida("passa o mercado pra fatura passada", "2026-09-11"),
+    ).toMatchObject({ campos_alterados: { deslocamento_fatura: -1 } });
+  });
+
+  it("extrai o código quando presente", () => {
+    const r = interpretar_correcao_rapida(
+      "move o #a1b2c3d4 pra próxima fatura",
+      "2026-09-11",
+    );
+    expect(r).toMatchObject({
+      intencao: "CORRIGIR_MOVIMENTO",
+      referencia: { codigo: "a1b2c3d4" },
+      campos_alterados: { deslocamento_fatura: 1 },
+    });
+  });
+
+  it("não confunde correção de valor comum com ajuste de fatura", () => {
+    expect(interpretar_correcao_rapida("corrige o almoço para 20", "2026-08-03")).toMatchObject({
+      campos_alterados: { valor: 20 },
+    });
+  });
+
+  it("não confunde renomeação comum com ajuste de fatura", () => {
+    expect(interpretar_correcao_rapida("muda o almoço para jantar", "2026-08-03")).toMatchObject({
+      campos_alterados: { descricao: "Jantar" },
+    });
+  });
+});

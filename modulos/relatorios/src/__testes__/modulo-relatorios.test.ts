@@ -121,6 +121,7 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     cartaoFaturaId: null,
     competenciaFatura: null,
     efeitoValor: null,
+    deslocamentoFatura: null,
     usuarioId,
     dataCriacao: agora,
     dataAtualizacao: agora,

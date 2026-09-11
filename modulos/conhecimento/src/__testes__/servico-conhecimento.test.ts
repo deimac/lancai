@@ -29,12 +29,18 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
   /** id → { nome } */
   categorias = new Map<string, { nome: string }>();
   pessoas = new Map<string, { nome: string; workspaceId: string }>();
+  cartoes = new Map<string, { sincronizada: boolean }>();
   workspacesPorUsuario = new Map<string, string[]>();
   regras: Regra[] = [];
   auditorias: OperacaoConhecimento["auditoria"][] = [];
 
   async obterMovimento(id: string) {
     return this.movimentos.get(id);
+  }
+
+  async obterCartao(id: string) {
+    const cartao = this.cartoes.get(id);
+    return cartao ? { id, sincronizada: cartao.sincronizada } : undefined;
   }
 
   async obterCategoria(id: string) {
@@ -248,6 +254,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     cartaoFaturaId: null,
     competenciaFatura: null,
     efeitoValor: null,
+    deslocamentoFatura: null,
     usuarioId: randomUUID(),
     dataCriacao: agora,
     dataAtualizacao: agora,
@@ -507,6 +514,64 @@ describe("ServicoConhecimento", () => {
         movimentoId: movimento.id,
         alteradoPor: usuarioId,
         conhecimento: { pessoaId: randomUUID() },
+      }),
+    ).rejects.toThrow(ErroConhecimentoInvalido);
+  });
+
+  it("cartão manual: aplica deslocamento de fatura (Próxima fatura / Fatura anterior)", async () => {
+    const cartaoId = randomUUID();
+    repositorio.cartoes.set(cartaoId, { sincronizada: false });
+    const movimento = criarMovimento({ cartaoId });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const atualizado = await servico.atualizar({
+      movimentoId: movimento.id,
+      alteradoPor: usuarioId,
+      conhecimento: { deslocamentoFatura: 1 },
+    });
+
+    expect(atualizado.deslocamentoFatura).toBe(1);
+  });
+
+  it("cartão manual: deslocamento null remove o ajuste (volta ao automático)", async () => {
+    const cartaoId = randomUUID();
+    repositorio.cartoes.set(cartaoId, { sincronizada: false });
+    const movimento = criarMovimento({ cartaoId, deslocamentoFatura: -1 });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    const atualizado = await servico.atualizar({
+      movimentoId: movimento.id,
+      alteradoPor: usuarioId,
+      conhecimento: { deslocamentoFatura: null },
+    });
+
+    expect(atualizado.deslocamentoFatura).toBeNull();
+  });
+
+  it("recusa deslocamento de fatura em cartão sincronizado (Open Finance)", async () => {
+    const cartaoId = randomUUID();
+    repositorio.cartoes.set(cartaoId, { sincronizada: true });
+    const movimento = criarMovimento({ cartaoId });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    await expect(
+      servico.atualizar({
+        movimentoId: movimento.id,
+        alteradoPor: usuarioId,
+        conhecimento: { deslocamentoFatura: 1 },
+      }),
+    ).rejects.toThrow(ErroConhecimentoInvalido);
+  });
+
+  it("recusa deslocamento de fatura em lançamento sem cartão", async () => {
+    const movimento = criarMovimento({ cartaoId: null });
+    repositorio.movimentos.set(movimento.id, movimento);
+
+    await expect(
+      servico.atualizar({
+        movimentoId: movimento.id,
+        alteradoPor: usuarioId,
+        conhecimento: { deslocamentoFatura: 1 },
       }),
     ).rejects.toThrow(ErroConhecimentoInvalido);
   });

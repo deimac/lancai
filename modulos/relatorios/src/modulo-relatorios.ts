@@ -490,6 +490,7 @@ export class ModuloRelatorios {
         vencimento,
         parcelaNumero: movimento.parcelaNumero,
         status: movimento.status,
+        deslocamentoFatura: movimento.deslocamentoFatura,
       });
       if (mes < periodo.de.slice(0, 7) || mes > periodo.ate.slice(0, 7)) continue;
       const atual = totaisPorMes.get(mes) ?? { receitas: 0, despesas: 0 };

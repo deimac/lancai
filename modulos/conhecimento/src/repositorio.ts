@@ -22,6 +22,8 @@ export type CamposAtualizarRegra = Partial<{
 
 export interface RepositorioConhecimento {
   obterMovimento(id: string): Promise<Movimento | undefined>;
+  /** Só os campos que `aplicar_deslocamento_fatura` precisa — não o cartão inteiro. */
+  obterCartao(id: string): Promise<{ id: string; sincronizada: boolean } | undefined>;
   obterCategoria(id: string): Promise<{ id: string; nome: string } | undefined>;
   obterPessoa(id: string): Promise<{ id: string; nome: string } | undefined>;
   /** Resolve categoria pelo nome do usuário (lista global, não por workspace). */

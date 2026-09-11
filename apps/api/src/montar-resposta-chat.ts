@@ -292,6 +292,18 @@ export async function montar_resposta_chat(
       if (correcao.campos_alterados.tags?.length) {
         return `Marquei "${movimentoAtualizado.descricao}" com: ${correcao.campos_alterados.tags.join(", ")}.`;
       }
+      if (correcao.campos_alterados.deslocamento_fatura === 1) {
+        return `Pronto — "${movimentoAtualizado.descricao}" passa a contar na próxima fatura.`;
+      }
+      if (correcao.campos_alterados.deslocamento_fatura === -1) {
+        return `Pronto — "${movimentoAtualizado.descricao}" passa a contar na fatura anterior.`;
+      }
+      if (correcao.campos_alterados.deslocamento_fatura != null) {
+        return `Pronto — ajustei a fatura de "${movimentoAtualizado.descricao}".`;
+      }
+      if (correcao.campos_alterados.deslocamento_fatura === null) {
+        return `Pronto — "${movimentoAtualizado.descricao}" voltou pro ciclo de fatura automático.`;
+      }
 
       let base = `Lançamento "${movimentoAtualizado.descricao}" atualizado com sucesso.`;
       if (correcao.campos_alterados.categoria_nome) {

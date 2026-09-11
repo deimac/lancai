@@ -62,7 +62,8 @@ function eh_so_enriquecimento(
     campos.categoria_nome != null ||
     campos.pessoa_nome != null ||
     campos.perfil != null ||
-    campos.descricao != null
+    campos.descricao != null ||
+    campos.deslocamento_fatura !== undefined
   );
 }
 
@@ -194,6 +195,9 @@ export class ResolvedorIntencao {
     if (camposAlterados.tags) campos.tags = camposAlterados.tags;
     if (camposAlterados.observacoes !== undefined) {
       campos.observacoes = camposAlterados.observacoes;
+    }
+    if (camposAlterados.deslocamento_fatura !== undefined) {
+      campos.deslocamentoFatura = camposAlterados.deslocamento_fatura;
     }
 
     if (camposAlterados.categoria_nome) {

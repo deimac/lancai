@@ -100,6 +100,24 @@ export class ServicoConhecimento {
       campos.categoriaId = dados.categoriaId;
     }
 
+    if (dados.deslocamentoFatura !== undefined) {
+      if (!movimentoAtual.cartaoId) {
+        throw new ErroConhecimentoInvalido(
+          "Ajuste de fatura só se aplica a lançamento em cartão.",
+        );
+      }
+      const cartao = await this.repositorio.obterCartao(movimentoAtual.cartaoId);
+      if (!cartao) {
+        throw new ErroConhecimentoInvalido(`Cartão ${movimentoAtual.cartaoId} não existe.`);
+      }
+      if (cartao.sincronizada) {
+        throw new ErroConhecimentoInvalido(
+          "Ajuste manual de fatura só é permitido em cartão manual — cartão sincronizado tem o ciclo confirmado pelo banco.",
+        );
+      }
+      campos.deslocamentoFatura = dados.deslocamentoFatura;
+    }
+
     await this.aplicar_papel(movimentoAtual, dados, campos);
 
     if (dados.ignoradoEmRelatorio !== undefined && dados.papel === undefined) {

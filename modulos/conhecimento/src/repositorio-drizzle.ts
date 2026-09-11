@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import {
   auditoria as auditoriaTabela,
+  cartao as cartaoTabela,
   categoria as categoriaTabela,
   listar_ids_workspaces_dono,
   movimento as movimentoTabela,
@@ -26,6 +27,15 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
       .select()
       .from(movimentoTabela)
       .where(eq(movimentoTabela.id, id))
+      .limit(1);
+    return linhas[0];
+  }
+
+  async obterCartao(id: string): Promise<{ id: string; sincronizada: boolean } | undefined> {
+    const linhas = await this.banco
+      .select({ id: cartaoTabela.id, sincronizada: cartaoTabela.sincronizada })
+      .from(cartaoTabela)
+      .where(eq(cartaoTabela.id, id))
       .limit(1);
     return linhas[0];
   }

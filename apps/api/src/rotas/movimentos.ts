@@ -162,6 +162,7 @@ export async function registrar_rotas_movimento(app: FastifyInstance) {
         papel: movimento.papel,
         cartaoFaturaId: movimento.cartaoFaturaId,
         competenciaFatura: movimento.competenciaFatura,
+        deslocamentoFatura: movimento.deslocamentoFatura,
         categoriaId: movimento.categoriaId,
         categoriaNome: categoria.nome,
         classificadoPor: movimento.classificadoPor,

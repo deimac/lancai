@@ -181,6 +181,7 @@ export class RepositorioFinanceiroMemoria implements RepositorioFinanceiro {
         cartaoFaturaId: novoMovimento.cartaoFaturaId ?? null,
         competenciaFatura: novoMovimento.competenciaFatura ?? null,
         efeitoValor: novoMovimento.efeitoValor ?? null,
+        deslocamentoFatura: novoMovimento.deslocamentoFatura ?? null,
         usuarioId: novoMovimento.usuarioId,
         dataCriacao: agora,
         dataAtualizacao: agora,

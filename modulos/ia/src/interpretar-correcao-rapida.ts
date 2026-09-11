@@ -196,6 +196,45 @@ function interpretar_alteracao_campos(
   return null;
 }
 
+const VERBO_MOVER_FATURA =
+  /\b(?:mov[ae]\w*|mand[ae]\w*|jog[ae]\w*|coloc[ae]\w*|p[õo]e|pass[ae]\w*|corrig\w*|altera\w*|mud[ae]\w*|atualiz\w*)\b/i;
+
+const PADRAO_AJUSTE_FATURA =
+  /\b(?:mov[ae]\w*|mand[ae]\w*|jog[ae]\w*|coloc[ae]\w*|p[õo]e|pass[ae]\w*|corrig\w*|altera\w*|mud[ae]\w*|atualiz\w*)\b(?:\s+(?:a\s+fatura\s+d[eoa]s?\s+)?)?(?:\s*(?:o|a|os|as)\s+)?(.+?)\s+(?:pra|para(?:\s+a)?|na|no)\s+(?:(pr[oó]xima|seguinte)\s+fatura|fatura\s+(anterior|passada|seguinte|que\s+vem|pr[oó]xima)|(anterior|passada|pr[oó]xima|seguinte))\s*[.!?]?\s*$/i;
+
+/**
+ * "move o mercado pra próxima fatura" / "manda o uber pra fatura anterior" /
+ * "corrige a fatura do mercado para a anterior" — ajuste manual do ciclo de
+ * fatura (menu ⋯ do Extrato tem o mesmo atalho). Conhecimento, não mexe no
+ * Fato; só cartão manual aceita (`ServicoConhecimento` valida isso).
+ */
+function interpretar_ajuste_fatura(
+  mensagem: string,
+  dataAtual: string,
+): IntencaoDetectada | null {
+  const texto = mensagem.trim();
+  if (!/\bfatura\b/i.test(texto) || !VERBO_MOVER_FATURA.test(texto)) return null;
+
+  const match = PADRAO_AJUSTE_FATURA.exec(texto);
+  if (!match) return null;
+
+  const direcaoBruta = (match[2] ?? match[3] ?? match[4] ?? "").toLowerCase();
+  const deslocamento = /^(?:anterior|passada)$/.test(direcaoBruta) ? -1 : 1;
+
+  const descricao = limpar_referencia_correcao(match[1] ?? "");
+  if (!descricao) return null;
+
+  return {
+    intencao: "CORRIGIR_MOVIMENTO",
+    referencia: {
+      descricao,
+      data_movimento: extrair_data_referencia(texto, dataAtual),
+      codigo: extrair_codigo_da_mensagem(texto),
+    },
+    campos_alterados: { deslocamento_fatura: deslocamento },
+  };
+}
+
 function normalizar_igual(a: string, b: string): boolean {
   return (
     a.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR") ===
@@ -244,6 +283,7 @@ function interpretar_exclusao_conta_ou_cartao(texto: string): IntencaoDetectada 
  * - cancelar lançamento: "cancela o #a1b2c3d4" / "apague o lançamento de farmacia de hoje"
  * - corrigir: "corrige o almoço para 20" / "muda a descrição do uber para Uber Trip"
  * - data: "alterar data de lançamento do cartão X Tarifa mensal para 15/08/2026"
+ * - ajuste de fatura: "move o mercado pra próxima fatura" / "manda o uber pra fatura anterior"
  */
 export function interpretar_correcao_rapida(
   mensagem: string,
@@ -251,6 +291,9 @@ export function interpretar_correcao_rapida(
 ): IntencaoDetectada | null {
   const texto = mensagem.trim();
   if (!texto) return null;
+
+  const ajusteFatura = interpretar_ajuste_fatura(texto, dataAtual);
+  if (ajusteFatura) return ajusteFatura;
 
   const alteracao = interpretar_alteracao_campos(texto, dataAtual);
   if (alteracao) return alteracao;

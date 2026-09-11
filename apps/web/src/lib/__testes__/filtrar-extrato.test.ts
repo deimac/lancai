@@ -63,6 +63,7 @@ function movimento(parcial: Partial<MovimentoResumo> & Pick<MovimentoResumo, "id
     papel: "gasto",
     cartaoFaturaId: null,
     competenciaFatura: null,
+    deslocamentoFatura: null,
     ...parcial,
   };
 }

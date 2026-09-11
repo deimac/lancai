@@ -392,6 +392,14 @@ export type ExtraCicloMovimento = {
   parcelaNumero?: number | null;
   status?: string | null;
   pagamentos?: PagamentoCiclo[];
+  /**
+   * Ajuste manual (menu ⋯ do Extrato ou pelo assistente — "Próxima fatura"/
+   * "Fatura anterior"): quantos ciclos deslocar em relação ao que o cálculo
+   * automático daria. `1` = empurra pra fatura seguinte, `-1` = puxa pra
+   * anterior. Aplicado por último, depois de antecipação — sempre relativo
+   * ao ciclo já calculado, nunca à data bruta.
+   */
+  deslocamentoFatura?: number | null;
 };
 
 /**
@@ -476,7 +484,12 @@ export function ciclo_do_movimento(
   ) {
     mes = ciclo_da_parcela_prevista(data, ciclo, fechamento, vencimento);
   }
-  return aplicar_antecipacao(data, mes, cartaoId, fechamento, vencimento, extra?.pagamentos);
+  mes = aplicar_antecipacao(data, mes, cartaoId, fechamento, vencimento, extra?.pagamentos);
+  const deslocamento = extra?.deslocamentoFatura;
+  if (deslocamento) {
+    mes = somar_meses_calendario(`${mes}-01`, deslocamento).slice(0, 7);
+  }
+  return mes;
 }
 
 /** @deprecated Use `ciclo_do_movimento`. */
@@ -879,6 +892,7 @@ export function adiar_compras_do_fechamento_ja_pago<
     descricaoFonte?: string | null;
     valor: string | number;
     efeitoValor?: "soma" | "subtrai" | null;
+    deslocamentoFatura?: number | null;
   },
 >(
   movimentos: T[],
@@ -911,6 +925,7 @@ export function adiar_compras_do_fechamento_ja_pago<
       parcelaNumero: movimento.parcelaNumero,
       status: movimento.status,
       pagamentos,
+      deslocamentoFatura: movimento.deslocamentoFatura,
     });
     const chave = `${cartaoId}:${ciclo}`;
     liquidoPorChave.set(chave, (liquidoPorChave.get(chave) ?? 0) + valor_na_fatura(movimento));
@@ -984,6 +999,7 @@ export function na_fatura_do_recorte(
     ignoradoEmRelatorio?: boolean;
     descricao?: string | null;
     descricaoFonte?: string | null;
+    deslocamentoFatura?: number | null;
   },
   entrada: {
     mes: string;
@@ -1019,6 +1035,7 @@ export function na_fatura_do_recorte(
       parcelaNumero: movimento.parcelaNumero,
       status: movimento.status,
       pagamentos: entrada.pagamentos,
+      deslocamentoFatura: movimento.deslocamentoFatura,
     }) === alvo
   );
 }
@@ -1034,6 +1051,7 @@ export function movimento_no_recorte_do_cockpit(
     cartaoId?: string | null;
     parcelaNumero?: number | null;
     status?: string | null;
+    deslocamentoFatura?: number | null;
   },
   mesSelecionado: string,
   /** @deprecated Não é mais usado — a competência não depende de "hoje". */
@@ -1057,6 +1075,7 @@ export function movimento_no_resultado_do_mes(
     cartaoId?: string | null;
     parcelaNumero?: number | null;
     status?: string | null;
+    deslocamentoFatura?: number | null;
   },
   mes: string,
   fechamentoPorCartao: ReadonlyMap<string, number>,
@@ -1071,6 +1090,7 @@ export function movimento_no_resultado_do_mes(
       parcelaNumero: movimento.parcelaNumero,
       status: movimento.status,
       pagamentos,
+      deslocamentoFatura: movimento.deslocamentoFatura,
     }) === mes
   );
 }
@@ -1106,6 +1126,7 @@ export function selo_fatura_ciclo(entrada: {
   status?: string | null;
   tipo?: string | null;
   papel?: string | null;
+  deslocamentoFatura?: number | null;
 }): SeloFaturaCiclo | null {
   if (entrada.papel === "pagamento_fatura") return null;
   if (entrada.tipo && entrada.tipo !== "despesa" && entrada.tipo !== "retirada") return null;
@@ -1117,6 +1138,7 @@ export function selo_fatura_ciclo(entrada: {
     vencimento: entrada.vencimento,
     parcelaNumero: entrada.parcelaNumero,
     status: entrada.status,
+    deslocamentoFatura: entrada.deslocamentoFatura,
   });
   if (competencia === mesCompra) return null;
 

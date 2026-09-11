@@ -290,6 +290,7 @@ export function filtrar_movimentos_do_resultado<
     cartaoId?: string | null;
     parcelaNumero?: number | null;
     status?: string | null;
+    deslocamentoFatura?: number | null;
   },
 >(
   movimentos: T[],
@@ -327,6 +328,7 @@ export function agregar_gasto_cartao_por_competencia(
     descricao?: string | null;
     descricaoFonte?: string | null;
     efeitoValor?: "soma" | "subtrai" | null;
+    deslocamentoFatura?: number | null;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
@@ -377,6 +379,8 @@ type MovimentoFaturaDashboard = {
   descricaoFonte?: string | null;
   /** Override de regra (`somar_valor`/`subtrair_valor`) sobre o sinal do lançamento. */
   efeitoValor?: "soma" | "subtrai" | null;
+  /** Ajuste manual do ciclo (⋯ do Extrato ou assistente) — ver `ExtraCicloMovimento`. */
+  deslocamentoFatura?: number | null;
 };
 
 /**
@@ -447,6 +451,7 @@ function gasto_por_cartao_e_ciclo(
       parcelaNumero: movimento.parcelaNumero,
       status: movimento.status,
       pagamentos,
+      deslocamentoFatura: movimento.deslocamentoFatura,
     });
     const chave = `${cartaoId}:${ciclo}`;
     const atual = mapa.get(chave) ?? { gasto: 0, quantidade: 0 };

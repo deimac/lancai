@@ -636,6 +636,37 @@ describe("contrato único de ciclo", () => {
     expect(competencia_quitacao_fatura("2026-08-03", 2, 15)).toBe("2026-08");
     expect(competencia_quitacao_fatura("2026-08-25", 2, 15)).toBe("2026-09");
   });
+
+  it("deslocamentoFatura move o lançamento N ciclos em relação ao automático (menu ⋯ / assistente)", () => {
+    // Revolut: fecha 9, vence 15 — mesmo desenho relatado em produção.
+    const fechamento = 9;
+    const vencimento = 15;
+    // Compra no dia do fechamento (09/09): automático já cai em "2026-09".
+    expect(ciclo_do_movimento("2026-09-09", "revolut", fechamento, { vencimento })).toBe("2026-09");
+    // Com deslocamento +1 ("Próxima fatura"), empurra pra "2026-10".
+    expect(
+      ciclo_do_movimento("2026-09-09", "revolut", fechamento, { vencimento, deslocamentoFatura: 1 }),
+    ).toBe("2026-10");
+    // Com deslocamento -1 ("Fatura anterior"), puxa pra "2026-08".
+    expect(
+      ciclo_do_movimento("2026-09-09", "revolut", fechamento, { vencimento, deslocamentoFatura: -1 }),
+    ).toBe("2026-08");
+    // Sem deslocamento (0/null/undefined) não muda nada — mesmo automático.
+    expect(
+      ciclo_do_movimento("2026-09-09", "revolut", fechamento, { vencimento, deslocamentoFatura: 0 }),
+    ).toBe("2026-09");
+    expect(
+      ciclo_do_movimento("2026-09-09", "revolut", fechamento, { vencimento, deslocamentoFatura: null }),
+    ).toBe("2026-09");
+    // Combina com antecipação/parcela normalmente — é aplicado por último,
+    // sempre relativo ao ciclo já resolvido pelas outras regras.
+    const pagamentos = [
+      { cartaoId: "revolut", dataMovimento: "2026-08-09", competenciaFatura: "2026-08", papel: "pagamento_fatura" as const },
+    ];
+    expect(
+      ciclo_do_movimento("2026-08-09", "revolut", fechamento, { vencimento, pagamentos, deslocamentoFatura: 1 }),
+    ).toBe("2026-09");
+  });
 });
 
 describe("na_fatura_do_recorte", () => {

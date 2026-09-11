@@ -169,6 +169,11 @@ export const schemaIntencaoCorrigirMovimento = z.object({
     tags: z.array(z.string().min(1)).nullable().optional(),
     /** Conhecimento: nota livre; `null` limpa. */
     observacoes: z.string().nullable().optional(),
+    /**
+     * Conhecimento: ajuste manual do ciclo de fatura (só cartão manual).
+     * `1` = próxima fatura, `-1` = fatura anterior, `null` remove o ajuste.
+     */
+    deslocamento_fatura: z.number().int().min(-24).max(24).nullable().optional(),
   }),
 });
 export type IntencaoCorrigirMovimento = z.infer<typeof schemaIntencaoCorrigirMovimento>;

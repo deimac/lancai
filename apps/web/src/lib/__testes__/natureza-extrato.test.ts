@@ -37,6 +37,7 @@ function base(parcial: Partial<MovimentoResumo> = {}): MovimentoResumo {
     papel: "gasto",
     cartaoFaturaId: null,
     competenciaFatura: null,
+    deslocamentoFatura: null,
     ...parcial,
   };
 }

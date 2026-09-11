@@ -157,6 +157,15 @@ export const movimento = pgTable(
     /** Competência da fatura quitada (`YYYY-MM`). */
     competenciaFatura: text("competencia_fatura"),
     /**
+     * Ajuste manual do ciclo de fatura deste lançamento (compra, não
+     * pagamento): quantos ciclos deslocar em relação ao que o sistema
+     * calcularia sozinho (fechamento/vencimento/antecipação). `1` = próxima
+     * fatura, `-1` = fatura anterior, nulo = sem ajuste (comportamento
+     * automático de sempre). Só faz sentido em cartão manual — cartão
+     * sincronizado tem o ciclo confirmado pelo próprio banco.
+     */
+    deslocamentoFatura: integer("deslocamento_fatura"),
+    /**
      * Override de regra sobre o sinal deste lançamento nos cálculos (fatura,
      * fluxo de caixa, resultado do mês). Nulo = usa o padrão do `tipo`. Ver
      * ações `somar_valor`/`subtrair_valor` em `@lancai/tipos` (regra.ts).

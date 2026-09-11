@@ -73,6 +73,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     cartaoFaturaId: null,
     competenciaFatura: null,
     efeitoValor: null,
+    deslocamentoFatura: null,
     usuarioId: randomUUID(),
     dataCriacao: agora,
     dataAtualizacao: agora,
@@ -405,6 +406,66 @@ describe("ResolvedorIntencao", () => {
       );
 
       expect(resultado.campos.tags).toEqual(["projeto Itália"]);
+    });
+
+    it("resolve deslocamento_fatura em campos_alterados (mensagem do assistente)", async () => {
+      const movimento = criarMovimento({ usuarioId, descricao: "Mercado" });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const resultado = await resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: { descricao: "Mercado" },
+          campos_alterados: { deslocamento_fatura: 1 },
+        },
+        contexto(),
+      );
+
+      expect(resultado.movimentoId).toBe(movimento.id);
+      expect(resultado.campos.deslocamentoFatura).toBe(1);
+    });
+
+    it("deslocamento_fatura nulo remove o ajuste (volta ao cálculo automático)", async () => {
+      const movimento = criarMovimento({ usuarioId, descricao: "Mercado" });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const resultado = await resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: { descricao: "Mercado" },
+          campos_alterados: { deslocamento_fatura: null },
+        },
+        contexto(),
+      );
+
+      expect(resultado.campos.deslocamentoFatura).toBeNull();
+    });
+
+    it("deslocamento_fatura sozinho é enriquecimento: sem nome, escolhe o mais recente", async () => {
+      const antigo = criarMovimento({
+        usuarioId,
+        descricao: "Antigo",
+        dataMovimento: "2026-07-01",
+      });
+      const recente = criarMovimento({
+        usuarioId,
+        descricao: "Recente",
+        dataMovimento: "2026-08-08",
+      });
+      repositorio.movimentos.set(antigo.id, antigo);
+      repositorio.movimentos.set(recente.id, recente);
+
+      const resultado = await resolvedor.resolver_corrigir_movimento(
+        {
+          intencao: "CORRIGIR_MOVIMENTO",
+          referencia: {},
+          campos_alterados: { deslocamento_fatura: -1 },
+        },
+        contexto(),
+      );
+
+      expect(resultado.movimentoId).toBe(recente.id);
+      expect(resultado.campos.deslocamentoFatura).toBe(-1);
     });
 
     it("lança ErroReferenciaNaoEncontrada quando não encontra o movimento a corrigir", async () => {

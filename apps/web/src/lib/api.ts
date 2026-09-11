@@ -598,6 +598,8 @@ export interface MovimentoResumo {
   papel: "gasto" | "pagamento_fatura";
   cartaoFaturaId: string | null;
   competenciaFatura: string | null;
+  /** Ajuste manual de ciclo (menu ⋯ / assistente) — só cartão manual. Null = automático. */
+  deslocamentoFatura: number | null;
   workspaceId?: string | null;
   /**
    * Linha só de tela: compra parcelada no dia da autorização, valor cheio.
@@ -1017,6 +1019,8 @@ export const clienteApi = {
     papel?: "gasto" | "pagamento_fatura";
     cartaoFaturaId?: string | null;
     competenciaFatura?: string | null;
+    /** Ajuste manual de ciclo — só cartão manual. Null remove o ajuste. */
+    deslocamentoFatura?: number | null;
   }): Promise<{
     id: string;
     descricao: string;
@@ -1032,6 +1036,7 @@ export const clienteApi = {
     papel: "gasto" | "pagamento_fatura";
     cartaoFaturaId: string | null;
     competenciaFatura: string | null;
+    deslocamentoFatura: number | null;
     propostaRegra: { trecho: string; categoriaNome: string } | null;
     parcelasAtualizadas?: number;
     iguaisAtualizados?: number;

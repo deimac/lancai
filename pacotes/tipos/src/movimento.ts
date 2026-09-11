@@ -150,6 +150,12 @@ export const schemaConhecimentoMovimento = z.object({
   competenciaFatura: competenciaFaturaSchema.nullable().optional(),
   /** Preenchido só via regra (`somar_valor`/`subtrair_valor`). Null limpa o override. */
   efeitoValor: efeitoValorSchema.nullable().optional(),
+  /**
+   * Ajuste manual de ciclo (menu ⋯ do Extrato ou assistente — "Próxima
+   * fatura"/"Fatura anterior"). Só cartão manual usa isso; null remove o
+   * ajuste e volta ao cálculo automático.
+   */
+  deslocamentoFatura: z.number().int().nullable().optional(),
 });
 export type ConhecimentoMovimento = z.infer<typeof schemaConhecimentoMovimento>;
 

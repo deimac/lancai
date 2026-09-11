@@ -665,6 +665,44 @@ export function TelaExtrato() {
     }
   }
 
+  /**
+   * "Próxima fatura"/"Fatura anterior" (menu ⋯): desloca o ciclo em relação
+   * ao que o sistema calcularia sozinho, um mês de cada vez. Só cartão
+   * manual — o back-end recusa em cartão sincronizado.
+   */
+  async function ajustar_deslocamento_fatura(movimento: MovimentoResumo, delta: number) {
+    if (!usuario) return;
+    const novoValor = (movimento.deslocamentoFatura ?? 0) + delta;
+    setSalvandoId(movimento.id);
+    setErro(null);
+    try {
+      const atualizado = await clienteApi.atualizar_conhecimento({
+        usuarioId: usuario.id,
+        movimentoId: movimento.id,
+        deslocamentoFatura: novoValor,
+      });
+      setMovimentos((atuais) =>
+        atuais.map((item) =>
+          item.id === movimento.id
+            ? { ...item, deslocamentoFatura: atualizado.deslocamentoFatura }
+            : item,
+        ),
+      );
+      contexto?.invalidar("extrato", "dashboard");
+      toast.sucesso(
+        novoValor === 0
+          ? "Voltou pro ciclo automático."
+          : delta > 0
+            ? "Movido para a próxima fatura."
+            : "Movido para a fatura anterior.",
+      );
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível ajustar a fatura.");
+    } finally {
+      setSalvandoId(null);
+    }
+  }
+
   function abrir_modal_fatura(movimento: MovimentoResumo) {
     const sugestao = sugerir_pagamento_fatura(movimento, cartoesTodos, movimentos);
     const cartaoId =
@@ -1031,6 +1069,7 @@ export function TelaExtrato() {
                         status: movimento.status,
                         tipo: movimento.tipo,
                         papel: movimento.papel,
+                        deslocamentoFatura: movimento.deslocamentoFatura,
                       })
                       : null;
                   const valorParcela = valor_parcela_da_apresentacao(movimento);
@@ -1218,6 +1257,36 @@ export function TelaExtrato() {
                                           abrir_modal_fatura(movimento);
                                         },
                                       },
+                                    ]
+                                    : []),
+                                  ...(ehGasto &&
+                                    movimento.cartaoId &&
+                                    movimento.papel !== "pagamento_fatura" &&
+                                    cartaoMovimento?.sincronizada === false
+                                    ? [
+                                      {
+                                        rotulo: "Próxima fatura",
+                                        icone: CalendarClock,
+                                        onClick: () => void ajustar_deslocamento_fatura(movimento, 1),
+                                      },
+                                      {
+                                        rotulo: "Fatura anterior",
+                                        icone: CalendarClock,
+                                        onClick: () => void ajustar_deslocamento_fatura(movimento, -1),
+                                      },
+                                      ...(movimento.deslocamentoFatura
+                                        ? [
+                                          {
+                                            rotulo: "Remover ajuste de fatura",
+                                            icone: CalendarClock,
+                                            onClick: () =>
+                                              void ajustar_deslocamento_fatura(
+                                                movimento,
+                                                -movimento.deslocamentoFatura!,
+                                              ),
+                                          },
+                                        ]
+                                        : []),
                                     ]
                                     : []),
                                   ...(pode_excluir_movimento(movimento.fonte)
