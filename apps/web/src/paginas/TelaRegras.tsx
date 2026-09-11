@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Pencil, Plus, Sparkles, Workflow } from "lucide-react";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
+import { useConfirmacao } from "../contexto/ContextoConfirmacao";
 import { useToast } from "../contexto/ContextoToast";
 import {
   clienteApi,
@@ -70,6 +71,10 @@ function badges_acoes(acoes: AcaoRegraApi[], categoriaNome: string | null): stri
       badges.push("Pagamento de fatura");
     } else if (acao.tipo === "definir_perfil") {
       badges.push(acao.perfil === "pj" ? "Jurídica" : "Física");
+    } else if (acao.tipo === "somar_valor") {
+      badges.push("Soma valor");
+    } else if (acao.tipo === "subtrair_valor") {
+      badges.push("Subtrai valor");
     }
   }
   return badges;
@@ -78,6 +83,7 @@ function badges_acoes(acoes: AcaoRegraApi[], categoriaNome: string | null): stri
 export function TelaRegras() {
   const { usuario } = useAutenticacao();
   const toast = useToast();
+  const { confirmar } = useConfirmacao();
   const contexto = useContextoLayout();
   const [regras, setRegras] = useState<RegraResumo[]>([]);
   const [categorias, setCategorias] = useState<CategoriaResumo[]>([]);
@@ -137,6 +143,33 @@ export function TelaRegras() {
       contexto?.invalidar("regras", "extrato");
     } catch (e) {
       toast.erro(e instanceof ErroApi ? e.message : "Não foi possível atualizar a regra.");
+    }
+  }
+
+  async function desativar(regra: RegraResumo) {
+    if (!usuario) return;
+    const ok = await confirmar({
+      titulo: "Desativar regra?",
+      mensagem:
+        `Diferente de pausar: além de parar de aplicar, desfaz nos lançamentos ` +
+        `que "${regra.nome}" já classificou o que ela aplicou (categoria volta a ` +
+        "Não classificado, soma/subtrai sai, etc.). Lançamentos que você já " +
+        "corrigiu à mão não são tocados.",
+      confirmarRotulo: "Desativar",
+    });
+    if (!ok) return;
+    setErro(null);
+    try {
+      const resultado = await clienteApi.desativar_regra({ regraId: regra.id, usuarioId: usuario.id });
+      setRegras((atual) => atual.map((item) => (item.id === resultado.id ? resultado : item)));
+      toast.sucesso(
+        resultado.revertidos > 0
+          ? `Regra desativada. ${resultado.revertidos} lançamento${resultado.revertidos === 1 ? "" : "s"} revertido${resultado.revertidos === 1 ? "" : "s"}.`
+          : "Regra desativada.",
+      );
+      contexto?.invalidar("regras", "extrato");
+    } catch (e) {
+      toast.erro(e instanceof ErroApi ? e.message : "Não foi possível desativar a regra.");
     }
   }
 
@@ -258,6 +291,9 @@ export function TelaRegras() {
                   </Botao>
                   <Botao variante="fantasma" onClick={() => void alternar_ativa(regra)}>
                     {regra.ativa ? "Pausar" : "Ativar"}
+                  </Botao>
+                  <Botao variante="fantasma" onClick={() => void desativar(regra)}>
+                    Desativar
                   </Botao>
                 </div>
               </motion.li>

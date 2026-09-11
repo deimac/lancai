@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   classificadoPorEnum,
+  efeitoValorEnum,
   formaPagamentoEnum,
   papelConhecimentoEnum,
   perfilEnum,
@@ -155,6 +156,12 @@ export const movimento = pgTable(
     cartaoFaturaId: uuid("cartao_fatura_id").references(() => cartao.id, { onDelete: "set null" }),
     /** Competência da fatura quitada (`YYYY-MM`). */
     competenciaFatura: text("competencia_fatura"),
+    /**
+     * Override de regra sobre o sinal deste lançamento nos cálculos (fatura,
+     * fluxo de caixa, resultado do mês). Nulo = usa o padrão do `tipo`. Ver
+     * ações `somar_valor`/`subtrair_valor` em `@lancai/tipos` (regra.ts).
+     */
+    efeitoValor: efeitoValorEnum("efeito_valor"),
 
     // -------------------------------------------------------------------
     // Auditoria

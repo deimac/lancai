@@ -324,6 +324,9 @@ export function ModalRegra({ aberto, regra, categorias, aoFechar, aoSalvar }: Pr
                           if (tipo === "marcar_pagamento_fatura") {
                             return { tipo };
                           }
+                          if (tipo === "somar_valor" || tipo === "subtrair_valor") {
+                            return { tipo };
+                          }
                           return { tipo: "ignorar_transacao" };
                         }),
                       );
@@ -335,6 +338,8 @@ export function ModalRegra({ aberto, regra, categorias, aoFechar, aoSalvar }: Pr
                     <option value="adicionar_tags_notas">Adicionar tags/notas</option>
                     <option value="ignorar_transacao">Ignorar transação</option>
                     <option value="marcar_pagamento_fatura">Marcar pagamento de fatura</option>
+                    <option value="somar_valor">Somar valor (conta como despesa)</option>
+                    <option value="subtrair_valor">Subtrair valor (conta como crédito)</option>
                   </select>
                   <ValorAcao
                     acao={acao}
@@ -572,6 +577,22 @@ function ValorAcao({
     return (
       <p className="self-center text-xs text-texto-suave">
         Marca como pagamento de fatura e some dos totais
+      </p>
+    );
+  }
+  if (acao.tipo === "somar_valor") {
+    return (
+      <p className="self-center text-xs text-texto-suave">
+        Passa a contar como despesa: soma na fatura do cartão, sai do fluxo de
+        caixa e do resultado do mês — independente do tipo original.
+      </p>
+    );
+  }
+  if (acao.tipo === "subtrair_valor") {
+    return (
+      <p className="self-center text-xs text-texto-suave">
+        Passa a contar como crédito: abate a fatura do cartão, entra no fluxo
+        de caixa e no resultado do mês — independente do tipo original.
       </p>
     );
   }

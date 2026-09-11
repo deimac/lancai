@@ -15,9 +15,11 @@ import {
   competencia_quitacao_fatura,
   data_fechamento_do_ciclo,
   data_vencimento_do_ciclo,
+  dia_fechamento_no_mes,
   intervalo_ciclo_fatura,
   mes_gasto_do_cartao,
   deISOParaData,
+  efeito_valor_movimento,
   eh_credito_quitacao_no_cartao,
   eh_linha_da_fatura,
   valor_na_fatura,
@@ -278,14 +280,28 @@ export function agregar_totais_por_natureza(
 }
 
 export function somar_receitas_despesas(
-  movimentos: Array<{ tipo: string; valor: string | number; papel?: string | null }>,
+  movimentos: Array<{
+    tipo: string;
+    valor: string | number;
+    papel?: string | null;
+    efeitoValor?: "soma" | "subtrai" | null;
+  }>,
 ): { receitas: number; despesas: number } {
   let receitas = 0;
   let despesas = 0;
   for (const movimento of movimentos) {
     if (movimento.papel === "pagamento_fatura") continue;
-    if (movimento.tipo === "receita") receitas += Number(movimento.valor);
-    else if (movimento.tipo === "despesa") despesas += Number(movimento.valor);
+    // Override de regra manda mesmo fora do par receita/despesa (mantém o
+    // padrão — só receita/despesa entram no P&L — quando não há override).
+    if (movimento.efeitoValor === "subtrai") {
+      receitas += Number(movimento.valor);
+    } else if (movimento.efeitoValor === "soma") {
+      despesas += Number(movimento.valor);
+    } else if (movimento.tipo === "receita") {
+      receitas += Number(movimento.valor);
+    } else if (movimento.tipo === "despesa") {
+      despesas += Number(movimento.valor);
+    }
   }
   return { receitas: arredondar(receitas), despesas: arredondar(despesas) };
 }
@@ -334,6 +350,7 @@ export function agregar_gasto_cartao_por_competencia(
     ignoradoEmRelatorio?: boolean;
     descricao?: string | null;
     descricaoFonte?: string | null;
+    efeitoValor?: "soma" | "subtrai" | null;
   }>,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   mes: string | ReadonlyMap<string, string>,
@@ -382,6 +399,8 @@ type MovimentoFaturaDashboard = {
   ignoradoEmRelatorio?: boolean;
   descricao?: string | null;
   descricaoFonte?: string | null;
+  /** Override de regra (`somar_valor`/`subtrair_valor`) sobre o sinal do lançamento. */
+  efeitoValor?: "soma" | "subtrai" | null;
 };
 
 /**
@@ -453,6 +472,102 @@ function somar_pagamentos_fatura(
   return arredondar(fonte.reduce((total, movimento) => total + Number(movimento.valor), 0));
 }
 
+/**
+ * Compra datada no dia exato do fechamento de um ciclo que já está "paga"
+ * chegou depois que o banco fechou/quitou aquela fatura — o próprio banco vai
+ * empurrá-la pra fatura seguinte quando confirmar. Ajuste só de leitura: desloca
+ * a data em 1 dia (cai no ciclo seguinte via `competencia_ciclo_da_data`) sem
+ * gravar nada — se a próxima sincronização confirmar outra coisa, o cálculo
+ * segue a partir do Fato normalmente. Parcela fica de fora (tem regra própria
+ * de ciclo). Geral: vale pra qualquer cartão, inclusive manual.
+ */
+function adiar_compras_do_fechamento_ja_pago<T extends MovimentoFaturaDashboard>(
+  movimentos: T[],
+  cartoes: Array<{ id: string; fechamento: number }>,
+  statusPorCicloCartao: ReadonlyMap<string, StatusFaturaDashboard>,
+): T[] {
+  const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
+  return movimentos.map((movimento) => {
+    if (movimento.parcelaNumero != null) return movimento;
+    if (!movimento.cartaoId) return movimento;
+    const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
+    if (fechamento == null || fechamento < 1) return movimento;
+
+    const data = String(movimento.dataMovimento).slice(0, 10);
+    const [anoStr, mesStr, diaStr] = data.split("-");
+    const ano = Number(anoStr);
+    const mes = Number(mesStr);
+    const dia = Number(diaStr);
+    if (!ano || !mes || !dia) return movimento;
+
+    const diaFecha = dia_fechamento_no_mes(ano, mes, fechamento);
+    if (dia !== diaFecha) return movimento;
+
+    const cicloFecha = competencia_ciclo_da_data(data, fechamento);
+    const status = statusPorCicloCartao.get(`${movimento.cartaoId}:${cicloFecha}`);
+    if (status !== "paga") return movimento;
+
+    const proximoDia = deISOParaData(data);
+    proximoDia.setUTCDate(proximoDia.getUTCDate() + 1);
+    return { ...movimento, dataMovimento: paraDataISO(proximoDia) };
+  });
+}
+
+function montar_linha_fatura(
+  cartao: { id: string; nome: string; fechamento: number; vencimento: number; sincronizada?: boolean },
+  mesTela: string,
+  cicloFecha: string,
+  movimentos: MovimentoFaturaDashboard[],
+  hoje: string,
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  vencimentoPorCartao: ReadonlyMap<string, number>,
+  oficiais: ReadonlyMap<string, { total: number }>,
+  alocacoesBaixaConfianca: ReadonlyMap<string, ConfiancaBaixaFatura> | undefined,
+): LinhaFaturaDashboard {
+  const ciclo = intervalo_ciclo_fatura(cicloFecha, cartao.fechamento);
+  const oficial = oficiais.get(`${cartao.id}:${cicloFecha}`);
+  const gasto = agregar_gasto_cartao_por_competencia(
+    movimentos,
+    fechamentoPorCartao,
+    new Map([[cartao.id, cicloFecha]]),
+    vencimentoPorCartao,
+  ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+  const cicloAberto = ciclo_aberto_em(hoje, cartao.fechamento);
+  const totalOficial = oficial?.total ?? null;
+  const total = totalOficial ?? arredondar(gasto.gasto);
+  const totalPago = somar_pagamentos_fatura(
+    movimentos,
+    cartao.id,
+    cicloFecha,
+    cartao.fechamento,
+    cartao.vencimento,
+  );
+  const cicloAtual = cicloFecha === cicloAberto;
+  const futura = mesTela > hoje.slice(0, 7);
+  const prevista = totalOficial == null && futura && gasto.quantidade > 0;
+  const origem = totalOficial != null ? "oficial" : cicloAtual ? "aberta" : "prevista";
+  const base = totalOficial ?? total;
+  const confiancaBaixa = alocacoesBaixaConfianca?.get(`${cartao.id}:${cicloFecha}`);
+  return {
+    cartaoId: cartao.id,
+    cartaoNome: cartao.nome,
+    competencia: mesTela,
+    total,
+    totalOficial,
+    totalPago,
+    saldo: arredondar(Math.max(0, base - totalPago)),
+    status: status_fatura(totalOficial, total, totalPago, cicloAtual, prevista, cartao.sincronizada === false),
+    origem,
+    cicloInicio: ciclo.inicio,
+    cicloFim: ciclo.fim,
+    dataFechamento: data_fechamento_do_ciclo(cicloFecha, cartao.fechamento),
+    dataVencimento: data_vencimento_do_ciclo(cicloFecha, cartao.fechamento, cartao.vencimento),
+    quantidadeLancamentos: gasto.quantidade,
+    ajuste: totalOficial == null ? null : arredondar(totalOficial - gasto.gasto),
+    ...(confiancaBaixa ? { confiancaBaixa } : {}),
+  };
+}
+
 export function montar_serie_faturas_dashboard(entrada: {
   /** `sincronizada: false` (cartão manual) nunca recebe `totalOficial` — só vem do Pluggy. */
   cartoes: Array<{
@@ -488,6 +603,36 @@ export function montar_serie_faturas_dashboard(entrada: {
     meses.push(paraDataISO(cursor).slice(0, 7));
   }
 
+  // 1ª passada: status por cartão+ciclo com os movimentos como vieram, só pra
+  // descobrir quais ciclos já estão "paga" (input do ajuste do fechamento).
+  const statusPorCicloCartao = new Map<string, StatusFaturaDashboard>();
+  for (const mesTela of meses) {
+    for (const cartao of entrada.cartoes) {
+      const cicloFecha = competencia_alvo_do_modo_fatura({
+        mes: mesTela,
+        fechamento: cartao.fechamento,
+        vencimento: cartao.vencimento,
+      });
+      const { status } = montar_linha_fatura(
+        cartao,
+        mesTela,
+        cicloFecha,
+        entrada.movimentos,
+        entrada.hoje,
+        fechamentoPorCartao,
+        vencimentoPorCartao,
+        oficiais,
+        alocacoesBaixaConfianca,
+      );
+      statusPorCicloCartao.set(`${cartao.id}:${cicloFecha}`, status);
+    }
+  }
+  const movimentosAjustados = adiar_compras_do_fechamento_ja_pago(
+    entrada.movimentos,
+    entrada.cartoes,
+    statusPorCicloCartao,
+  );
+
   return meses.map((mesTela) => {
     const linhas = entrada.cartoes.map((cartao) => {
       const cicloFecha = competencia_alvo_do_modo_fatura({
@@ -495,55 +640,17 @@ export function montar_serie_faturas_dashboard(entrada: {
         fechamento: cartao.fechamento,
         vencimento: cartao.vencimento,
       });
-      const ciclo = intervalo_ciclo_fatura(cicloFecha, cartao.fechamento);
-      const oficial = oficiais.get(`${cartao.id}:${cicloFecha}`);
-      const gasto = agregar_gasto_cartao_por_competencia(
-        entrada.movimentos,
-        fechamentoPorCartao,
-        new Map([[cartao.id, cicloFecha]]),
-        vencimentoPorCartao,
-      ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
-      const cicloAberto = ciclo_aberto_em(entrada.hoje, cartao.fechamento);
-      const totalOficial = oficial?.total ?? null;
-      const total = totalOficial ?? arredondar(gasto.gasto);
-      const totalPago = somar_pagamentos_fatura(
-        entrada.movimentos,
-        cartao.id,
+      return montar_linha_fatura(
+        cartao,
+        mesTela,
         cicloFecha,
-        cartao.fechamento,
-        cartao.vencimento,
+        movimentosAjustados,
+        entrada.hoje,
+        fechamentoPorCartao,
+        vencimentoPorCartao,
+        oficiais,
+        alocacoesBaixaConfianca,
       );
-      const cicloAtual = cicloFecha === cicloAberto;
-      const futura = mesTela > entrada.hoje.slice(0, 7);
-      const prevista = totalOficial == null && futura && gasto.quantidade > 0;
-      const origem = totalOficial != null ? "oficial" : cicloAtual ? "aberta" : "prevista";
-      const base = totalOficial ?? total;
-      const confiancaBaixa = alocacoesBaixaConfianca?.get(`${cartao.id}:${cicloFecha}`);
-      return {
-        cartaoId: cartao.id,
-        cartaoNome: cartao.nome,
-        competencia: mesTela,
-        total,
-        totalOficial,
-        totalPago,
-        saldo: arredondar(Math.max(0, base - totalPago)),
-        status: status_fatura(
-          totalOficial,
-          total,
-          totalPago,
-          cicloAtual,
-          prevista,
-          cartao.sincronizada === false,
-        ),
-        origem,
-        cicloInicio: ciclo.inicio,
-        cicloFim: ciclo.fim,
-        dataFechamento: data_fechamento_do_ciclo(cicloFecha, cartao.fechamento),
-        dataVencimento: data_vencimento_do_ciclo(cicloFecha, cartao.fechamento, cartao.vencimento),
-        quantidadeLancamentos: gasto.quantidade,
-        ajuste: totalOficial == null ? null : arredondar(totalOficial - gasto.gasto),
-        ...(confiancaBaixa ? { confiancaBaixa } : {}),
-      } satisfies LinhaFaturaDashboard;
     });
     const mesAtual = entrada.hoje.slice(0, 7);
     const comDados = linhas.filter(
@@ -996,13 +1103,13 @@ export function contar_nao_classificados_em(
   return { quantidade, total };
 }
 
-function efeito_caixa(tipo: string, valor: number): number {
-  if (tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte") {
-    return valor;
-  }
-  if (tipo === "despesa" || tipo === "retirada") {
-    return -valor;
-  }
+function efeito_caixa(
+  movimento: { tipo: string; efeitoValor?: "soma" | "subtrai" | null },
+  valor: number,
+): number {
+  const efeito = efeito_valor_movimento(movimento);
+  if (efeito === "subtrai") return valor;
+  if (efeito === "soma") return -valor;
   return 0;
 }
 
@@ -1022,6 +1129,7 @@ export function montar_fluxo_caixa(entrada: {
     status: string;
     contaId?: string | null;
     cartaoId?: string | null;
+    efeitoValor?: "soma" | "subtrai" | null;
   }>;
 }): Array<{ data: string; saldo: number }> {
   const naConta = entrada.movimentos.filter(
@@ -1033,7 +1141,7 @@ export function montar_fluxo_caixa(entrada: {
   const porDia = new Map<string, number>();
   for (const movimento of naConta) {
     const dia = String(movimento.dataMovimento).slice(0, 10);
-    const efeito = efeito_caixa(movimento.tipo, Number(movimento.valor));
+    const efeito = efeito_caixa(movimento, Number(movimento.valor));
     if (efeito === 0) continue;
     if (dia >= entrada.periodo.de && dia <= entrada.periodo.ate) {
       netPeriodo += efeito;
@@ -1091,7 +1199,12 @@ function montar_ranking_tipo(
 }
 
 function montar_fluxo_resultado(
-  movimentos: Array<{ dataMovimento: string; tipo: string; valor: string | number }>,
+  movimentos: Array<{
+    dataMovimento: string;
+    tipo: string;
+    valor: string | number;
+    efeitoValor?: "soma" | "subtrai" | null;
+  }>,
   periodo: { de: string; ate: string },
 ): Array<{
   data: string;
@@ -1106,9 +1219,10 @@ function montar_fluxo_resultado(
     const dia = diaBruto < periodo.de ? periodo.de : diaBruto > periodo.ate ? periodo.ate : diaBruto;
     const atual = porDia.get(dia) ?? { entradas: 0, saidas: 0 };
     const valor = Number(movimento.valor);
-    if (["receita", "reembolso", "estorno", "aporte"].includes(movimento.tipo)) {
+    const efeito = efeito_valor_movimento(movimento);
+    if (efeito === "subtrai") {
       atual.entradas += valor;
-    } else if (movimento.tipo === "despesa" || movimento.tipo === "retirada") {
+    } else if (efeito === "soma") {
       atual.saidas += valor;
     }
     porDia.set(dia, atual);

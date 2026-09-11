@@ -44,6 +44,8 @@ export interface RepositorioConhecimento {
   excluirRegra(id: string): Promise<void>;
   /** IDs de movimentos (não cancelados) elegíveis para reaplicação em lote. */
   listarMovimentoIdsParaRegras(workspaceIds: string[]): Promise<string[]>;
+  /** Movimentos (não cancelados) atualmente classificados por esta regra — usado ao desativar/reverter. */
+  listarMovimentosPorRegra(regraId: string): Promise<Movimento[]>;
   /** Workspaces em que o usuário é dono. */
   listarWorkspaceIdsDoUsuario(usuarioId: string): Promise<string[]>;
   /** Categorias ativas do usuário — lista que o sugeridor de IA pode escolher. */

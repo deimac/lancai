@@ -267,6 +267,13 @@
       "when": 1786400100000,
       "tag": "0038_bill_allocation_unresolved",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1786400200000,
+      "tag": "0039_efeito_valor",
+      "breakpoints": true
     }
   ]
 }

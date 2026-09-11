@@ -182,7 +182,9 @@ export type AcaoRegraApi =
   | { tipo: "adicionar_tags_notas"; tags?: string[]; observacoes?: string }
   | { tipo: "ignorar_transacao" }
   | { tipo: "definir_perfil"; perfil: Perfil }
-  | { tipo: "marcar_pagamento_fatura" };
+  | { tipo: "marcar_pagamento_fatura" }
+  | { tipo: "somar_valor" }
+  | { tipo: "subtrair_valor" };
 
 export interface RegraResumo {
   id: string;
@@ -959,6 +961,21 @@ export const clienteApi = {
     return requisitar<RegraResumo>(`/regras/${dados.regraId}`, {
       method: "PATCH",
       body: JSON.stringify({ usuarioId: dados.usuarioId, ativa: dados.ativa }),
+    });
+  },
+
+  /**
+   * Diferente de `definir_ativa_regra(ativa: false)` (pausa, não mexe no
+   * histórico): desativar também desfaz, nos lançamentos que essa regra
+   * classificou, o que ela aplicou.
+   */
+  desativar_regra(dados: {
+    regraId: string;
+    usuarioId: string;
+  }): Promise<RegraResumo & { revertidos: number }> {
+    return requisitar<RegraResumo & { revertidos: number }>(`/regras/${dados.regraId}/desativar`, {
+      method: "POST",
+      body: JSON.stringify({ usuarioId: dados.usuarioId }),
     });
   },
 

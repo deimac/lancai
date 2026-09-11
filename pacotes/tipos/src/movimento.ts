@@ -17,6 +17,13 @@ export type TipoMovimento = z.infer<typeof tipoMovimentoSchema>;
 export const statusMovimentoSchema = z.enum(["previsto", "realizado", "cancelado"]);
 export type StatusMovimento = z.infer<typeof statusMovimentoSchema>;
 
+/**
+ * Override de regra sobre o sinal do lançamento nos cálculos financeiros
+ * (fatura, fluxo de caixa, resultado do mês). Nulo usa o padrão do `tipo`.
+ */
+export const efeitoValorSchema = z.enum(["soma", "subtrai"]);
+export type EfeitoValor = z.infer<typeof efeitoValorSchema>;
+
 const dataISOSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD");
@@ -141,6 +148,8 @@ export const schemaConhecimentoMovimento = z.object({
   papel: papelConhecimentoSchema.optional(),
   cartaoFaturaId: z.string().uuid().nullable().optional(),
   competenciaFatura: competenciaFaturaSchema.nullable().optional(),
+  /** Preenchido só via regra (`somar_valor`/`subtrair_valor`). Null limpa o override. */
+  efeitoValor: efeitoValorSchema.nullable().optional(),
 });
 export type ConhecimentoMovimento = z.infer<typeof schemaConhecimentoMovimento>;
 

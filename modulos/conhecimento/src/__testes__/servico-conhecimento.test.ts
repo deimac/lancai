@@ -146,6 +146,12 @@ class RepositorioEmMemoria implements RepositorioConhecimento {
       .map((m) => m.id);
   }
 
+  async listarMovimentosPorRegra(regraId: string) {
+    return [...this.movimentos.values()].filter(
+      (m) => m.regraId === regraId && m.status !== "cancelado",
+    );
+  }
+
   async listarWorkspaceIdsDoUsuario(usuarioId: string) {
     return this.workspacesPorUsuario.get(usuarioId) ?? [WORKSPACE];
   }
@@ -241,6 +247,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     papel: "gasto" as const,
     cartaoFaturaId: null,
     competenciaFatura: null,
+    efeitoValor: null,
     usuarioId: randomUUID(),
     dataCriacao: agora,
     dataAtualizacao: agora,
@@ -734,6 +741,133 @@ describe("ServicoConhecimento", () => {
       expect(resultado.aplicada).toBe(false);
       expect(repositorio.movimentos.get(movimento.id)?.papel).toBe("gasto");
       expect(repositorio.movimentos.get(movimento.id)?.ignoradoEmRelatorio).toBe(false);
+    });
+
+    it("regra com ação 'subtrair_valor' grava efeitoValor no lançamento", async () => {
+      const movimento = criarMovimento({
+        descricaoFonte: "ESTORNO COMPRA XPTO",
+        descricao: "ESTORNO COMPRA XPTO",
+        tipo: "estorno",
+        categoriaId: categoriaNaoClassificado,
+        classificadoPor: "ia",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      await servico.criar_regra({
+        workspaceId: WORKSPACE,
+        nome: "Estorno grande → não abate o mês",
+        logicaCondicoes: "ou",
+        condicoes: [{ campo: "descricao", operador: "contem", valor: "ESTORNO COMPRA XPTO" }],
+        acoes: [{ tipo: "subtrair_valor" }],
+      });
+
+      const resultado = await servico.aplicar_regras(movimento.id);
+      expect(resultado.aplicada).toBe(true);
+      if (!resultado.aplicada) return;
+      expect(resultado.movimento.efeitoValor).toBe("subtrai");
+    });
+
+    it("regra com ação 'somar_valor' grava efeitoValor no lançamento", async () => {
+      const movimento = criarMovimento({
+        descricaoFonte: "REEMBOLSO VIAGEM",
+        descricao: "REEMBOLSO VIAGEM",
+        tipo: "reembolso",
+        categoriaId: categoriaNaoClassificado,
+        classificadoPor: "ia",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      await servico.criar_regra({
+        workspaceId: WORKSPACE,
+        nome: "Reembolso de terceiro → conta como gasto",
+        logicaCondicoes: "ou",
+        condicoes: [{ campo: "descricao", operador: "contem", valor: "REEMBOLSO VIAGEM" }],
+        acoes: [{ tipo: "somar_valor" }],
+      });
+
+      const resultado = await servico.aplicar_regras(movimento.id);
+      expect(resultado.aplicada).toBe(true);
+      if (!resultado.aplicada) return;
+      expect(resultado.movimento.efeitoValor).toBe("soma");
+    });
+  });
+
+  describe("desativar_regra", () => {
+    const categoriaNaoClassificado = randomUUID();
+    const categoriaRestaurante = randomUUID();
+
+    beforeEach(() => {
+      repositorio.cadastrarCategoria(categoriaNaoClassificado, "Não classificado");
+      repositorio.cadastrarCategoria(categoriaRestaurante, "Restaurantes");
+    });
+
+    it("pausa a regra e reverte categoria + efeitoValor nos lançamentos que ela classificou", async () => {
+      const movimento = criarMovimento({
+        descricaoFonte: "ESTORNO COMPRA XPTO",
+        categoriaId: categoriaNaoClassificado,
+        classificadoPor: "ia",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const regra = await servico.criar_regra({
+        workspaceId: WORKSPACE,
+        nome: "Estorno XPTO",
+        logicaCondicoes: "ou",
+        condicoes: [{ campo: "descricao", operador: "contem", valor: "ESTORNO COMPRA XPTO" }],
+        acoes: [
+          { tipo: "definir_categoria", categoriaId: categoriaRestaurante },
+          { tipo: "subtrair_valor" },
+        ],
+      });
+
+      await servico.aplicar_regras(movimento.id);
+      expect(repositorio.movimentos.get(movimento.id)?.categoriaId).toBe(categoriaRestaurante);
+      expect(repositorio.movimentos.get(movimento.id)?.efeitoValor).toBe("subtrai");
+
+      const { revertidos } = await servico.desativar_regra(regra.id);
+
+      expect(revertidos).toBe(1);
+      const atualizado = repositorio.movimentos.get(movimento.id)!;
+      expect(atualizado.categoriaId).toBe(categoriaNaoClassificado);
+      expect(atualizado.efeitoValor).toBeNull();
+      expect(atualizado.regraId).toBeNull();
+      expect(atualizado.classificadoPor).toBe("ia");
+
+      const regraAtualizada = await repositorio.obterRegra(regra.id);
+      expect(regraAtualizada?.ativa).toBe(false);
+    });
+
+    it("não mexe em lançamento que o usuário já reclassificou à mão", async () => {
+      const movimento = criarMovimento({
+        descricaoFonte: "ESTORNO COMPRA XPTO",
+        categoriaId: categoriaNaoClassificado,
+        classificadoPor: "ia",
+      });
+      repositorio.movimentos.set(movimento.id, movimento);
+
+      const regra = await servico.criar_regra({
+        workspaceId: WORKSPACE,
+        nome: "Estorno XPTO",
+        logicaCondicoes: "ou",
+        condicoes: [{ campo: "descricao", operador: "contem", valor: "ESTORNO COMPRA XPTO" }],
+        acoes: [{ tipo: "definir_categoria", categoriaId: categoriaRestaurante }],
+      });
+      await servico.aplicar_regras(movimento.id);
+
+      // Usuário corrige à mão depois — isso já limpa o regraId (comportamento existente de `atualizar`).
+      const outraCategoria = randomUUID();
+      repositorio.cadastrarCategoria(outraCategoria, "Viagens");
+      await servico.atualizar({
+        movimentoId: movimento.id,
+        alteradoPor: usuarioId,
+        conhecimento: { categoriaId: outraCategoria, classificadoPor: "usuario" },
+      });
+
+      const { revertidos } = await servico.desativar_regra(regra.id);
+
+      expect(revertidos).toBe(0);
+      expect(repositorio.movimentos.get(movimento.id)?.categoriaId).toBe(outraCategoria);
+      expect(repositorio.movimentos.get(movimento.id)?.classificadoPor).toBe("usuario");
     });
   });
 });

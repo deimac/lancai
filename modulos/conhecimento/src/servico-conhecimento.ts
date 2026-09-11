@@ -86,6 +86,7 @@ export class ServicoConhecimento {
     if (dados.confiancaIa !== undefined) {
       campos.confiancaIa = dados.confiancaIa === null ? null : dados.confiancaIa.toFixed(3);
     }
+    if (dados.efeitoValor !== undefined) campos.efeitoValor = dados.efeitoValor;
 
     if (dados.pessoaId !== undefined) {
       const pessoa = await this.repositorio.obterPessoa(dados.pessoaId);
@@ -532,6 +533,77 @@ export class ServicoConhecimento {
     return this.atualizar_regra(regraId, { ativa });
   }
 
+  /**
+   * Diferente de "pausar" (só `ativa: false`, não mexe no histórico):
+   * desativar também desfaz, em todo movimento que essa regra classificou,
+   * o que ela aplicou — categoria volta a "Não classificado", tags/notas
+   * que ela adicionou saem, `ignorar`/`pagamento de fatura`/`somar-subtrair`
+   * revertem, e o movimento volta a poder ser reclassificado (`classificadoPor: "ia"`).
+   * `definir_beneficiario` e `definir_perfil` não têm um "nulo" seguro no
+   * schema atual — ficam como estavam.
+   */
+  async desativar_regra(regraId: string): Promise<{ revertidos: number }> {
+    const regra = await this.repositorio.obterRegra(regraId);
+    if (!regra) throw new ErroConhecimentoInvalido(`Regra ${regraId} não existe.`);
+
+    await this.atualizar_regra(regraId, { ativa: false });
+
+    const acoes = acoes_da_regra(regra);
+    const movimentos = await this.repositorio.listarMovimentosPorRegra(regraId);
+    let revertidos = 0;
+
+    for (const movimento of movimentos) {
+      const conhecimento: EntradaAtualizarConhecimento["conhecimento"] = {
+        classificadoPor: "ia",
+        regraId: null,
+      };
+
+      for (const acao of acoes) {
+        switch (acao.tipo) {
+          case "definir_categoria": {
+            const naoClassificado = await this.repositorio.buscarCategoriaPorNome(
+              movimento.usuarioId,
+              CATEGORIA_NAO_CLASSIFICADO,
+            );
+            if (naoClassificado) conhecimento.categoriaId = naoClassificado.id;
+            break;
+          }
+          case "adicionar_tags_notas": {
+            if (acao.tags?.length) {
+              const removidas = new Set(acao.tags);
+              conhecimento.tags = (movimento.tags ?? []).filter((tag) => !removidas.has(tag));
+            }
+            if (acao.observacoes !== undefined) conhecimento.observacoes = null;
+            break;
+          }
+          case "ignorar_transacao":
+            conhecimento.ignoradoEmRelatorio = false;
+            break;
+          case "marcar_pagamento_fatura":
+            conhecimento.papel = "gasto";
+            break;
+          case "somar_valor":
+          case "subtrair_valor":
+            conhecimento.efeitoValor = null;
+            break;
+          case "definir_beneficiario":
+          case "definir_perfil":
+            // Sem valor nulo seguro no schema — não revertido.
+            break;
+        }
+      }
+
+      await this.atualizar({
+        movimentoId: movimento.id,
+        alteradoPor: movimento.usuarioId,
+        conhecimento,
+      });
+      revertidos += 1;
+    }
+
+    return { revertidos };
+  }
+
   async propor_regra_de_movimento(movimentoId: string): Promise<PropostaRegra | null> {
     const movimento = await this.repositorio.obterMovimento(movimentoId);
     if (!movimento) throw new ErroMovimentoNaoEncontrado(movimentoId);
@@ -668,6 +740,12 @@ export class ServicoConhecimento {
           break;
         case "definir_perfil":
           conhecimento.tipoGasto = acao.perfil;
+          break;
+        case "somar_valor":
+          conhecimento.efeitoValor = "soma";
+          break;
+        case "subtrair_valor":
+          conhecimento.efeitoValor = "subtrai";
           break;
       }
     }

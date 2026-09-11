@@ -154,6 +154,13 @@ export class RepositorioConhecimentoDrizzle implements RepositorioConhecimento {
     return linhas.map((l) => l.id);
   }
 
+  async listarMovimentosPorRegra(regraId: string): Promise<Movimento[]> {
+    return this.banco
+      .select()
+      .from(movimentoTabela)
+      .where(and(eq(movimentoTabela.regraId, regraId), ne(movimentoTabela.status, "cancelado")));
+  }
+
   async listarWorkspaceIdsDoUsuario(usuarioId: string): Promise<string[]> {
     return listar_ids_workspaces_dono(this.banco, usuarioId);
   }

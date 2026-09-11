@@ -72,6 +72,7 @@ function criarMovimento(sobrepor: Partial<Movimento> = {}): Movimento {
     papel: "gasto" as const,
     cartaoFaturaId: null,
     competenciaFatura: null,
+    efeitoValor: null,
     usuarioId: randomUUID(),
     dataCriacao: agora,
     dataAtualizacao: agora,

@@ -944,6 +944,74 @@ describe("montar_serie_faturas_dashboard", () => {
     const agosto = meses.find((mes) => mes.competencia === "2026-08");
     expect(agosto).toMatchObject({ status: "aguardando_confirmacao" });
   });
+
+  describe("compra no dia do fechamento de fatura já paga", () => {
+    it("desloca pro ciclo seguinte quando o ciclo já está paga (oficial)", () => {
+      const meses = montar_serie_faturas_dashboard({
+        cartoes: [cartaoBase],
+        oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
+        movimentos: [
+          { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 1000, dataMovimento: "2026-08-12" },
+          // Chegou depois — datada bem no dia do fechamento (10) do ciclo já pago.
+          { cartaoId: cartaoBase.id, tipo: "despesa", valor: 50, dataMovimento: "2026-08-10", status: "realizado" },
+        ],
+        inicio: "2026-08-01",
+        fim: "2026-09-30",
+        hoje: "2026-09-05",
+      });
+      const agosto = meses.find((mes) => mes.competencia === "2026-08");
+      const setembro = meses.find((mes) => mes.competencia === "2026-09");
+
+      // Agosto continua com o total oficial e SEM o ajuste dos R$50 (foram pro ciclo seguinte).
+      expect(agosto).toMatchObject({ total: 1000, totalPago: 1000, status: "paga" });
+      expect(agosto?.linhas[0]?.ajuste).toBe(1000);
+      // Setembro (ciclo aberto) já enxerga a despesa.
+      expect(setembro?.linhas[0]).toMatchObject({ quantidadeLancamentos: 1, total: 50 });
+    });
+
+    it("não desloca quando o ciclo ainda não está paga", () => {
+      const meses = montar_serie_faturas_dashboard({
+        cartoes: [cartaoBase],
+        oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
+        movimentos: [
+          // Pagamento parcial — ciclo de agosto NÃO está "paga".
+          { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 200, dataMovimento: "2026-08-12" },
+          { cartaoId: cartaoBase.id, tipo: "despesa", valor: 50, dataMovimento: "2026-08-10", status: "realizado" },
+        ],
+        inicio: "2026-08-01",
+        fim: "2026-09-30",
+        hoje: "2026-09-05",
+      });
+      const agosto = meses.find((mes) => mes.competencia === "2026-08");
+      const setembro = meses.find((mes) => mes.competencia === "2026-09");
+
+      expect(agosto?.linhas[0]?.ajuste).toBe(950); // 1000 - 50: a despesa continua contando em agosto
+      expect(setembro?.linhas[0]?.quantidadeLancamentos ?? 0).toBe(0);
+    });
+
+    it("não desloca parcela — só compra avulsa", () => {
+      const meses = montar_serie_faturas_dashboard({
+        cartoes: [cartaoBase],
+        oficiais: [{ cartaoId: cartaoBase.id, competencia: "2026-08", total: 1000, dataFechamento: "2026-08-10" }],
+        movimentos: [
+          { papel: "pagamento_fatura", cartaoId: cartaoBase.id, cartaoFaturaId: cartaoBase.id, competenciaFatura: "2026-08", tipo: "receita", valor: 1000, dataMovimento: "2026-08-12" },
+          {
+            cartaoId: cartaoBase.id,
+            tipo: "despesa",
+            valor: 50,
+            dataMovimento: "2026-08-10",
+            status: "realizado",
+            parcelaNumero: 2,
+          },
+        ],
+        inicio: "2026-08-01",
+        fim: "2026-09-30",
+        hoje: "2026-09-05",
+      });
+      const agosto = meses.find((mes) => mes.competencia === "2026-08");
+      expect(agosto?.linhas[0]?.ajuste).toBe(950); // parcela continua em agosto, não desloca
+    });
+  });
 });
 
 describe("natureza do dashboard", () => {

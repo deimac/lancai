@@ -128,6 +128,29 @@ export async function registrar_rotas_regras(app: FastifyInstance) {
     }
   });
 
+  app.post("/:id/desativar", async (requisicao, resposta) => {
+    const { id } = requisicao.params as { id: string };
+    const { usuarioId } = schemaListar.parse(requisicao.body);
+    const workspaceIds = await workspaces_do_usuario(usuarioId);
+    const repo = new RepositorioConhecimentoDrizzle();
+    const existente = await repo.obterRegra(id);
+
+    if (!existente || !workspaceIds.includes(existente.workspaceId)) {
+      return resposta.status(404).send({ erro: "Regra não encontrada." });
+    }
+
+    try {
+      const { revertidos } = await conhecimento.desativar_regra(id);
+      const regra = await serializar_regra((await repo.obterRegra(id))!);
+      return resposta.send({ ...regra, revertidos });
+    } catch (erro) {
+      if (erro instanceof ErroConhecimentoInvalido) {
+        return resposta.status(400).send({ erro: erro.message });
+      }
+      throw erro;
+    }
+  });
+
   app.delete("/:id", async (requisicao, resposta) => {
     const { id } = requisicao.params as { id: string };
     const { usuarioId } = schemaListar.parse(requisicao.query);

@@ -120,6 +120,7 @@ function criarMovimento(usuarioId: string, categoriaId: string, sobrepor: Partia
     papel: "gasto" as const,
     cartaoFaturaId: null,
     competenciaFatura: null,
+    efeitoValor: null,
     usuarioId,
     dataCriacao: agora,
     dataAtualizacao: agora,

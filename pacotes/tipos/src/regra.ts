@@ -65,6 +65,21 @@ export const schemaAcaoMarcarPagamentoFatura = z.object({
   tipo: z.literal("marcar_pagamento_fatura"),
 });
 
+/**
+ * Override do efeito financeiro do lançamento (fatura do cartão, fluxo de
+ * caixa, resultado do mês) — em vez de deduzir do `tipo` (ex.: hardcoded
+ * "estorno sempre abate"), a pessoa decide pela regra. `somar_valor` faz o
+ * lançamento se comportar como despesa (soma na fatura, sai do caixa);
+ * `subtrair_valor` como crédito (abate fatura, entra no caixa).
+ */
+export const schemaAcaoSomarValor = z.object({
+  tipo: z.literal("somar_valor"),
+});
+
+export const schemaAcaoSubtrairValor = z.object({
+  tipo: z.literal("subtrair_valor"),
+});
+
 export const schemaAcaoRegra = z.discriminatedUnion("tipo", [
   schemaAcaoDefinirCategoria,
   schemaAcaoDefinirBeneficiario,
@@ -72,6 +87,8 @@ export const schemaAcaoRegra = z.discriminatedUnion("tipo", [
   schemaAcaoIgnorarTransacao,
   schemaAcaoDefinirPerfil,
   schemaAcaoMarcarPagamentoFatura,
+  schemaAcaoSomarValor,
+  schemaAcaoSubtrairValor,
 ]);
 export type AcaoRegra = z.infer<typeof schemaAcaoRegra>;
 

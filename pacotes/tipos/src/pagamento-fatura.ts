@@ -516,6 +516,30 @@ export function mapa_vencimento_cartoes(
 
 const CREDITOS_DA_FATURA = new Set(["receita", "reembolso", "estorno"]);
 
+/**
+ * Efeito financeiro do lançamento nos cálculos (fatura, fluxo de caixa,
+ * resultado do mês): `soma` se comporta como despesa/saída; `subtrai` como
+ * crédito/entrada; `nenhum` fica de fora (ex.: transferência interna).
+ * `efeitoValor` (override de regra — `somar_valor`/`subtrair_valor`) sempre
+ * manda quando presente, inclusive puxando pra dentro do cálculo um tipo que
+ * por padrão ficaria de fora; sem override, cai no padrão do `tipo`.
+ * Ver `docs/09-REGRAS_DE_NEGOCIO.md`.
+ */
+export function efeito_valor_movimento(movimento: {
+  tipo?: string | null;
+  efeitoValor?: "soma" | "subtrai" | null;
+}): "soma" | "subtrai" | "nenhum" {
+  if (movimento.efeitoValor === "soma" || movimento.efeitoValor === "subtrai") {
+    return movimento.efeitoValor;
+  }
+  const tipo = movimento.tipo;
+  if (tipo === "receita" || tipo === "reembolso" || tipo === "estorno" || tipo === "aporte") {
+    return "subtrai";
+  }
+  if (tipo === "despesa" || tipo === "retirada") return "soma";
+  return "nenhum";
+}
+
 function textos_do_movimento(movimento: {
   descricao?: string | null;
   descricaoFonte?: string | null;
@@ -570,14 +594,18 @@ export function eh_gasto_da_fatura(movimento: {
   return eh_linha_da_fatura(movimento);
 }
 
-/** Despesa soma; crédito do cartão (estorno, atraso) abate. */
+/**
+ * Despesa soma; crédito do cartão (estorno, atraso) abate. `efeitoValor`
+ * (override de regra) manda quando presente — ver `efeito_valor_movimento`.
+ */
 export function valor_na_fatura(movimento: {
   tipo?: string | null;
   valor: string | number;
+  efeitoValor?: "soma" | "subtrai" | null;
 }): number {
   const valor = Number(movimento.valor);
   const seguro = Number.isFinite(valor) ? valor : 0;
-  if (movimento.tipo != null && CREDITOS_DA_FATURA.has(movimento.tipo)) return -seguro;
+  if (efeito_valor_movimento(movimento) === "subtrai") return -seguro;
   return seguro;
 }
 

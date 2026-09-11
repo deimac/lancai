@@ -122,6 +122,14 @@ export const statusFonteEnum = pgEnum("status_fonte", ["confirmado", "pendente",
  */
 export const classificadoPorEnum = pgEnum("classificado_por", ["regra", "ia", "usuario"]);
 
+/**
+ * Override de regra sobre o efeito financeiro do lançamento: `soma` se
+ * comporta como despesa (aumenta fatura, sai do caixa); `subtrai` se
+ * comporta como crédito (abate fatura, entra no caixa). Nulo = usa o
+ * comportamento padrão do `tipo` (despesa/receita/estorno/…).
+ */
+export const efeitoValorEnum = pgEnum("efeito_valor", ["soma", "subtrai"]);
+
 /** Como a regra nasceu. `aprendizado_conversa` é o "virar regra?" da F3. */
 export const origemRegraEnum = pgEnum("origem_regra", ["manual", "aprendizado_conversa"]);
 
