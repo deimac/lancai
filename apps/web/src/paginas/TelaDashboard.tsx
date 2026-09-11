@@ -26,9 +26,8 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { rotulo_mes_curto } from "@lancai/tipos";
 import { useAutenticacao } from "../contexto/ContextoAutenticacao";
-import { clienteApi, ErroApi, type DashboardResposta, type ProximoPagamento } from "../lib/api";
+import { clienteApi, ErroApi, type DashboardResposta } from "../lib/api";
 import {
   formatar_data_curta,
   formatar_moeda,
@@ -64,37 +63,6 @@ function eh_entrada(tipo: string): boolean {
 
 function formatar_oculto(valor: string, ocultar: boolean): string {
   return ocultar ? "R$ •••" : valor;
-}
-
-function selo_pagamento(item: ProximoPagamento): { rotulo: string; classe: string } {
-  if (item.situacao === "paga" || item.pago) {
-    return { rotulo: "Paga", classe: "bg-receita/15 text-receita" };
-  }
-  if (item.situacao === "vencida" || item.vencida) {
-    return { rotulo: "Vencida", classe: "bg-despesa/15 text-despesa" };
-  }
-  if (item.situacao === "a_pagar") {
-    return { rotulo: "A pagar", classe: "bg-despesa/10 text-despesa" };
-  }
-  return { rotulo: "Em aberto", classe: "bg-fundo text-texto-suave" };
-}
-
-function titulo_proximo(item: ProximoPagamento): string {
-  if (item.origem !== "fatura" || !item.competenciaCiclo) return item.descricao;
-  const ciclo = rotulo_mes_curto(item.competenciaCiclo);
-  if (item.descricao.includes(` · ${ciclo}`)) return item.descricao;
-  return `${item.descricao} · ${ciclo}`;
-}
-
-function sub_proximo(item: ProximoPagamento): string {
-  if (item.origem === "fatura") {
-    const vence = `vence ${formatar_data_curta(item.data)}`;
-    if (item.dataPagamento) return `${vence} · pago ${formatar_data_curta(item.dataPagamento)}`;
-    return vence;
-  }
-  if (item.origem === "parcela") return `${formatar_data_curta(item.data)} · Parcela`;
-  if (item.origem === "recorrente") return `${formatar_data_curta(item.data)} · Recorrente`;
-  return `${formatar_data_curta(item.data)} · Previsto`;
 }
 
 type PontoResultadoGrafico = {
@@ -934,115 +902,56 @@ export function TelaDashboard() {
         </motion.section>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <motion.section
-          {...fade}
-          className="rounded-2xl border border-borda bg-superficie/80 p-4"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-texto">Próximos pagamentos</h2>
-            <Link to="/agendadas" className="text-xs text-primaria hover:underline">
-              Ver agenda
-            </Link>
-          </div>
-          {(dados.proximosPagamentos ?? []).length === 0 ? (
-            <p className="py-8 text-center text-sm text-texto-suave">Nada previsto neste mês.</p>
-          ) : (
-            <ul className="divide-y divide-borda">
-              {(dados.proximosPagamentos ?? []).slice(0, 8).map((item) => {
-                const selo = selo_pagamento(item);
-                return (
-                  <li key={item.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p
-                          className={unir_classes(
-                            "truncate font-medium",
-                            item.pago ? "text-texto-suave" : "text-texto",
-                          )}
-                        >
-                          {titulo_proximo(item)}
-                        </p>
-                        <span
-                          className={unir_classes(
-                            "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                            selo.classe,
-                          )}
-                        >
-                          {selo.rotulo}
-                        </span>
-                      </div>
-                      <p className="text-xs text-texto-suave">{sub_proximo(item)}</p>
-                    </div>
-                    <span
-                      className={
-                        item.pago
-                          ? "text-texto-suave line-through"
-                          : item.vencida
-                            ? "text-despesa"
-                            : "text-texto"
-                      }
-                    >
-                      {formatar_oculto(formatar_moeda(item.valor), ocultarValores)}
+      <motion.section
+        {...fade}
+        className="rounded-2xl border border-borda bg-superficie/80 p-4"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-medium text-texto">Orçamentos</h2>
+          <Link
+            to={mes === mes_de_hoje() ? "/categorias" : `/categorias?mes=${mes}`}
+            className="text-xs text-primaria hover:underline"
+          >
+            Categorias
+          </Link>
+        </div>
+        {(dados.orcamentos ?? []).length === 0 ? (
+          <p className="py-8 text-center text-sm text-texto-suave">
+            Nenhum limite definido. Cadastre na tela de Categorias.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {(dados.orcamentos ?? []).map((item) => {
+              const estourou = item.percentual >= 100;
+              return (
+                <li key={item.categoriaNome ?? "geral"} className="text-xs">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <IconeCategoria icone={item.icone} cor={item.cor} tamanho={14} />
+                      <span className="truncate text-sm text-texto">
+                        {item.categoriaNome ?? "Geral"}
+                      </span>
                     </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </motion.section>
-
-        <motion.section
-          {...fade}
-          className="rounded-2xl border border-borda bg-superficie/80 p-4"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-texto">Orçamentos</h2>
-            <Link
-              to={mes === mes_de_hoje() ? "/categorias" : `/categorias?mes=${mes}`}
-              className="text-xs text-primaria hover:underline"
-            >
-              Categorias
-            </Link>
-          </div>
-          {(dados.orcamentos ?? []).length === 0 ? (
-            <p className="py-8 text-center text-sm text-texto-suave">
-              Nenhum limite definido. Cadastre na tela de Categorias.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {(dados.orcamentos ?? []).map((item) => {
-                const estourou = item.percentual >= 100;
-                return (
-                  <li key={item.categoriaNome ?? "geral"} className="text-xs">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <IconeCategoria icone={item.icone} cor={item.cor} tamanho={14} />
-                        <span className="truncate text-sm text-texto">
-                          {item.categoriaNome ?? "Geral"}
-                        </span>
-                      </span>
-                      <span className="tabular-nums text-texto-suave">
-                        {formatar_oculto(formatar_moeda(item.gasto), ocultarValores)} /{" "}
-                        {formatar_oculto(formatar_moeda(item.limite), ocultarValores)}
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-borda">
-                      <div
-                        className={unir_classes(
-                          "h-full rounded-full",
-                          estourou ? "bg-despesa" : "bg-primaria",
-                        )}
-                        style={{ width: `${Math.max(0, Math.min(item.percentual, 100))}%` }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </motion.section>
-      </div>
+                    <span className="tabular-nums text-texto-suave">
+                      {formatar_oculto(formatar_moeda(item.gasto), ocultarValores)} /{" "}
+                      {formatar_oculto(formatar_moeda(item.limite), ocultarValores)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-borda">
+                    <div
+                      className={unir_classes(
+                        "h-full rounded-full",
+                        estourou ? "bg-despesa" : "bg-primaria",
+                      )}
+                      style={{ width: `${Math.max(0, Math.min(item.percentual, 100))}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </motion.section>
 
       <DrawerCartoesDashboard
         aberto={drawerCartoesAberto}

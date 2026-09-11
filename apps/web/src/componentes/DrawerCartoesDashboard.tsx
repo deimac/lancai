@@ -292,12 +292,15 @@ function no_ciclo_do_cartao(
   hoje: string,
 ): boolean {
   if (movimento.cartaoId !== cartao.id) return false;
+  // Mesma competência do gráfico de Faturas / Modo fatura (eixo vencimento) —
+  // ver DashboardCartao.competenciaCiclo, calculado com a mesma regra na API.
   return na_fatura_do_recorte(movimento, {
     mes,
     hoje,
     fechamento: cartao.fechamento,
     vencimento: cartao.vencimento,
     pagamentos,
+    eixo: "vencimento",
   });
 }
 

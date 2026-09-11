@@ -486,20 +486,6 @@ export interface RankingCategoria {
   cor?: string;
 }
 
-export interface ProximoPagamento {
-  id: string;
-  data: string;
-  descricao: string;
-  valor: number;
-  origem: "previsto" | "parcela" | "fatura" | "recorrente";
-  contaNome: string | null;
-  vencida: boolean;
-  pago?: boolean;
-  dataPagamento?: string | null;
-  competenciaCiclo?: string | null;
-  situacao?: "aberta" | "a_pagar" | "paga" | "vencida";
-}
-
 export interface OrcamentoDashboard {
   categoriaNome: string | null;
   gasto: number;
@@ -561,7 +547,6 @@ export interface DashboardResposta {
     icone?: string;
     cor?: string;
   }>;
-  proximosPagamentos?: ProximoPagamento[];
   orcamentos?: OrcamentoDashboard[];
   contas: Array<{ nome: string; perfil: string; saldoAtual: number }>;
   cartoes: DashboardCartao[];
