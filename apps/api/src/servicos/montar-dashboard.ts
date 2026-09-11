@@ -11,6 +11,7 @@ import {
   adiar_compras_do_fechamento_ja_pago,
   aplicar_total_oficial,
   ciclo_aberto_em,
+  ciclo_do_movimento,
   competencia_alvo_do_modo_fatura,
   data_fechamento_do_ciclo,
   data_vencimento_do_ciclo,
@@ -419,32 +420,61 @@ function status_fatura(
   return "aguardando_confirmacao";
 }
 
+/**
+ * Uma passada só sobre `movimentos` alimenta o líquido de TODOS os
+ * cartão+ciclo de uma vez — chamado uma única vez por
+ * `montar_serie_faturas_dashboard`, em vez de `agregar_gasto_cartao_por_competencia`
+ * (uma varredura completa da lista) rodar de novo pra CADA combinação de
+ * mês×cartão da série (12+ meses × N cartões — o mesmo tipo de
+ * O(ciclos × lançamentos) já corrigido antes em
+ * `adiar_compras_do_fechamento_ja_pago`, aqui na montagem da linha).
+ */
+function gasto_por_cartao_e_ciclo(
+  movimentos: MovimentoFaturaDashboard[],
+  fechamentoPorCartao: ReadonlyMap<string, number>,
+  vencimentoPorCartao: ReadonlyMap<string, number>,
+  pagamentos: PagamentoCiclo[],
+): Map<string, { gasto: number; quantidade: number }> {
+  const mapa = new Map<string, { gasto: number; quantidade: number }>();
+  for (const movimento of movimentos) {
+    if (!eh_linha_da_fatura(movimento)) continue;
+    const cartaoId = movimento.cartaoId;
+    if (!cartaoId) continue;
+    const fechamento = fechamentoPorCartao.get(cartaoId);
+    if (fechamento == null) continue;
+    const ciclo = ciclo_do_movimento(movimento.dataMovimento, cartaoId, fechamento, {
+      vencimento: vencimentoPorCartao.get(cartaoId),
+      parcelaNumero: movimento.parcelaNumero,
+      status: movimento.status,
+      pagamentos,
+    });
+    const chave = `${cartaoId}:${ciclo}`;
+    const atual = mapa.get(chave) ?? { gasto: 0, quantidade: 0 };
+    atual.gasto += valor_na_fatura(movimento);
+    atual.quantidade += 1;
+    mapa.set(chave, atual);
+  }
+  return mapa;
+}
+
 function montar_linha_fatura(
   cartao: { id: string; nome: string; fechamento: number; vencimento: number; sincronizada?: boolean },
   mesTela: string,
   cicloFecha: string,
-  movimentos: MovimentoFaturaDashboard[],
   hoje: string,
-  fechamentoPorCartao: ReadonlyMap<string, number>,
-  vencimentoPorCartao: ReadonlyMap<string, number>,
+  gastoPorChave: ReadonlyMap<string, { gasto: number; quantidade: number }>,
+  movimentosPagamento: MovimentoFaturaDashboard[],
   oficiais: ReadonlyMap<string, { total: number }>,
   alocacoesBaixaConfianca: ReadonlyMap<string, ConfiancaBaixaFatura> | undefined,
-  pagamentos: PagamentoCiclo[] = [],
 ): LinhaFaturaDashboard {
   const ciclo = intervalo_ciclo_fatura(cicloFecha, cartao.fechamento);
   const oficial = oficiais.get(`${cartao.id}:${cicloFecha}`);
-  const gasto = agregar_gasto_cartao_por_competencia(
-    movimentos,
-    fechamentoPorCartao,
-    new Map([[cartao.id, cicloFecha]]),
-    vencimentoPorCartao,
-    pagamentos,
-  ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+  const gasto = gastoPorChave.get(`${cartao.id}:${cicloFecha}`) ?? { gasto: 0, quantidade: 0 };
   const cicloAberto = ciclo_aberto_em(hoje, cartao.fechamento);
   const totalOficial = oficial?.total ?? null;
   const total = totalOficial ?? arredondar(gasto.gasto);
   const totalPago = somar_pagamentos_fatura(
-    movimentos,
+    movimentosPagamento,
     cartao.id,
     cicloFecha,
     cartao.fechamento,
@@ -535,6 +565,18 @@ export function montar_serie_faturas_dashboard(entrada: {
     (cartaoId, competencia) => oficiais.get(`${cartaoId}:${competencia}`)?.total ?? null,
     pagamentos,
   );
+  const gastoPorChave = gasto_por_cartao_e_ciclo(
+    movimentosAjustados,
+    fechamentoPorCartao,
+    vencimentoPorCartao,
+    pagamentos,
+  );
+  // `somar_pagamentos_fatura` só olha pagamento de fatura (ou crédito de
+  // regra) — filtrar antes deixa a chamada por linha barata sem mudar o
+  // resultado (o resto já seria descartado pelos filtros internos dela).
+  const movimentosPagamento = movimentosAjustados.filter(
+    (movimento) => movimento.papel === "pagamento_fatura" || movimento.efeitoValor === "subtrai",
+  );
 
   return meses.map((mesTela) => {
     const linhas = entrada.cartoes.map((cartao) => {
@@ -547,13 +589,11 @@ export function montar_serie_faturas_dashboard(entrada: {
         cartao,
         mesTela,
         cicloFecha,
-        movimentosAjustados,
         entrada.hoje,
-        fechamentoPorCartao,
-        vencimentoPorCartao,
+        gastoPorChave,
+        movimentosPagamento,
         oficiais,
         alocacoesBaixaConfianca,
-        pagamentos,
       );
     });
     const mesAtual = entrada.hoje.slice(0, 7);
