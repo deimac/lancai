@@ -390,20 +390,34 @@ function status_fatura(
   cicloAtual: boolean,
   prevista: boolean,
 ): StatusFaturaDashboard {
-  if (totalOficial == null) {
-    if (cicloAtual) return "em_aberto";
-    if (prevista) return "prevista";
-    return "aguardando_confirmacao";
+  // Se temos confirmação do banco, usar o totalOficial como referência
+  if (totalOficial != null) {
+    if (totalPago >= totalOficial - 0.01) return "paga";
+    if (totalPago > 0.01) return "parcial";
+    return "em_aberto";
   }
-  if (totalPago >= totalOficial - 0.01) return "paga";
-  if (totalPago > 0.01) return "parcial";
-  return "em_aberto";
+
+  // Sem confirmação do banco (totalOficial == null):
+  // Priorizar ciclo aberto e prevista
+  if (cicloAtual) return "em_aberto";
+  if (prevista) return "prevista";
+
+  // Para faturas fechadas (não é ciclo atual e não é prevista):
+  // Se há pagamentos, considerar como paga ou parcial
+  // Isso garante que faturas pagas sejam marcadas corretamente
+  // mesmo antes do banco confirmar o totalOficial
+  if (totalPago > 0.01) return "paga";
+
+  return "aguardando_confirmacao";
 }
 
 /**
  * Soma pagamentos que quitam o ciclo fechado `cicloFecha`.
  * Sempre via `competencia_quitacao_fatura`: pagamento é do ciclo fechado
  * (anterior ao aberto), nunca do aberto — tag pode ser fecha ou vencimento.
+ * Inclui:
+ * - Movimentos com `papel === "pagamento_fatura"` (pagamentos/créditos de quitação)
+ * - Estornos no cartão (tipo === "estorno" com cartaoId) que reduzem o saldo devedor
  */
 function somar_pagamentos_fatura(
   movimentos: MovimentoFaturaDashboard[],
@@ -413,8 +427,18 @@ function somar_pagamentos_fatura(
   vencimento: number,
 ): number {
   const relacionados = movimentos.filter((movimento) => {
-    if (movimento.papel !== "pagamento_fatura" || movimento.status === "cancelado") return false;
+    if (movimento.status === "cancelado") return false;
+
+    // Pagamentos de fatura explícitos
+    const ehPagamentoFatura = movimento.papel === "pagamento_fatura";
+
+    // Estornos/créditos no cartão que quitam fatura
+    const ehEstornoNoCartao = movimento.tipo === "estorno" && movimento.cartaoId === cartaoId;
+
+    if (!ehPagamentoFatura && !ehEstornoNoCartao) return false;
+
     if (movimento.cartaoFaturaId !== cartaoId && movimento.cartaoId !== cartaoId) return false;
+
     const quitado = competencia_quitacao_fatura(
       movimento.dataMovimento,
       fechamento,
