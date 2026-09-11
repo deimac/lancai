@@ -42,7 +42,7 @@ describe("agregar_totais_por_categoria", () => {
     expect((gastoSet / limite) * 100).toBeCloseTo(121.345, 3);
   });
 
-  it("no mês atual, compra pós-fechamento entra na fatura aberta", () => {
+  it("mesmo com 'hoje' dentro do mês selecionado, compra pós-fechamento continua no mês em que a fatura fecha (não tem mais alias pro ciclo aberto)", () => {
     const fechamentoPorCartao = mapa_fechamento_cartoes([{ id: "mp", fechamento: 12 }]);
     const movimentos = [
       {
@@ -55,13 +55,21 @@ describe("agregar_totais_por_categoria", () => {
       },
     ];
 
-    const agostoAberto = agregar_totais_por_categoria(
+    const agosto = agregar_totais_por_categoria(
       movimentos,
       "2026-08",
       fechamentoPorCartao,
       new Map(),
       "2026-08-31",
     );
-    expect(agostoAberto.get("cat")).toEqual({ saidas: 970.76, entradas: 0, quantidade: 1 });
+    const setembro = agregar_totais_por_categoria(
+      movimentos,
+      "2026-09",
+      fechamentoPorCartao,
+      new Map(),
+      "2026-08-31",
+    );
+    expect(agosto.get("cat")).toBeUndefined();
+    expect(setembro.get("cat")).toEqual({ saidas: 970.76, entradas: 0, quantidade: 1 });
   });
 });

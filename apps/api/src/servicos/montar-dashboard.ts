@@ -17,7 +17,6 @@ import {
   data_fechamento_do_ciclo,
   data_vencimento_do_ciclo,
   intervalo_ciclo_fatura,
-  mes_gasto_do_cartao,
   deISOParaData,
   efeito_valor_movimento,
   eh_credito_quitacao_no_cartao,
@@ -306,8 +305,6 @@ export function somar_receitas_despesas(
   }
   return { receitas: arredondar(receitas), despesas: arredondar(despesas) };
 }
-
-export { mes_gasto_do_cartao } from "@lancai/tipos";
 
 export function filtrar_movimentos_do_resultado<
   T extends {
@@ -737,23 +734,18 @@ export async function montar_dashboard(
   const fechamentoPorCartao = mapa_fechamento_cartoes(cartoesCiclo);
   const vencimentoPorCartao = mapa_vencimento_cartoes(cartoesCiclo);
   const mesCivilHoje = hoje.slice(0, 7);
-  const porFechamento = (mesAlvo: string) =>
-    new Map(
-      cartoesCiclo.map((cartao) => [
-        cartao.id,
-        mes_gasto_do_cartao({
-          mesSelecionado: mesAlvo,
-          hoje,
-          fechamento: cartao.fechamento,
-        }),
-      ]),
-    );
-  const mesGastoPorCartao = porFechamento(mes);
-  const mesGastoAnteriorPorCartao = porFechamento(mesAnterior);
+  // Competência de fatura é sempre a do próprio mês selecionado — fechada
+  // (já tem oficial ou já passou o fechamento) mostra o ciclo que fechou
+  // naquele mês; aberta (ainda não fechou) é a previsão dos lançamentos
+  // dentro do ciclo em andamento. Nenhum dos dois casos depende de "hoje":
+  // "setembro" e "outubro" nunca podem apontar pro mesmo ciclo só porque o
+  // calendário civil de hoje cai num ou no outro (era o bug do antigo
+  // mes_gasto_do_cartao — removido).
   const pagamentosCiclo: PagamentoCiclo[] = pagamentos_ciclo_de(movimentosQuitadas);
+  const semAliasPorCartao = new Map<string, string>();
   const movimentosPnL = filtrar_movimentos_do_resultado(
     movimentosAmplo,
-    mesGastoPorCartao,
+    semAliasPorCartao,
     mes,
     fechamentoPorCartao,
     vencimentoPorCartao,
@@ -761,7 +753,7 @@ export async function montar_dashboard(
   );
   const movimentosPnLAnterior = filtrar_movimentos_do_resultado(
     movimentosAmplo,
-    mesGastoAnteriorPorCartao,
+    semAliasPorCartao,
     mesAnterior,
     fechamentoPorCartao,
     vencimentoPorCartao,
@@ -772,8 +764,7 @@ export async function montar_dashboard(
   );
   // Mesma regra do gráfico de Faturas e do Modo fatura: compra que só chegou
   // depois que o ciclo já fechou e foi pago desloca pro ciclo seguinte —
-  // senão o card Cartões soma no mês errado (e pode dobrar quando o cockpit
-  // vira o mês, já que o ciclo aberto muda de referência).
+  // senão o card Cartões soma no mês errado.
   const movimentosAmploAjustados = adiar_compras_do_fechamento_ja_pago(
     movimentosAmplo,
     cartoesCiclo,
@@ -782,7 +773,7 @@ export async function montar_dashboard(
   const gastoPorCartao = agregar_gasto_cartao_por_competencia(
     movimentosAmploAjustados,
     fechamentoPorCartao,
-    mesGastoPorCartao,
+    mes,
     vencimentoPorCartao,
     pagamentosCiclo,
     tipoGasto,
@@ -796,7 +787,7 @@ export async function montar_dashboard(
 
   const cartoesDetalhe: DashboardCartao[] = cartoesCiclo.map((cartao) => {
     const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
-    const competenciaCiclo = mesGastoPorCartao.get(cartao.id) ?? mes;
+    const competenciaCiclo = mes;
     const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
     const limite = Number(cartao.limite ?? 0);
     const comprometido = Number(

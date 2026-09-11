@@ -3,7 +3,6 @@ import {
   agregar_gasto_cartao_por_competencia,
   agregar_totais_por_natureza,
   filtrar_movimentos_por_natureza,
-  mes_gasto_do_cartao,
   filtrar_movimentos_do_resultado,
   montar_fluxo_caixa,
   montar_proximos_pagamentos,
@@ -1502,80 +1501,6 @@ describe("agregar_gasto_cartao_por_competencia", () => {
     expect(aberto.get("itau")).toEqual({ gasto: 1682.79, quantidade: 2 });
     const total = [...aberto.values()].reduce((soma, item) => soma + item.gasto, 0);
     expect(total).toBeCloseTo(6397.88, 2);
-  });
-});
-
-describe("mes_gasto_do_cartao", () => {
-  it("no mês atual, cada cartão usa o ciclo em aberto pelo próprio fechamento", () => {
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-28",
-        fechamento: 2,
-      }),
-    ).toBe("2026-09");
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-28",
-        fechamento: 12,
-      }),
-    ).toBe("2026-09");
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-28",
-        fechamento: 30,
-      }),
-    ).toBe("2026-08");
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-29",
-        fechamento: 30,
-      }),
-    ).toBe("2026-08");
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-30",
-        fechamento: 30,
-      }),
-    ).toBe("2026-08");
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-31",
-        fechamento: 30,
-      }),
-    ).toBe("2026-09");
-  });
-
-  it("mês passado permanece no ciclo daquele mês", () => {
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-07",
-        hoje: "2026-08-28",
-        fechamento: 2,
-      }),
-    ).toBe("2026-07");
-  });
-
-  it("fecha 25: em 29/08 o card já lê o ciclo seguinte", () => {
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-29",
-        fechamento: 25,
-      }),
-    ).toBe("2026-09");
-    expect(
-      mes_gasto_do_cartao({
-        mesSelecionado: "2026-08",
-        hoje: "2026-08-25",
-        fechamento: 25,
-      }),
-    ).toBe("2026-08");
   });
 });
 

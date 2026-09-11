@@ -181,19 +181,6 @@ export function ciclo_aberto_em(hoje: string, fechamento: number): string {
   return competencia_ciclo_da_data(hoje, fechamento);
 }
 
-/**
- * Competência que o Cockpit usa no cartão: no mês civil de hoje, a fatura
- * aberta; em mês passado/futuro, o ciclo que fecha naquele mês.
- */
-export function mes_gasto_do_cartao(entrada: {
-  mesSelecionado: string;
-  hoje: string;
-  fechamento: number;
-}): string {
-  if (entrada.mesSelecionado !== entrada.hoje.slice(0, 7)) return entrada.mesSelecionado;
-  return ciclo_aberto_em(entrada.hoje, entrada.fechamento);
-}
-
 /** Competência cuja fatura inclui a compra nesta data (inverso de `intervalo_ciclo_fatura`). */
 export function competencia_ciclo_da_data(dataISO: string, fechamento: number): string {
   const [anoStr, mesStr, diaStr] = dataISO.slice(0, 10).split("-");
@@ -955,9 +942,10 @@ export function pagamentos_ciclo_de(
 
 /**
  * Compra na fatura do recorte (card Cartões / Extrato Faturas / drawer).
- * `eixo: fechamento` (padrão, Cockpit): mês atual = ciclo aberto; histórico =
- * ciclo que fecha naquele mês. `eixo: vencimento` (Modo fatura): ciclo cuja
- * fatura vence no mês da tela.
+ * `eixo: fechamento` (padrão, Cockpit): a competência é sempre a do próprio
+ * `mes` — fechada mostra o ciclo que fechou nele, aberta é a previsão dos
+ * lançamentos dentro do ciclo em andamento; nunca depende de `hoje`.
+ * `eixo: vencimento` (Modo fatura): ciclo cuja fatura vence no mês da tela.
  */
 export function na_fatura_do_recorte(
   movimento: {
@@ -973,7 +961,8 @@ export function na_fatura_do_recorte(
   },
   entrada: {
     mes: string;
-    hoje: string;
+    /** @deprecated Não é mais usado — a competência não depende de "hoje". */
+    hoje?: string;
     fechamento?: number | null;
     vencimento?: number | null;
     pagamentos?: PagamentoCiclo[];
@@ -985,6 +974,11 @@ export function na_fatura_do_recorte(
   if (fechamento == null || fechamento < 1) {
     return String(movimento.dataMovimento).startsWith(`${entrada.mes}-`);
   }
+  // Eixo fechamento: a competência é sempre a do próprio mês selecionado —
+  // fechada mostra o ciclo que fechou nela, aberta é a previsão dos
+  // lançamentos dentro do ciclo em andamento. Nenhum dos dois depende de
+  // "hoje": não existe mais alias pro ciclo aberto só porque o calendário
+  // civil de hoje cai nesse mês (era o bug do antigo mes_gasto_do_cartao).
   const alvo =
     entrada.eixo === "vencimento"
       ? competencia_alvo_do_modo_fatura({
@@ -992,11 +986,7 @@ export function na_fatura_do_recorte(
           fechamento,
           vencimento: entrada.vencimento,
         })
-      : mes_gasto_do_cartao({
-          mesSelecionado: entrada.mes,
-          hoje: entrada.hoje,
-          fechamento,
-        });
+      : entrada.mes;
   return (
     ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
       vencimento: entrada.vencimento,
@@ -1008,8 +998,9 @@ export function na_fatura_do_recorte(
 }
 
 /**
- * Mesma competência do Cockpit: conta no calendário; cartão no ciclo aberto
- * (mês atual) ou o ciclo que fecha no mês da tela (histórico).
+ * Mesma competência do Cockpit: conta no calendário; cartão no ciclo que
+ * fecha em `mesSelecionado` — fechado ou ainda em andamento, nunca depende
+ * de `hoje` (repassa direto pra `movimento_no_resultado_do_mes`).
  */
 export function movimento_no_recorte_do_cockpit(
   movimento: {
@@ -1019,26 +1010,15 @@ export function movimento_no_recorte_do_cockpit(
     status?: string | null;
   },
   mesSelecionado: string,
-  hoje: string,
+  /** @deprecated Não é mais usado — a competência não depende de "hoje". */
+  _hoje: string,
   fechamentoPorCartao: ReadonlyMap<string, number>,
   vencimentoPorCartao: ReadonlyMap<string, number> = new Map(),
   pagamentos: PagamentoCiclo[] = [],
 ): boolean {
-  if (!movimento.cartaoId) {
-    return String(movimento.dataMovimento).startsWith(`${mesSelecionado}-`);
-  }
-  const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
-  if (fechamento == null || fechamento < 1) {
-    return String(movimento.dataMovimento).startsWith(`${mesSelecionado}-`);
-  }
-  const alvo = mes_gasto_do_cartao({
-    mesSelecionado,
-    hoje,
-    fechamento,
-  });
   return movimento_no_resultado_do_mes(
     movimento,
-    alvo,
+    mesSelecionado,
     fechamentoPorCartao,
     vencimentoPorCartao,
     pagamentos,

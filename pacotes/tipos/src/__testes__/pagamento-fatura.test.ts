@@ -26,7 +26,6 @@ import {
   intervalo_fecha_a_vence,
   competencia_cobranca_casa,
   soma_cobrada_do_vencimento,
-  pagamentos_ciclo_de,
   valor_na_fatura,
   periodo_amplo_do_ciclo,
   selo_fatura_ciclo,
@@ -623,47 +622,18 @@ describe("na_fatura_do_recorte", () => {
   const hoje = "2026-08-31";
   const mes = "2026-08";
 
-  it("em 31/08 o ciclo aberto do Itaú já é setembro: parcelas e compra pós-fecha entram; a quitação não", () => {
+  it("eixo fechamento: só entram os lançamentos do próprio ciclo de agosto (dia <= fechamento) — indepedente de 'hoje'", () => {
     const movimentos = [
-      {
-        dataMovimento: "2026-08-20",
-        cartaoId: nu.id,
-        tipo: "despesa",
-        valor: "4220.10",
-        papel: "gasto",
-      },
-      {
-        dataMovimento: "2026-08-15",
-        cartaoId: revolut.id,
-        tipo: "despesa",
-        valor: "494.99",
-        papel: "gasto",
-      },
-      {
-        dataMovimento: "2026-09-08",
-        cartaoId: itau.id,
-        tipo: "despesa",
-        valor: "1582.79",
-        papel: "gasto",
-        parcelaNumero: 3,
-        status: "previsto",
-      },
-      {
-        dataMovimento: "2026-09-01",
-        cartaoId: itau.id,
-        tipo: "despesa",
-        valor: "91.78",
-        papel: "gasto",
-        parcelaNumero: 1,
-        status: "previsto",
-      },
-      {
-        dataMovimento: "2026-08-31",
-        cartaoId: itau.id,
-        tipo: "despesa",
-        valor: "100",
-        papel: "gasto",
-      },
+      // Antes do fechamento de cada cartão: entram na fatura de agosto.
+      { dataMovimento: "2026-08-01", cartaoId: nu.id, tipo: "despesa", valor: "50", papel: "gasto" },
+      { dataMovimento: "2026-08-09", cartaoId: revolut.id, tipo: "despesa", valor: "60", papel: "gasto" },
+      { dataMovimento: "2026-08-25", cartaoId: itau.id, tipo: "despesa", valor: "70", papel: "gasto" },
+      // Depois do fechamento: já são do ciclo seguinte, não entram em agosto
+      // mesmo que "hoje" já tenha passado do dia do fechamento (sem alias).
+      { dataMovimento: "2026-08-20", cartaoId: nu.id, tipo: "despesa", valor: "4220.10", papel: "gasto" },
+      { dataMovimento: "2026-08-15", cartaoId: revolut.id, tipo: "despesa", valor: "494.99", papel: "gasto" },
+      { dataMovimento: "2026-08-31", cartaoId: itau.id, tipo: "despesa", valor: "100", papel: "gasto" },
+      // Quitação no extrato do cartão nunca entra como linha da fatura.
       {
         dataMovimento: "2026-08-30",
         cartaoId: itau.id,
@@ -674,31 +644,29 @@ describe("na_fatura_do_recorte", () => {
         ignoradoEmRelatorio: true,
       },
     ];
-    const pagamentos = pagamentos_ciclo_de(movimentos);
     const porCartao = new Map([
       [itau.id, itau],
       [nu.id, nu],
       [revolut.id, revolut],
     ]);
-    const naFatura = movimentos.filter((movimento) => {
-      const cartao = movimento.cartaoId ? porCartao.get(movimento.cartaoId) : undefined;
-      return na_fatura_do_recorte(movimento, {
-        mes,
-        hoje,
-        fechamento: cartao?.fechamento,
-        vencimento: cartao?.vencimento,
-        pagamentos,
-      });
-    });
-    expect(naFatura.map((item) => item.cartaoId).sort()).toEqual([
-      itau.id,
-      itau.id,
-      itau.id,
-      nu.id,
-      revolut.id,
-    ]);
-    const total = naFatura.reduce((soma, item) => soma + Number(item.valor), 0);
-    expect(total).toBeCloseTo(6489.66, 2);
+    const filtrar = (hojeTeste: string) =>
+      movimentos
+        .filter((movimento) => {
+          const cartao = movimento.cartaoId ? porCartao.get(movimento.cartaoId) : undefined;
+          return na_fatura_do_recorte(movimento, {
+            mes,
+            hoje: hojeTeste,
+            fechamento: cartao?.fechamento,
+            vencimento: cartao?.vencimento,
+          });
+        })
+        .map((item) => Number(item.valor))
+        .sort((a, b) => a - b);
+
+    // Antes do fechamento de todos os cartões (01/08) e depois (31/08, hoje
+    // do teste original) dão o MESMO resultado — não depende mais de "hoje".
+    expect(filtrar("2026-08-01")).toEqual([50, 60, 70]);
+    expect(filtrar(hoje)).toEqual([50, 60, 70]);
   });
 
   it("crédito de atraso e estorno abatem; Pagamento recebido não", () => {
