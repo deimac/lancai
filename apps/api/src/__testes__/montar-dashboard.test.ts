@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adiar_compras_do_fechamento_ja_pago_no_cockpit,
   agregar_gasto_cartao_por_competencia,
   agregar_totais_por_natureza,
   filtrar_movimentos_por_natureza,
@@ -1051,6 +1052,94 @@ describe("montar_serie_faturas_dashboard", () => {
       // continua 0 — se contasse em dobro, o saldo ficaria negativo/zerado à toa.
       expect(julho).toMatchObject({ total: 200, totalPago: 0, saldo: 200 });
     });
+  });
+});
+
+describe("adiar_compras_do_fechamento_ja_pago_no_cockpit", () => {
+  const cartaoNu = { id: "cartao-nu", fechamento: 2, vencimento: 9 };
+
+  it("desloca compra do dia do fechamento de um ciclo já pago, some do mês fechado e some no seguinte", () => {
+    const movimentos = [
+      // Fatura de setembro (2026-09) já confirmada e 100% paga.
+      {
+        papel: "pagamento_fatura",
+        cartaoId: cartaoNu.id,
+        cartaoFaturaId: cartaoNu.id,
+        competenciaFatura: "2026-09",
+        tipo: "receita",
+        valor: 10000,
+        dataMovimento: "2026-09-09",
+        status: "realizado",
+      },
+      // Compra de R$ 52.000 chegou depois, datada bem no dia do fechamento (2).
+      {
+        cartaoId: cartaoNu.id,
+        tipo: "despesa",
+        valor: 52000,
+        dataMovimento: "2026-09-02",
+        status: "realizado",
+      },
+    ];
+    const oficialPorChave = new Map([[`${cartaoNu.id}:2026-09`, 10000]]);
+
+    const ajustados = adiar_compras_do_fechamento_ja_pago_no_cockpit(
+      movimentos,
+      [cartaoNu],
+      oficialPorChave,
+    );
+
+    const compraAjustada = ajustados.find((m) => m.valor === 52000)!;
+    expect(compraAjustada.dataMovimento).toBe("2026-09-03");
+
+    // Setembro (mês fechado) não vê mais a compra.
+    const gastoSetembro = agregar_gasto_cartao_por_competencia(
+      ajustados,
+      new Map([[cartaoNu.id, cartaoNu.fechamento]]),
+      "2026-09",
+      new Map([[cartaoNu.id, cartaoNu.vencimento]]),
+    ).get(cartaoNu.id) ?? { gasto: 0, quantidade: 0 };
+    expect(gastoSetembro.quantidade).toBe(0);
+
+    // Outubro (ciclo seguinte) passa a ver a compra — uma vez só.
+    const gastoOutubro = agregar_gasto_cartao_por_competencia(
+      ajustados,
+      new Map([[cartaoNu.id, cartaoNu.fechamento]]),
+      "2026-10",
+      new Map([[cartaoNu.id, cartaoNu.vencimento]]),
+    ).get(cartaoNu.id) ?? { gasto: 0, quantidade: 0 };
+    expect(gastoOutubro).toMatchObject({ gasto: 52000, quantidade: 1 });
+  });
+
+  it("não desloca quando o ciclo ainda não está pago", () => {
+    const movimentos = [
+      {
+        papel: "pagamento_fatura",
+        cartaoId: cartaoNu.id,
+        cartaoFaturaId: cartaoNu.id,
+        competenciaFatura: "2026-09",
+        tipo: "receita",
+        valor: 3000,
+        dataMovimento: "2026-09-09",
+        status: "realizado",
+      },
+      {
+        cartaoId: cartaoNu.id,
+        tipo: "despesa",
+        valor: 52000,
+        dataMovimento: "2026-09-02",
+        status: "realizado",
+      },
+    ];
+    const oficialPorChave = new Map([[`${cartaoNu.id}:2026-09`, 10000]]);
+
+    const ajustados = adiar_compras_do_fechamento_ja_pago_no_cockpit(
+      movimentos,
+      [cartaoNu],
+      oficialPorChave,
+    );
+
+    const compra = ajustados.find((m) => m.valor === 52000)!;
+    expect(compra.dataMovimento).toBe("2026-09-02");
   });
 });
 

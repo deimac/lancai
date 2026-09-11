@@ -405,6 +405,66 @@ type MovimentoFaturaDashboard = {
 };
 
 /**
+ * Mesmo ajuste do gráfico de Faturas e do Modo fatura do Extrato (ver
+ * `adiar_compra_do_fechamento_ja_pago` em `@lancai/tipos`), aplicado ao
+ * cálculo de `gastoMes` do card Cartões: sem isso, uma compra que só entrou
+ * depois que o ciclo já fechou e foi pago (ex.: postada 1 dia após o
+ * fechamento) ficava contando no mês errado — e como o card usa o ciclo
+ * "aberto" pra montar o mês corrente, o mesmo lançamento também podia
+ * aparecer somado no mês seguinte quando o cockpit trocava de mês.
+ *
+ * Descobre, pra cada (cartão, ciclo) que aparece em `movimentos`, se já está
+ * pago (oficial confirmado ?? soma líquida local, comparado ao total pago —
+ * mesmo critério do gráfico), e desloca as compras do dia do fechamento
+ * desses ciclos pro ciclo seguinte.
+ */
+export function adiar_compras_do_fechamento_ja_pago_no_cockpit<T extends MovimentoFaturaDashboard>(
+  movimentos: T[],
+  cartoes: Array<{ id: string; fechamento: number; vencimento: number }>,
+  oficialPorChave: ReadonlyMap<string, number>,
+): T[] {
+  const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
+  const vencimentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
+
+  const ciclosTocados = new Set<string>();
+  for (const cartao of cartoes) {
+    for (const movimento of movimentos) {
+      if (movimento.cartaoId !== cartao.id) continue;
+      const data = String(movimento.dataMovimento).slice(0, 10);
+      ciclosTocados.add(`${cartao.id}:${competencia_ciclo_da_data(data, cartao.fechamento)}`);
+    }
+  }
+
+  const statusPorCicloCartao = new Map<string, boolean>();
+  for (const chave of ciclosTocados) {
+    const [cartaoId, cicloFecha] = chave.split(":") as [string, string];
+    const fechamento = fechamentoPorCartao.get(cartaoId);
+    if (fechamento == null) continue;
+    const vencimento = vencimentoPorCartao.get(cartaoId) ?? 0;
+    const totalOficial = oficialPorChave.get(chave) ?? null;
+    const gasto = agregar_gasto_cartao_por_competencia(
+      movimentos,
+      fechamentoPorCartao,
+      new Map([[cartaoId, cicloFecha]]),
+      vencimentoPorCartao,
+    ).get(cartaoId)?.gasto ?? 0;
+    const total = totalOficial ?? arredondar(gasto);
+    const totalPago = somar_pagamentos_fatura(movimentos, cartaoId, cicloFecha, fechamento, vencimento, {
+      incluirCreditosDeRegra: totalOficial != null,
+    });
+    statusPorCicloCartao.set(chave, total > 0 && totalPago >= total - 0.01);
+  }
+
+  return movimentos.map((movimento) =>
+    adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      (cartaoId, cicloFecha) => statusPorCicloCartao.get(`${cartaoId}:${cicloFecha}`) === true,
+    ),
+  );
+}
+
+/**
  * `origemManual`: cartão sem sincronização Pluggy/Open Finance — `totalOficial`
  * nunca chega pra ele (esse campo só vem do provedor). Por isso, pra cartão
  * manual, a comparação usa sempre `total` (líquido local) em vez de esperar
@@ -811,16 +871,25 @@ export async function montar_dashboard(
     vencimentoPorCartao,
     pagamentosCiclo,
   );
-  const gastoPorCartao = agregar_gasto_cartao_por_competencia(
+  const oficialPorChave = new Map(
+    oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura.total] as const),
+  );
+  // Mesma regra do gráfico de Faturas e do Modo fatura: compra que só chegou
+  // depois que o ciclo já fechou e foi pago desloca pro ciclo seguinte —
+  // senão o card Cartões soma no mês errado (e pode dobrar quando o cockpit
+  // vira o mês, já que o ciclo aberto muda de referência).
+  const movimentosAmploAjustados = adiar_compras_do_fechamento_ja_pago_no_cockpit(
     movimentosAmplo,
+    cartoesCiclo,
+    oficialPorChave,
+  );
+  const gastoPorCartao = agregar_gasto_cartao_por_competencia(
+    movimentosAmploAjustados,
     fechamentoPorCartao,
     mesGastoPorCartao,
     vencimentoPorCartao,
     pagamentosCiclo,
     tipoGasto,
-  );
-  const oficialPorChave = new Map(
-    oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura.total] as const),
   );
 
   const idsCartoes = cartoesCiclo.map((cartao) => cartao.id);
