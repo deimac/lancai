@@ -8,7 +8,7 @@ import {
 } from "@lancai/relatorios";
 import {
   adicionarMeses,
-  adiar_compra_do_fechamento_ja_pago,
+  adiar_compras_do_fechamento_ja_pago,
   aplicar_total_oficial,
   ciclo_aberto_em,
   competencia_alvo_do_modo_fatura,
@@ -405,66 +405,6 @@ type MovimentoFaturaDashboard = {
 };
 
 /**
- * Mesmo ajuste do gráfico de Faturas e do Modo fatura do Extrato (ver
- * `adiar_compra_do_fechamento_ja_pago` em `@lancai/tipos`), aplicado ao
- * cálculo de `gastoMes` do card Cartões: sem isso, uma compra que só entrou
- * depois que o ciclo já fechou e foi pago (ex.: postada 1 dia após o
- * fechamento) ficava contando no mês errado — e como o card usa o ciclo
- * "aberto" pra montar o mês corrente, o mesmo lançamento também podia
- * aparecer somado no mês seguinte quando o cockpit trocava de mês.
- *
- * Descobre, pra cada (cartão, ciclo) que aparece em `movimentos`, se já está
- * pago (oficial confirmado ?? soma líquida local, comparado ao total pago —
- * mesmo critério do gráfico), e desloca as compras do dia do fechamento
- * desses ciclos pro ciclo seguinte.
- */
-export function adiar_compras_do_fechamento_ja_pago_no_cockpit<T extends MovimentoFaturaDashboard>(
-  movimentos: T[],
-  cartoes: Array<{ id: string; fechamento: number; vencimento: number }>,
-  oficialPorChave: ReadonlyMap<string, number>,
-): T[] {
-  const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
-  const vencimentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
-
-  const ciclosTocados = new Set<string>();
-  for (const cartao of cartoes) {
-    for (const movimento of movimentos) {
-      if (movimento.cartaoId !== cartao.id) continue;
-      const data = String(movimento.dataMovimento).slice(0, 10);
-      ciclosTocados.add(`${cartao.id}:${competencia_ciclo_da_data(data, cartao.fechamento)}`);
-    }
-  }
-
-  const statusPorCicloCartao = new Map<string, boolean>();
-  for (const chave of ciclosTocados) {
-    const [cartaoId, cicloFecha] = chave.split(":") as [string, string];
-    const fechamento = fechamentoPorCartao.get(cartaoId);
-    if (fechamento == null) continue;
-    const vencimento = vencimentoPorCartao.get(cartaoId) ?? 0;
-    const totalOficial = oficialPorChave.get(chave) ?? null;
-    const gasto = agregar_gasto_cartao_por_competencia(
-      movimentos,
-      fechamentoPorCartao,
-      new Map([[cartaoId, cicloFecha]]),
-      vencimentoPorCartao,
-    ).get(cartaoId)?.gasto ?? 0;
-    const total = totalOficial ?? arredondar(gasto);
-    const totalPago = somar_pagamentos_fatura(movimentos, cartaoId, cicloFecha, fechamento, vencimento, {
-      incluirCreditosDeRegra: totalOficial != null,
-    });
-    statusPorCicloCartao.set(chave, total > 0 && totalPago >= total - 0.01);
-  }
-
-  return movimentos.map((movimento) =>
-    adiar_compra_do_fechamento_ja_pago(
-      movimento,
-      fechamentoPorCartao,
-      (cartaoId, cicloFecha) => statusPorCicloCartao.get(`${cartaoId}:${cicloFecha}`) === true,
-    ),
-  );
-}
-
-/**
  * `origemManual`: cartão sem sincronização Pluggy/Open Finance — `totalOficial`
  * nunca chega pra ele (esse campo só vem do provedor). Por isso, pra cartão
  * manual, a comparação usa sempre `total` (líquido local) em vez de esperar
@@ -503,26 +443,6 @@ function status_fatura(
   if (totalPago >= total - 0.01 && total > 0) return "paga";
   if (totalPago > 0.01) return "parcial";
   return "aguardando_confirmacao";
-}
-
-/**
- * Aplica `adiar_compra_do_fechamento_ja_pago` (compartilhada com o Modo
- * fatura do Extrato — ver `@lancai/tipos/pagamento-fatura`) usando o status
- * pré-computado por cartão+ciclo (1ª passada de `montar_serie_faturas_dashboard`).
- */
-function adiar_compras_do_fechamento_ja_pago<T extends MovimentoFaturaDashboard>(
-  movimentos: T[],
-  cartoes: Array<{ id: string; fechamento: number }>,
-  statusPorCicloCartao: ReadonlyMap<string, StatusFaturaDashboard>,
-): T[] {
-  const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
-  return movimentos.map((movimento) =>
-    adiar_compra_do_fechamento_ja_pago(
-      movimento,
-      fechamentoPorCartao,
-      (cartaoId, cicloFecha) => statusPorCicloCartao.get(`${cartaoId}:${cicloFecha}`) === "paga",
-    ),
-  );
 }
 
 function montar_linha_fatura(
@@ -620,34 +540,10 @@ export function montar_serie_faturas_dashboard(entrada: {
     meses.push(paraDataISO(cursor).slice(0, 7));
   }
 
-  // 1ª passada: status por cartão+ciclo com os movimentos como vieram, só pra
-  // descobrir quais ciclos já estão "paga" (input do ajuste do fechamento).
-  const statusPorCicloCartao = new Map<string, StatusFaturaDashboard>();
-  for (const mesTela of meses) {
-    for (const cartao of entrada.cartoes) {
-      const cicloFecha = competencia_alvo_do_modo_fatura({
-        mes: mesTela,
-        fechamento: cartao.fechamento,
-        vencimento: cartao.vencimento,
-      });
-      const { status } = montar_linha_fatura(
-        cartao,
-        mesTela,
-        cicloFecha,
-        entrada.movimentos,
-        entrada.hoje,
-        fechamentoPorCartao,
-        vencimentoPorCartao,
-        oficiais,
-        alocacoesBaixaConfianca,
-      );
-      statusPorCicloCartao.set(`${cartao.id}:${cicloFecha}`, status);
-    }
-  }
   const movimentosAjustados = adiar_compras_do_fechamento_ja_pago(
     entrada.movimentos,
     entrada.cartoes,
-    statusPorCicloCartao,
+    (cartaoId, competencia) => oficiais.get(`${cartaoId}:${competencia}`)?.total ?? null,
   );
 
   return meses.map((mesTela) => {
@@ -878,10 +774,10 @@ export async function montar_dashboard(
   // depois que o ciclo já fechou e foi pago desloca pro ciclo seguinte —
   // senão o card Cartões soma no mês errado (e pode dobrar quando o cockpit
   // vira o mês, já que o ciclo aberto muda de referência).
-  const movimentosAmploAjustados = adiar_compras_do_fechamento_ja_pago_no_cockpit(
+  const movimentosAmploAjustados = adiar_compras_do_fechamento_ja_pago(
     movimentosAmplo,
     cartoesCiclo,
-    oficialPorChave,
+    (cartaoId, competencia) => oficialPorChave.get(`${cartaoId}:${competencia}`) ?? null,
   );
   const gastoPorCartao = agregar_gasto_cartao_por_competencia(
     movimentosAmploAjustados,

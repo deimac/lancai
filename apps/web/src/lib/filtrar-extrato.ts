@@ -1,16 +1,14 @@
 import type { MovimentoResumo } from "./api";
 import { eh_nao_classificado, precisa_revisao } from "./fila-revisao";
 import {
-  adiar_compra_do_fechamento_ja_pago,
+  adiar_compras_do_fechamento_ja_pago,
   aplicar_total_oficial,
   agrupar_series_parcelamento,
   arredondar,
-  ciclo_do_movimento,
   competencia_alvo_do_modo_fatura,
   data_iso_parcela,
   data_vencimento_do_ciclo,
   eh_credito_quitacao_no_cartao,
-  eh_linha_da_fatura,
   hojeISO,
   intervalo_ciclo_fatura,
   irmas_da_serie,
@@ -19,7 +17,6 @@ import {
   na_fatura_do_recorte,
   pagamentos_ciclo_de,
   soma_cobrada_do_vencimento,
-  somar_pagamentos_fatura,
   valor_na_fatura,
 } from "@lancai/tipos";
 import { formatar_data_curta, formatar_intervalo_ciclo } from "./formatar";
@@ -365,62 +362,14 @@ function movimento_passa_filtros(
   return true;
 }
 
-/**
- * Compra no dia exato do fechamento de um ciclo cuja fatura já está paga
- * desloca 1 dia (mesma regra do card de Faturas do dashboard — ver
- * `adiar_compra_do_fechamento_ja_pago` em `@lancai/tipos`). Só afeta o Modo
- * fatura (visão por ciclo): a aba de movimentações mostra sempre a data real
- * do Fato. Ajuste de leitura, não grava nada.
- */
-function adiar_compras_do_fechamento_ja_pago(
-  movimentos: MovimentoResumo[],
-  cartoesCiclo: CartaoCicloExtrato[],
-  fechamentoPorCartao: ReadonlyMap<string, number>,
-  vencimentoPorCartao: ReadonlyMap<string, number>,
-  pagamentos: ReturnType<typeof pagamentos_ciclo_de>,
-): MovimentoResumo[] {
+/** Busca a fatura oficial de um cartão pra `adiar_compras_do_fechamento_ja_pago` (@lancai/tipos). */
+function totalOficialDe(cartoesCiclo: CartaoCicloExtrato[]): (cartaoId: string, competencia: string) => number | null {
   const oficiaisPorCartao = new Map<string, Map<string, number>>();
   for (const cartao of cartoesCiclo) {
     if (!cartao.faturasOficiais?.length) continue;
     oficiaisPorCartao.set(cartao.id, new Map(cartao.faturasOficiais.map((f) => [f.competencia, f.total])));
   }
-
-  const cacheCicloPago = new Map<string, boolean>();
-  function ciclo_esta_pago(cartaoId: string, cicloFecha: string): boolean {
-    const chave = `${cartaoId}:${cicloFecha}`;
-    const emCache = cacheCicloPago.get(chave);
-    if (emCache != null) return emCache;
-
-    const fechamento = fechamentoPorCartao.get(cartaoId);
-    if (fechamento == null) {
-      cacheCicloPago.set(chave, false);
-      return false;
-    }
-    const vencimento = vencimentoPorCartao.get(cartaoId) ?? 0;
-
-    const totalOficial = oficiaisPorCartao.get(cartaoId)?.get(cicloFecha) ?? null;
-    const totalLiquido = arredondar(
-      movimentos.reduce((soma, movimento) => {
-        if (movimento.cartaoId !== cartaoId || !eh_linha_da_fatura(movimento)) return soma;
-        const ciclo = ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
-          vencimento,
-          parcelaNumero: movimento.parcelaNumero,
-          status: movimento.status,
-          pagamentos,
-        });
-        return ciclo === cicloFecha ? soma + valor_na_fatura(movimento) : soma;
-      }, 0),
-    );
-    const total = totalOficial ?? totalLiquido;
-    const totalPago = somar_pagamentos_fatura(movimentos, cartaoId, cicloFecha, fechamento, vencimento);
-    const pago = total > 0 && totalPago >= total - 0.01;
-    cacheCicloPago.set(chave, pago);
-    return pago;
-  }
-
-  return movimentos.map((movimento) =>
-    adiar_compra_do_fechamento_ja_pago(movimento, fechamentoPorCartao, ciclo_esta_pago),
-  );
+  return (cartaoId, competencia) => oficiaisPorCartao.get(cartaoId)?.get(competencia) ?? null;
 }
 
 export function filtrar_extrato(
@@ -438,9 +387,12 @@ export function filtrar_extrato(
     filtros.visao === "faturas"
       ? adiar_compras_do_fechamento_ja_pago(
         movimentos,
-        filtros.cartoesCiclo ?? [],
-        fechamentoPorCartao,
-        vencimentoPorCartao,
+        [...fechamentoPorCartao].map(([id, fechamento]) => ({
+          id,
+          fechamento,
+          vencimento: vencimentoPorCartao.get(id) ?? 0,
+        })),
+        totalOficialDe(filtros.cartoesCiclo ?? []),
         pagamentos,
       )
       : movimentos;

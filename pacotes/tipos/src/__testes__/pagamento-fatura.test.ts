@@ -34,6 +34,7 @@ import {
   valores_proximos,
   somar_pagamentos_fatura,
   adiar_compra_do_fechamento_ja_pago,
+  adiar_compras_do_fechamento_ja_pago,
   type CartaoSugestaoFatura,
   type MovimentoSugestaoFatura,
 } from "../pagamento-fatura";
@@ -1176,5 +1177,116 @@ describe("adiar_compra_do_fechamento_ja_pago", () => {
       return false;
     });
     expect(cicloRecebido).toBe("2026-08");
+  });
+});
+
+describe("adiar_compras_do_fechamento_ja_pago", () => {
+  const cartaoNu = { id: "cartao-nu", fechamento: 2, vencimento: 9 };
+
+  it("desloca compra do dia do fechamento de um ciclo já pago — usada pelo card Cartões do Cockpit, gráfico de Faturas e Modo fatura", () => {
+    const movimentos = [
+      // Fatura de setembro (2026-09) já confirmada e 100% paga.
+      {
+        papel: "pagamento_fatura",
+        cartaoId: cartaoNu.id,
+        cartaoFaturaId: cartaoNu.id,
+        competenciaFatura: "2026-09",
+        tipo: "receita",
+        valor: 10000,
+        dataMovimento: "2026-09-09",
+        status: "realizado",
+      },
+      // Compra grande chegou depois, datada bem no dia do fechamento (2).
+      {
+        cartaoId: cartaoNu.id,
+        tipo: "despesa",
+        valor: 52000,
+        dataMovimento: "2026-09-02",
+        status: "realizado",
+      },
+    ];
+    const totalOficialDe = (cartaoId: string, competencia: string) =>
+      cartaoId === cartaoNu.id && competencia === "2026-09" ? 10000 : null;
+
+    const ajustados = adiar_compras_do_fechamento_ja_pago(movimentos, [cartaoNu], totalOficialDe);
+
+    const compraAjustada = ajustados.find((m) => m.valor === 52000)!;
+    expect(compraAjustada.dataMovimento).toBe("2026-09-03");
+  });
+
+  it("não desloca quando o ciclo ainda não está pago", () => {
+    const movimentos = [
+      {
+        papel: "pagamento_fatura",
+        cartaoId: cartaoNu.id,
+        cartaoFaturaId: cartaoNu.id,
+        competenciaFatura: "2026-09",
+        tipo: "receita",
+        valor: 3000,
+        dataMovimento: "2026-09-09",
+        status: "realizado",
+      },
+      {
+        cartaoId: cartaoNu.id,
+        tipo: "despesa",
+        valor: 52000,
+        dataMovimento: "2026-09-02",
+        status: "realizado",
+      },
+    ];
+    const totalOficialDe = (cartaoId: string, competencia: string) =>
+      cartaoId === cartaoNu.id && competencia === "2026-09" ? 10000 : null;
+
+    const ajustados = adiar_compras_do_fechamento_ja_pago(movimentos, [cartaoNu], totalOficialDe);
+
+    const compra = ajustados.find((m) => m.valor === 52000)!;
+    expect(compra.dataMovimento).toBe("2026-09-02");
+  });
+
+  it("sem totalOficial: usa a soma líquida local (incluindo a própria compra do dia do fechamento) pra decidir se o ciclo já está pago", () => {
+    const movimentos = [
+      { cartaoId: cartaoNu.id, tipo: "despesa", valor: 300, dataMovimento: "2026-09-01", status: "realizado" },
+      // Compra no dia do fechamento — soma 300 + 50 = 350 de total do ciclo.
+      { cartaoId: cartaoNu.id, tipo: "despesa", valor: 50, dataMovimento: "2026-09-02", status: "realizado" },
+      // Pagamento cobre o total líquido do ciclo (350) — cai dentro da janela
+      // de quitação (vencimento dia 9).
+      {
+        papel: "pagamento_fatura",
+        cartaoId: cartaoNu.id,
+        cartaoFaturaId: cartaoNu.id,
+        competenciaFatura: "2026-09",
+        tipo: "receita",
+        valor: 350,
+        dataMovimento: "2026-09-09",
+        status: "realizado",
+      },
+    ];
+
+    const ajustados = adiar_compras_do_fechamento_ja_pago(movimentos, [cartaoNu], () => null);
+
+    const compra = ajustados.find((m) => m.valor === 50)!;
+    expect(compra.dataMovimento).toBe("2026-09-03");
+  });
+
+  it("sem totalOficial: não desloca quando o pagamento não cobre o total líquido do ciclo", () => {
+    const movimentos = [
+      { cartaoId: cartaoNu.id, tipo: "despesa", valor: 300, dataMovimento: "2026-09-01", status: "realizado" },
+      { cartaoId: cartaoNu.id, tipo: "despesa", valor: 50, dataMovimento: "2026-09-02", status: "realizado" },
+      {
+        papel: "pagamento_fatura",
+        cartaoId: cartaoNu.id,
+        cartaoFaturaId: cartaoNu.id,
+        competenciaFatura: "2026-09",
+        tipo: "receita",
+        valor: 300, // cobre só a despesa antiga, não o total (350)
+        dataMovimento: "2026-09-09",
+        status: "realizado",
+      },
+    ];
+
+    const ajustados = adiar_compras_do_fechamento_ja_pago(movimentos, [cartaoNu], () => null);
+
+    const compra = ajustados.find((m) => m.valor === 50)!;
+    expect(compra.dataMovimento).toBe("2026-09-02");
   });
 });

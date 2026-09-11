@@ -854,6 +854,87 @@ export function adiar_compra_do_fechamento_ja_pago<
   return { ...movimento, dataMovimento: `${y}-${m}-${d}` };
 }
 
+/**
+ * Aplica `adiar_compra_do_fechamento_ja_pago` a uma lista inteira de
+ * movimentos, calculando "o ciclo já está pago?" internamente (total oficial
+ * — via `totalOficialDe` — ?? soma líquida local vs. total pago, já
+ * contando créditos de regra quando há oficial). Função única usada nos três
+ * lugares que precisam desse ajuste — gráfico de Faturas do dashboard, card
+ * Cartões do Cockpit e Modo fatura do Extrato — pra não ter três cópias da
+ * mesma regra divergindo com o tempo. `totalOficialDe` é a única diferença
+ * entre os chamadores: cada um busca a fatura oficial na sua própria fonte
+ * de dado (mapa achatado no dashboard, `cartao.faturasOficiais` no Extrato).
+ */
+export function adiar_compras_do_fechamento_ja_pago<
+  T extends {
+    dataMovimento: string;
+    cartaoId?: string | null;
+    cartaoFaturaId?: string | null;
+    competenciaFatura?: string | null;
+    parcelaNumero?: number | null;
+    tipo?: string | null;
+    papel?: string | null;
+    status?: string | null;
+    ignoradoEmRelatorio?: boolean;
+    descricao?: string | null;
+    descricaoFonte?: string | null;
+    valor: string | number;
+    efeitoValor?: "soma" | "subtrai" | null;
+  },
+>(
+  movimentos: T[],
+  cartoes: Array<{ id: string; fechamento: number; vencimento: number }>,
+  totalOficialDe: (cartaoId: string, competencia: string) => number | null,
+  pagamentos: PagamentoCiclo[] = [],
+): T[] {
+  const fechamentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
+  const vencimentoPorCartao = new Map(cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
+
+  // Só avalia o status dos ciclos que realmente aparecem nos movimentos.
+  const ciclosTocados = new Set<string>();
+  for (const movimento of movimentos) {
+    if (!movimento.cartaoId) continue;
+    const fechamento = fechamentoPorCartao.get(movimento.cartaoId);
+    if (fechamento == null) continue;
+    const data = String(movimento.dataMovimento).slice(0, 10);
+    ciclosTocados.add(`${movimento.cartaoId}:${competencia_ciclo_da_data(data, fechamento)}`);
+  }
+
+  const cicloEstaPagoCache = new Map<string, boolean>();
+  for (const chave of ciclosTocados) {
+    const [cartaoId, cicloFecha] = chave.split(":") as [string, string];
+    const fechamento = fechamentoPorCartao.get(cartaoId)!;
+    const vencimento = vencimentoPorCartao.get(cartaoId) ?? 0;
+
+    const totalOficial = totalOficialDe(cartaoId, cicloFecha);
+    const totalLiquido = arredondar(
+      movimentos.reduce((soma, movimento) => {
+        if (movimento.cartaoId !== cartaoId || !eh_linha_da_fatura(movimento)) return soma;
+        const ciclo = ciclo_do_movimento(movimento.dataMovimento, movimento.cartaoId, fechamento, {
+          vencimento,
+          parcelaNumero: movimento.parcelaNumero,
+          status: movimento.status,
+          pagamentos,
+        });
+        return ciclo === cicloFecha ? soma + valor_na_fatura(movimento) : soma;
+      }, 0),
+    );
+    const total = totalOficial ?? totalLiquido;
+    const totalPago = somar_pagamentos_fatura(movimentos, cartaoId, cicloFecha, fechamento, vencimento, {
+      incluirCreditosDeRegra: totalOficial != null,
+    });
+    cicloEstaPagoCache.set(chave, total > 0 && totalPago >= total - 0.01);
+  }
+
+  return movimentos.map((movimento) =>
+    adiar_compra_do_fechamento_ja_pago(
+      movimento,
+      fechamentoPorCartao,
+      (cartaoId, cicloFecha) => cicloEstaPagoCache.get(`${cartaoId}:${cicloFecha}`) === true,
+    ),
+  );
+}
+
 export function pagamentos_ciclo_de(
   movimentos: Array<{
     cartaoId?: string | null;
