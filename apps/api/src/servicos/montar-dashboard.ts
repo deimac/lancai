@@ -429,6 +429,7 @@ function montar_linha_fatura(
   vencimentoPorCartao: ReadonlyMap<string, number>,
   oficiais: ReadonlyMap<string, { total: number }>,
   alocacoesBaixaConfianca: ReadonlyMap<string, ConfiancaBaixaFatura> | undefined,
+  pagamentos: PagamentoCiclo[] = [],
 ): LinhaFaturaDashboard {
   const ciclo = intervalo_ciclo_fatura(cicloFecha, cartao.fechamento);
   const oficial = oficiais.get(`${cartao.id}:${cicloFecha}`);
@@ -437,6 +438,7 @@ function montar_linha_fatura(
     fechamentoPorCartao,
     new Map([[cartao.id, cicloFecha]]),
     vencimentoPorCartao,
+    pagamentos,
   ).get(cartao.id) ?? { gasto: 0, quantidade: 0 };
   const cicloAberto = ciclo_aberto_em(hoje, cartao.fechamento);
   const totalOficial = oficial?.total ?? null;
@@ -455,7 +457,11 @@ function montar_linha_fatura(
   );
   const cicloAtual = cicloFecha === cicloAberto;
   const futura = mesTela > hoje.slice(0, 7);
-  const prevista = totalOficial == null && futura && gasto.quantidade > 0;
+  // Mês futuro sem confirmação do banco é sempre "prevista" — não importa se
+  // já existe algum lançamento projetado (`gasto.quantidade`) ou não; a
+  // grande maioria dos meses futuros começa vazia (`quantidade === 0`) e
+  // isso não deve empurrar pra "aguardando_confirmacao"/"em_aberto".
+  const prevista = totalOficial == null && futura;
   const origem = totalOficial != null ? "oficial" : cicloAtual ? "aberta" : "prevista";
   const base = totalOficial ?? total;
   const confiancaBaixa = alocacoesBaixaConfianca?.get(`${cartao.id}:${cicloFecha}`);
@@ -498,6 +504,14 @@ export function montar_serie_faturas_dashboard(entrada: {
    * `bill_allocation`. Puramente aditivo (ver `ConfiancaBaixaFatura`).
    */
   alocacoesBaixaConfianca?: ReadonlyMap<string, ConfiancaBaixaFatura>;
+  /**
+   * Pagamentos de fatura já conhecidos (ver `pagamentos_ciclo_de`) — sem
+   * isso, `ciclo_do_movimento` nunca desloca uma compra por antecipação
+   * (`aplicar_antecipacao` sai cedo quando a lista está vazia), e o total de
+   * um ciclo ainda aberto diverge do mesmo cálculo feito em outro lugar do
+   * dashboard com essa lista preenchida.
+   */
+  pagamentos?: PagamentoCiclo[];
 }): SerieFaturasDashboard[] {
   const fechamentoPorCartao = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao.fechamento]));
   const vencimentoPorCartao = new Map(entrada.cartoes.map((cartao) => [cartao.id, cartao.vencimento]));
@@ -505,6 +519,7 @@ export function montar_serie_faturas_dashboard(entrada: {
     entrada.oficiais.map((fatura) => [`${fatura.cartaoId}:${fatura.competencia}`, fatura] as const),
   );
   const alocacoesBaixaConfianca = entrada.alocacoesBaixaConfianca;
+  const pagamentos = entrada.pagamentos ?? [];
   const meses: string[] = [];
   for (
     let cursor = deISOParaData(entrada.inicio);
@@ -518,6 +533,7 @@ export function montar_serie_faturas_dashboard(entrada: {
     entrada.movimentos,
     entrada.cartoes,
     (cartaoId, competencia) => oficiais.get(`${cartaoId}:${competencia}`)?.total ?? null,
+    pagamentos,
   );
 
   return meses.map((mesTela) => {
@@ -537,6 +553,7 @@ export function montar_serie_faturas_dashboard(entrada: {
         vencimentoPorCartao,
         oficiais,
         alocacoesBaixaConfianca,
+        pagamentos,
       );
     });
     const mesAtual = entrada.hoje.slice(0, 7);
@@ -632,13 +649,20 @@ export async function montar_dashboard(
   const dataAnterior = paraDataISO(adicionarMeses(deISOParaData(periodo.de), -1));
   const periodoAnterior = inicioFimMesAtual(dataAnterior);
   const mesAnterior = periodoAnterior.de.slice(0, 7);
-  // Série do card de faturas é independente do mês do cockpit: ancora em hoje.
+  // Série do card de faturas é independente do mês do cockpit: ancora em hoje
+  // (não recentra ao navegar o mês do cockpit — isso fica intocado). Mas a
+  // janela de busca dos lançamentos precisa cobrir os dois: `mes` do cockpit
+  // alimenta o mesmo cálculo (ver `cartoesDetalhe` abaixo, que lê a linha já
+  // computada aqui em vez de recalcular por conta própria) — sem isso, um
+  // `mes` distante de hoje ficaria sem lançamentos carregados pra sua linha.
   const mesHoje = hoje.slice(0, 7);
+  const mesMinFaturas = mes < mesHoje ? mes : mesHoje;
+  const mesMaxFaturas = mes > mesHoje ? mes : mesHoje;
   const inicioFaturas = inicioFimMesAtual(
-    paraDataISO(adicionarMeses(deISOParaData(`${mesHoje}-01`), -11)),
+    paraDataISO(adicionarMeses(deISOParaData(`${mesMinFaturas}-01`), -11)),
   );
   const fimFaturas = inicioFimMesAtual(
-    paraDataISO(adicionarMeses(deISOParaData(`${mesHoje}-01`), 5)),
+    paraDataISO(adicionarMeses(deISOParaData(`${mesMaxFaturas}-01`), 5)),
   ).ate;
   const periodoFaturas = { de: inicioFaturas.de, ate: fimFaturas };
   const ateCaixa = hoje > periodo.ate ? hoje : periodo.ate;
@@ -772,8 +796,37 @@ export async function montar_dashboard(
     cartoesDb.map((cartao) => [cartao.id, cartao.dadosPlasticosCifrados] as const),
   );
 
+  // Calculado antes de `cartoesDetalhe` de propósito: o card Cartões lê o
+  // total de cada cartão daqui (mesma linha que o gráfico de Faturas mostra
+  // pro mesmo mês) em vez de recalcular por conta própria — os dois nunca
+  // divergem porque passam a ser o mesmo objeto, não duas implementações
+  // paralelas tentando concordar. Só quando `tipoGasto` filtra por natureza
+  // (pessoal/empresa) o card volta a calcular à parte (abaixo): o gráfico de
+  // Faturas sempre mostra a fatura inteira, sem esse recorte.
+  const alocacoesBaixaConfianca = await listar_alocacoes_baixa_confianca({
+    workspaceIds: escopo.workspaceIds,
+    cartaoIds: idsCartoes,
+  });
+  const pagamentosFaturas = pagamentos_ciclo_de(movimentosFaturas);
+  const faturas = montar_serie_faturas_dashboard({
+    cartoes: cartoesCiclo.map((cartao) => ({
+      id: cartao.id,
+      nome: cartao.nome,
+      fechamento: cartao.fechamento,
+      vencimento: cartao.vencimento,
+      sincronizada: cartao.sincronizada,
+    })),
+    oficiais,
+    movimentos: movimentosFaturas,
+    inicio: inicioFaturas.de,
+    fim: fimFaturas,
+    hoje,
+    alocacoesBaixaConfianca,
+    pagamentos: pagamentosFaturas,
+  });
+  const serieFaturasDoMes = faturas.find((serie) => serie.competencia === mes);
+
   const cartoesDetalhe: DashboardCartao[] = cartoesCiclo.map((cartao) => {
-    const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
     const competenciaCiclo = competenciaFaturaPorCartao.get(cartao.id) ?? mes;
     const ciclo = intervalo_ciclo_fatura(competenciaCiclo, cartao.fechamento);
     const limite = Number(cartao.limite ?? 0);
@@ -785,10 +838,34 @@ export async function montar_dashboard(
         ? cartao.disponivel
         : Math.max(0, limite - comprometido),
     );
-    const aplicado = aplicar_total_oficial(
-      gasto.gasto,
-      oficialPorChave.get(`${cartao.id}:${competenciaCiclo}`),
-    );
+
+    // Caminho unificado: a mesma linha que o gráfico de Faturas calculou pro
+    // mês do cockpit. `tipoGasto` (recorte pessoal/empresa) não se aplica ao
+    // gráfico de Faturas — nesse caso cai no cálculo à parte, de propósito.
+    const linhaUnificada =
+      tipoGasto == null ? serieFaturasDoMes?.linhas.find((linha) => linha.cartaoId === cartao.id) : undefined;
+
+    let gastoMes: number;
+    let quantidadeLancamentos: number;
+    let totalOficial: number | null;
+    let ajusteFatura: number | null;
+    if (linhaUnificada) {
+      gastoMes = linhaUnificada.total;
+      quantidadeLancamentos = linhaUnificada.quantidadeLancamentos;
+      totalOficial = linhaUnificada.totalOficial;
+      ajusteFatura = linhaUnificada.ajuste;
+    } else {
+      const gasto = gastoPorCartao.get(cartao.id) ?? { gasto: 0, quantidade: 0 };
+      const aplicado = aplicar_total_oficial(
+        gasto.gasto,
+        oficialPorChave.get(`${cartao.id}:${competenciaCiclo}`),
+      );
+      gastoMes = aplicado.total;
+      quantidadeLancamentos = gasto.quantidade;
+      totalOficial = aplicado.totalOficial;
+      ajusteFatura = aplicado.ajuste;
+    }
+
     return {
       id: cartao.id,
       nome: cartao.nome,
@@ -801,14 +878,14 @@ export async function montar_dashboard(
       sincronizada: Boolean(cartao.sincronizada),
       instituicao: origens.get(cartao.id)?.instituicao ?? null,
       final4: mascara_final4_do_payload(plasticoPorId.get(cartao.id)),
-      gastoMes: aplicado.total,
-      quantidadeLancamentos: gasto.quantidade,
+      gastoMes,
+      quantidadeLancamentos,
       gastoEhFaturaAtual: mes === mesCivilHoje,
       competenciaCiclo,
-      cicloInicio: ciclo.inicio,
-      cicloFim: ciclo.fim,
-      totalOficial: aplicado.totalOficial,
-      ajusteFatura: aplicado.ajuste,
+      cicloInicio: linhaUnificada?.cicloInicio ?? ciclo.inicio,
+      cicloFim: linhaUnificada?.cicloFim ?? ciclo.fim,
+      totalOficial,
+      ajusteFatura,
     };
   });
 
@@ -899,27 +976,6 @@ export async function montar_dashboard(
   } catch {
     orcamentos = [];
   }
-
-  const alocacoesBaixaConfianca = await listar_alocacoes_baixa_confianca({
-    workspaceIds: escopo.workspaceIds,
-    cartaoIds: idsCartoes,
-  });
-
-  const faturas = montar_serie_faturas_dashboard({
-    cartoes: cartoesDetalhe.map((cartao) => ({
-      id: cartao.id,
-      nome: cartao.nome,
-      fechamento: cartao.fechamento,
-      vencimento: cartao.vencimento,
-      sincronizada: cartao.sincronizada,
-    })),
-    oficiais,
-    movimentos: movimentosFaturas,
-    inicio: inicioFaturas.de,
-    fim: fimFaturas,
-    hoje,
-    alocacoesBaixaConfianca,
-  });
 
   return {
     mes: dataAtual.slice(0, 7),

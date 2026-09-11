@@ -236,6 +236,49 @@ describe("montar_serie_faturas_dashboard", () => {
     });
   });
 
+  /**
+   * Regressão da divergência entre o card Cartões e o gráfico de Faturas
+   * (relatada em produção): o card Cartões já passava `pagamentos` pro
+   * cálculo do gasto (aplicando antecipação de pagamento), mas o gráfico de
+   * Faturas não passava nada — a mesma compra somava em ciclos diferentes
+   * nos dois lugares. `pagamentos` agora é aceito por
+   * `montar_serie_faturas_dashboard` e produz o mesmo resultado.
+   */
+  it("aplica antecipação de pagamento quando `pagamentos` é passado — sem isso, diverge do card Cartões", () => {
+    const cartao = { id: "c1", nome: "Cartão C1", fechamento: 30, vencimento: 6 };
+    const pagamentos = [
+      {
+        cartaoId: "c1",
+        dataMovimento: "2026-07-29",
+        competenciaFatura: "2026-07",
+        papel: "pagamento_fatura" as const,
+      },
+    ];
+    const movimentos = [
+      { tipo: "despesa", valor: 800, dataMovimento: "2026-07-29", cartaoId: cartao.id, status: "realizado" },
+      { tipo: "despesa", valor: 100, dataMovimento: "2026-07-20", cartaoId: cartao.id, status: "realizado" },
+    ];
+    const entradaBase = {
+      cartoes: [cartao],
+      oficiais: [],
+      movimentos,
+      inicio: "2026-07-01",
+      fim: "2026-09-30",
+      hoje: "2026-09-05",
+    };
+
+    // Ciclo que fecha em agosto (fechamento=30, dia 29/07 antecipa o pagamento
+    // de julho) aparece na UI sob a competência de setembro (eixo vencimento,
+    // vencimento 6 < fechamento 30).
+    const semPagamentos = montar_serie_faturas_dashboard(entradaBase);
+    const setembroSem = semPagamentos.find((mes) => mes.competencia === "2026-09");
+    expect(setembroSem?.linhas[0]?.quantidadeLancamentos ?? 0).toBe(0);
+
+    const comPagamentos = montar_serie_faturas_dashboard({ ...entradaBase, pagamentos });
+    const setembroCom = comPagamentos.find((mes) => mes.competencia === "2026-09");
+    expect(setembroCom?.linhas[0]).toMatchObject({ total: 800, quantidadeLancamentos: 1 });
+  });
+
   it("Azul (vence < fecha): mês UI setembro mostra oficial do ciclo que fechou em agosto", () => {
     const azul = { id: "cartao-azul", nome: "Azul", fechamento: 30, vencimento: 6 };
     const meses = montar_serie_faturas_dashboard({
