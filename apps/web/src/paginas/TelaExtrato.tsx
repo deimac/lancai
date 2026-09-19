@@ -1336,7 +1336,7 @@ export function TelaExtrato() {
       )}
       <ModalPagamentoFatura
         aberto={Boolean(pedidoFatura)}
-        cartoes={cartoesTodos}
+        cartoes={cartoes}
         cartaoIdInicial={pedidoFatura?.cartaoId ?? null}
         competenciaInicial={pedidoFatura?.competencia ?? mes}
         confirmando={salvandoId === pedidoFatura?.movimento.id}
